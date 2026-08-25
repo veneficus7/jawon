@@ -15,7 +15,14 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.SkipNext
+import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material3.Button
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
@@ -35,6 +42,7 @@ import androidx.core.content.ContextCompat
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.jawon.app.data.local.Track
+import com.jawon.app.ui.theme.JavonTextStyle
 
 @Composable
 fun DeckScreen(
@@ -71,12 +79,15 @@ fun DeckScreen(
                     val currentTrack = uiState.tracks.getOrNull(uiState.currentTrackIndex)
                     Text(
                         currentTrack?.title ?: uiState.album?.title ?: "Loading…",
-                        style = MaterialTheme.typography.bodyLarge
+                        style = MaterialTheme.typography.displaySmall
                     )
-                    Text(uiState.album?.artist.orEmpty())
+                    Text(uiState.album?.artist.orEmpty(), style = MaterialTheme.typography.bodyMedium)
                     if (currentTrack != null) {
-                        Text(qualityReadoutLine1(currentTrack))
-                        Text(qualityReadoutLine2(currentTrack, uiState.routeLabel, uiState.outputSampleRateHz))
+                        Text(qualityReadoutLine1(currentTrack).uppercase(), style = JavonTextStyle.mono)
+                        Text(
+                            qualityReadoutLine2(currentTrack, uiState.routeLabel, uiState.outputSampleRateHz).uppercase(),
+                            style = JavonTextStyle.mono
+                        )
                     }
                 }
             }
@@ -90,11 +101,21 @@ fun DeckScreen(
             item {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.Center
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Button(onClick = viewModel::onPrevious) { Text("Prev") }
-                    Button(onClick = viewModel::onPlayPause) { Text(if (uiState.isPlaying) "Pause" else "Play") }
-                    Button(onClick = viewModel::onNext) { Text("Next") }
+                    IconButton(onClick = viewModel::onPrevious) {
+                        Icon(Icons.Default.SkipPrevious, contentDescription = "Previous track")
+                    }
+                    IconButton(onClick = viewModel::onPlayPause) {
+                        Icon(
+                            if (uiState.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                            contentDescription = if (uiState.isPlaying) "Pause" else "Play"
+                        )
+                    }
+                    IconButton(onClick = viewModel::onNext) {
+                        Icon(Icons.Default.SkipNext, contentDescription = "Next track")
+                    }
                 }
             }
             itemsIndexed(uiState.tracks) { index, track ->
@@ -132,8 +153,8 @@ private fun PositionSlider(positionMs: Long, durationMs: Long, onSeek: (Long) ->
             valueRange = 0f..range
         )
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Text(formatDuration(displayed.toLong()))
-            Text(formatDuration(durationMs))
+            Text(formatDuration(displayed.toLong()), style = JavonTextStyle.mono)
+            Text(formatDuration(durationMs), style = JavonTextStyle.mono)
         }
     }
 }
@@ -145,14 +166,19 @@ private fun TrackListRow(track: Track, isCurrent: Boolean, onClick: () -> Unit) 
             .fillMaxWidth()
             .height(40.dp)
             .clickable(onClick = onClick),
-        horizontalArrangement = Arrangement.SpaceBetween,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text(
-            (if (isCurrent) "▶ " else "") + track.title,
-            modifier = Modifier.weight(1f)
+            "%02d".format(track.trackNumber),
+            style = JavonTextStyle.mono
         )
-        Text(formatDuration(track.durationMs))
+        Text(
+            (if (isCurrent) "▶ " else "") + track.title,
+            modifier = Modifier.weight(1f),
+            style = MaterialTheme.typography.bodyMedium
+        )
+        Text(formatDuration(track.durationMs), style = JavonTextStyle.mono)
     }
 }
 

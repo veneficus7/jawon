@@ -6,6 +6,7 @@ import com.jawon.app.data.local.Album
 import com.jawon.app.data.local.AlbumDao
 import com.jawon.app.data.local.Shelf
 import com.jawon.app.data.local.ShelfDao
+import com.jawon.app.data.local.ShelfWithAlbums
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow

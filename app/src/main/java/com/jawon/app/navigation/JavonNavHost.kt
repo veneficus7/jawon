@@ -21,7 +21,8 @@ fun JavonNavHost(navController: NavHostController = rememberNavController()) {
             WallScreen(
                 onAddAlbum = { navController.navigate(JavonDestination.AddAlbum.route) },
                 onOpenShelfManager = { navController.navigate(JavonDestination.ShelfManager.route) },
-                onOpenSettings = { navController.navigate(JavonDestination.Settings.route) }
+                onOpenSettings = { navController.navigate(JavonDestination.Settings.route) },
+                onOpenAlbum = { albumId -> navController.navigate(JavonDestination.Deck.route(albumId)) }
             )
         }
         composable(JavonDestination.AddAlbum.route) {

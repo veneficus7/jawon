@@ -32,6 +32,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import coil3.compose.AsyncImage
 import com.jawon.app.data.importer.TrackMetadata
+import com.jawon.app.ui.theme.JavonTextStyle
 
 @Composable
 fun AddAlbumScreen(
@@ -82,7 +83,7 @@ private fun IdleContent(onChooseFolder: () -> Unit, onCancel: () -> Unit) {
         verticalArrangement = Arrangement.spacedBy(12.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Text("Add Album", style = MaterialTheme.typography.bodyLarge)
+        Text("Add Album", style = MaterialTheme.typography.displaySmall)
         Text("Pick a folder containing one album's audio files.")
         Button(onClick = onChooseFolder) { Text("Choose folder") }
         Button(onClick = onCancel) { Text("Cancel") }
@@ -218,7 +219,7 @@ private fun TrackRow(track: TrackMetadata) {
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text(track.title, modifier = Modifier.weight(1f))
-        Text(formatDuration(track.durationMs))
+        Text(formatDuration(track.durationMs), style = JavonTextStyle.mono)
     }
 }
 

@@ -34,6 +34,7 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.jawon.app.data.local.Album
 import com.jawon.app.data.local.Shelf
+import com.jawon.app.data.local.ShelfWithAlbums
 
 @Composable
 fun ShelfManagerScreen(
@@ -55,7 +56,7 @@ fun ShelfManagerScreen(
                 Text(
                     "Shelf Manager",
                     modifier = Modifier.padding(top = 24.dp),
-                    style = MaterialTheme.typography.bodyLarge
+                    style = MaterialTheme.typography.displaySmall
                 )
             }
             item { NewShelfRow(onCreate = viewModel::onCreateShelf) }
