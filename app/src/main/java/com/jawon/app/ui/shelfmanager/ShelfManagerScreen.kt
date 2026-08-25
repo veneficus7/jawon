@@ -38,6 +38,7 @@ import com.jawon.app.data.local.Shelf
 @Composable
 fun ShelfManagerScreen(
     onBack: () -> Unit,
+    onPlayAlbum: (Album) -> Unit,
     viewModel: ShelfManagerViewModel = hiltViewModel()
 ) {
     val shelves by viewModel.shelves.collectAsStateWithLifecycle()
@@ -72,7 +73,8 @@ fun ShelfManagerScreen(
                         onRecolour = viewModel::onRecolour,
                         onMoveUp = viewModel::onMoveUp,
                         onMoveDown = viewModel::onMoveDown,
-                        onMoveAlbum = viewModel::onMoveAlbum
+                        onMoveAlbum = viewModel::onMoveAlbum,
+                        onPlayAlbum = onPlayAlbum
                     )
                 }
             }
@@ -108,7 +110,8 @@ private fun ShelfCard(
     onRecolour: (String, Float) -> Unit,
     onMoveUp: (String) -> Unit,
     onMoveDown: (String) -> Unit,
-    onMoveAlbum: (Album, String) -> Unit
+    onMoveAlbum: (Album, String) -> Unit,
+    onPlayAlbum: (Album) -> Unit
 ) {
     val shelf = shelfWithAlbums.shelf
     var name by remember(shelf.id) { mutableStateOf(shelf.name) }
@@ -151,7 +154,12 @@ private fun ShelfCard(
             Text("No albums yet", style = MaterialTheme.typography.bodyLarge)
         } else {
             shelfWithAlbums.albums.forEach { album ->
-                AlbumRow(album = album, otherShelves = otherShelves, onMoveAlbum = onMoveAlbum)
+                AlbumRow(
+                    album = album,
+                    otherShelves = otherShelves,
+                    onMoveAlbum = onMoveAlbum,
+                    onPlayAlbum = onPlayAlbum
+                )
             }
         }
     }
@@ -161,7 +169,8 @@ private fun ShelfCard(
 private fun AlbumRow(
     album: Album,
     otherShelves: List<Shelf>,
-    onMoveAlbum: (Album, String) -> Unit
+    onMoveAlbum: (Album, String) -> Unit,
+    onPlayAlbum: (Album) -> Unit
 ) {
     var menuOpen by remember { mutableStateOf(false) }
     Row(
@@ -170,6 +179,7 @@ private fun AlbumRow(
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text(album.title, modifier = Modifier.weight(1f))
+        Button(onClick = { onPlayAlbum(album) }) { Text("Play") }
         Box {
             Button(onClick = { menuOpen = true }, enabled = otherShelves.isNotEmpty()) { Text("Move") }
             DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
