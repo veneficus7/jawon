@@ -10,6 +10,7 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.jawon.app.ui.addalbum.AddAlbumScreen
 import com.jawon.app.ui.deck.DeckScreen
+import com.jawon.app.ui.scenetest.SceneTestScreen
 import com.jawon.app.ui.settings.SettingsScreen
 import com.jawon.app.ui.shelfmanager.ShelfManagerScreen
 import com.jawon.app.ui.wall.WallScreen
@@ -44,7 +45,13 @@ fun JavonNavHost(navController: NavHostController = rememberNavController()) {
             )
         }
         composable(JavonDestination.Settings.route) {
-            SettingsScreen(onBack = { navController.popBackStack() })
+            SettingsScreen(
+                onBack = { navController.popBackStack() },
+                onOpenSceneTest = { navController.navigate(JavonDestination.SceneTest.route) }
+            )
+        }
+        composable(JavonDestination.SceneTest.route) {
+            SceneTestScreen(onBack = { navController.popBackStack() })
         }
     }
 }

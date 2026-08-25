@@ -19,7 +19,7 @@ import com.jawon.app.R
 import com.jawon.app.ui.theme.JavonTextStyle
 
 @Composable
-fun SettingsScreen(onBack: () -> Unit) {
+fun SettingsScreen(onBack: () -> Unit, onOpenSceneTest: () -> Unit) {
     val context = LocalContext.current
     val versionName = remember(context) {
         runCatching {
@@ -44,6 +44,7 @@ fun SettingsScreen(onBack: () -> Unit) {
                 "Nothing to configure yet — playback and appearance settings land here as they're built.",
                 style = MaterialTheme.typography.bodyMedium
             )
+            Button(onClick = onOpenSceneTest) { Text("3D Test (M5)") }
             Button(onClick = onBack) { Text("Back") }
         }
     }

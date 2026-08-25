@@ -9,7 +9,11 @@ ambiguous, the prototype is the source of truth, not your assumption.
 
 ## Status
 
-**Building from zero.** No prior code. Currently at **M0**.
+**Phase 1 complete (M0–M4), verified on-device on a Galaxy S25 Ultra.**
+Skeleton, Add Album import, Shelf Manager, Media3 playback, and a real 2D UI
+(Wall, Deck, Shelf Manager, Settings) all work end to end. Javon is a
+usable, finished music player as of this line. Currently starting **Phase
+2 / M5 · SceneView bootstrap**.
 Never assume a milestone is complete. If this status line looks stale or
 contradicts the code, ask — do not infer from the repo.
 
