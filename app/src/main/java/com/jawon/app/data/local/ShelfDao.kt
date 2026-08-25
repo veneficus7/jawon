@@ -15,6 +15,9 @@ interface ShelfDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(shelf: Shelf)
 
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAll(shelves: List<Shelf>)
+
     @Delete
     suspend fun delete(shelf: Shelf)
 }

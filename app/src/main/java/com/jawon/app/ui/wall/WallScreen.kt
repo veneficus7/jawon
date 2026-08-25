@@ -33,7 +33,7 @@ fun WallScreen(
             Text("No shelves yet — tap Add Album to import one.")
             Button(onClick = onAddAlbum) { Text("Add Album") }
             Button(onClick = onOpenDeck) { Text("Deck (placeholder)") }
-            Button(onClick = onOpenShelfManager) { Text("Shelf Manager (placeholder)") }
+            Button(onClick = onOpenShelfManager) { Text("Shelf Manager") }
             Button(onClick = onOpenSettings) { Text("Settings (placeholder)") }
         }
     }
