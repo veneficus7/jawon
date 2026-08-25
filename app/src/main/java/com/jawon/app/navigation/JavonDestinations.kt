@@ -8,5 +8,5 @@ sealed class JavonDestination(val route: String) {
     }
     data object ShelfManager : JavonDestination("shelf_manager")
     data object Settings : JavonDestination("settings")
-    data object SceneTest : JavonDestination("scene_test")
+    data object WallScene : JavonDestination("wall_scene")
 }

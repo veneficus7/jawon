@@ -20,6 +20,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.ViewInAr
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -51,6 +52,7 @@ fun WallScreen(
     onOpenShelfManager: () -> Unit,
     onOpenSettings: () -> Unit,
     onOpenAlbum: (String) -> Unit,
+    onOpenRoom: () -> Unit,
     viewModel: WallViewModel = hiltViewModel()
 ) {
     val shelves by viewModel.shelves.collectAsState()
@@ -60,6 +62,9 @@ fun WallScreen(
             TopAppBar(
                 title = { Text("Javon", style = MaterialTheme.typography.displaySmall) },
                 actions = {
+                    IconButton(onClick = onOpenRoom) {
+                        Icon(Icons.Default.ViewInAr, contentDescription = "The Room")
+                    }
                     IconButton(onClick = onAddAlbum) {
                         Icon(Icons.Default.Add, contentDescription = "Add Album")
                     }

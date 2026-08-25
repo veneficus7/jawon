@@ -10,10 +10,10 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.jawon.app.ui.addalbum.AddAlbumScreen
 import com.jawon.app.ui.deck.DeckScreen
-import com.jawon.app.ui.scenetest.SceneTestScreen
 import com.jawon.app.ui.settings.SettingsScreen
 import com.jawon.app.ui.shelfmanager.ShelfManagerScreen
 import com.jawon.app.ui.wall.WallScreen
+import com.jawon.app.ui.wallscene.WallSceneScreen
 
 @Composable
 fun JavonNavHost(navController: NavHostController = rememberNavController()) {
@@ -23,7 +23,8 @@ fun JavonNavHost(navController: NavHostController = rememberNavController()) {
                 onAddAlbum = { navController.navigate(JavonDestination.AddAlbum.route) },
                 onOpenShelfManager = { navController.navigate(JavonDestination.ShelfManager.route) },
                 onOpenSettings = { navController.navigate(JavonDestination.Settings.route) },
-                onOpenAlbum = { albumId -> navController.navigate(JavonDestination.Deck.route(albumId)) }
+                onOpenAlbum = { albumId -> navController.navigate(JavonDestination.Deck.route(albumId)) },
+                onOpenRoom = { navController.navigate(JavonDestination.WallScene.route) }
             )
         }
         composable(JavonDestination.AddAlbum.route) {
@@ -45,13 +46,13 @@ fun JavonNavHost(navController: NavHostController = rememberNavController()) {
             )
         }
         composable(JavonDestination.Settings.route) {
-            SettingsScreen(
-                onBack = { navController.popBackStack() },
-                onOpenSceneTest = { navController.navigate(JavonDestination.SceneTest.route) }
-            )
+            SettingsScreen(onBack = { navController.popBackStack() })
         }
-        composable(JavonDestination.SceneTest.route) {
-            SceneTestScreen(onBack = { navController.popBackStack() })
+        composable(JavonDestination.WallScene.route) {
+            WallSceneScreen(
+                onBack = { navController.popBackStack() },
+                onOpenAlbum = { albumId -> navController.navigate(JavonDestination.Deck.route(albumId)) }
+            )
         }
     }
 }
