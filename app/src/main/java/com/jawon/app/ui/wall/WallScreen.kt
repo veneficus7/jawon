@@ -15,6 +15,7 @@ import androidx.compose.ui.unit.dp
 
 @Composable
 fun WallScreen(
+    onAddAlbum: () -> Unit,
     onOpenDeck: () -> Unit,
     onOpenShelfManager: () -> Unit,
     onOpenSettings: () -> Unit
@@ -29,7 +30,8 @@ fun WallScreen(
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Text("The Wall", style = MaterialTheme.typography.bodyLarge)
-            Text("No shelves yet — Import lands in M1.")
+            Text("No shelves yet — tap Add Album to import one.")
+            Button(onClick = onAddAlbum) { Text("Add Album") }
             Button(onClick = onOpenDeck) { Text("Deck (placeholder)") }
             Button(onClick = onOpenShelfManager) { Text("Shelf Manager (placeholder)") }
             Button(onClick = onOpenSettings) { Text("Settings (placeholder)") }
