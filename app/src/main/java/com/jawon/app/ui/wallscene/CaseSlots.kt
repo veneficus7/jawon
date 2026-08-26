@@ -4,6 +4,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
+import kotlin.math.sin
 import com.google.android.filament.gltfio.FilamentInstance
 import com.jawon.app.ui.wallscene.WallDimens.CASE_D
 import com.jawon.app.ui.wallscene.WallDimens.CASE_H
@@ -26,6 +27,28 @@ class CaseSlot {
     var body: Node? = null
     var spineArt: ImageNode? = null
     var coverArt: ImageNode? = null
+
+    /**
+     * Where this slot sits on the wall before the idle motion is added.
+     *
+     * [bind] writes these rather than writing `root.position` directly, because the frame
+     * driver now owns that transform: every shelved case hovers and turns, and those are
+     * per-frame values that must not be stomped by the next binding pass. Binding decides
+     * *which album and where*; the frame decides *how it is floating right now*.
+     */
+    var baseX = 0f
+    var baseY = 0f
+    var baseZ = 0f
+
+    /** True when this slot is showing an album, so the frame driver can skip parked ones. */
+    var occupied = false
+
+    /**
+     * Per-slot offset into the hover and turn cycles, so a shelf does not bob and spin in
+     * lockstep like a chorus line. Derived from the album id, so a given album always floats
+     * the same way and re-binding a slot to it does not make it jump.
+     */
+    var phase = 0f
 }
 
 /**
@@ -54,6 +77,90 @@ class CaseSlots {
 }
 
 /**
+ * How a shelved case hangs in its beam.
+ *
+ * Kept as plain arithmetic beside [OpenSequence] and [Scratch] for the same reason those are:
+ * the feel lives in these numbers and should be reviewable without a device attached.
+ *
+ * **Every visible case does this, every frame.** That is affordable because it is transform
+ * writes on nodes that already exist — no recomposition, no allocation, no new draw calls —
+ * and because the frustum window keeps the visible set to a couple of dozen. It is emphatically
+ * not affordable as a real light per case, which is why the beam is geometry.
+ *
+ * ---
+ *
+ * **The unresolved part: a full 360° turn is incompatible with a densely packed rack.**
+ *
+ * A case is 125mm deep and its slot is 11.2mm wide. Turning one to face the viewer needs
+ * eleven slots' worth of clearance, so it cannot be done without either
+ *
+ * - **widening the pitch to ~140mm**, which turns the wall from a record-shop rack into a
+ *   sparse gallery of one or two albums per screen — closer to flipping a crate one sleeve at
+ *   a time, and arguably the more precious-feeling product, but a different one; or
+ * - **turning only the focused case**, so the wall stays dense and the album nearest the
+ *   centre rises, turns to face you and presents itself while its neighbours stay spine-on.
+ *
+ * That is a product decision, not a technical one, and it changes the camera distance, the
+ * pan feel and how many albums a screen can hold. Until it is made, this file does the most a
+ * dense rack can physically hold: cases lift off their boards, breathe, lean, and sway just
+ * far enough to walk a highlight across the cover.
+ */
+object ShelfHover {
+
+    /** How far a case rises off its shelf, in metres. Just enough to break contact. */
+    const val LIFT = 0.011f
+
+    /** The bob on top of that lift, and how long a full breath takes. */
+    private const val BOB = 0.0022f
+    private const val BOB_PERIOD_S = 5.4f
+
+    /**
+     * Yaw, as a small oscillation rather than a continuous turn — and the ceiling on it is
+     * geometry, not taste.
+     *
+     * A shelved case is [WallDimens.CASE_D] deep (125mm) sitting in a slot
+     * [WallDimens.SLOT_PITCH] wide (11.2mm). Yawing it by θ swings its corner
+     * `CASE_D/2 · sin θ` sideways, so anything past about 4.5° drives the case bodily through
+     * the albums either side of it. A continuous 360° turn was tried and does exactly that:
+     * the wall becomes a pile of intersecting cases.
+     *
+     * Full rotation needs the rack to stop being a rack — see the note in `ShelfHover`'s KDoc.
+     * Until that call is made, this is the largest yaw the current spacing can physically
+     * hold, which is still enough to walk a specular highlight across each cover.
+     */
+    private const val YAW_DEG = 3.5f
+    private const val YAW_PERIOD_S = 6.7f
+
+    /**
+     * Tilt is the axis with room. Rows are [WallDimens.ROW_PITCH] apart (178mm) against a
+     * 142mm case, so there is ~36mm of vertical slack and a few degrees of lean costs a
+     * centimetre of it.
+     */
+    private const val TILT_DEG = 4.5f
+    private const val TILT_PERIOD_S = 8.1f
+
+    /** Vertical offset at time [t] seconds for a case with the given [phase]. */
+    fun lift(t: Float, phase: Float): Float =
+        LIFT + sin((t / BOB_PERIOD_S + phase) * TWO_PI) * BOB
+
+    /** Y rotation in degrees — a sway within what the slot pitch allows, not a full turn. */
+    fun turn(t: Float, phase: Float): Float =
+        sin((t / YAW_PERIOD_S + phase) * TWO_PI) * YAW_DEG
+
+    /** X tilt in degrees — the lean that keeps the turn from reading as flat. */
+    fun tilt(t: Float, phase: Float): Float =
+        sin((t / TILT_PERIOD_S + phase) * TWO_PI) * TILT_DEG
+
+    private const val TWO_PI = 6.2831855f
+}
+
+/** A stable 0..1 phase for an album, so its case always floats the same way. */
+private fun albumPhase(albumId: String): Float {
+    val h = albumId.fold(0) { acc, c -> acc * 31 + c.code }
+    return (((h % 997) + 997) % 997) / 997f
+}
+
+/**
  * Points each slot at a visible album, or hides it when there is nothing to show.
  *
  * Everything here is assigned imperatively rather than passed as a composable parameter.
@@ -75,17 +182,19 @@ fun CaseSlots.bind(
             // Spare slot: parked, not removed.
             slot.root?.isVisible = false
             slot.body?.name = null
+            slot.occupied = false
             return@forEachIndexed
         }
 
         val (case, artwork) = binding
-        slot.root?.position = Position(
-            case.x,
-            case.y,
-            // The playing album stands out of its slot, so browsing away still shows you
-            // what is on (PLAN.md §9 #3).
-            if (case.albumId == nowPlayingAlbumId) PROUD_Z else 0f
-        )
+        slot.occupied = true
+        slot.baseX = case.x
+        slot.baseY = case.y
+        // The playing album stands out of its slot, so browsing away still shows you
+        // what is on (PLAN.md §9 #3).
+        slot.baseZ = if (case.albumId == nowPlayingAlbumId) PROUD_Z else 0f
+        // Stable per-album, so the same record always hangs the same way.
+        slot.phase = albumPhase(case.albumId)
         // Hidden while its case is out in the room, so there are never two of the same album.
         slot.root?.isVisible = case.albumId != selectedAlbumId
         // What the tap handler reads back to know which album was picked.

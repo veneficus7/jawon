@@ -118,6 +118,20 @@ class PlaybackRepository @Inject constructor(@param:ApplicationContext private v
         if (controller.isPlaying) controller.pause() else controller.play()
     }
 
+    /**
+     * Set playback on or off explicitly, rather than toggling.
+     *
+     * The platter needs this. Holding the disc pauses for as long as the finger is down, and
+     * expressing that as two [playPause] calls races: the gesture can outlive a transport tap,
+     * a track can end mid-hold, and either one flips the toggle out from under the release so
+     * the disc is let go and the music stays silent. Asking for a state instead of a change is
+     * idempotent, so a stray extra call costs nothing.
+     */
+    suspend fun setPlaying(playing: Boolean) {
+        val controller = ensureController()
+        if (playing) controller.play() else controller.pause()
+    }
+
     suspend fun seekToNext() = ensureController().seekToNextMediaItem()
 
     suspend fun seekToPrevious() = ensureController().seekToPreviousMediaItem()

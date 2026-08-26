@@ -166,6 +166,13 @@ private class FrameContext {
  */
 private class ScratchDriver {
     var active = false
+
+    /**
+     * Whether letting go of the disc should start the music again — i.e. whether it was
+     * playing when the finger landed. Holding the platter pauses; releasing restores what
+     * was there rather than assuming play.
+     */
+    var resumeOnRelease = false
     var lastAngle = 0f
     var cursor = Scratch.Cursor(0, 0L)
     var durations: List<Long> = emptyList()
@@ -573,6 +580,12 @@ fun WallSceneScreen(
             scratch.active = false
             viewModel.onScrub(scratch.cursor.trackIndex, scratch.cursor.offsetMs)
             scrubReadout.value = null
+            // Let the platter go: pick playback back up exactly where the scrub left it, and
+            // only if it was running when the disc was grabbed.
+            if (scratch.resumeOnRelease) {
+                scratch.resumeOnRelease = false
+                viewModel.setPlaying(true)
+            }
         }
 
         val gestureListener = rememberOnGestureListener(
@@ -650,6 +663,16 @@ fun WallSceneScreen(
                         )
                         scratch.haptics.reset()
                         scratch.lastSeekAt = 0L
+
+                        // A hand on the platter stops the platter. Hold the disc and the
+                        // music holds with it, for as long as the finger is down — which is
+                        // both what a turntable does and what makes scrubbing legible,
+                        // because you are no longer hearing playback fight the scrub.
+                        //
+                        // Remembered rather than assumed: releasing must restore what was
+                        // true before the grab, or grabbing a paused disc would start it.
+                        scratch.resumeOnRelease = frame.isPlaying
+                        if (frame.isPlaying) viewModel.setPlaying(false)
                     }
                 }
             },
@@ -764,9 +787,52 @@ fun WallSceneScreen(
 
                     // A case closing out from under a finger still on the disc: drop the
                     // scratch rather than leaving it armed against a disc going away.
+                    //
+                    // This path deliberately bypasses endScratch (there is no release to
+                    // honour), so it has to undo the hold-pause itself. Without that the
+                    // flag stays set, nothing ever calls setPlaying(true), and closing a
+                    // case mid-scrub leaves the album silently paused for good.
                     if (scratch.active && sequence.progress <= Scratch.ARM_AT) {
                         scratch.active = false
                         scrubReadout.value = null
+                        if (scratch.resumeOnRelease) {
+                            scratch.resumeOnRelease = false
+                            viewModel.setPlaying(true)
+                        }
+                    }
+                }
+
+                // Every shelved case hovers off its board and turns slowly, so a wall of
+                // albums reads as a rack of objects presenting themselves rather than a row
+                // of spines. Driven here rather than from `bind` because it is per-frame:
+                // binding decides which album sits where, this decides how it is floating.
+                //
+                // Written straight to the nodes, never through Compose state — ENGINEERING.md
+                // rule 3. No allocation in this loop either; it runs for every visible slot.
+                // This loop ALWAYS runs, and only the motion is conditional. `bind` no longer
+                // writes root.position at all, so skipping it entirely under reduced motion
+                // would leave every case stacked at the wall's origin.
+                run {
+                    val t = if (reduceMotion) 0f else sequence.clock
+                    caseSlots.slots.forEach { slot ->
+                        if (!slot.occupied) return@forEach
+                        val root = slot.root ?: return@forEach
+                        if (reduceMotion) {
+                            // Seated on the shelf, square on, exactly as before.
+                            root.position = Position(slot.baseX, slot.baseY, slot.baseZ)
+                            root.rotation = Rotation(0f, 0f, 0f)
+                        } else {
+                            root.position = Position(
+                                slot.baseX,
+                                slot.baseY + ShelfHover.lift(t, slot.phase),
+                                slot.baseZ
+                            )
+                            root.rotation = Rotation(
+                                ShelfHover.tilt(t, slot.phase),
+                                ShelfHover.turn(t, slot.phase),
+                                0f
+                            )
+                        }
                     }
                 }
 

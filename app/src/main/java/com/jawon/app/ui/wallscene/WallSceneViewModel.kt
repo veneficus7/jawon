@@ -102,6 +102,10 @@ class WallSceneViewModel @Inject constructor(
     }
 
     fun onPlayPause() = viewModelScope.launch { playbackRepository.playPause() }
+
+    /** Explicit rather than a toggle — see `PlaybackRepository.setPlaying`. */
+    fun setPlaying(playing: Boolean) =
+        viewModelScope.launch { playbackRepository.setPlaying(playing) }
     fun onNext() = viewModelScope.launch { playbackRepository.seekToNext() }
     fun onPrevious() = viewModelScope.launch { playbackRepository.seekToPrevious() }
     fun onSeek(positionMs: Long) = viewModelScope.launch { playbackRepository.seekTo(positionMs) }
