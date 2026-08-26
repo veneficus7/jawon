@@ -19,18 +19,41 @@ import kotlin.math.sin
  */
 object OpenSequence {
 
-    const val DURATION_MS = 1500f
+    /**
+     * 2400ms, up from the prototype's 1500.
+     *
+     * Five distinct physical actions — a case sliding out, turning, a lid swinging, a disc
+     * rising, a platter spinning up — were being run in a second and a half. Each got about
+     * 400ms, which is roughly the time a UI takes to slide a sheet in, and the whole thing
+     * read as one blurred event rather than as a series of things happening to an object.
+     *
+     * Slower is not automatically better and this is not arbitrary: the ceiling is how long
+     * someone will wait to hear music. The deck still reveals at [DECK_REVEAL_AT] of this,
+     * so the controls arrive well before the sequence finishes settling.
+     */
+    const val DURATION_MS = 2400f
 
-    // Beat windows, verbatim from the prototype.
+    /**
+     * Beat windows. **The overlaps are much smaller than the prototype's.**
+     *
+     * They used to run four deep — the turn began before the pull finished, the lid before
+     * the turn settled, the disc before the lid did. Overlap is what makes a sequence feel
+     * continuous rather than robotic, so some is wanted, but at that density every beat was
+     * masked by the next and none of them read. Now each hands over near its own end, with
+     * roughly a fifth of a beat of overlap: continuous, but you can see each thing happen.
+     *
+     * The lid and the lift get the most room, because they are what the owner is watching —
+     * "the case opens smoothly, and the disc comes out slowly and smoothly".
+     */
     private const val PULL_FROM = 0.00f
-    private const val PULL_TO = 0.28f
-    private const val TURN_FROM = 0.22f
-    private const val TURN_TO = 0.50f
-    private const val OPEN_FROM = 0.45f
-    private const val OPEN_TO = 0.72f
-    private const val LIFT_FROM = 0.60f
+    private const val PULL_TO = 0.19f
+    private const val TURN_FROM = 0.15f
+    private const val TURN_TO = 0.38f
+    private const val OPEN_FROM = 0.34f
+    private const val OPEN_TO = 0.63f
+    private const val LIFT_FROM = 0.58f
     private const val LIFT_TO = 0.90f
-    private const val SPIN_FROM = 0.80f
+    private const val SPIN_FROM = 0.84f
     private const val SPIN_TO = 1.00f
 
     // Motion, in metres and degrees (prototype units x 0.1).
@@ -45,6 +68,13 @@ object OpenSequence {
      * ~93% of the frame, so without this there is simply nowhere for a 120mm disc to be —
      * the prototype solved that by magnifying the disc instead, which is what stopped it
      * reading as a CD.
+     *
+     * **Do not trim this to smooth the camera move.** Tried, at 0.24, on the reasoning that
+     * 0.68m of camera travel felt lurchy now the lens rests at 0.78m rather than 0.5m. The
+     * result is above: the case fills the frame, the disc rises behind it, and all you see
+     * at the end of the sequence is an empty tray with a sliver of disc above it. The
+     * paragraph above this is not decoration — it is the reason the number is what it is.
+     * Smooth the *timing* instead.
      */
     private const val LIFT_DOLLY = 0.45f
     /**
