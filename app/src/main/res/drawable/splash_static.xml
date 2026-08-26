@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    The pre-first-frame window background for API 29-30, which have no SplashScreen API.
+
+    A layer-list rather than a plain colour so those two versions still get the mark rather
+    than a black rectangle: crateBlack ground, disc centred and held to a fixed size so it
+    matches the scale the platform splash uses on 31+.
+-->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:drawable="@color/crate_black" />
+    <item android:gravity="center">
+        <bitmap android:src="@drawable/ic_splash_disc" android:gravity="center" />
+    </item>
+</layer-list>

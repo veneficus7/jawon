@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <!--
+        API 31+: the real SplashScreen API.
+
+        This is the only way to animate the launch itself. The system shows this splash
+        before the app's first frame no matter what, so the animation has to live HERE to
+        replace it — anything drawn by the app plays afterwards and reads as a second
+        opening.
+
+        `windowSplashScreenAnimationDuration` must match the AVD, and the platform caps what
+        it will wait for at around a second; the animators are 900ms.
+    -->
+    <style name="Theme.Jawon" parent="android:Theme.DeviceDefault.DayNight">
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:windowActionBar">false</item>
+        <item name="android:windowSplashScreenBackground">@color/crate_black</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/ic_splash_disc_animated</item>
+        <item name="android:windowSplashScreenAnimationDuration">900</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowLightNavigationBar">false</item>
+    </style>
+</resources>

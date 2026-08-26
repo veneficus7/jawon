@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    The lamp's streak walking across the disc as it turns.
+
+    Runs the opposite way to the disc and much less far. The surface spins; the highlight is
+    a reflection of a fixed lamp, so it should drift rather than travel with the tracks —
+    counter-rotating a little is what sells that at icon scale.
+-->
+<objectAnimator xmlns:android="http://schemas.android.com/apk/res/android"
+    android:propertyName="rotation"
+    android:valueFrom="-26"
+    android:valueTo="8"
+    android:valueType="floatType"
+    android:duration="900"
+    android:interpolator="@android:interpolator/decelerate_cubic" />

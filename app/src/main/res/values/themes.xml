@@ -1,5 +1,23 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
 
-    <style name="Theme.Jawon" parent="android:Theme.Material.Light.NoActionBar" />
+    <!--
+        Base theme, API 29–30.
+
+        Was `Theme.Material.Light.NoActionBar`, which is a **light** theme on an app whose
+        every screen is near-black. The window background is what the system paints before
+        the first frame is drawn, so launching Jawon flashed white and then cut to the dark
+        room. Small, and the first thing anyone sees.
+
+        Now dark, on DESIGN.md's crateBlack — never #000000 — with the launcher icon centred
+        as a static splash. API 31+ replaces this with a real animated splash; see
+        values-v31.
+    -->
+    <style name="Theme.Jawon" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@drawable/splash_static</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowLightNavigationBar">false</item>
+    </style>
 </resources>

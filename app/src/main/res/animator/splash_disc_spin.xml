@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    The disc spinning up: still, then accelerating away.
+
+    accelerate_quad, not a decelerate or an overshoot. Everything else in this app settles
+    onto its mark; a platter coming up to speed is the one motion that should still be
+    gaining when you stop watching it, because the app opens straight into a spinning disc.
+    Ending on a decelerate would say "finished" exactly where the room says "playing".
+-->
+<objectAnimator xmlns:android="http://schemas.android.com/apk/res/android"
+    android:propertyName="rotation"
+    android:valueFrom="0"
+    android:valueTo="150"
+    android:valueType="floatType"
+    android:duration="900"
+    android:interpolator="@android:interpolator/accelerate_quad" />
