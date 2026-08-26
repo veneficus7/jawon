@@ -159,6 +159,22 @@ private class FrameContext {
 }
 
 /**
+ * Scene nodes the frame driver moves but does not own.
+ *
+ * Only the lamp, so far. It used to be nailed to one spot in world space, which was fine
+ * when the whole wall was 100mm across; once each album got a 150mm bay, panning past a few
+ * records walked straight out of the lit pool and into black. The lamp now rides with the
+ * browse position, so it is always the light over *what you are looking at*.
+ *
+ * This keeps DESIGN.md's "one warm lamp over the racks" reading true — there is still one
+ * lamp and one pool of light — it just no longer requires the shop to be one metre wide.
+ */
+private class RoomNodes {
+    var keyLight: SceneNode? = null
+    var rimLight: SceneNode? = null
+}
+
+/**
  * A scratch in progress. Deliberately not Compose state, for the same reason
  * [SequenceDriver] is not: touch arrives faster than the display refreshes and none of it
  * may recompose anything (ENGINEERING.md rule 3). The only Compose writes a scratch makes are the
@@ -327,6 +343,7 @@ fun WallSceneScreen(
         val sequence = remember { SequenceDriver() }
         val frame = remember { FrameContext() }
         val actNodes = remember { ActiveCaseNodes() }
+        val roomNodes = remember { RoomNodes() }
         val scratch = remember { ScratchDriver() }
         val view = LocalView.current
 
@@ -809,6 +826,11 @@ fun WallSceneScreen(
                 //
                 // Written straight to the nodes, never through Compose state — ENGINEERING.md
                 // rule 3. No allocation in this loop either; it runs for every visible slot.
+                // Walk the lamp along with the browse position. Panning is frozen while a
+                // case is open, so during the open sequence this holds the light still.
+                // The group's offset IS the pan; the lamp keeps its own offset inside it.
+                roomNodes.keyLight?.position = Position(panX.value, panY.value, 0f)
+
                 // This loop ALWAYS runs, and only the motion is conditional. `bind` no longer
                 // writes root.position at all, so skipping it entirely under reduced motion
                 // would leave every case stacked at the wall's origin.
@@ -881,6 +903,11 @@ fun WallSceneScreen(
             // The shop lamp. A focused spot rather than a directional light, because
             // DESIGN.md wants "one warm lamp over the racks, deep shadow everywhere else" â€”
             // a directional light has no falloff and would light the whole wall evenly.
+            // Wrapped in a bare Node so the frame driver has something to move: the lamp
+            // rides with the browse position, and `LightNode` exposes no handle of its own
+            // that this file can reach. The light keeps its offset inside the group, so
+            // moving the group is exactly moving the lamp.
+            Node(apply = { roomNodes.keyLight = this }) {
             LightNode(
                 type = LightManager.Type.FOCUSED_SPOT,
                 position = RoomLighting.KEY_POSITION,
@@ -896,6 +923,7 @@ fun WallSceneScreen(
                     spotLightCone(RoomLighting.KEY_CONE_INNER, RoomLighting.KEY_CONE_OUTER)
                     falloff(RoomLighting.KEY_FALLOFF)
                     castShadows(true)
+                    // The frame driver walks this along with the browse position.
                     // Until now this light ran on Filament's stock shadow settings, which
                     // is what CaseSlots' "a 1024px shadow map is too coarse" complaint was
                     // really about. Quadrupling the map and sizing the near/far hints to
@@ -921,6 +949,7 @@ fun WallSceneScreen(
                     )
                 }
             )
+            }
             // The coloured bounce, low and left â€” DESIGN.md's "one coloured bounce light".
             // It does not cast shadows: a second shadow-casting light doubles the cost and
             // muddies the single-lamp story the key light is telling.

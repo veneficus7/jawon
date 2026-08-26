@@ -133,6 +133,118 @@ object CaseArt {
      * its bars at 52% saturation. Here the title is labelCream, the artist labelDim, and the
      * bars are pulled down to 35% — the per-album colour stays in the low-saturation stock.
      */
+    /**
+     * The back inlay, in the same 125:142 proportion as the case's back face.
+     */
+    const val BACK_W = 256
+    const val BACK_H = 291
+
+    /**
+     * The printed back of the case — **generated, never uploaded.**
+     *
+     * The wall used to show only spines, so the back never faced anyone. Now that each album
+     * turns a full circle in its bay, half of every revolution is the back, and a blank slab
+     * of plastic there undoes the whole "precious artefact" idea.
+     *
+     * Asking users for a third image per album is the obvious fix and the wrong one: they
+     * already supply a cover and a disc face, and PLAN.md is explicit that the library is
+     * entirely user-supplied but the *effort* should stay small. So this is derived from what
+     * we already have — the album's own hue, pulled from its cover by [dominantHue] — which
+     * means every back is different, every back matches its cover, and the user does nothing.
+     *
+     * What makes it read as a CD back rather than a coloured rectangle is the furniture: a
+     * printed panel inset from the edges, a rule under the title, and a barcode block bottom
+     * right. The barcode is the strongest signal of the three and costs a dozen lines.
+     *
+     * The tracklist is deliberately absent. It wants real track data per album, which the
+     * wall does not currently load, and it belongs to the case-back liner notes that the open
+     * sequence will need anyway — see PLAN.md §9 #4.
+     */
+    fun bakeBack(
+        albumId: String,
+        title: String,
+        artist: String,
+        hue: Float,
+        fonts: Fonts
+    ): Bitmap {
+        val bitmap = Bitmap.createBitmap(BACK_W, BACK_H, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(bitmap)
+        val w = BACK_W.toFloat()
+        val h = BACK_H.toFloat()
+        val hueDeg = hue * 360f
+        val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+
+        // Card stock, a shade darker than the spine's so the two read as one printing.
+        paint.color = Color.HSVToColor(floatArrayOf(hueDeg, 0.24f, 0.12f + hue * 0.10f))
+        canvas.drawRect(0f, 0f, w, h, paint)
+
+        // The printed panel, inset — the white border a real inlay leaves at the trim.
+        val inset = w * 0.055f
+        paint.color = Color.HSVToColor(floatArrayOf(hueDeg, 0.34f, 0.19f + hue * 0.12f))
+        canvas.drawRect(inset, inset, w - inset, h - inset, paint)
+
+        val titlePaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
+            typeface = fonts.display
+            runCatching { fontVariationSettings = "'wght' 800, 'wdth' 115" }
+            textSize = w * 0.085f
+            color = LABEL_CREAM
+        }
+        val textLeft = inset * 2f
+        val textWidth = w - textLeft * 2f
+        canvas.drawText(
+            TextUtils.ellipsize(title, titlePaint, textWidth, TextUtils.TruncateAt.END).toString(),
+            textLeft,
+            h * 0.15f,
+            titlePaint
+        )
+
+        val artistPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
+            typeface = fonts.mono
+            runCatching { fontVariationSettings = "'wght' 500" }
+            textSize = w * 0.048f
+            color = LABEL_DIM
+            letterSpacing = 0.12f
+        }
+        canvas.drawText(
+            TextUtils.ellipsize(
+                artist.uppercase(), artistPaint, textWidth, TextUtils.TruncateAt.END
+            ).toString(),
+            textLeft,
+            h * 0.205f,
+            artistPaint
+        )
+
+        // Rule under the masthead.
+        paint.color = Color.HSVToColor(floatArrayOf(hueDeg, 0.40f, 0.46f + hue * 0.14f))
+        canvas.drawRect(textLeft, h * 0.235f, w - textLeft, h * 0.238f, paint)
+
+        // Barcode, bottom right. Bar widths come from the album id, so a given album always
+        // prints the same code — it is nonsense, but it is *consistently* nonsense, and a
+        // barcode that reshuffled every time the art was rebaked would read as noise.
+        val codeRight = w - textLeft
+        val codeBottom = h - textLeft
+        val codeH = h * 0.085f
+        val codeW = w * 0.42f
+        paint.color = LABEL_CREAM
+        canvas.drawRect(codeRight - codeW, codeBottom - codeH, codeRight, codeBottom, paint)
+
+        paint.color = Color.BLACK
+        var seed = albumId.fold(7) { acc, c -> acc * 31 + c.code }
+        var x = codeRight - codeW + w * 0.012f
+        val quietRight = codeRight - w * 0.012f
+        while (x < quietRight) {
+            seed = seed * 1103515245 + 12345
+            val bar = ((seed ushr 16) and 0x3) + 1
+            val barW = bar * w * 0.004f
+            if (x + barW > quietRight) break
+            canvas.drawRect(x, codeBottom - codeH + w * 0.012f, x + barW, codeBottom - w * 0.02f, paint)
+            seed = seed * 1103515245 + 12345
+            x += barW + (((seed ushr 16) and 0x3) + 1) * w * 0.004f
+        }
+
+        return bitmap
+    }
+
     fun bakeSpine(
         albumId: String,
         title: String,

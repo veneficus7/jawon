@@ -28,6 +28,9 @@ class CaseSlot {
     var spineArt: ImageNode? = null
     var coverArt: ImageNode? = null
 
+    /** The printed back inlay, generated per album — see [CaseArt.bakeBack]. */
+    var backArt: ImageNode? = null
+
     /**
      * Where this slot sits on the wall before the idle motion is added.
      *
@@ -87,23 +90,9 @@ class CaseSlots {
  * and because the frustum window keeps the visible set to a couple of dozen. It is emphatically
  * not affordable as a real light per case, which is why the beam is geometry.
  *
- * ---
- *
- * **The unresolved part: a full 360° turn is incompatible with a densely packed rack.**
- *
- * A case is 125mm deep and its slot is 11.2mm wide. Turning one to face the viewer needs
- * eleven slots' worth of clearance, so it cannot be done without either
- *
- * - **widening the pitch to ~140mm**, which turns the wall from a record-shop rack into a
- *   sparse gallery of one or two albums per screen — closer to flipping a crate one sleeve at
- *   a time, and arguably the more precious-feeling product, but a different one; or
- * - **turning only the focused case**, so the wall stays dense and the album nearest the
- *   centre rises, turns to face you and presents itself while its neighbours stay spine-on.
- *
- * That is a product decision, not a technical one, and it changes the camera distance, the
- * pan feel and how many albums a screen can hold. Until it is made, this file does the most a
- * dense rack can physically hold: cases lift off their boards, breathe, lean, and sway just
- * far enough to walk a highlight across the cover.
+ * The wall was a packed rack of spines and is now a gallery of bays: the owner chose to widen
+ * the spacing so every album owns an area it can turn a full circle inside. See
+ * [WallDimens.SLOT_PITCH] for the arithmetic that sets the bay width.
  */
 object ShelfHover {
 
@@ -115,21 +104,17 @@ object ShelfHover {
     private const val BOB_PERIOD_S = 5.4f
 
     /**
-     * Yaw, as a small oscillation rather than a continuous turn — and the ceiling on it is
-     * geometry, not taste.
+     * A full, continuous presentation turn — roughly 32 seconds a revolution.
      *
-     * A shelved case is [WallDimens.CASE_D] deep (125mm) sitting in a slot
-     * [WallDimens.SLOT_PITCH] wide (11.2mm). Yawing it by θ swings its corner
-     * `CASE_D/2 · sin θ` sideways, so anything past about 4.5° drives the case bodily through
-     * the albums either side of it. A continuous 360° turn was tried and does exactly that:
-     * the wall becomes a pile of intersecting cases.
+     * This is what the widened bays bought. Each album now owns a
+     * [WallDimens.SLOT_PITCH] bay against a [WallDimens.SLOT_SWEEP] turning circle, so a
+     * case can come all the way round — cover, spine, back, rear edge — without ever
+     * reaching into its neighbour's air.
      *
-     * Full rotation needs the rack to stop being a rack — see the note in `ShelfHover`'s KDoc.
-     * Until that call is made, this is the largest yaw the current spacing can physically
-     * hold, which is still enough to walk a specular highlight across each cover.
+     * Slow on purpose. Fast enough and it reads as a spinning icon in a menu; at this speed
+     * you catch it mid-turn and it reads as an object being shown to you.
      */
-    private const val YAW_DEG = 3.5f
-    private const val YAW_PERIOD_S = 6.7f
+    private const val TURN_DEG_PER_S = 11.2f
 
     /**
      * Tilt is the axis with room. Rows are [WallDimens.ROW_PITCH] apart (178mm) against a
@@ -143,9 +128,15 @@ object ShelfHover {
     fun lift(t: Float, phase: Float): Float =
         LIFT + sin((t / BOB_PERIOD_S + phase) * TWO_PI) * BOB
 
-    /** Y rotation in degrees — a sway within what the slot pitch allows, not a full turn. */
+    /**
+     * Y rotation in degrees. Continuous and phase-offset, so a shelf never turns in unison
+     * and re-binding a slot never makes its case snap to a new angle.
+     *
+     * Starts at -90 so a case with zero phase presents its cover, not its spine: rotating
+     * -90 about Y maps the case's +X face (the cover) onto +Z, toward the camera.
+     */
     fun turn(t: Float, phase: Float): Float =
-        sin((t / YAW_PERIOD_S + phase) * TWO_PI) * YAW_DEG
+        (-90f + t * TURN_DEG_PER_S + phase * 360f) % 360f
 
     /** X tilt in degrees — the lean that keeps the turn from reading as flat. */
     fun tilt(t: Float, phase: Float): Float =
@@ -212,6 +203,13 @@ fun CaseSlots.bind(
             node.isVisible = cover != null
             if (cover != null) node.bitmap = cover
         }
+        slot.backArt?.let { node ->
+            val back = artwork?.back
+            // Unlike the cover, this is generated rather than supplied, so it exists for
+            // every album that has finished loading — there is no "no back" case.
+            node.isVisible = back != null
+            if (back != null) node.bitmap = back
+        }
     }
 }
 
@@ -230,6 +228,7 @@ fun SceneScope.CaseSlotNodes(
     // so the composable's remember is keyed on something that never changes.
     val blankSpine = remember { CaseArt.blank(CaseArt.SPINE_W, CaseArt.SPINE_H) }
     val blankCover = remember { CaseArt.blank(CaseArt.COVER_PX, CaseArt.COVER_PX) }
+    val blankBack = remember { CaseArt.blank(CaseArt.BACK_W, CaseArt.BACK_H) }
 
     DisposableEffect(slots) {
         onDispose {
@@ -238,6 +237,7 @@ fun SceneScope.CaseSlotNodes(
                 it.body = null
                 it.spineArt = null
                 it.coverArt = null
+                it.backArt = null
             }
         }
     }
@@ -297,6 +297,20 @@ fun SceneScope.CaseSlotNodes(
                         rotation = io.github.sceneview.math.Rotation(0f, 90f, 0f),
                         apply = {
                             slot.coverArt = this
+                            isShadowCaster = false
+                        }
+                    )
+                    // The printed back, facing -X. Needed the moment cases began turning a
+                    // full circle: half of every revolution used to be bare plastic.
+                    // Generated from the album's hue rather than uploaded — see bakeBack.
+                    ImageNode(
+                        bitmap = blankBack,
+                        size = Size(CASE_D, CASE_H, 0f),
+                        normal = Direction(z = 1f),
+                        position = Position(-CASE_W / 2f - PLATE_LIFT, 0f, 0f),
+                        rotation = io.github.sceneview.math.Rotation(0f, -90f, 0f),
+                        apply = {
+                            slot.backArt = this
                             isShadowCaster = false
                         }
                     )

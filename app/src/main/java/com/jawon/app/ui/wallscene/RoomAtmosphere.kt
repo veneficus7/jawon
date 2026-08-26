@@ -37,7 +37,10 @@ object RoomAtmosphere {
      * decimetres — the wall centre sits about 0.5m away, so fog only starts biting toward
      * the far sides of a wide wall, which is exactly the intent.
      */
-    private const val FOG_START = 0.72f
+    // Pushed back from 0.72m when the bays widened and the camera moved to 0.78m. At the old
+    // value the wall plane sat *behind* the start of the fog, so the entire rack was hazed
+    // rather than just its far edges.
+    private const val FOG_START = 1.15f
     private const val FOG_DENSITY = 0.9f
     private const val FOG_MAX_OPACITY = 0.92f
 

@@ -8,6 +8,8 @@ import kotlinx.coroutines.withContext
 data class CaseArtwork(
     val spine: Bitmap,
     val cover: Bitmap?,
+    /** Generated from [hue], not uploaded — see [CaseArt.bakeBack]. */
+    val back: Bitmap,
     val hue: Float
 )
 
@@ -49,6 +51,7 @@ class CaseArtCache(
             CaseArtwork(
                 spine = CaseArt.bakeSpine(case.albumId, case.title, case.artist, hue, fonts),
                 cover = cover,
+                back = CaseArt.bakeBack(case.albumId, case.title, case.artist, hue, fonts),
                 hue = hue
             )
         }

@@ -15,9 +15,30 @@ object WallDimens {
     const val CASE_W = 0.010f
     const val CASE_H = 0.142f
     const val CASE_D = 0.125f
-    const val SLOT_GAP = 0.0012f
-    const val SLOT_PITCH = CASE_W + SLOT_GAP
-    const val ROW_PITCH = 0.178f
+
+    /**
+     * Every album gets a bay it can turn a full circle inside.
+     *
+     * The rack used to be packed: a 10mm case in an 11.2mm slot, spine out, like a shop.
+     * Cases now levitate and present themselves, and a case turning about its own axis
+     * sweeps a circle whose diameter is its *diagonal* in plan —
+     * `hypot(CASE_W, CASE_D)` = 125.4mm — not its 10mm thickness. At the old pitch a case
+     * needed eleven neighbours' worth of clearance and drove straight through them.
+     *
+     * 150mm leaves ~25mm of air between the swept circles of adjacent albums, so nothing
+     * ever intersects at any angle. The wall is a gallery now rather than a rack: fewer
+     * albums per screen, each one an object rather than a label.
+     */
+    const val SLOT_SWEEP = 0.1254f          // hypot(CASE_W, CASE_D), the turning circle
+    const val SLOT_GAP = 0.0246f
+    const val SLOT_PITCH = SLOT_SWEEP + SLOT_GAP
+
+    /**
+     * Rows only have to clear the case's height — turning about the vertical axis does not
+     * change it — so this grew far less than the pitch did. The extra over 142mm is where
+     * the underlight beam lives.
+     */
+    const val ROW_PITCH = 0.205f
 
     const val BOARD_H = 0.011f
     const val BOARD_D = CASE_D + 0.010f
@@ -67,10 +88,15 @@ object WallDimens {
     const val TAN_HALF_FOV = 12.0f / FOCAL_LENGTH_MM.toFloat()
 
     /**
-     * The prototype's 0.28m was tuned for a landscape browser; on a portrait phone that
-     * frames barely one row. This shows ~2 rows and ~10 spines. Main tuning knob.
+     * Pulled back from 0.5m because the bays are thirteen times wider than the old slots.
+     *
+     * At 0.5m a 150mm bay filled the frame with a single album and its neighbours were off
+     * screen entirely, which is not browsing. At 0.78m a portrait phone frames roughly one
+     * album centred with the next peeking in either side, and about three rows — close
+     * enough to read the artwork, far enough that panning still feels like moving along a
+     * shelf rather than scrubbing a filmstrip. Main tuning knob.
      */
-    const val CAMERA_Z = 0.5f
+    const val CAMERA_Z = 0.78f
 }
 
 data class CaseLayout(
