@@ -9,7 +9,10 @@ import com.jawon.app.data.local.ShelfWithAlbums
  * requirements.
  */
 object WallDimens {
-    const val CASE_W = 0.016f          // exaggerated from a real 10mm spine for legibility
+    // Real jewel-case dimensions. The prototype exaggerated the spine to 16mm "for spine
+    // legibility"; this is the true 10mm, which costs a little text width on the wall but
+    // makes the case read as an actual CD case once it is out in your hand.
+    const val CASE_W = 0.010f
     const val CASE_H = 0.142f
     const val CASE_D = 0.125f
     const val SLOT_GAP = 0.0012f
@@ -25,6 +28,20 @@ object WallDimens {
 
     /** How far artwork planes sit proud of the case body, to avoid z-fighting. */
     const val PLATE_LIFT = 0.0004f
+
+    /** A real CD: 120mm across, 15mm centre hole. */
+    const val DISC_RADIUS = 0.060f
+    const val DISC_HOLE_RADIUS = 0.0075f
+
+    /**
+     * A real jewel case is [CASE_W] overall — the hinged lid closes flush into that, it does
+     * not sit on top of it. Splitting the 10mm into a 6mm tray plus the lid is what keeps the
+     * opened case exactly as thick as the shelved one it replaces, so nothing appears or
+     * vanishes at the swap.
+     */
+    const val TRAY_T = 0.006f
+    /** Front face of the tray — where the disc sits and where the lid hinges. */
+    const val TRAY_FRONT_Z = -CASE_W / 2f + TRAY_T
 
     /** Wall plane sits just behind the back face of a shelved case. */
     const val WALL_Z = -CASE_D / 2f - 0.006f
@@ -58,6 +75,8 @@ data class CaseLayout(
     /** Used when there is neither a stored hue nor a cover to derive one from. */
     val fallbackHue: Float,
     val coverPath: String?,
+    /** The second image M1 has been collecting all along — shown on the disc itself. */
+    val discFacePath: String?,
     val row: Int,
     val col: Int,
     val x: Float,
@@ -129,6 +148,7 @@ data class WallLayout(
                         storedHue = album.spineHue,
                         fallbackHue = stableHue(album.id),
                         coverPath = album.caseCoverUri,
+                        discFacePath = album.discFaceUri,
                         row = row,
                         col = col,
                         x = colX(col),

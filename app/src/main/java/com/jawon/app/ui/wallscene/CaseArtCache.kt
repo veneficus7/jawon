@@ -42,7 +42,7 @@ class CaseArtCache(
     suspend fun load(case: CaseLayout) {
         if (has(case.albumId)) return
         val artwork = withContext(Dispatchers.IO) {
-            val cover = CaseArt.loadCover(case.coverPath)
+            val cover = CaseArt.loadCoverSquare(case.coverPath)
             val hue = case.storedHue.takeIf { it != 0f }
                 ?: cover?.let { CaseArt.dominantHue(it) }
                 ?: case.fallbackHue

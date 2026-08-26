@@ -49,10 +49,9 @@ fun JavonNavHost(navController: NavHostController = rememberNavController()) {
             SettingsScreen(onBack = { navController.popBackStack() })
         }
         composable(JavonDestination.WallScene.route) {
-            WallSceneScreen(
-                onBack = { navController.popBackStack() },
-                onOpenAlbum = { albumId -> navController.navigate(JavonDestination.Deck.route(albumId)) }
-            )
+            // Tapping a case now plays the open sequence in-room rather than leaving for the
+            // 2D Deck; the room gains its own transport UI in M7 part 2.
+            WallSceneScreen(onBack = { navController.popBackStack() })
         }
     }
 }

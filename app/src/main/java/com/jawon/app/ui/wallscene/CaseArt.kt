@@ -22,11 +22,21 @@ import kotlin.random.Random
 object CaseArt {
 
     /** Spine texture size. ~1:1 with a shelved spine on a 1080x2340 screen at the M6 camera. */
-    private const val SPINE_W = 96
-    private const val SPINE_H = 852
+    const val SPINE_W = 96
+    const val SPINE_H = 852
 
-    /** Covers are edge-on while shelved; M7 will want a larger swap when a case turns. */
-    const val COVER_MAX_PX = 256
+    /**
+     * Covers are normalised to exactly this, square, so every cover bitmap has identical
+     * dimensions. That is what lets the active case swap its art in place via
+     * `ImageNode.bitmap` instead of being rebuilt — and rebuilding an ImageNode is what
+     * aborts the process (see WallSceneScreen). Album covers are square by convention, so
+     * the fit is not a compromise in practice.
+     */
+    const val COVER_PX = 256
+
+    /** A transparent bitmap of a fixed size, used to build art nodes before any album is open. */
+    fun blank(width: Int, height: Int): Bitmap =
+        Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
 
     // Proportional port of the prototype's spineTex(), so the layout survives a size change.
     private const val BAR_TOP = 0.046f
@@ -50,8 +60,20 @@ object CaseArt {
         }.getOrNull()
     }
 
+    /**
+     * Downsampled decode of a cover written by M1's CoverImageStore (an absolute path),
+     * normalised to [COVER_PX] square so every cover is interchangeable as a texture source.
+     */
+    fun loadCoverSquare(path: String?): Bitmap? {
+        val decoded = loadCover(path, COVER_PX) ?: return null
+        if (decoded.width == COVER_PX && decoded.height == COVER_PX) return decoded
+        return runCatching {
+            Bitmap.createScaledBitmap(decoded, COVER_PX, COVER_PX, true)
+        }.getOrNull() ?: decoded
+    }
+
     /** Downsampled decode of a cover written by M1's CoverImageStore (an absolute path). */
-    fun loadCover(path: String?, maxPx: Int = COVER_MAX_PX): Bitmap? {
+    fun loadCover(path: String?, maxPx: Int = COVER_PX): Bitmap? {
         if (path.isNullOrEmpty() || !File(path).exists()) return null
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         BitmapFactory.decodeFile(path, bounds)
