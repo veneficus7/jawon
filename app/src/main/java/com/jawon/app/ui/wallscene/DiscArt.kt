@@ -13,16 +13,16 @@ import android.graphics.SweepGradient
 /**
  * The printed face of the CD, baked to a bitmap.
  *
- * Why baked rather than shaded: there is no custom material to draw a label ring with until
- * M8 part 2 brings in the iridescence shader, so the printed face is drawn into pixels —
+ * Why baked rather than shaded: the printed face is artwork, so it is drawn into pixels —
  * the same approach [CaseArt] already takes for spines and covers.
  *
- * **The geometry is the mask, so nothing here needs alpha.** [DiscGeometry] lays down
- * radial, normalised UVs (`uv = cos0 * r/R * 0.5 + 0.5, …`), which trace the circle
- * inscribed in this square between [R_HOLE] and the rim. The bitmap's corners and its
- * centre are never sampled — the disc's real centre hole is a hole in the mesh. That is why
- * this can use Filament's *opaque* textured material and skip transparency sorting
- * entirely.
+ * **The geometry is the mask, so nothing here needs alpha.** The disc model laid down by
+ * `tools/models/build_models.py` carries a planar projection from the front, normalised
+ * over the disc's bounding square — the same convention the hand-built `DiscGeometry` used
+ * before it, so this bakery did not have to change when the geometry did. The UVs trace the
+ * circle inscribed in this square between [R_HOLE] and the rim; the bitmap's corners and
+ * its centre are never sampled, because the disc's real centre hole is a hole in the mesh.
+ * That is why an opaque material works and transparency sorting can be skipped entirely.
  *
  * All CPU bitmap work, so it runs off the main thread (ENGINEERING.md rule 5).
  */

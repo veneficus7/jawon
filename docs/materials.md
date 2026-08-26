@@ -1,11 +1,39 @@
 # Custom Filament materials
 
-**Javon currently has none.** Everything in the room uses SceneView's stock
-materials.
+**Javon ships exactly one:** `materials/dust.mat`, compiled to
+`assets/materials/dust.filamat`, which animates every dust mote in the vertex
+shader from a single `time` uniform. Everything else in the room uses SceneView's
+stock materials.
 
-This document is kept because the procedure was worked out the hard way and is
-not obvious, so anyone adding a custom shader later does not have to rediscover
-it.
+## What the stock materials can and cannot do
+
+Worth knowing before reaching for `matc`, because it decides whether you need it
+at all. The `MAT_UIB` chunk of SceneView 4.32.0's stock materials lists the
+entire settable parameter set:
+
+| material | parameters |
+|---|---|
+| `opaque_colored` | `color`, `metallic`, `roughness`, `reflectance` |
+| `opaque_textured` | `metallic`, `roughness`, `reflectance`, + `texture` sampler |
+
+**That is all.** There is no `clearCoat`, no `anisotropy`, no normal map, no
+emissive. Those names *do* appear elsewhere in the `.filamat` blob, around offset
+40k — that is Filament's `MaterialInputs` GLSL struct, which every standard
+material declares whether or not it exposes the field. Grepping the blob for a
+parameter name will mislead you; read the `MAT_UIB` chunk in the header instead.
+
+The practical consequence: realistic jewel-case plastic (which wants clearcoat)
+and a realistic CD surface (which wants tangential anisotropy for its circular
+sweep highlight) are **impossible with stock materials**.
+
+There are two ways out, and the second is usually better:
+
+1. Write a custom `.mat` — the procedure below, and a ~735MB `matc` download.
+2. **Import a glTF model instead.** `gltfio` 1.72.1 supports
+   `KHR_materials_clearcoat`, `KHR_materials_anisotropy`, `_ior`, `_specular`,
+   `_transmission`, `_volume`, `_sheen` and `_iridescence`, so the asset carries
+   its own materials and no `matc` is involved. Also
+   `KHR_draco_mesh_compression` and `KHR_texture_basisu` for size.
 
 ## History
 
@@ -15,6 +43,12 @@ the rainbow was not wanted on the disc.** With the effect gone, SceneView's stoc
 lit textured material did everything that remained, so the custom material was
 removed rather than kept switched off, which also took 577 KB of `.filamat` out
 of the APK.
+
+Note that the removed effect was *iridescence* — diffraction from the data
+spiral, which throws colour. That is not the same as **anisotropy**, the
+direction-dependent stretching of a highlight along the track, which is
+colourless and is what makes a real CD's reflection sweep in an arc. The owner
+ruled out the rainbow, not the sweep. The latter is still wanted.
 
 It is in git at commit `9df705b` if it is ever worth revisiting.
 
