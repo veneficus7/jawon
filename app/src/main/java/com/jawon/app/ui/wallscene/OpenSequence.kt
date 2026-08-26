@@ -47,6 +47,13 @@ object OpenSequence {
      * reading as a CD.
      */
     private const val LIFT_DOLLY = 0.45f
+    /**
+     * How far the lid swings — the prototype's value.
+     *
+     * Briefly reduced to 97° to keep the lid inside a portrait frame, and put back: the
+     * fuller pose is what makes the case read as properly open rather than stiff, and the
+     * owner chose it. The lid running past the frame edge is the intended look.
+     */
     private const val HINGE_DEG = 123.2f
     /** The disc sits on the spindle, just proud of the tray's front face. */
     private const val TRAY_DISC_Z = WallDimens.TRAY_FRONT_Z + 0.0014f

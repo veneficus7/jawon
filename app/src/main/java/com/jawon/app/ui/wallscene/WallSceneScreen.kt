@@ -1,6 +1,7 @@
-package com.jawon.app.ui.wallscene
+﻿package com.jawon.app.ui.wallscene
 
 import android.os.SystemClock
+import android.provider.Settings
 import android.view.HapticFeedbackConstants
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.Animatable
@@ -35,6 +36,7 @@ import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -73,6 +75,7 @@ import com.jawon.app.ui.wallscene.WallDimens.SLOT_PITCH
 import com.jawon.app.ui.wallscene.WallDimens.TAN_HALF_FOV
 import com.jawon.app.ui.wallscene.WallDimens.WALL_Z
 import com.google.android.filament.LightManager
+import com.google.android.filament.RenderableManager
 import com.google.android.filament.Texture
 import com.google.android.filament.android.TextureHelper
 import dev.romainguy.kotlin.math.normalize
@@ -88,6 +91,7 @@ import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberEnvironmentLoader
 import io.github.sceneview.rememberMaterialLoader
 import io.github.sceneview.rememberOnGestureListener
+import io.github.sceneview.rememberView
 import io.github.sceneview.rememberViewNodeManager
 import io.github.sceneview.node.Node as SceneNode
 import io.github.sceneview.safeDestroyGeometry
@@ -99,11 +103,11 @@ import kotlin.math.atan2
 import kotlin.math.floor
 import androidx.compose.ui.graphics.Color as ComposeColor
 
-/** Fling coast. The prototype's friction of 28 is a ~36ms time constant — barely a coast; */
+/** Fling coast. The prototype's friction of 28 is a ~36ms time constant â€” barely a coast; */
 /** this is looser so a flick actually travels. Tuning knob. */
 private const val FLING_FRICTION = 2f
 
-/** Progress at which the deck fades in — as the disc squares up, not before. */
+/** Progress at which the deck fades in â€” as the disc squares up, not before. */
 private const val DECK_REVEAL_AT = 0.75f
 
 /** Label plate raster size. World size is these divided by [PLATE_PX_PER_UNIT]. */
@@ -121,6 +125,24 @@ private class SequenceDriver {
     var spinAngle = 0f
     var lastFrameNanos = 0L
     var clock = 0f
+
+    /**
+     * Whether depth of field is currently switched on. Lives here rather than in Compose
+     * state precisely because the frame loop owns it â€” a `mutableStateOf` would recompose
+     * the screen every time a case opened or closed.
+     */
+    var dofEnabled = false
+
+    /**
+     * The camera's focal plane, in metres.
+     *
+     * Held here and written to the camera every frame rather than eased from
+     * `cameraNode.focusDistance`. Reading it back made the easing depend on the getter
+     * returning what the setter stored; when it did not, the value never converged, the
+     * focal plane sat a few centimetres from the lens, and the disc â€” the one thing that
+     * must be sharp â€” was blurred along with everything else.
+     */
+    var focusDistance = RoomAtmosphere.FOCUS_BROWSING
 }
 
 /**
@@ -148,8 +170,18 @@ private class ScratchDriver {
     val haptics = Scratch.HapticAccumulator()
 }
 
-/** Mip levels for a [DiscArt.DISC_PX]-square texture: 512, 256, … 1. */
+/** Mip levels for a [DiscArt.DISC_PX]-square texture: 512, 256, â€¦ 1. */
 private const val DISC_MIP_LEVELS = 10
+
+/** Built from `app/src/main/materials/dust.mat`; see `docs/materials.md`. */
+private const val DUST_MATERIAL_ASSET = "materials/dust.filamat"
+
+/**
+ * Master dust brightness. Tuning knob â€” dust should suggest air, not snow. At 0.55 the
+ * motes read as distinct white specks; this is deliberately below the point where you
+ * notice them individually.
+ */
+private const val DUST_OPACITY = 0.32f
 
 
 /**
@@ -200,16 +232,37 @@ fun WallSceneScreen(
         val environmentLoader = rememberEnvironmentLoader(engine)
         val viewNodeManager = rememberViewNodeManager()
 
-        // The room's image-based lighting, generated rather than loaded — see RoomLighting.
+        // The room's image-based lighting, generated rather than loaded â€” see RoomLighting.
         // Filament's own prefilter turns the procedural cubemap into a roughness mip chain.
         val environment = remember(engine, environmentLoader) {
             RoomLighting.createEnvironment(engine) { cubemap ->
                 environmentLoader.iblPrefilter.specularFilter(cubemap)
             }
         }
+
+        // Fog, bloom, depth of field and vignette all live on Filament's View. Named to
+        // keep it apart from the Android View that LocalView supplies for haptics.
+        val filamentView = rememberView(engine)
+        LaunchedEffect(filamentView) { RoomAtmosphere.apply(filamentView) }
+
+        // DESIGN.md Â§4: "Respect reduced-motion settings: drop ambient rotation, parallax,
+        // and dust; keep press feedback and the open sequence." Android reports this as an
+        // animator duration scale of zero.
+        val reduceMotion = remember(context) {
+            Settings.Global.getFloat(
+                context.contentResolver,
+                Settings.Global.ANIMATOR_DURATION_SCALE,
+                1f
+            ) == 0f
+        }
         val cameraNode = rememberCameraNode(engine) {
             focalLength = FOCAL_LENGTH_MM
             position = Position(0f, 0f, CAMERA_Z)
+            // Seeded before the first frame, not just eased toward in onFrame. Filament's
+            // depth-of-field pass asserts a positive focus distance, and a camera starts at
+            // zero â€” enabling DOF without this aborts the process on the first frame.
+            focusDistance = RoomAtmosphere.FOCUS_BROWSING
+            camera.setFocusDistance(RoomAtmosphere.FOCUS_BROWSING)
         }
 
         var selectedAlbumId by remember { mutableStateOf<String?>(null) }
@@ -253,7 +306,7 @@ fun WallSceneScreen(
         }
         // Clear polycarbonate. An alpha below 1 makes createColorInstance pick the
         // transparent material, so the inlay behind it reads through the lid the way it does
-        // on a real case. Without an environment map there is nothing for it to reflect yet —
+        // on a real case. Without an environment map there is nothing for it to reflect yet â€”
         // convincing plastic and the disc's iridescence are M8/M9's job.
         val lidMaterial = remember(materialLoader) {
             materialLoader.createColorInstance(
@@ -264,6 +317,28 @@ fun WallSceneScreen(
         val discGeometry = remember(engine) { DiscGeometry.build(engine) }
         DisposableEffect(discGeometry) {
             onDispose { engine.safeDestroyGeometry(discGeometry) }
+        }
+
+        // Sized to the wall so density holds as the library grows, and rebuilt only when
+        // those dimensions actually change â€” which is when albums are added, not per frame.
+        val dustGeometry = remember(engine, layout.wallWidth, layout.wallHeight) {
+            DustGeometry.build(engine, layout.wallWidth, layout.wallHeight)
+        }
+        DisposableEffect(dustGeometry) {
+            onDispose { engine.safeDestroyGeometry(dustGeometry) }
+        }
+        val dustMaterial = remember(materialLoader) {
+            val material = materialLoader.createMaterial(DUST_MATERIAL_ASSET)
+            materialLoader.createInstance(material).apply {
+                setParameter(
+                    "tint",
+                    RoomLighting.KEY_COLOR[0],
+                    RoomLighting.KEY_COLOR[1],
+                    RoomLighting.KEY_COLOR[2]
+                )
+                setParameter("opacity", if (reduceMotion) 0f else DUST_OPACITY)
+                setParameter("time", 0f)
+            }
         }
 
         val fonts = remember(context) { CaseArt.Fonts(context) }
@@ -281,11 +356,17 @@ fun WallSceneScreen(
             val visible = selectedAlbumId != null
             actNodes.root?.isVisible = visible
             actNodes.disc?.isVisible = visible
+            // Hidden is not the same as unpickable. The disc is mounted for the life of
+            // the scene, so when it is hidden it stays parked in front of whichever case
+            // was last open â€” and SceneView still hit-tests it. Left touchable it both
+            // swallowed taps meant for that case and, worse, answered them with its own
+            // node name, which the browse path took for an album id.
+            actNodes.discMesh?.isTouchable = visible
         }
 
         // The disc's printed face.
         //
-        // ONE texture, allocated once for the life of the scene, re-uploaded per album — the
+        // ONE texture, allocated once for the life of the scene, re-uploaded per album â€” the
         // rule M7 paid for. Creating a texture per album would mean destroying the old one,
         // and a texture still bound to a MaterialInstance aborts the process on the next
         // commit. Every face is baked to exactly DISC_PX square precisely so this one
@@ -305,8 +386,8 @@ fun WallSceneScreen(
         }
         // Plain silvered plastic carrying the printed face.
         //
-        // There was a custom iridescence shader here — PLAN.md's technology table asks
-        // for one — but the rainbow was not wanted and has been removed. SceneView's
+        // There was a custom iridescence shader here â€” PLAN.md's technology table asks
+        // for one â€” but the rainbow was not wanted and has been removed. SceneView's
         // stock lit textured material does everything that is left, so the custom
         // material went with it rather than being kept switched off. It is in git at
         // 9df705b, and docs/materials.md keeps the procedure, if a disc surface is ever
@@ -314,7 +395,7 @@ fun WallSceneScreen(
         //
         // Opaque, not transparent: the annulus geometry is its own mask, so there is no
         // alpha to sort. Arguments are positional because the second is an unnamed
-        // opaque/transparent selector — (texture, transparent, metallic, roughness,
+        // opaque/transparent selector â€” (texture, transparent, metallic, roughness,
         // reflectance).
         val discMaterial = remember(materialLoader, discTexture) {
             materialLoader.createTextureInstance(discTexture, false, 0.72f, 0.22f, 0.65f)
@@ -324,7 +405,7 @@ fun WallSceneScreen(
         // shown. Baked off the main thread (ENGINEERING.md rule 5), then uploaded into the
         // texture that already exists rather than building a new one.
         //
-        // Only the open album is baked — unlike spine and cover art there is no reason to
+        // Only the open album is baked â€” unlike spine and cover art there is no reason to
         // pre-load the neighbours, because exactly one disc is ever on screen.
         LaunchedEffect(selectedCase, discTexture) {
             val case = selectedCase ?: return@LaunchedEffect
@@ -357,6 +438,29 @@ fun WallSceneScreen(
         LaunchedEffect(visibleCases) {
             visibleCases.forEach { artCache.load(it) }
             artCache.trim(visibleCases.mapTo(mutableSetOf()) { it.albumId })
+        }
+
+        // The case pool. Sized to the same window `visibleCases` uses — about 21 slots
+        // across by 5 rows at this camera — and capped to the library so a three-album
+        // shelf does not mount a hundred hidden slots and their textures.
+        //
+        // It only ever GROWS. Adding slots is free; removing them would destroy their
+        // ImageNodes, which is the abort this whole pool exists to avoid.
+        val caseSlots = remember { CaseSlots() }
+        var casePoolSize by remember { mutableIntStateOf(0) }
+        val wantedPoolSize = remember(layout, halfW, halfH) {
+            val across = ((halfW + SLOT_PITCH * 3f) * 2f / SLOT_PITCH).toInt() + 2
+            val down = ((halfH + ROW_PITCH) * 2f / ROW_PITCH).toInt() + 2
+            (across * down).coerceAtMost(layout.cases.size)
+        }
+        if (wantedPoolSize > casePoolSize) casePoolSize = wantedPoolSize
+
+        // Point the slots at whatever is on screen. Recomposes when the visible set changes
+        // or when art finishes loading — CaseArtCache is state-backed, so reading it here
+        // is what makes late-arriving spines reach their slot.
+        val slotBindings = visibleCases.map { it to artCache[it.albumId] }
+        LaunchedEffect(slotBindings, selectedAlbumId, nowPlayingAlbumId, casePoolSize) {
+            caseSlots.bind(slotBindings, selectedAlbumId, nowPlayingAlbumId)
         }
 
         val focusCase by remember(visibleCases) {
@@ -408,7 +512,7 @@ fun WallSceneScreen(
                 scope.launch { panY.stop() }
             },
             onScroll = { _, _, _, distance ->
-                // No panning while a case is out — the prototype does the same.
+                // No panning while a case is out â€” the prototype does the same.
                 if (selectedAlbumId == null) {
                     scope.launch { panX.snapTo(panX.value + distance.x * metresPerPx) }
                     scope.launch { panY.snapTo(panY.value - distance.y * metresPerPx) }
@@ -429,11 +533,11 @@ fun WallSceneScreen(
                 }
             },
             // onSingleTapUp, not onSingleTapConfirmed: the latter waits out the double-tap
-            // timeout, so a second tap arriving soon after the first — exactly what
-            // interrupting a 1.5s sequence looks like — was being swallowed as a double tap.
+            // timeout, so a second tap arriving soon after the first â€” exactly what
+            // interrupting a 1.5s sequence looks like â€” was being swallowed as a double tap.
             onSingleTapUp = { _, node ->
                 if (selectedAlbumId != null) {
-                    // A tap that landed on the disc belongs to the platter — the prototype
+                    // A tap that landed on the disc belongs to the platter â€” the prototype
                     // consumes it the same way. Without this, grabbing the disc and letting
                     // go without turning it would close the case.
                     if (!node.isDisc()) {
@@ -441,8 +545,13 @@ fun WallSceneScreen(
                         if (sequence.direction < 0) sequence.direction = 1 else closeCase()
                     }
                 } else {
+                    // Only ever open something that is actually an album. Taking the first
+                    // named ancestor on trust meant any named node in the scene could be
+                    // opened as a "case" â€” which is exactly what the hidden disc did,
+                    // leaving it stranded on screen with a deck that had no album behind it.
                     generateSequence(node) { it.parent }
                         .firstNotNullOfOrNull { it.name }
+                        ?.takeIf { name -> layout.cases.any { it.albumId == name } }
                         ?.let { openCase(it) }
                 }
             },
@@ -476,7 +585,7 @@ fun WallSceneScreen(
                         scratch.lastAngle = angle
                         val degrees = Math.toDegrees(delta.toDouble()).toFloat()
 
-                        // The disc tracks the finger exactly — this is the whole illusion.
+                        // The disc tracks the finger exactly â€” this is the whole illusion.
                         sequence.spinAngle -= degrees
 
                         scratch.cursor = Scratch.advance(
@@ -513,8 +622,9 @@ fun WallSceneScreen(
             engine = engine,
             materialLoader = materialLoader,
             environmentLoader = environmentLoader,
+            view = filamentView,
             // Replaces SceneView's default main and fill lights. Those are a neutral studio
-            // rig — exactly the "flatly-lit scene" DESIGN.md's Do-not list ends on.
+            // rig â€” exactly the "flatly-lit scene" DESIGN.md's Do-not list ends on.
             environment = environment,
             mainLightNode = null,
             cameraNode = cameraNode,
@@ -527,6 +637,34 @@ fun WallSceneScreen(
                 else ((frameNanos - sequence.lastFrameNanos) / 1_000_000_000f).coerceIn(0f, 1f / 24f)
                 sequence.lastFrameNanos = frameNanos
                 sequence.clock += dt
+
+                // The dust's whole animation, in one uniform write per frame â€” no CPU work
+                // per mote, which is what DESIGN.md asks for.
+                if (!reduceMotion) dustMaterial.setParameter("time", sequence.clock)
+
+                // Depth of field exists only while a case is open â€” on the flat wall it
+                // erased the spines outright. One write per crossing, not per frame.
+                val wantsDof = frame.selected != null
+                if (wantsDof != sequence.dofEnabled) {
+                    sequence.dofEnabled = wantsDof
+                    RoomAtmosphere.setDepthOfField(filamentView, wantsDof)
+                }
+
+                // Focus follows the subject, eased rather than snapped so opening a case
+                // pulls focus instead of cutting. The disc sits exactly DISC_VIEW_DIST in
+                // front of the lens once it is up, so focusing there is what keeps it sharp
+                // while the case and the shelves behind it fall away.
+                val focusTarget =
+                    if (wantsDof) RoomAtmosphere.FOCUS_DISC
+                    else RoomAtmosphere.FOCUS_BROWSING
+                sequence.focusDistance += (focusTarget - sequence.focusDistance).coerceIn(
+                    -RoomAtmosphere.FOCUS_RATE * dt,
+                    RoomAtmosphere.FOCUS_RATE * dt
+                )
+                // Written to the Filament camera itself, not CameraNode.focusDistance:
+                // the node's property is SceneView's own, and the DoF pass reads the
+                // camera's.
+                cameraNode.camera.setFocusDistance(sequence.focusDistance)
 
                 if (sequence.direction != 0) {
                     sequence.progress = (
@@ -543,7 +681,7 @@ fun WallSceneScreen(
                         sequence.direction = 0
                         selectedAlbumId = null
                     }
-                    // One state write per crossing, not per frame — the panel then fades in
+                    // One state write per crossing, not per frame â€” the panel then fades in
                     // through an ordinary animation without the sequence recomposing anything.
                     val settled = sequence.progress > DECK_REVEAL_AT
                     if (settled != deckRevealed) deckRevealed = settled
@@ -582,14 +720,15 @@ fun WallSceneScreen(
                         disc.isVisible = t.discVisible
                         disc.position = Position(t.discX, t.discY, t.discZ)
                         disc.scale = Scale(t.discScale)
-                        // Free spin yields to the hand on the platter — the prototype's
+                        // Free spin yields to the hand on the platter â€” the prototype's
                         // `if (playing && !scratching)`. The finger's own rotation is
                         // already being added in onMove.
                         //
                         // Subtracted, so idle spin runs the same way round as a forward
                         // scrub. Dragging the disc clockwise moves the audio forward, and
                         // it would read as a fault if letting go then span it backwards.
-                        if (frame.isPlaying && !scratch.active) {
+                        // DESIGN.md Â§4 also lists the idle spin under reduced motion.
+                        if (frame.isPlaying && !scratch.active && !reduceMotion) {
                             sequence.spinAngle -= OpenSequence.SPIN_DEG_PER_S * dt * beats.spin
                         }
                         disc.rotation = Rotation(0f, 0f, sequence.spinAngle)
@@ -598,7 +737,7 @@ fun WallSceneScreen(
             }
         ) {
             // The shop lamp. A focused spot rather than a directional light, because
-            // DESIGN.md wants "one warm lamp over the racks, deep shadow everywhere else" —
+            // DESIGN.md wants "one warm lamp over the racks, deep shadow everywhere else" â€”
             // a directional light has no falloff and would light the whole wall evenly.
             LightNode(
                 type = LightManager.Type.FOCUSED_SPOT,
@@ -617,7 +756,7 @@ fun WallSceneScreen(
                     castShadows(true)
                 }
             )
-            // The coloured bounce, low and left — DESIGN.md's "one coloured bounce light".
+            // The coloured bounce, low and left â€” DESIGN.md's "one coloured bounce light".
             // It does not cast shadows: a second shadow-casting light doubles the cost and
             // muddies the single-lamp story the key light is telling.
             LightNode(
@@ -641,7 +780,7 @@ fun WallSceneScreen(
                 materialInstance = wallMaterial,
                 apply = {
                     isTouchable = false
-                    // Takes shadows, casts none — there is nothing behind it.
+                    // Takes shadows, casts none â€” there is nothing behind it.
                     isShadowReceiver = true
                     isShadowCaster = false
                 }
@@ -671,90 +810,37 @@ fun WallSceneScreen(
                     }
                 }
             }
-            // While a case is out, its shelved counterpart is HIDDEN rather than removed.
+            // The wall's cases come from a POOL, keyed by slot index rather than album id.
             //
-            // Destroying an ImageNode is not safe: ImageNode.destroy() enqueues its texture
-            // for destruction but hands MaterialLoader.destroyMaterialInstance() a wrapper
-            // re-fetched via getMaterialInstanceAt(0), which is not the object the loader is
-            // tracking — so the instance is never destroyed and Filament aborts the process
-            // on the next commit with "Invalid texture still bound to MaterialInstance".
-            // This cost most of a session to root-cause; do not "simplify" it back.
-            //
-            // isVisible cascades to children, so one flag hides the body and both art plates.
-            visibleCases.forEach { case ->
-                key(case.albumId) {
-                    val artwork = artCache[case.albumId]
-                    Node(
-                        // The playing album stands out of its slot, so browsing away still
-                        // shows you what is on (PLAN.md §9 #3).
-                        position = Position(
-                            case.x,
-                            case.y,
-                            if (case.albumId == nowPlayingAlbumId) PROUD_Z else 0f
-                        ),
-                        isVisible = case.albumId != selectedAlbumId
-                    ) {
-                        CubeNode(
-                            size = Size(CASE_W, CASE_H, CASE_D),
-                            materialInstance = caseMaterial,
-                            apply = {
-                                name = case.albumId
-                                // Cases shadow each other along the shelf. DESIGN.md is
-                                // explicit that this inter-case shadowing "is where the
-                                // sense of depth on a packed shelf comes from" — so both
-                                // flags, not just receive.
-                                isShadowCaster = true
-                                isShadowReceiver = true
-                                // Sells the contact line where the case meets its board,
-                                // which a 1024px shadow map is too coarse to resolve.
-                                setScreenSpaceContactShadows(true)
-                            }
-                        ) {
-                            // The art plates never cast. They are decals sitting PLATE_LIFT
-                            // proud of the faces they decorate, so casting would have them
-                            // shadow their own case and shimmer as the light moves.
-                            if (artwork != null) {
-                                ImageNode(
-                                    bitmap = artwork.spine,
-                                    size = Size(CASE_W, CASE_H, 0f),
-                                    normal = Direction(z = 1f),
-                                    position = Position(0f, 0f, CASE_D / 2f + PLATE_LIFT),
-                                    apply = { isShadowCaster = false }
-                                )
-                                // The cover faces +X, matching where the opened case's lid
-                                // ends up: its cover is on local +Z, and the turn starts at
-                                // +90, which maps that to world +X. Facing -X here is what
-                                // made the artwork jump sides the moment the case reshelved.
-                                artwork.cover?.let { cover ->
-                                    ImageNode(
-                                        bitmap = cover,
-                                        size = Size(CASE_D, CASE_H, 0f),
-                                        normal = Direction(z = 1f),
-                                        position = Position(CASE_W / 2f - 0.0012f, 0f, 0f),
-                                        rotation = Rotation(0f, 90f, 0f),
-                                        apply = { isShadowCaster = false }
-                                    )
-                                }
-                            }
-                            // The clear front, flush with the outer face — the same panel the
-                            // opened case carries in its lid. Without it here, the plastic
-                            // sheen vanished the instant the case returned to the shelf.
-                            CubeNode(
-                                size = Size(0.0008f, CASE_H, CASE_D),
-                                materialInstance = lidMaterial,
-                                position = Position(CASE_W / 2f - 0.0004f, 0f, 0f),
-                                apply = {
-                                    isTouchable = false
-                                    // Clear plastic. Casting would draw it as an opaque
-                                    // slab in the shadow pass and black out the case.
-                                    isShadowCaster = false
-                                }
-                            )
-                        }
-                    }
+            // Mounting a node per visible album and dropping it when it left the frustum
+            // window destroyed its ImageNodes, and ImageNode.destroy() is broken on this
+            // SceneView version — the process aborts with "Invalid texture still bound to
+            // MaterialInstance". A hard vertical fling pulls whole rows out at once and
+            // killed the app within a few swipes. See CaseSlots for the full story; do not
+            // "simplify" this back into a keyed loop over visibleCases.
+            CaseSlotNodes(
+                slots = caseSlots,
+                size = casePoolSize,
+                caseMaterial = caseMaterial,
+                lidMaterial = lidMaterial
+            )
+            // Dust hangs in front of the wall, animated entirely on the GPU. Not touchable
+            // and casts nothing â€” it is glow, and a shadow-casting mote would be absurd.
+            MeshNode(
+                primitiveType = RenderableManager.PrimitiveType.TRIANGLES,
+                vertexBuffer = dustGeometry.vertexBuffer,
+                indexBuffer = dustGeometry.indexBuffer,
+                boundingBox = dustGeometry.boundingBox,
+                materialInstance = dustMaterial,
+                apply = {
+                    isTouchable = false
+                    isShadowCaster = false
+                    isShadowReceiver = false
+                    isVisible = !reduceMotion
                 }
-            }
-            // Mounted once and hidden when idle, never torn down — see ActiveCaseNodes.
+            )
+
+            // Mounted once and hidden when idle, never torn down â€” see ActiveCaseNodes.
             ActiveCaseNodes(
                 nodes = actNodes,
                 caseMaterial = caseMaterial,
@@ -772,14 +858,14 @@ fun WallSceneScreen(
             )
         } else if (selectedAlbumId == null) {
             // While a case is open the disc occupies this band, and the album is already the
-            // whole subject — the browse label would only collide with it.
+            // whole subject â€” the browse label would only collide with it.
             FocusLabel(
                 case = focusCase,
                 modifier = Modifier.align(Alignment.TopCenter)
             )
         }
 
-        // The room is the home screen now, so back has nowhere to pop to — it closes an open
+        // The room is the home screen now, so back has nowhere to pop to â€” it closes an open
         // case, and is left alone while browsing so it exits the app normally.
         BackHandler(enabled = selectedAlbumId != null) { closeCase() }
 
@@ -901,7 +987,7 @@ private fun ShelfPlate(name: String, accentHue: Float) {
  * headline. Two lines are allowed so a long title reads in full instead of being cut.
  *
  * The scrim matters as much as the size. The focused case is centred by definition, so its
- * spine — the one piece of the room carrying its own vertical text — is always directly
+ * spine â€” the one piece of the room carrying its own vertical text â€” is always directly
  * behind this. Without something to sit on, the two sets of words interleave.
  */
 @Composable

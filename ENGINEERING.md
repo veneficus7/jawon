@@ -9,7 +9,7 @@ ambiguous, the prototype is the source of truth, not your assumption.
 
 ## Status
 
-**M0–M8 complete, each verified on-device on a Galaxy S25 Ultra.**
+**M0–M9 complete, each verified on-device on a Galaxy S25 Ultra.**
 Phase 1 gave a finished music player. Phase 2 has since replaced its 2D front
 end entirely: **the room is the app.** It is the start destination, it browses
 the wall, and it plays. The 2D Wall and 2D Deck are deleted — deliberately, per
@@ -28,18 +28,23 @@ rainbow on the CD. `PLAN.md`'s technology table still lists an iridescent CD;
 that line is overruled. The disc is plain silvered plastic carrying its label.
 Do not add it back.
 
-**M9 · Atmosphere is half done.** Part 1 (the light) has landed: a warm
+**M9 · Atmosphere is complete.** Part 1 gave the room its light: a warm
 shadow-casting spot, an amber bounce, and image-based lighting built
 procedurally in `ui/wallscene/RoomLighting.kt` — no environment map is shipped
-or downloaded. The room now reads as one lamp over the racks with deep shadow
-elsewhere, and the clear lid finally has something to reflect.
+or downloaded. Part 2 gave it air: fog, thresholded bloom, vignette,
+GPU-animated dust (`ui/wallscene/DustGeometry.kt` + `materials/dust.mat`), and
+`DESIGN.md`'s reduced-motion handling.
 
-Currently starting **M9 part 2 · the air** — bloom, depth of field, fog,
-vignette, dust, plus `DESIGN.md`'s reduced-motion handling.
+**Depth of field runs only while a case is open.** `DESIGN.md` asks for shelf
+sections to the sides falling off, and a flat, square-on wall cannot deliver it
+— everything sits at nearly the same depth, and at this scale any blur erased
+the 10mm spines outright. Legibility of the wall wins. See `RoomAtmosphere.kt`.
 
-Two things from part 1 are still unverified and want a real check: **inter-case
-shadowing** (the test library is too small to have adjacent cases) and **frame
-pacing** (`gfxinfo` cannot see SceneView, which renders on its own thread).
+Currently starting **M10 · Polish & release** — performance, GPU tiers, icon,
+onboarding.
+
+Still never properly checked: **inter-case shadowing**, which wants a shelf with
+adjacent albums.
 
 Never assume a milestone is complete. If this status line looks stale or
 contradicts the code, ask — do not infer from the repo.
@@ -52,8 +57,14 @@ contradicts the code, ask — do not infer from the repo.
 `getMaterialInstanceAt(0)` — not the object the loader tracks — so the instance
 survives and Filament aborts the process on the next commit with *"Invalid
 texture still bound to MaterialInstance."* Hide nodes and swap `bitmap` in
-place instead. This cost most of a session to root-cause and will constrain
-M6's frustum culling as the library grows.
+place instead.
+
+This predicted M6's culling as the place it would bite, and it did: a hard
+vertical fling pulled whole rows out of the frustum window, destroyed their art
+nodes and killed the app. **The wall therefore renders from a pool of case
+slots keyed by index, never by album id** (`ui/wallscene/CaseSlots.kt`), so no
+case node is ever destroyed. Do not turn that back into a keyed loop over the
+visible cases.
 
 ---
 
@@ -88,11 +99,14 @@ tracks across a huge library do not belong.
 | Database | Room |
 | DI | Hilt |
 | Disc surface | **No rainbow.** Iridescence was built in M8 and removed on the owner's call. Do not reintroduce it. |
-| Custom materials | None in the tree. If one is ever needed, it is compiled **by hand** with a version-matched `matc` — see `docs/materials.md`. |
+| Custom materials | One: `materials/dust.mat`. Any material is compiled **by hand** with a version-matched `matc` — see `docs/materials.md`. |
 
 ### Custom shaders (`.filamat`)
 
-There are currently no custom materials; everything uses SceneView's stock ones.
+One custom material is in the tree: `materials/dust.mat`, compiled to
+`assets/materials/dust.filamat`. It animates every dust mote in the vertex
+shader from a single `time` uniform, so the CPU does nothing per particle.
+Everything else uses SceneView's stock materials.
 
 Worth knowing if that changes: Filament's Gradle plugin is **not published to
 Maven Central or the Gradle Plugin Portal**, so nothing in the build can compile

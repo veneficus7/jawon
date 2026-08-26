@@ -1,0 +1,83 @@
+// Dust hanging in the lamp light — DESIGN.md §1 and §4.
+//
+// Every mote is animated in the vertex shader from a single `time` parameter, so the CPU
+// writes one uniform per frame and does nothing per particle. That is what DESIGN.md means
+// by "animate in the shader; the CPU should do nothing per frame."
+//
+// Ported from the prototype's dust ShaderMaterial (javon-shelf-prototype.html, the dust
+// block), with its drift frequencies kept and its distances scaled ×0.1 like everything
+// else — the prototype works in decimetres.
+//
+// The prototype draws GL points and sizes them with gl_PointSize. Filament's material
+// language has no writable point size, so each mote is a quad instead. It does not need
+// billboarding: this camera only ever pans and dollies, never rotates, so a quad in the XY
+// plane always faces it.
+//
+// Per-vertex channels carry what the shader needs: uv0 is the corner (0..1 across the
+// quad, for the round sprite falloff) and the vertex colour's red channel is the mote's
+// drift phase, shared by all four of its corners so they move together.
+//
+// Compiled by hand with a version-matched matc. See docs/materials.md.
+
+material {
+    name : Dust,
+    requires : [
+        uv0,
+        color
+    ],
+    shadingModel : unlit,
+    // Glow, not surface: motes add light and never occlude each other or anything else.
+    blending : add,
+    depthWrite : false,
+    parameters : [
+        {
+            type : float,
+            name : time
+        },
+        {
+            type : float3,
+            name : tint
+        },
+        {
+            // Master fade. Zero hides the whole cloud without unloading anything, which is
+            // how the reduced-motion setting switches dust off.
+            type : float,
+            name : opacity
+        }
+    ],
+}
+
+vertex {
+    void materialVertex(inout MaterialVertexInputs material) {
+        // mesh_color, not getColor(): getters are fragment-stage helpers.
+        float phase = mesh_color.x * 6.28318;
+        float t = materialParams.time;
+
+        // Slow vertical drift with a wrap, plus a lateral sway on a different frequency so
+        // the cloud never pulses in unison.
+        vec4 p = material.worldPosition;
+        p.y += sin(t * 0.12 + phase) * 0.05
+             + mod(t * 0.055 + phase * 0.4, 0.30) - 0.15;
+        p.x += sin(t * 0.19 + phase * 2.1) * 0.034;
+        material.worldPosition = p;
+    }
+}
+
+fragment {
+    void material(inout MaterialInputs material) {
+        prepareMaterial(material);
+
+        // Round the square quad off into a soft mote.
+        vec2 d = getUV0() - 0.5;
+        float falloff = smoothstep(0.5, 0.06, length(d));
+
+        float phase = getColor().x * 6.28318;
+        float twinkle = 0.35 + 0.65 *
+            (sin(materialParams.time * 0.9 + phase * 3.0) * 0.5 + 0.5);
+
+        material.baseColor = vec4(
+            materialParams.tint * falloff * twinkle * materialParams.opacity,
+            1.0
+        );
+    }
+}
