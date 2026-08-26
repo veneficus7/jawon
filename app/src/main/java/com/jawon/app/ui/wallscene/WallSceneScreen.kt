@@ -336,7 +336,16 @@ fun WallSceneScreen(
         // Fog, bloom, depth of field and vignette all live on Filament's View. Named to
         // keep it apart from the Android View that LocalView supplies for haptics.
         val filamentView = rememberView(engine)
-        LaunchedEffect(filamentView) { RoomAtmosphere.apply(filamentView) }
+        // Applied during composition, NOT from a LaunchedEffect.
+        //
+        // A LaunchedEffect runs after composition commits, so the first frames rendered with
+        // Filament's stock View options — no fog, no vignette, no ambient occlusion, bloom
+        // unthresholded. Those four are most of what makes this room dark and grounded, so
+        // launching the app flashed a flat, brightly-lit brown wall for a frame or two
+        // before the atmosphere arrived and everything dropped into place.
+        //
+        // `remember` runs while composing, which is before the renderer's first frame.
+        remember(filamentView) { RoomAtmosphere.apply(filamentView) }
 
         // DESIGN.md Â§4: "Respect reduced-motion settings: drop ambient rotation, parallax,
         // and dust; keep press feedback and the open sequence." Android reports this as an
@@ -1041,17 +1050,29 @@ fun WallSceneScreen(
                 }
             )
 
-            CubeNode(
-                size = Size(layout.wallWidth, layout.wallHeight, 0.01f),
-                position = Position(0f, 0f, WALL_Z - 0.005f),
-                materialInstance = wallMaterial,
-                apply = {
-                    isTouchable = false
-                    // Takes shadows, casts none â€” there is nothing behind it.
-                    isShadowReceiver = true
-                    isShadowCaster = false
-                }
-            )
+            // No shelves, no wall. This is what caused the brown flash on launch.
+            //
+            // `layout` arrives from the database, so for the first frames after the splash
+            // it is the empty default — no rows, no cases — while this backing panel was
+            // drawn regardless, at its default size, filling the frame. With nothing in
+            // front of it to give the eye scale or contrast, a near-black wall under the
+            // room's ambient reads as a flat lit brown field, which is exactly what it was.
+            //
+            // Gating it on content also makes the empty state honest: an empty library
+            // should be a dark room you have not filled yet, not a blank wall.
+            if (!layout.isEmpty) {
+                CubeNode(
+                    size = Size(layout.wallWidth, layout.wallHeight, 0.01f),
+                    position = Position(0f, 0f, WALL_Z - 0.005f),
+                    materialInstance = wallMaterial,
+                    apply = {
+                        isTouchable = false
+                        // Takes shadows, casts none â€” there is nothing behind it.
+                        isShadowReceiver = true
+                        isShadowCaster = false
+                    }
+                )
+            }
             visibleRows.forEach { row ->
                 key(row.shelfId) {
                     CubeNode(

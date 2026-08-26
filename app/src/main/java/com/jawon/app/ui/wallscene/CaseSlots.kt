@@ -298,7 +298,15 @@ fun SceneScope.CaseSlotNodes(
                     isShadowReceiver = false
                 }
             )
-            Node(apply = { slot.root = this }) {
+            // Mounted HIDDEN, like the active case group and for the same reason. `bind`
+            // decides which slots show an album and where they sit, and it runs from a
+            // LaunchedEffect — after the first frames. Left visible, every pooled slot
+            // renders at its default position, so the wall opens on a pile of cases stacked
+            // at the origin before binding scatters them to their bays.
+            Node(apply = {
+                slot.root = this
+                isVisible = false
+            }) {
                 // One instance of the shared closed-case asset — geometry, material and
                 // textures are held once and this only adds a transform. Modelled in the
                 // shelved frame (X thickness, Z depth, spine at +Z), so no rotation is
