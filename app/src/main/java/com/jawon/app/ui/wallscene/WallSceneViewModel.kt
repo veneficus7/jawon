@@ -106,4 +106,11 @@ class WallSceneViewModel @Inject constructor(
     fun onPrevious() = viewModelScope.launch { playbackRepository.seekToPrevious() }
     fun onSeek(positionMs: Long) = viewModelScope.launch { playbackRepository.seekTo(positionMs) }
     fun onSelectTrack(index: Int) = viewModelScope.launch { playbackRepository.seekToTrack(index) }
+
+    /**
+     * Where the disc scratch has dragged playback to. Called at the scratch's throttled rate
+     * rather than per touch move — see [Scratch.SEEK_THROTTLE_MS].
+     */
+    fun onScrub(trackIndex: Int, positionMs: Long) =
+        viewModelScope.launch { playbackRepository.seekTo(trackIndex, positionMs) }
 }

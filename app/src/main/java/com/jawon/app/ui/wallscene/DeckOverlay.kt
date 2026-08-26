@@ -25,6 +25,7 @@ import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.State
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -55,6 +56,13 @@ import androidx.compose.ui.graphics.Color as ComposeColor
  * Sits over a scrim rather than a solid sheet so the room still reads through it, matching
  * the prototype's deck panel.
  */
+/** Where a scratch has dragged playback to. Null whenever nobody is touching the disc. */
+data class ScrubReadout(
+    val trackIndex: Int,
+    val positionMs: Long,
+    val forward: Boolean
+)
+
 @Composable
 fun DeckOverlay(
     title: String,
@@ -66,6 +74,7 @@ fun DeckOverlay(
     onPrevious: () -> Unit,
     onSeek: (Long) -> Unit,
     onSelectTrack: (Int) -> Unit,
+    scrubReadout: State<ScrubReadout?>,
     modifier: Modifier = Modifier
 ) {
     Column(
@@ -97,20 +106,10 @@ fun DeckOverlay(
             style = JavonTextStyle.mono,
             modifier = Modifier.padding(top = 6.dp)
         )
-        deck.currentTrack?.let { track ->
-            Text(
-                text = qualityReadoutSource(track).uppercase(),
-                style = JavonTextStyle.mono.copy(color = LabelDim),
-                modifier = Modifier.padding(top = 10.dp)
-            )
-            Text(
-                text = qualityReadoutOutput(
-                    track, deck.routeLabel, deck.outputSampleRateHz
-                ).uppercase(),
-                style = JavonTextStyle.mono.copy(color = LabelDim),
-                modifier = Modifier.padding(top = 2.dp)
-            )
-        }
+        // The quality readout is the resting state of this slot; a scratch takes it over.
+        // Both are drawn inside ScrubOrQuality so that the scratch's ~12Hz updates
+        // recompose these two lines and nothing else (ENGINEERING.md rule 3).
+        ScrubOrQuality(scrubReadout = scrubReadout, deck = deck)
 
         // The tracklist takes the slack, so the controls below it stay pinned to the bottom
         // of the panel — the reachable part of a phone this tall.
@@ -163,6 +162,50 @@ fun DeckOverlay(
                 )
             }
         }
+    }
+}
+
+/**
+ * The two-line slot under the artist: normally the quality readout, and while the disc is
+ * being turned, where the scratch has dragged to.
+ *
+ * The `State` is read *here* rather than in the caller on purpose — that is what confines a
+ * scratch's updates to this composable instead of recomposing the whole deck.
+ */
+@Composable
+private fun ScrubOrQuality(scrubReadout: State<ScrubReadout?>, deck: DeckState) {
+    val scrub = scrubReadout.value
+    if (scrub != null) {
+        val track = deck.tracks.getOrNull(scrub.trackIndex)
+        Text(
+            text = (if (scrub.forward) "▶▶  " else "◀◀  ") +
+                formatDuration(scrub.positionMs) + " / " +
+                formatDuration(track?.durationMs ?: 0L),
+            style = JavonTextStyle.mono,
+            modifier = Modifier.padding(top = 10.dp)
+        )
+        Text(
+            text = track?.title.orEmpty().uppercase(),
+            style = JavonTextStyle.mono.copy(color = LabelDim),
+            modifier = Modifier.padding(top = 2.dp),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+        return
+    }
+    deck.currentTrack?.let { track ->
+        Text(
+            text = qualityReadoutSource(track).uppercase(),
+            style = JavonTextStyle.mono.copy(color = LabelDim),
+            modifier = Modifier.padding(top = 10.dp)
+        )
+        Text(
+            text = qualityReadoutOutput(
+                track, deck.routeLabel, deck.outputSampleRateHz
+            ).uppercase(),
+            style = JavonTextStyle.mono.copy(color = LabelDim),
+            modifier = Modifier.padding(top = 2.dp)
+        )
     }
 }
 

@@ -1,5 +1,7 @@
 package com.jawon.app.ui.wallscene
 
+import android.os.SystemClock
+import android.view.HapticFeedbackConstants
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.animateFloatAsState
@@ -43,6 +45,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -69,7 +72,10 @@ import com.jawon.app.ui.wallscene.WallDimens.ROW_PITCH
 import com.jawon.app.ui.wallscene.WallDimens.SLOT_PITCH
 import com.jawon.app.ui.wallscene.WallDimens.TAN_HALF_FOV
 import com.jawon.app.ui.wallscene.WallDimens.WALL_Z
+import com.google.android.filament.Texture
+import com.google.android.filament.android.TextureHelper
 import io.github.sceneview.SceneView
+import io.github.sceneview.collision.Vector3
 import io.github.sceneview.math.Direction
 import io.github.sceneview.math.Position
 import io.github.sceneview.math.Rotation
@@ -80,9 +86,13 @@ import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberMaterialLoader
 import io.github.sceneview.rememberOnGestureListener
 import io.github.sceneview.rememberViewNodeManager
+import io.github.sceneview.node.Node as SceneNode
 import io.github.sceneview.safeDestroyGeometry
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlin.math.abs
+import kotlin.math.atan2
 import kotlin.math.floor
 import androidx.compose.ui.graphics.Color as ComposeColor
 
@@ -119,6 +129,33 @@ private class FrameContext {
     var isPlaying = false
     var aspect = 1f
 }
+
+/**
+ * A scratch in progress. Deliberately not Compose state, for the same reason
+ * [SequenceDriver] is not: touch arrives faster than the display refreshes and none of it
+ * may recompose anything (ENGINEERING.md rule 3). The only Compose writes a scratch makes are the
+ * readout's, at the throttled seek rate.
+ */
+private class ScratchDriver {
+    var active = false
+    var lastAngle = 0f
+    var cursor = Scratch.Cursor(0, 0L)
+    var durations: List<Long> = emptyList()
+    var lastSeekAt = 0L
+    val haptics = Scratch.HapticAccumulator()
+}
+
+/** Mip levels for a [DiscArt.DISC_PX]-square texture: 512, 256, … 1. */
+private const val DISC_MIP_LEVELS = 10
+
+/**
+ * Does this node, or any of its parents, belong to the disc?
+ *
+ * Aliased to `SceneNode` because inside `SceneScope` the bare name `Node` is the composable
+ * that builds one.
+ */
+private fun SceneNode?.isDisc(): Boolean =
+    generateSequence(this) { it.parent }.any { it.name == DISC_NODE_NAME }
 
 @Composable
 fun WallSceneScreen(
@@ -170,6 +207,12 @@ fun WallSceneScreen(
         val sequence = remember { SequenceDriver() }
         val frame = remember { FrameContext() }
         val actNodes = remember { ActiveCaseNodes() }
+        val scratch = remember { ScratchDriver() }
+        val view = LocalView.current
+
+        // Read only inside the readout composable, so its ~12Hz updates during a scratch
+        // recompose one line of text and nothing else.
+        val scrubReadout = remember { mutableStateOf<ScrubReadout?>(null) }
 
         SideEffect {
             frame.selected = selectedCase
@@ -227,18 +270,50 @@ fun WallSceneScreen(
             actNodes.disc?.isVisible = visible
         }
 
-        // Bare silvered polycarbonate, created once for the whole screen.
+        // The disc's printed face.
         //
-        // The user's `discFaceUri` art is deliberately NOT applied yet. Swapping a texture
-        // per selected album means destroying the old one, and its MaterialInstance is owned
-        // by the MaterialLoader and outlives it — Filament then aborts the process on commit
-        // with "Invalid texture still bound to MaterialInstance". Getting that ordering right
-        // is fiddly enough that it belongs with M8, which replaces this material with the
-        // real iridescence shader and owns the disc's surface properly.
-        val discMaterial = remember(materialLoader) {
-            materialLoader.createColorInstance(
-                ComposeColor(0xFFB9C0C8), metallic = 0.7f, roughness = 0.18f
-            )
+        // ONE texture, allocated once for the life of the scene, re-uploaded per album — the
+        // rule M7 paid for. Creating a texture per album would mean destroying the old one,
+        // and a texture still bound to a MaterialInstance aborts the process on the next
+        // commit. Every face is baked to exactly DISC_PX square precisely so this one
+        // allocation can serve every album.
+        val discTexture = remember(engine) {
+            Texture.Builder()
+                .width(DiscArt.DISC_PX)
+                .height(DiscArt.DISC_PX)
+                .levels(DISC_MIP_LEVELS)
+                .format(Texture.InternalFormat.RGBA8)
+                .sampler(Texture.Sampler.SAMPLER_2D)
+                // GEN_MIPMAPPABLE is not in DEFAULT, and generateMipmaps throws without it.
+                // The mips matter here: the disc is small on screen for most of the lift,
+                // and a 512px label minified without them crawls badly.
+                .usage(Texture.Usage.DEFAULT or Texture.Usage.GEN_MIPMAPPABLE)
+                .build(engine)
+        }
+        // Opaque, not transparent: the annulus geometry is its own mask, so there is no
+        // alpha to sort. Arguments are positional because the second is an unnamed
+        // opaque/transparent selector — (texture, transparent, metallic, roughness,
+        // reflectance).
+        val discMaterial = remember(materialLoader, discTexture) {
+            materialLoader.createTextureInstance(discTexture, false, 0.72f, 0.22f, 0.65f)
+        }
+
+        // The disc face, finally: `Album.discFaceUri` has been collected since M1 and never
+        // shown. Baked off the main thread (ENGINEERING.md rule 5), then uploaded into the
+        // texture that already exists rather than building a new one.
+        //
+        // Only the open album is baked — unlike spine and cover art there is no reason to
+        // pre-load the neighbours, because exactly one disc is ever on screen.
+        LaunchedEffect(selectedCase, discTexture) {
+            val case = selectedCase ?: return@LaunchedEffect
+            val face = withContext(Dispatchers.IO) {
+                DiscArt.bakeFace(
+                    face = CaseArt.loadCover(case.discFacePath, DiscArt.DISC_PX),
+                    fallback = artCache[case.albumId]?.cover
+                )
+            }
+            TextureHelper.setBitmap(engine, discTexture, 0, face)
+            discTexture.generateMipmaps(engine)
         }
 
         val quantX by remember { derivedStateOf { floor(panX.value / SLOT_PITCH).toInt() } }
@@ -284,6 +359,27 @@ fun WallSceneScreen(
             viewModel.stop()
         }
 
+        /**
+         * Where the disc's centre lands on screen, right now.
+         *
+         * The prototype measures the scratch angle in screen space about the disc's
+         * projected centre rather than casting a ray, and `worldToScreenPoint` is the exact
+         * equivalent of its `project(camera)`. Deriving this from the FOV constants instead
+         * was tried and came out a fifth of a screen wrong.
+         */
+        fun discScreenCenter(): Vector3? {
+            val disc = actNodes.disc ?: return null
+            val p = disc.worldPosition
+            return cameraNode.worldToScreenPoint(Vector3(p.x, p.y, p.z))
+        }
+
+        fun endScratch() {
+            if (!scratch.active) return
+            scratch.active = false
+            viewModel.onScrub(scratch.cursor.trackIndex, scratch.cursor.offsetMs)
+            scrubReadout.value = null
+        }
+
         val gestureListener = rememberOnGestureListener(
             onDown = { _, _ ->
                 scope.launch { panX.stop() }
@@ -315,14 +411,79 @@ fun WallSceneScreen(
             // interrupting a 1.5s sequence looks like — was being swallowed as a double tap.
             onSingleTapUp = { _, node ->
                 if (selectedAlbumId != null) {
-                    // Reversible from anywhere: a tap while closing sends it back out.
-                    if (sequence.direction < 0) sequence.direction = 1 else closeCase()
+                    // A tap that landed on the disc belongs to the platter — the prototype
+                    // consumes it the same way. Without this, grabbing the disc and letting
+                    // go without turning it would close the case.
+                    if (!node.isDisc()) {
+                        // Reversible from anywhere: a tap while closing sends it back out.
+                        if (sequence.direction < 0) sequence.direction = 1 else closeCase()
+                    }
                 } else {
                     generateSequence(node) { it.parent }
                         .firstNotNullOfOrNull { it.name }
                         ?.let { openCase(it) }
                 }
-            }
+            },
+            // The scratch uses the move-gesture trio rather than onScroll because
+            // OnGestureListener has no onUp, and a platter needs a reliable "finger lifted".
+            // Panning stays on onScroll, which is already inert while a case is open, so the
+            // two never contend.
+            onMoveBegin = { _, e, node ->
+                if (selectedAlbumId != null &&
+                    sequence.progress > Scratch.ARM_AT &&
+                    node.isDisc()
+                ) {
+                    discScreenCenter()?.let { c ->
+                        scratch.active = true
+                        scratch.lastAngle = atan2(e.y - c.y, e.x - c.x)
+                        scratch.durations = deck.tracks.map { it.durationMs }
+                        scratch.cursor = Scratch.Cursor(
+                            trackIndex = deck.currentTrackIndex.coerceAtLeast(0),
+                            offsetMs = viewModel.positionMs.value
+                        )
+                        scratch.haptics.reset()
+                        scratch.lastSeekAt = 0L
+                    }
+                }
+            },
+            onMove = { _, e, _ ->
+                if (scratch.active) {
+                    discScreenCenter()?.let { c ->
+                        val angle = atan2(e.y - c.y, e.x - c.x)
+                        val delta = Scratch.angleDelta(scratch.lastAngle, angle)
+                        scratch.lastAngle = angle
+                        val degrees = Math.toDegrees(delta.toDouble()).toFloat()
+
+                        // The disc tracks the finger exactly — this is the whole illusion.
+                        sequence.spinAngle -= degrees
+
+                        scratch.cursor = Scratch.advance(
+                            scratch.cursor, Scratch.radiansToMs(delta), scratch.durations
+                        )
+
+                        val now = SystemClock.uptimeMillis()
+                        if (scratch.haptics.accept(degrees, now)) {
+                            // CLOCK_TICK needs no permission and honours the user's system
+                            // haptics setting, unlike a raw Vibrator call.
+                            view.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+                        }
+                        if (now - scratch.lastSeekAt >= Scratch.SEEK_THROTTLE_MS) {
+                            scratch.lastSeekAt = now
+                            viewModel.onScrub(
+                                scratch.cursor.trackIndex, scratch.cursor.offsetMs
+                            )
+                            scrubReadout.value = ScrubReadout(
+                                trackIndex = scratch.cursor.trackIndex,
+                                positionMs = scratch.cursor.offsetMs,
+                                // A positive delta is the direction audio advances, so it
+                                // is what the arrows must follow.
+                                forward = degrees >= 0f
+                            )
+                        }
+                    }
+                }
+            },
+            onMoveEnd = { _, _, _ -> endScratch() }
         )
 
         SceneView(
@@ -359,6 +520,13 @@ fun WallSceneScreen(
                     // through an ordinary animation without the sequence recomposing anything.
                     val settled = sequence.progress > DECK_REVEAL_AT
                     if (settled != deckRevealed) deckRevealed = settled
+
+                    // A case closing out from under a finger still on the disc: drop the
+                    // scratch rather than leaving it armed against a disc going away.
+                    if (scratch.active && sequence.progress <= Scratch.ARM_AT) {
+                        scratch.active = false
+                        scrubReadout.value = null
+                    }
                 }
 
                 val selected = frame.selected
@@ -387,8 +555,15 @@ fun WallSceneScreen(
                         disc.isVisible = t.discVisible
                         disc.position = Position(t.discX, t.discY, t.discZ)
                         disc.scale = Scale(t.discScale)
-                        if (frame.isPlaying) {
-                            sequence.spinAngle += OpenSequence.SPIN_DEG_PER_S * dt * beats.spin
+                        // Free spin yields to the hand on the platter — the prototype's
+                        // `if (playing && !scratching)`. The finger's own rotation is
+                        // already being added in onMove.
+                        //
+                        // Subtracted, so idle spin runs the same way round as a forward
+                        // scrub. Dragging the disc clockwise moves the audio forward, and
+                        // it would read as a fault if letting go then span it backwards.
+                        if (frame.isPlaying && !scratch.active) {
+                            sequence.spinAngle -= OpenSequence.SPIN_DEG_PER_S * dt * beats.spin
                         }
                         disc.rotation = Rotation(0f, 0f, sequence.spinAngle)
                     }
@@ -424,14 +599,12 @@ fun WallSceneScreen(
             }
             // While a case is out, its shelved counterpart is HIDDEN rather than removed.
             //
-            // Destroying an ImageNode is not safe on the SceneView version we are pinned to:
-            // ImageNode.destroy() enqueues its texture for destruction but hands
-            // MaterialLoader.destroyMaterialInstance() a wrapper re-fetched via
-            // getMaterialInstanceAt(0), which is not the object the loader is tracking — so
-            // the instance is never destroyed and Filament aborts the process on the next
-            // commit with "Invalid texture still bound to MaterialInstance". (SceneView's own
-            // v4.30 release note, "Cached Filament handles that stop lying", reads like the
-            // fix; we are on v4.18 because anything newer needs a Kotlin our AGP cannot read.)
+            // Destroying an ImageNode is not safe: ImageNode.destroy() enqueues its texture
+            // for destruction but hands MaterialLoader.destroyMaterialInstance() a wrapper
+            // re-fetched via getMaterialInstanceAt(0), which is not the object the loader is
+            // tracking — so the instance is never destroyed and Filament aborts the process
+            // on the next commit with "Invalid texture still bound to MaterialInstance".
+            // This cost most of a session to root-cause; do not "simplify" it back.
             //
             // isVisible cascades to children, so one flag hides the body and both art plates.
             visibleCases.forEach { case ->
@@ -568,6 +741,7 @@ fun WallSceneScreen(
                 onPrevious = viewModel::onPrevious,
                 onSeek = viewModel::onSeek,
                 onSelectTrack = viewModel::onSelectTrack,
+                scrubReadout = scrubReadout,
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .fillMaxHeight(0.52f)

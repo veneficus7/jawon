@@ -125,6 +125,14 @@ class PlaybackRepository @Inject constructor(@param:ApplicationContext private v
     suspend fun seekTo(positionMs: Long) = ensureController().seekTo(positionMs)
 
     suspend fun seekToTrack(index: Int) = ensureController().seekTo(index, 0L)
+
+    /**
+     * Seek to a position within a specific queue item — what the disc scratch needs, since
+     * turning the platter far enough runs off the end of one track and into the next.
+     *
+     * Deliberately does not pause: seeking while playing is what makes a scrub audible.
+     */
+    suspend fun seekTo(index: Int, positionMs: Long) = ensureController().seekTo(index, positionMs)
 }
 
 private fun Track.toMediaItem(): MediaItem =
