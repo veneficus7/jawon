@@ -4,7 +4,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
-import com.google.android.filament.MaterialInstance
+import com.google.android.filament.gltfio.FilamentInstance
 import com.jawon.app.ui.wallscene.WallDimens.CASE_D
 import com.jawon.app.ui.wallscene.WallDimens.CASE_H
 import com.jawon.app.ui.wallscene.WallDimens.CASE_W
@@ -15,6 +15,7 @@ import io.github.sceneview.math.Direction
 import io.github.sceneview.math.Position
 import io.github.sceneview.math.Size
 import io.github.sceneview.node.ImageNode
+import io.github.sceneview.node.ModelNode
 import io.github.sceneview.node.Node
 
 /**
@@ -112,8 +113,7 @@ fun CaseSlots.bind(
 fun SceneScope.CaseSlotNodes(
     slots: CaseSlots,
     size: Int,
-    caseMaterial: MaterialInstance,
-    lidMaterial: MaterialInstance
+    caseInstances: List<FilamentInstance>
 ) {
     slots.ensure(size)
 
@@ -139,9 +139,12 @@ fun SceneScope.CaseSlotNodes(
         key(index) {
             val slot = slots.slots[index]
             Node(apply = { slot.root = this }) {
-                CubeNode(
-                    size = Size(CASE_W, CASE_H, CASE_D),
-                    materialInstance = caseMaterial,
+                // One instance of the shared closed-case asset — geometry, material and
+                // textures are held once and this only adds a transform. Modelled in the
+                // shelved frame (X thickness, Z depth, spine at +Z), so no rotation is
+                // needed here and the art-plate positions below are unchanged.
+                ModelNode(
+                    caseInstances[index],
                     apply = {
                         slot.body = this
                         // Cases shadow each other along the shelf. DESIGN.md is explicit
@@ -149,9 +152,6 @@ fun SceneScope.CaseSlotNodes(
                         // packed shelf comes from" — so both flags, not just receive.
                         isShadowCaster = true
                         isShadowReceiver = true
-                        // Sells the contact line where the case meets its board, which a
-                        // 1024px shadow map is too coarse to resolve.
-                        setScreenSpaceContactShadows(true)
                     }
                 ) {
                     // The art plates never cast. They are decals sitting PLATE_LIFT proud of
@@ -171,28 +171,23 @@ fun SceneScope.CaseSlotNodes(
                     // cover is on local +Z, and the turn starts at +90, which maps that to
                     // world +X. Facing -X here is what made the artwork jump sides the
                     // moment the case reshelved.
+                    //
+                    // Sits PLATE_LIFT proud of the case face now, where it used to sit
+                    // 1.2mm inside it — behind a thin transparent panel that stood in for
+                    // the clear front. That panel is gone: the closed-case model carries
+                    // clearcoat, which is the plastic sheen it existed to provide, as a
+                    // second specular lobe on an opaque surface. Across hundreds of slots
+                    // that trades a blended, depth-sorted draw per case for nothing at all.
+                    // Left where it was, the artwork would now be buried inside solid
+                    // geometry.
                     ImageNode(
                         bitmap = blankCover,
                         size = Size(CASE_D, CASE_H, 0f),
                         normal = Direction(z = 1f),
-                        position = Position(CASE_W / 2f - 0.0012f, 0f, 0f),
+                        position = Position(CASE_W / 2f + PLATE_LIFT, 0f, 0f),
                         rotation = io.github.sceneview.math.Rotation(0f, 90f, 0f),
                         apply = {
                             slot.coverArt = this
-                            isShadowCaster = false
-                        }
-                    )
-                    // The clear front, flush with the outer face — the same panel the opened
-                    // case carries in its lid. Without it the plastic sheen vanished the
-                    // instant a case returned to the shelf.
-                    CubeNode(
-                        size = Size(0.0008f, CASE_H, CASE_D),
-                        materialInstance = lidMaterial,
-                        position = Position(CASE_W / 2f - 0.0004f, 0f, 0f),
-                        apply = {
-                            isTouchable = false
-                            // Clear plastic. Casting would draw it as an opaque slab in the
-                            // shadow pass and black out the case.
                             isShadowCaster = false
                         }
                     )

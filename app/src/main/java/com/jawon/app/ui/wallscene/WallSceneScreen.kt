@@ -195,6 +195,35 @@ private const val LID_MODEL_ASSET = "models/case_lid.glb"
 private const val DISC_MODEL_ASSET = "models/disc.glb"
 
 /**
+ * The shelved case — a shut jewel case at 768 triangles, against the held case's 2884.
+ * Everything the tray carries inside it is enclosed when the lid is down, and the wall
+ * draws hundreds of these at once.
+ */
+private const val CLOSED_CASE_MODEL_ASSET = "models/case_closed.glb"
+
+/**
+ * How many case instances the wall allocates, once, at startup.
+ *
+ * The pool is bounded by the viewport rather than by the library — `wantedPoolSize` below
+ * works out to about 132 slots in portrait on a 1080x2340 screen, and about 468 in
+ * landscape, where the wall is nearly four times wider in slot-pitch terms. 512 clears
+ * both with room to spare.
+ *
+ * It has to be a fixed number decided before the first frame. `createInstancedModel` takes
+ * its count up front, and the alternative — growing the instance list as the pool grows —
+ * would mean re-creating the asset, which means re-keying the slot composables, which
+ * destroys their `ImageNode`s and aborts the process. See [CaseSlots].
+ *
+ * Unused instances cost a transform each and are never added to the scene, so over-
+ * allocating is cheap; running out would silently clip the edges of the wall in landscape.
+ *
+ * Measured rather than assumed, after SSR taught that lesson: cold start is ~934ms at 512
+ * against ~944ms at 8, i.e. the allocation is free and run-to-run variance is far larger
+ * than the difference.
+ */
+private const val MAX_CASE_SLOTS = 512
+
+/**
  * Master dust brightness. Tuning knob â€” dust should suggest air, not snow. At 0.55 the
  * motes read as distinct white specks; this is deliberately below the point where you
  * notice them individually.
@@ -315,23 +344,6 @@ fun WallSceneScreen(
                 ComposeColor(0xFF2F2318), metallic = 0.04f, roughness = 0.82f
             )
         }
-        // One shared body material now that the spine plate carries the album's colour: the
-        // case body is just dark jewel-case plastic, like the prototype's non-spine faces.
-        val caseMaterial = remember(materialLoader) {
-            materialLoader.createColorInstance(
-                ComposeColor(0xFF2A2622), metallic = 0.05f, roughness = 0.45f
-            )
-        }
-        // Clear polycarbonate. An alpha below 1 makes createColorInstance pick the
-        // transparent material, so the inlay behind it reads through the lid the way it does
-        // on a real case. Without an environment map there is nothing for it to reflect yet â€”
-        // convincing plastic and the disc's iridescence are M8/M9's job.
-        val lidMaterial = remember(materialLoader) {
-            materialLoader.createColorInstance(
-                ComposeColor(0.88f, 0.92f, 0.95f, 0.20f), metallic = 0f, roughness = 0.05f
-            )
-        }
-
         // The case and disc, built by tools/models/build_models.py and loaded from assets.
         //
         // Three files rather than one, because ActiveCaseNodes already has the hierarchy
@@ -341,6 +353,24 @@ fun WallSceneScreen(
         // These arrive asynchronously: each is null for the first frames and then becomes
         // non-null once, which is what ActiveCaseNodes' mount guard is written against.
         val modelLoader = rememberModelLoader(engine)
+
+        // The wall's shelved cases: ONE asset, MAX_CASE_SLOTS instances sharing its
+        // geometry, material and textures — each instance is little more than a transform.
+        //
+        // Loaded synchronously, unlike the three above, and that is deliberate. `bind()`
+        // writes through the slot handles from a LaunchedEffect keyed on the pool size; if
+        // the instances arrived a few frames late those handles would still be null when it
+        // first ran, which is exactly the bug the active case hit. The asset is 20KB and the
+        // dust material already loads this way.
+        //
+        // Allocated once at MAX_CASE_SLOTS and never re-created. The pool grows at runtime,
+        // and re-keying anything on its size would drop every slot composable out of
+        // composition and destroy its ImageNodes — the process abort this file exists to
+        // prevent. So the count is fixed up front and the pool is clamped to it.
+        val caseInstances = remember(modelLoader) {
+            modelLoader.createInstancedModel(CLOSED_CASE_MODEL_ASSET, MAX_CASE_SLOTS)
+        }
+
         val trayModel = rememberModelInstance(modelLoader, TRAY_MODEL_ASSET)
         val lidModel = rememberModelInstance(modelLoader, LID_MODEL_ASSET)
         val discModel = rememberModelInstance(modelLoader, DISC_MODEL_ASSET)
@@ -489,7 +519,8 @@ fun WallSceneScreen(
         val wantedPoolSize = remember(layout, halfW, halfH) {
             val across = ((halfW + SLOT_PITCH * 3f) * 2f / SLOT_PITCH).toInt() + 2
             val down = ((halfH + ROW_PITCH) * 2f / ROW_PITCH).toInt() + 2
-            (across * down).coerceAtMost(layout.cases.size)
+            // Clamped to the instances actually allocated — indexing past them would throw.
+            (across * down).coerceAtMost(layout.cases.size).coerceAtMost(MAX_CASE_SLOTS)
         }
         if (wantedPoolSize > casePoolSize) casePoolSize = wantedPoolSize
 
@@ -587,9 +618,16 @@ fun WallSceneScreen(
                     // named ancestor on trust meant any named node in the scene could be
                     // opened as a "case" â€” which is exactly what the hidden disc did,
                     // leaving it stranded on screen with a deck that had no album behind it.
+                    //
+                    // Walk for the first ancestor whose name IS an album, rather than taking
+                    // the first named one and testing it afterwards. Since the shelved cases
+                    // became glTF models, picking lands on a node the asset named itself
+                    // ("case_closed"), which sits below the slot node carrying the album id
+                    // — so the old order found the model's own name, failed the test, and
+                    // silently dropped every tap on the wall.
                     generateSequence(node) { it.parent }
-                        .firstNotNullOfOrNull { it.name }
-                        ?.takeIf { name -> layout.cases.any { it.albumId == name } }
+                        .mapNotNull { it.name }
+                        .firstOrNull { name -> layout.cases.any { it.albumId == name } }
                         ?.let { openCase(it) }
                 }
             },
@@ -882,8 +920,7 @@ fun WallSceneScreen(
             CaseSlotNodes(
                 slots = caseSlots,
                 size = casePoolSize,
-                caseMaterial = caseMaterial,
-                lidMaterial = lidMaterial
+                caseInstances = caseInstances
             )
             // Dust hangs in front of the wall, animated entirely on the GPU. Not touchable
             // and casts nothing â€” it is glow, and a shadow-casting mote would be absurd.

@@ -111,9 +111,37 @@ corner catches no specular highlight.
 `DiscGeometry.kt` is deleted; the disc's radial UV convention is preserved by the
 model, so `DiscArt` did not change.
 
-**Pass 3 · Shelf and room models** — not started. The wall's shelved cases
-(`CaseSlots.kt`) are still `CubeNode`s; only the active case is a model. They are
-seen spine-on at ~25px so the mismatch barely shows, but it is a mismatch.
+**Pass 3 · The wall's cases — done, awaiting on-device sign-off.** `CaseSlots.kt`
+now draws `case_closed.glb` instead of a `CubeNode`, so the shelved case and the
+held one are finally the same object.
+
+- **A separate, simpler model.** A shut case shows none of the tray's interior,
+  and the wall draws up to ~470 at once — 768 triangles rather than 2884, in the
+  *shelved* frame so no rotation is needed.
+- **One asset, `MAX_CASE_SLOTS` instances**, allocated once at startup and never
+  re-created. The pool grows at runtime and re-keying anything on its size would
+  drop every slot composable and destroy its `ImageNode`s, so the count is fixed
+  up front and the pool is clamped to it. Measured free: ~934ms cold start at
+  512 instances against ~944ms at 8.
+- **The transparent clear-front panel per slot is gone.** Clearcoat on the model
+  is the plastic sheen it existed to provide, so hundreds of blended,
+  depth-sorted draws became none. The cover plate moved to sit `PLATE_LIFT`
+  proud, where it used to hide behind that panel.
+
+**Tapping the wall broke, and would have broken silently.** Picking now lands on
+a node the glTF asset named itself, below the slot node carrying the album id,
+and the handler took the *first* named ancestor and then tested it — so it found
+`case_closed`, failed the test, and dropped the tap. It now walks for the first
+ancestor whose name *is* an album. Any future scene node that carries a name
+needs to keep that property in mind.
+
+**Not stress-tested.** The test library has four albums, so the wall renders
+four cases. Browsing holds 125fps and the open state 124.6fps — level with the
+pre-pass-3 baseline, on a cooled device. The instanced path at a few hundred
+cases is unmeasured; that is M10's job, and it wants a real library.
+
+**Pass 3b · Shelf and room** — not started. The boards and back wall are still
+plain `CubeNode`s with no bevel and no texture.
 
 ### Two bugs this pass created, both worth remembering
 
@@ -159,6 +187,13 @@ the 256px IBL together cost nothing measurable. SSR alone was a 7x regression.
 either way, because SSR raymarches per glossy pixel and the wall has almost
 none. Open a case and the lid and disc fill the frame, so nearly every pixel
 traces. Measure the *open* state, not the wall.
+
+**Check the thermal state before believing any number.** After a long session of
+builds and test runs the S25 reaches `Thermal Status: 1` and starts discharging
+on USB, and the same build that measures 124fps cool measures 88-96fps hot. Pass
+3 was briefly recorded as a 22% regression on exactly that mistake; it is not one.
+`adb shell dumpsys thermalservice | grep "Thermal Status"` should read 0, and a
+couple of minutes with the app stopped is enough to get back there.
 
 `RoomAtmosphere.SSR_ENABLED` is false and the constants are kept beside it.
 Turning it back on is an M10 tier decision, not a default.

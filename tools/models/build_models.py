@@ -232,7 +232,12 @@ def attach_placeholder_basecolor(mat, name):
     down to a couple of hundred bytes.
     """
     img = bpy.data.images.new(name, width=8, height=8, alpha=False)
-    img.generated_color = (1.0, 1.0, 1.0, 1.0)
+    # Write the buffer explicitly rather than relying on `generated_color`, which is only a
+    # hint to the generator and leaves the pixel buffer lazily evaluated. Exporting it as-is
+    # encoded whatever happened to be in memory, so disc.glb came out with a different hash
+    # on every run — 188KB of binary churn in git each time anyone regenerated the models,
+    # while the three case models stayed byte-identical.
+    img.pixels[:] = [1.0] * (8 * 8 * 4)
     tex = mat.node_tree.nodes.new("ShaderNodeTexImage")
     tex.image = img
     bsdf = mat.node_tree.nodes["Principled BSDF"]
@@ -361,6 +366,78 @@ def build_lid():
             coat_roughness=0.02,
             alpha=0.22,
             blend=True,
+        )
+    )
+    return obj
+
+
+# ---------------------------------------------------------------------------
+# The closed case — what stands on the shelf, spine out.
+# ---------------------------------------------------------------------------
+
+def build_closed_case():
+    """
+    A shut jewel case, modelled **in the shelved frame** rather than the held one.
+
+    Two things make this a separate model rather than the tray and lid posed shut:
+
+    1. **Nothing inside it is visible.** The well, the spindle rosette and the
+       hinge knuckles are the bulk of the tray's 2176 triangles and every one of
+       them is enclosed. The wall draws up to ~470 of these at once (see
+       MAX_CASE_SLOTS in CaseSlots.kt), so carrying that interior would cost over
+       a million triangles to render nothing.
+    2. **Its axes differ.** A shelved case is thickness-on: X is the 10mm edge,
+       Z the 125mm depth, and the spine faces the viewer at +Z. The held case is
+       cover-forward. Modelling this one in the shelved frame directly means
+       `CaseSlots` needs no rotation and the existing art-plate positions, which
+       are tuned against those axes, keep working untouched.
+
+    What it does carry is what you can actually see edge-on: broken edges, the
+    seam where the lid meets the tray, and the two hinge barrels — which on a
+    real jewel case sit on the same edge as the spine, and are therefore pointed
+    straight at you on a shelf.
+    """
+    obj = new_mesh_object("case_closed")
+    bm = bmesh.new()
+
+    # App axes here: X = thickness, Y = height, Z = depth (spine at +Z).
+    # `az()` still converts the axis that points at the viewer, which is Z.
+    tray_cx = -CASE_W / 2.0 + TRAY_T / 2.0
+    lid_t = CASE_W - TRAY_T
+    lid_cx = -CASE_W / 2.0 + TRAY_T + lid_t / 2.0
+
+    # A hair of air between the halves so their bevels read as a seam instead of
+    # fusing into one slab. This is the line that says "this thing opens".
+    seam = 0.00014
+
+    box(bm, tray_cx, az(0.0), 0.0, TRAY_T - seam, CASE_D, CASE_H)
+    box(bm, lid_cx, az(0.0), 0.0, lid_t - seam, CASE_D, CASE_H)
+
+    # Hinge barrels. The pin is vertical on a real case, so these run along the
+    # height axis and show as two short cylinders at the top and bottom of the
+    # spine — the only moving part you can see from a shelf.
+    for sz in (+1.0, -1.0):
+        cz = sz * (CASE_H / 2.0 - 0.011)
+        cylinder(bm, 0.0, az(CASE_D / 2.0 - 0.0017), cz,
+                 0.0017, 0.0075, segments=10, axis="Z")
+
+    bmesh.ops.remove_doubles(bm, verts=bm.verts, dist=1e-6)
+    bm.to_mesh(obj.data)
+    bm.free()
+
+    finish(obj)
+    obj.data.materials.append(
+        principled(
+            "JewelCasePlastic",
+            base_color=(0.055, 0.050, 0.044),
+            metallic=0.0,
+            roughness=0.22,
+            # Opaque, unlike the held case's lid. The wall used to hang a separate
+            # transparent panel off every slot for the plastic sheen; clearcoat is
+            # that sheen, as a second specular lobe on an opaque surface, and it
+            # costs no blending or sorting across hundreds of instances.
+            coat=0.85,
+            coat_roughness=0.06,
         )
     )
     return obj
@@ -507,6 +584,9 @@ def main():
 
     clear_scene()
     paths.append(export([build_lid()], "case_lid.glb"))
+
+    clear_scene()
+    paths.append(export([build_closed_case()], "case_closed.glb"))
 
     clear_scene()
     paths.append(export([build_disc()], "disc.glb"))
