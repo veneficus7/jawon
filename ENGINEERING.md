@@ -28,9 +28,18 @@ rainbow on the CD. `PLAN.md`'s technology table still lists an iridescent CD;
 that line is overruled. The disc is plain silvered plastic carrying its label.
 Do not add it back.
 
-Currently starting **M9 · Atmosphere** — lights, shadows, IBL, bloom, DOF, fog,
-dust. One known thing waits on it: the case's clear lid reads as a flat white
-strip because there is no environment for it to reflect.
+**M9 · Atmosphere is half done.** Part 1 (the light) has landed: a warm
+shadow-casting spot, an amber bounce, and image-based lighting built
+procedurally in `ui/wallscene/RoomLighting.kt` — no environment map is shipped
+or downloaded. The room now reads as one lamp over the racks with deep shadow
+elsewhere, and the clear lid finally has something to reflect.
+
+Currently starting **M9 part 2 · the air** — bloom, depth of field, fog,
+vignette, dust, plus `DESIGN.md`'s reduced-motion handling.
+
+Two things from part 1 are still unverified and want a real check: **inter-case
+shadowing** (the test library is too small to have adjacent cases) and **frame
+pacing** (`gfxinfo` cannot see SceneView, which renders on its own thread).
 
 Never assume a milestone is complete. If this status line looks stale or
 contradicts the code, ask — do not infer from the repo.

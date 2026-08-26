@@ -72,9 +72,10 @@ import com.jawon.app.ui.wallscene.WallDimens.ROW_PITCH
 import com.jawon.app.ui.wallscene.WallDimens.SLOT_PITCH
 import com.jawon.app.ui.wallscene.WallDimens.TAN_HALF_FOV
 import com.jawon.app.ui.wallscene.WallDimens.WALL_Z
+import com.google.android.filament.LightManager
 import com.google.android.filament.Texture
-import com.google.android.filament.TextureSampler
 import com.google.android.filament.android.TextureHelper
+import dev.romainguy.kotlin.math.normalize
 import io.github.sceneview.SceneView
 import io.github.sceneview.collision.Vector3
 import io.github.sceneview.math.Direction
@@ -84,6 +85,7 @@ import io.github.sceneview.math.Scale
 import io.github.sceneview.math.Size
 import io.github.sceneview.rememberCameraNode
 import io.github.sceneview.rememberEngine
+import io.github.sceneview.rememberEnvironmentLoader
 import io.github.sceneview.rememberMaterialLoader
 import io.github.sceneview.rememberOnGestureListener
 import io.github.sceneview.rememberViewNodeManager
@@ -195,7 +197,16 @@ fun WallSceneScreen(
 
         val engine = rememberEngine()
         val materialLoader = rememberMaterialLoader(engine)
+        val environmentLoader = rememberEnvironmentLoader(engine)
         val viewNodeManager = rememberViewNodeManager()
+
+        // The room's image-based lighting, generated rather than loaded — see RoomLighting.
+        // Filament's own prefilter turns the procedural cubemap into a roughness mip chain.
+        val environment = remember(engine, environmentLoader) {
+            RoomLighting.createEnvironment(engine) { cubemap ->
+                environmentLoader.iblPrefilter.specularFilter(cubemap)
+            }
+        }
         val cameraNode = rememberCameraNode(engine) {
             focalLength = FOCAL_LENGTH_MM
             position = Position(0f, 0f, CAMERA_Z)
@@ -501,6 +512,11 @@ fun WallSceneScreen(
             modifier = Modifier.fillMaxSize(),
             engine = engine,
             materialLoader = materialLoader,
+            environmentLoader = environmentLoader,
+            // Replaces SceneView's default main and fill lights. Those are a neutral studio
+            // rig — exactly the "flatly-lit scene" DESIGN.md's Do-not list ends on.
+            environment = environment,
+            mainLightNode = null,
             cameraNode = cameraNode,
             cameraManipulator = null,
             autoCenterContent = false,
@@ -581,11 +597,54 @@ fun WallSceneScreen(
                 }
             }
         ) {
+            // The shop lamp. A focused spot rather than a directional light, because
+            // DESIGN.md wants "one warm lamp over the racks, deep shadow everywhere else" —
+            // a directional light has no falloff and would light the whole wall evenly.
+            LightNode(
+                type = LightManager.Type.FOCUSED_SPOT,
+                position = RoomLighting.KEY_POSITION,
+                // Aimed back down at the wall's centre from up and to the right.
+                direction = normalize(-RoomLighting.KEY_POSITION),
+                apply = {
+                    color(
+                        RoomLighting.KEY_COLOR[0],
+                        RoomLighting.KEY_COLOR[1],
+                        RoomLighting.KEY_COLOR[2]
+                    )
+                    intensityCandela(RoomLighting.KEY_CANDELA)
+                    spotLightCone(RoomLighting.KEY_CONE_INNER, RoomLighting.KEY_CONE_OUTER)
+                    falloff(RoomLighting.KEY_FALLOFF)
+                    castShadows(true)
+                }
+            )
+            // The coloured bounce, low and left — DESIGN.md's "one coloured bounce light".
+            // It does not cast shadows: a second shadow-casting light doubles the cost and
+            // muddies the single-lamp story the key light is telling.
+            LightNode(
+                type = LightManager.Type.POINT,
+                position = RoomLighting.RIM_POSITION,
+                apply = {
+                    color(
+                        RoomLighting.RIM_COLOR[0],
+                        RoomLighting.RIM_COLOR[1],
+                        RoomLighting.RIM_COLOR[2]
+                    )
+                    intensityCandela(RoomLighting.RIM_CANDELA)
+                    falloff(RoomLighting.RIM_FALLOFF)
+                    castShadows(false)
+                }
+            )
+
             CubeNode(
                 size = Size(layout.wallWidth, layout.wallHeight, 0.01f),
                 position = Position(0f, 0f, WALL_Z - 0.005f),
                 materialInstance = wallMaterial,
-                apply = { isTouchable = false }
+                apply = {
+                    isTouchable = false
+                    // Takes shadows, casts none — there is nothing behind it.
+                    isShadowReceiver = true
+                    isShadowCaster = false
+                }
             )
             visibleRows.forEach { row ->
                 key(row.shelfId) {
@@ -593,7 +652,11 @@ fun WallSceneScreen(
                         size = Size(layout.wallWidth, BOARD_H, BOARD_D),
                         position = Position(0f, row.boardY, 0f),
                         materialInstance = boardMaterial,
-                        apply = { isTouchable = false }
+                        apply = {
+                            isTouchable = false
+                            isShadowReceiver = true
+                            isShadowCaster = true
+                        }
                     )
 
                     ViewNode(
@@ -634,14 +697,29 @@ fun WallSceneScreen(
                         CubeNode(
                             size = Size(CASE_W, CASE_H, CASE_D),
                             materialInstance = caseMaterial,
-                            apply = { name = case.albumId }
+                            apply = {
+                                name = case.albumId
+                                // Cases shadow each other along the shelf. DESIGN.md is
+                                // explicit that this inter-case shadowing "is where the
+                                // sense of depth on a packed shelf comes from" — so both
+                                // flags, not just receive.
+                                isShadowCaster = true
+                                isShadowReceiver = true
+                                // Sells the contact line where the case meets its board,
+                                // which a 1024px shadow map is too coarse to resolve.
+                                setScreenSpaceContactShadows(true)
+                            }
                         ) {
+                            // The art plates never cast. They are decals sitting PLATE_LIFT
+                            // proud of the faces they decorate, so casting would have them
+                            // shadow their own case and shimmer as the light moves.
                             if (artwork != null) {
                                 ImageNode(
                                     bitmap = artwork.spine,
                                     size = Size(CASE_W, CASE_H, 0f),
                                     normal = Direction(z = 1f),
-                                    position = Position(0f, 0f, CASE_D / 2f + PLATE_LIFT)
+                                    position = Position(0f, 0f, CASE_D / 2f + PLATE_LIFT),
+                                    apply = { isShadowCaster = false }
                                 )
                                 // The cover faces +X, matching where the opened case's lid
                                 // ends up: its cover is on local +Z, and the turn starts at
@@ -653,7 +731,8 @@ fun WallSceneScreen(
                                         size = Size(CASE_D, CASE_H, 0f),
                                         normal = Direction(z = 1f),
                                         position = Position(CASE_W / 2f - 0.0012f, 0f, 0f),
-                                        rotation = Rotation(0f, 90f, 0f)
+                                        rotation = Rotation(0f, 90f, 0f),
+                                        apply = { isShadowCaster = false }
                                     )
                                 }
                             }
@@ -664,7 +743,12 @@ fun WallSceneScreen(
                                 size = Size(0.0008f, CASE_H, CASE_D),
                                 materialInstance = lidMaterial,
                                 position = Position(CASE_W / 2f - 0.0004f, 0f, 0f),
-                                apply = { isTouchable = false }
+                                apply = {
+                                    isTouchable = false
+                                    // Clear plastic. Casting would draw it as an opaque
+                                    // slab in the shadow pass and black out the case.
+                                    isShadowCaster = false
+                                }
                             )
                         }
                     }
