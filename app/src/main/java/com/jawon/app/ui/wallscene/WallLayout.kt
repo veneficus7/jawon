@@ -1,6 +1,5 @@
 package com.jawon.app.ui.wallscene
 
-import androidx.compose.ui.graphics.Color
 import com.jawon.app.data.local.ShelfWithAlbums
 
 /**
@@ -19,6 +18,13 @@ object WallDimens {
 
     const val BOARD_H = 0.011f
     const val BOARD_D = CASE_D + 0.010f
+
+    /** Shelf label plate, sized to sit on the board's front edge. */
+    const val PLATE_W = 0.05f
+    const val PLATE_H = 0.0095f
+
+    /** How far artwork planes sit proud of the case body, to avoid z-fighting. */
+    const val PLATE_LIFT = 0.0004f
 
     /** Wall plane sits just behind the back face of a shelved case. */
     const val WALL_Z = -CASE_D / 2f - 0.006f
@@ -47,18 +53,16 @@ data class CaseLayout(
     val albumId: String,
     val title: String,
     val artist: String,
-    val spineHue: Float,
+    /** Raw `Album.spineHue`; `0f` means unset, in which case the cover decides. */
+    val storedHue: Float,
+    /** Used when there is neither a stored hue nor a cover to derive one from. */
+    val fallbackHue: Float,
+    val coverPath: String?,
     val row: Int,
     val col: Int,
     val x: Float,
     val y: Float
-) {
-    /**
-     * Low-saturation, dark spine stock, following the prototype's
-     * `hsl(h, 26%, 15..28%)` base before any artwork goes on it (that's M6 part 2).
-     */
-    fun spineColor(): Color = Color.hsl(spineHue * 360f, 0.26f, 0.15f + spineHue * 0.13f)
-}
+)
 
 data class RowLayout(
     val shelfId: String,
@@ -66,7 +70,9 @@ data class RowLayout(
     val accentHue: Float,
     val row: Int,
     val centerY: Float,
-    val boardY: Float
+    val boardY: Float,
+    /** Where the label plate sits along the board — the start of the shelf's run. */
+    val plateX: Float
 )
 
 /**
@@ -107,7 +113,10 @@ data class WallLayout(
                     accentHue = shelf.shelf.accentHue,
                     row = row,
                     centerY = rowCenterY(row),
-                    boardY = rowCenterY(row) - WallDimens.CASE_H / 2f - WallDimens.BOARD_H / 2f
+                    boardY = rowCenterY(row) - WallDimens.CASE_H / 2f - WallDimens.BOARD_H / 2f,
+                    // Like a record-shop divider: at the start of this shelf's run, or at the
+                    // wall's left edge when the shelf is still empty.
+                    plateX = colX(0) + WallDimens.PLATE_W / 2f - WallDimens.SLOT_PITCH / 2f
                 )
             }
 
@@ -117,7 +126,9 @@ data class WallLayout(
                         albumId = album.id,
                         title = album.title,
                         artist = album.artist,
-                        spineHue = if (album.spineHue != 0f) album.spineHue else stableHue(album.id),
+                        storedHue = album.spineHue,
+                        fallbackHue = stableHue(album.id),
+                        coverPath = album.caseCoverUri,
                         row = row,
                         col = col,
                         x = colX(col),
@@ -149,10 +160,9 @@ data class WallLayout(
         }
 
         /**
-         * `Album.spineHue` is `0f` for everything imported so far — M1 persists the column
-         * but PLAN.md's "derived from cover" derivation belongs with cover loading, which is
-         * M6 part 2. Until then a stable per-album hue keeps a wall of cases legible instead
-         * of uniformly red.
+         * Last resort when an album has neither a stored `spineHue` (M1 only ever writes
+         * `0f`) nor a cover to derive one from — a stable per-album hue beats a wall of
+         * identically-coloured cases.
          */
         private fun stableHue(albumId: String): Float {
             val h = albumId.fold(0) { acc, c -> acc * 31 + c.code }
