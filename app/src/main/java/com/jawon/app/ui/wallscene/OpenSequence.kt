@@ -28,10 +28,12 @@ object OpenSequence {
      * read as one blurred event rather than as a series of things happening to an object.
      *
      * Slower is not automatically better and this is not arbitrary: the ceiling is how long
-     * someone will wait to hear music. The deck still reveals at [DECK_REVEAL_AT] of this,
-     * so the controls arrive well before the sequence finishes settling.
+     * someone will wait to hear music. 2400 overshot that — it read as sluggish rather than
+     * as weighty — so this is the middle ground between the prototype's rushed 1500 and
+     * that. What the extra 400ms over the original buys is the room for the beats to stop
+     * masking each other; past about 2000 it stops buying anything.
      */
-    const val DURATION_MS = 2400f
+    const val DURATION_MS = 1900f
 
     /**
      * Beat windows. **The overlaps are much smaller than the prototype's.**
@@ -120,6 +122,16 @@ object OpenSequence {
 
     /** 1.8%, ≈2.7mm along the disc's ~160mm rise — the gentlest settle of the four. */
     private const val LIFT_BACK = 0.7f
+
+    /**
+     * How the lift beat is split between rising and coming forward.
+     *
+     * They overlap between [FORWARD_FROM] and [RISE_TO], which is deliberate: with no
+     * overlap the disc would stop dead at the top of its rise and then set off toward the
+     * lens, a visible corner. Sharing a third of the beat rounds that corner into an arc.
+     */
+    private const val RISE_TO = 0.72f
+    private const val FORWARD_FROM = 0.38f
 
     /**
      * Anticipation: how far the case sinks back into its slot before pulling out, and over
@@ -239,6 +251,22 @@ object OpenSequence {
         val turn: Float,
         val open: Float,
         val lift: Float,
+        /**
+         * The lift, split into two staggered channels so the disc travels an **arc** rather
+         * than a straight line.
+         *
+         * One eased value driving both axes moves the disc diagonally from the spindle to
+         * its resting place — which sends it straight through the lid and the tray wall, and
+         * for a few frames the disc and the case visibly occupy the same space. Nothing
+         * physical does that, and no amount of easing fixes it, because the problem is the
+         * *path*, not the timing along it.
+         *
+         * [liftRise] leads and drives height; [liftForward] follows and drives the move
+         * toward the lens. The disc therefore clears the case before it starts coming
+         * forward, which is both what a hand does and what any animator would key.
+         */
+        val liftRise: Float,
+        val liftForward: Float,
         val spin: Float,
         val turnCamera: Float,
         val liftCamera: Float,
@@ -257,6 +285,10 @@ object OpenSequence {
             turn = easeOutBack(turnT, TURN_BACK),
             open = easeOutBack(openT, OPEN_BACK),
             lift = easeOutBack(liftT, LIFT_BACK),
+            // Rise leads, forward follows, with a generous cross-fade so the corner between
+            // them is a curve rather than a dog-leg.
+            liftRise = easeOutBack(sub(liftT, 0f, RISE_TO), LIFT_BACK),
+            liftForward = smootherStep(sub(liftT, FORWARD_FROM, 1f)),
             // Smootherstep, not ease-out: this scales the disc's angular *velocity*, so a
             // curve with a steep start would step the acceleration and the disc would
             // snap into motion. Ramping in and out is how a motor comes up to speed.
@@ -349,9 +381,12 @@ object OpenSequence {
             caseRotY = caseRotY,
             hingeRotY = -beats.open * HINGE_DEG,
             cameraZ = cameraZ,
-            discX = lerp(caseX, viewX, beats.lift),
-            discY = lerp(caseY, viewY, beats.lift),
-            discZ = lerp(caseZ + TRAY_DISC_Z, viewZ, beats.lift),
+            // Height on the leading channel, depth on the trailing one: the disc lifts clear
+            // of the case and only then travels to the lens. Driving both from `lift` sends
+            // it diagonally through the lid.
+            discX = lerp(caseX, viewX, beats.liftForward),
+            discY = lerp(caseY, viewY, beats.liftRise),
+            discZ = lerp(caseZ + TRAY_DISC_Z, viewZ, beats.liftForward),
             discScale = 1f,
             // Visible as soon as the lid starts to move, so you see it seated on the spindle
             // and then rise out — rather than it appearing from nowhere once already clear.

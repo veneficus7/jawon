@@ -93,19 +93,28 @@ object RoomAtmosphere {
     private const val DOF_MAX_FOREGROUND_COC = 5
 
     /**
-     * Run the depth-of-field pass at full resolution rather than Filament's default half.
+     * Half resolution, which is Filament's default — **and this is the fix for the stutter
+     * during the open sequence.**
      *
-     * This is the actual fix for background bleeding over the disc. At half resolution the
-     * gather works on a buffer where one texel spans two screen pixels, so the
-     * in-focus/out-of-focus boundary is decided at half precision and the far wall's circle
-     * of confusion reaches an extra pixel or two inward — across an edge as thin as the
-     * disc's rim, that is the difference between a clean silhouette and a smeared one.
+     * It ran at full resolution to stop the far wall's blur bleeding over the disc's rim.
+     * That was measured in the *settled* state, where it costs nothing, and the settled
+     * state is not where the cost is. During the sequence the case flies to 0.21m and fills
+     * the frame, so almost every pixel is inside a large circle of confusion and the gather
+     * runs over all of them at full res.
      *
-     * It is the most expensive single switch in this file. If M10's tiers have to give
-     * something back on weaker GPUs, this is the first candidate — followed by turning the
-     * whole pass off, which is where it already was.
+     * Measured across repeated open/close cycles on a Galaxy S25 Ultra at Thermal Status 2:
+     *
+     * | | average fps | frames at 16ms | hitches ≥24ms |
+     * |---|---|---|---|
+     * | full resolution | 102.6 | 243 | 16 |
+     * | half resolution | **112.5** | **131** | **10** |
+     *
+     * The bleeding it was hired to fix is handled well enough by the median filter and the
+     * tightened [DOF_MAX_BACKGROUND_COC] on their own. If it ever comes back, drop that
+     * clamp further before reaching for this — steady frames during the one moment the user
+     * is watching an animation are worth more than a pixel of rim.
      */
-    private const val DOF_NATIVE_RESOLUTION = true
+    private const val DOF_NATIVE_RESOLUTION = false
 
     /**
      * Gather ring counts. 0 is Filament's default and means adaptive — it picks a ring count
@@ -270,16 +279,13 @@ object RoomAtmosphere {
             stride = SSR_STRIDE
         }
 
-        // Screen-space refraction, for the cases' clear shells.
+        // OFF, because nothing uses transmission any more.
         //
-        // Without this the shells' KHR_materials_transmission does nothing and they fall
-        // back to looking like flat pale surfaces — which is exactly the "dull plastic"
-        // problem transmission was added to solve. It is what bends the background through
-        // the thickness and gathers light at the edges.
-        //
-        // Unlike SSR (off, and a 7x regression) this only costs where transmissive pixels
-        // actually are, and in a gallery of bays that is two or three cases.
-        view.setScreenSpaceRefractionEnabled(true)
+        // This was turned on for the cases' KHR_materials_transmission shells. Those went
+        // back to alpha blending when it turned out refraction cannot show the cover inlay
+        // sealed inside them — but this switch was left on, buying a refraction pass that no
+        // material in the scene asks for. Free to leave enabled only if you never look.
+        view.setScreenSpaceRefractionEnabled(false)
 
         // Contact-hardening shadows. The key light's own map size and bulb radius are set
         // where the light is built, in WallSceneScreen — this is only the filter.
