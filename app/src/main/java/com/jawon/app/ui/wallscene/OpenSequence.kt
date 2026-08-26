@@ -20,7 +20,7 @@ import kotlin.math.sin
 object OpenSequence {
 
     /**
-     * 2400ms, up from the prototype's 1500.
+     * 1900ms, up from the prototype's 1500.
      *
      * Five distinct physical actions — a case sliding out, turning, a lid swinging, a disc
      * rising, a platter spinning up — were being run in a second and a half. Each got about
@@ -36,26 +36,32 @@ object OpenSequence {
     const val DURATION_MS = 1900f
 
     /**
-     * Beat windows. **The overlaps are much smaller than the prototype's.**
+     * Beat windows. **Deeply overlapped — each beat starts around halfway through the one
+     * before it**, so the case is still sliding out as it begins to turn, still turning as
+     * the lid starts to swing, and the disc is already rising before the lid has settled.
      *
-     * They used to run four deep — the turn began before the pull finished, the lid before
-     * the turn settled, the disc before the lid did. Overlap is what makes a sequence feel
-     * continuous rather than robotic, so some is wanted, but at that density every beat was
-     * masked by the next and none of them read. Now each hands over near its own end, with
-     * roughly a fifth of a beat of overlap: continuous, but you can see each thing happen.
+     * Overlapping action is the whole reason this reads as one object being handled rather
+     * than as five animations queued up. It was tried at this density before and looked like
+     * mush, so the beats were spaced out — but the density was never the problem. The curve
+     * was: a plain ease-out-back starts at full speed, so a beat beginning mid-way through another
+     * snapped on instead of blending, and the more they overlapped the more of those jolts
+     * you got.
      *
-     * The lid and the lift get the most room, because they are what the owner is watching —
-     * "the case opens smoothly, and the disc comes out slowly and smoothly".
+     * With [easeSmoothBack] every beat now starts and ends at zero velocity, so overlapping
+     * motions cross-fade instead of fighting. That is what makes this density safe.
+     *
+     * The lid and the lift still get the longest windows, because they are the two being
+     * watched — "the case opens smoothly, and the disc comes out slowly and smoothly".
      */
     private const val PULL_FROM = 0.00f
-    private const val PULL_TO = 0.19f
-    private const val TURN_FROM = 0.15f
-    private const val TURN_TO = 0.38f
-    private const val OPEN_FROM = 0.34f
-    private const val OPEN_TO = 0.63f
-    private const val LIFT_FROM = 0.58f
-    private const val LIFT_TO = 0.90f
-    private const val SPIN_FROM = 0.84f
+    private const val PULL_TO = 0.26f
+    private const val TURN_FROM = 0.13f
+    private const val TURN_TO = 0.46f
+    private const val OPEN_FROM = 0.30f
+    private const val OPEN_TO = 0.68f
+    private const val LIFT_FROM = 0.52f
+    private const val LIFT_TO = 0.92f
+    private const val SPIN_FROM = 0.76f
     private const val SPIN_TO = 1.00f
 
     // Motion, in metres and degrees (prototype units x 0.1).
@@ -98,18 +104,18 @@ object OpenSequence {
 
     // ---- Overshoot, per beat ------------------------------------------------------
     //
-    // Read against [easeOutBack]'s table. Each is chosen from how far the beat actually
+    // Read against [easeSmoothBack]'s measured table. Each is chosen from how far the beat actually
     // travels, because the same percentage means very different things across a 115mm
     // slide and a 123° swing.
 
-    /** 2.3% of 115mm ≈ 2.6mm past the mark. The case clears the rack and rocks back. */
-    private const val PULL_BACK = 0.8f
+    /** 2.1% of 115mm = 2.5mm past the mark. The case clears the rack and rocks back. */
+    private const val PULL_BACK = 0.12f
 
-    /** 2.3% of the 90° turn ≈ 2°. The case turns square and settles onto square. */
-    private const val TURN_BACK = 0.8f
+    /** 2.1% of the 90 degree turn = 1.9 degrees. It turns square and settles onto square. */
+    private const val TURN_BACK = 0.12f
 
     /**
-     * 3.0% of 123.2° ≈ 3.7° past the hinge stop.
+     * 2.9% of 123.2 degrees = 3.6 degrees past the hinge stop.
      *
      * The most important of the four: a lid that stops dead at its limit is the single most
      * obviously fake moment in the sequence. Strictly a hinge cannot travel past its own
@@ -118,10 +124,10 @@ object OpenSequence {
      * reading as alive beats being right about it. If it ever looks like flapping rather
      * than settling, this is the number.
      */
-    private const val OPEN_BACK = 0.9f
+    private const val OPEN_BACK = 0.14f
 
-    /** 1.8%, ≈2.7mm along the disc's ~160mm rise — the gentlest settle of the four. */
-    private const val LIFT_BACK = 0.7f
+    /** 1.4%, 2.2mm along the disc's ~160mm rise - the gentlest settle of the four. */
+    private const val LIFT_BACK = 0.10f
 
     /**
      * How the lift beat is split between rising and coming forward.
@@ -170,33 +176,45 @@ object OpenSequence {
     // and both read correctly without a second set of curves.
 
     /**
-     * Ease out past the target, then settle back onto it.
+     * Smootherstep with an overshoot laid on top — **the curve the overlapping beats need.**
      *
-     * This is the curve the sequence was missing. Every beat used to decelerate onto its
-     * target and stop dead, which nothing physical does — a case sliding out of a rack, a
-     * lid reaching its hinge stop and a disc coming to rest all carry momentum past the
-     * mark and come back to it.
+     * A plain ease-out-back starts fast: its slope at t=0 is `overshoot + 3`, so a beat using it
+     * jumps to speed the instant it begins. That is fine for a beat starting from rest and
+     * wrong for one starting while another is still moving, because the two motions do not
+     * blend — the new one snaps on. It is exactly why the beats had to be spaced apart to
+     * read cleanly, and why heavy overlap looked like mush.
      *
-     * [overshoot] is the classic "back" parameter, and its relationship to how far the
-     * motion actually travels past the target is not obvious — the peak works out to
-     * `4·c³ / 27·(c+1)²`. Some values worth knowing, because the per-beat constants below
-     * are chosen from this table rather than by eye:
+     * This starts and ends at **zero velocity** (from smootherstep) while still carrying
+     * past its mark and settling back (from the added bump), so beats can overlap as deeply
+     * as the choreography wants and still blend into one another. In value-graph terms: no
+     * corners anywhere, and a gentle hump before the curve flattens onto its target.
      *
-     * | `overshoot` | travels past target by |
-     * |---|---|
-     * | 0.5 | 0.8% |
-     * | 0.8 | 2.3% |
-     * | 0.9 | 3.0% |
-     * | 1.0 | 3.7% |
-     * | 1.70158 (the CSS default) | 10% |
+     * The bump is `t³(1-t)²`, normalised to peak at 1. Both exponents are load-bearing:
+     * `t³` makes its slope zero at the start, and `(1-t)²` makes it zero at the *end* too.
+     * The obvious `t³(1-t)` fails the second — it arrives at t=1 still moving at about
+     * -0.2, and since a beat clamps and holds after t=1, that lands a velocity step exactly
+     * where the motion is supposed to be at rest. A corner in the value graph, in the one
+     * place it is most visible.
      *
-     * The CSS default is far too much here: 10% of the lid's 123° swing is 12° of flap.
+     * [overshoot] is **not** the resulting overshoot — smootherstep is already climbing
+     * steeply where the bump peaks, so most of it is absorbed into the approach. Measured:
+     *
+     * | `overshoot` | actually travels past by | peak at |
+     * |---|---|---|
+     * | 0.03 | 0.07% | t=0.95 |
+     * | 0.06 | 0.43% | t=0.91 |
+     * | 0.09 | 1.12% | t=0.88 |
+     * | 0.12 | 2.14% | t=0.85 |
+     * | 0.16 | 3.91% | t=0.83 |
+     *
+     * Measured, not derived — the relationship is steeply non-linear and an estimate of it
+     * was wrong by a factor of five at the low end. The per-beat constants below are read
+     * off this table.
      */
-    fun easeOutBack(t: Float, overshoot: Float): Float {
-        val c1 = overshoot
-        val c3 = c1 + 1f
-        val u = t - 1f
-        return 1f + c3 * u * u * u + c1 * u * u
+    fun easeSmoothBack(t: Float, overshoot: Float): Float {
+        val u = 1f - t
+        val bump = t * t * t * u * u / 0.03456f
+        return smootherStep(t) + overshoot * bump
     }
 
     /**
@@ -281,13 +299,13 @@ object OpenSequence {
         val liftT = sub(progress, LIFT_FROM, LIFT_TO)
         val spinT = sub(progress, SPIN_FROM, SPIN_TO)
         return Beats(
-            pull = easeOutBack(pullT, PULL_BACK),
-            turn = easeOutBack(turnT, TURN_BACK),
-            open = easeOutBack(openT, OPEN_BACK),
-            lift = easeOutBack(liftT, LIFT_BACK),
+            pull = easeSmoothBack(pullT, PULL_BACK),
+            turn = easeSmoothBack(turnT, TURN_BACK),
+            open = easeSmoothBack(openT, OPEN_BACK),
+            lift = easeSmoothBack(liftT, LIFT_BACK),
             // Rise leads, forward follows, with a generous cross-fade so the corner between
             // them is a curve rather than a dog-leg.
-            liftRise = easeOutBack(sub(liftT, 0f, RISE_TO), LIFT_BACK),
+            liftRise = easeSmoothBack(sub(liftT, 0f, RISE_TO), LIFT_BACK),
             liftForward = smootherStep(sub(liftT, FORWARD_FROM, 1f)),
             // Smootherstep, not ease-out: this scales the disc's angular *velocity*, so a
             // curve with a steep start would step the acceleration and the disc would
