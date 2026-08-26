@@ -13,3 +13,9 @@
 .externalNativeBuild
 .cxx
 local.properties
+
+# Release signing. Holds the upload key's passwords and the path to the keystore itself.
+# A signing key that reaches a repository is a signing key that has to be replaced.
+/keystore.properties
+*.jks
+*.keystore

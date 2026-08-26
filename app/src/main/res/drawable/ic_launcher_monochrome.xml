@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Themed-icon layer (Android 13+).
+
+    The system throws away these colours and tints the whole layer from the user's wallpaper
+    palette, so **only the alpha channel carries the design**. Pointing `<monochrome>` at the
+    full-colour foreground — which is what the template did — collapses its gradients and its
+    amber highlight into one flat blob, and the mark stops being legible.
+
+    So this is the same idea redrawn as pure silhouette: the disc's ring, its centre hole
+    knocked out, and the case edge beside it. Everything reads at any tint because it is
+    shape rather than value.
+
+    `evenOdd` is what cuts the hole — two nested circles in one path with the same winding
+    would fill solid.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108"
+    android:tint="#FFFFFF">
+
+    <!-- The case, edge-on. -->
+    <path
+        android:pathData="M30,30 L44,30 L44,78 L30,78 Z"
+        android:fillColor="#FFFFFF"
+        android:fillAlpha="0.55" />
+
+    <!-- The disc as a ring: outer circle, centre hole knocked out by even-odd fill. -->
+    <path
+        android:fillType="evenOdd"
+        android:pathData="M60,54m-25,0a25,25 0 1,0 50,0a25,25 0 1,0 -50,0 M60,54m-7,0a7,7 0 1,0 14,0a7,7 0 1,0 -14,0"
+        android:fillColor="#FFFFFF" />
+</vector>

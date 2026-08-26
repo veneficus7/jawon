@@ -1,3 +1,25 @@
+import java.util.Properties
+
+/**
+ * Release signing, read from `keystore.properties` at the repository root.
+ *
+ * That file is gitignored and is NOT in this repository — it holds the passwords to the
+ * upload key, and a signing key that has been committed is a signing key that has to be
+ * replaced. Create it yourself; see `docs/release.md` for the two commands.
+ *
+ * When it is absent — which is the normal state for a fresh clone, for CI, and for anyone
+ * who only wants a debug build — `signingConfigs.release` is simply not created and the
+ * release build stays unsigned. That is deliberate: failing the whole build because a
+ * developer has no upload key would make `assembleDebug` depend on a secret.
+ */
+val keystorePropertiesFile = rootProject.file("keystore.properties")
+val keystoreProperties = Properties().apply {
+    if (keystorePropertiesFile.exists()) {
+        keystorePropertiesFile.inputStream().use { load(it) }
+    }
+}
+val hasSigningKey = keystoreProperties.getProperty("storeFile") != null
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -20,9 +42,51 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    signingConfigs {
+        if (hasSigningKey) {
+            create("release") {
+                storeFile = rootProject.file(keystoreProperties.getProperty("storeFile"))
+                storePassword = keystoreProperties.getProperty("storePassword")
+                keyAlias = keystoreProperties.getProperty("keyAlias")
+                keyPassword = keystoreProperties.getProperty("keyPassword")
+            }
+        }
+    }
+
     buildTypes {
         release {
-            isMinifyEnabled = false
+            // R8 on, with rules in proguard-rules.pro. Most of that file is Filament: its
+            // JNI resolves Java fields by NAME, so obfuscating them does not fail to build,
+            // it fails to render — read the file before trimming anything from it.
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro"
+            )
+            // With an upload key present, sign for real. Without one, fall back to the debug
+            // key — NOT because that is publishable (Play rejects debug-signed uploads), but
+            // because an unsigned APK cannot be installed at all, and an R8 build that
+            // cannot be installed cannot be tested.
+            //
+            // That matters more here than in most apps: the risk of minification is Filament
+            // losing a field name to obfuscation, and the symptom is a native abort or a
+            // silently-ignored setting at runtime. A green build says nothing about it.
+            signingConfig = if (hasSigningKey) {
+                signingConfigs.getByName("release")
+            } else {
+                signingConfigs.getByName("debug")
+            }
+        }
+        debug {
+            // Version name only — deliberately NOT applicationIdSuffix.
+            //
+            // Suffixing the id lets debug and release sit side by side, which is genuinely
+            // useful, but it also makes the debug build a different app: different data
+            // directory, so the library you already imported is not there and the app opens
+            // on an empty wall. Until the library lives somewhere that survives that, the
+            // continuity is worth more than the side-by-side install.
+            versionNameSuffix = "-debug"
         }
     }
     compileOptions {
