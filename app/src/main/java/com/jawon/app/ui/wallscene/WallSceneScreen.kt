@@ -225,6 +225,12 @@ private const val DISC_MODEL_ASSET = "models/disc.glb"
 private const val CLOSED_CASE_MODEL_ASSET = "models/case_closed.glb"
 
 /**
+ * The underlight cone each album levitates in. Geometry rather than a real spot light —
+ * Filament will not give every bay its own light, and this is one draw. See build_beam().
+ */
+private const val BEAM_MODEL_ASSET = "models/beam.glb"
+
+/**
  * How many case instances the wall allocates, once, at startup.
  *
  * The pool is bounded by the viewport rather than by the library — `wantedPoolSize` below
@@ -394,6 +400,9 @@ fun WallSceneScreen(
         val caseInstances = remember(modelLoader) {
             modelLoader.createInstancedModel(CLOSED_CASE_MODEL_ASSET, MAX_CASE_SLOTS)
         }
+        val beamInstances = remember(modelLoader) {
+            modelLoader.createInstancedModel(BEAM_MODEL_ASSET, MAX_CASE_SLOTS)
+        }
 
         val trayModel = rememberModelInstance(modelLoader, TRAY_MODEL_ASSET)
         val lidModel = rememberModelInstance(modelLoader, LID_MODEL_ASSET)
@@ -422,7 +431,9 @@ fun WallSceneScreen(
         }
 
         val fonts = remember(context) { CaseArt.Fonts(context) }
-        val artCache = remember(fonts) { CaseArtCache(fonts) }
+        val artCache = remember(fonts) {
+            CaseArtCache(fonts, trackTitles = { viewModel.trackTitles(it) })
+        }
 
         // Push the open album's art onto the permanently-mounted active case, and hide the
         // whole group when nothing is open. Writing `bitmap` re-uploads into the node's
@@ -839,6 +850,12 @@ fun WallSceneScreen(
                     caseSlots.slots.forEach { slot ->
                         if (!slot.occupied) return@forEach
                         val root = slot.root ?: return@forEach
+                        // The beam stands on the board and never turns, so it only needs
+                        // placing — at the foot of the bay, under wherever the case is
+                        // hanging. CASE_H/2 down from the album's centre is the board top.
+                        slot.beam?.position =
+                            Position(slot.baseX, slot.baseY - CASE_H / 2f, slot.baseZ)
+
                         if (reduceMotion) {
                             // Seated on the shelf, square on, exactly as before.
                             root.position = Position(slot.baseX, slot.baseY, slot.baseZ)
@@ -1015,7 +1032,8 @@ fun WallSceneScreen(
             CaseSlotNodes(
                 slots = caseSlots,
                 size = casePoolSize,
-                caseInstances = caseInstances
+                caseInstances = caseInstances,
+                beamInstances = beamInstances
             )
             // Dust hangs in front of the wall, animated entirely on the GPU. Not touchable
             // and casts nothing â€” it is glow, and a shadow-casting mote would be absurd.

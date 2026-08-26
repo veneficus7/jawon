@@ -103,6 +103,12 @@ class WallSceneViewModel @Inject constructor(
 
     fun onPlayPause() = viewModelScope.launch { playbackRepository.playPause() }
 
+    /**
+     * Track titles for one album, for printing on its case back. One shot, off the main
+     * thread — the wall bakes each back once and keeps the bitmap.
+     */
+    suspend fun trackTitles(albumId: String): List<String> = trackDao.titlesForAlbum(albumId)
+
     /** Explicit rather than a toggle — see `PlaybackRepository.setPlaying`. */
     fun setPlaying(playing: Boolean) =
         viewModelScope.launch { playbackRepository.setPlaying(playing) }

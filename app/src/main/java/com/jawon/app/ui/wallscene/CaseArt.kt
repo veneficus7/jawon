@@ -156,15 +156,17 @@ object CaseArt {
      * printed panel inset from the edges, a rule under the title, and a barcode block bottom
      * right. The barcode is the strongest signal of the three and costs a dozen lines.
      *
-     * The tracklist is deliberately absent. It wants real track data per album, which the
-     * wall does not currently load, and it belongs to the case-back liner notes that the open
-     * sequence will need anyway — see PLAN.md §9 #4.
+     * The tracklist is printed down the panel in mono, numbered, exactly as a real back
+     * inlay sets it — DESIGN.md §3 makes mono "non-negotiable" for track numbers and
+     * durations, and this is the same language. Titles come from the database once per
+     * album; a long list is truncated with a count rather than shrunk to illegibility.
      */
     fun bakeBack(
         albumId: String,
         title: String,
         artist: String,
         hue: Float,
+        trackTitles: List<String>,
         fonts: Fonts
     ): Bitmap {
         val bitmap = Bitmap.createBitmap(BACK_W, BACK_H, Bitmap.Config.ARGB_8888)
@@ -217,6 +219,48 @@ object CaseArt {
         // Rule under the masthead.
         paint.color = Color.HSVToColor(floatArrayOf(hueDeg, 0.40f, 0.46f + hue * 0.14f))
         canvas.drawRect(textLeft, h * 0.235f, w - textLeft, h * 0.238f, paint)
+
+        // The tracklist, set in mono the way a real inlay does.
+        val numPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
+            typeface = fonts.mono
+            textSize = w * 0.040f
+            color = Color.HSVToColor(floatArrayOf(hueDeg, 0.45f, 0.62f))
+            letterSpacing = 0.06f
+        }
+        val trackPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
+            typeface = fonts.mono
+            textSize = w * 0.040f
+            color = LABEL_CREAM
+        }
+        val lineH = h * 0.0355f
+        var y = h * 0.30f
+        // Stop short of the barcode block rather than running under it.
+        val listBottom = h - textLeft - h * 0.115f
+        val numColumn = textLeft
+        val titleColumn = textLeft + w * 0.075f
+        val titleRoom = w - titleColumn - textLeft
+
+        trackTitles.forEachIndexed { index, track ->
+            if (y > listBottom) return@forEachIndexed
+            // One line reserved to say how many did not fit — a back inlay that silently
+            // stops halfway reads as a rendering bug rather than a long album.
+            val remaining = trackTitles.size - index
+            if (y + lineH > listBottom && remaining > 1) {
+                canvas.drawText("+$remaining MORE", numColumn, y, numPaint)
+                y += lineH
+                return@forEachIndexed
+            }
+            canvas.drawText("%02d".format(index + 1), numColumn, y, numPaint)
+            canvas.drawText(
+                TextUtils.ellipsize(
+                    track, trackPaint, titleRoom, TextUtils.TruncateAt.END
+                ).toString(),
+                titleColumn,
+                y,
+                trackPaint
+            )
+            y += lineH
+        }
 
         // Barcode, bottom right. Bar widths come from the album id, so a given album always
         // prints the same code — it is nonsense, but it is *consistently* nonsense, and a

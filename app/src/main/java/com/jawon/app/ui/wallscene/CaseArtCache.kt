@@ -27,6 +27,12 @@ data class CaseArtwork(
  */
 class CaseArtCache(
     private val fonts: CaseArt.Fonts,
+    /**
+     * Track titles for an album, for printing on its back inlay. Injected as a function
+     * rather than a DAO so this class stays free of the data layer, the way the rest of the
+     * wall-scene package is.
+     */
+    private val trackTitles: suspend (String) -> List<String> = { emptyList() },
     private val capacity: Int = 40
 ) {
     private val entries = mutableStateMapOf<String, CaseArtwork>()
@@ -43,6 +49,9 @@ class CaseArtCache(
      */
     suspend fun load(case: CaseLayout) {
         if (has(case.albumId)) return
+        // Read outside the IO block below only because it is already a suspend call on its
+        // own dispatcher; the bitmap work still happens off the main thread.
+        val titles = trackTitles(case.albumId)
         val artwork = withContext(Dispatchers.IO) {
             val cover = CaseArt.loadCoverSquare(case.coverPath)
             val hue = case.storedHue.takeIf { it != 0f }
@@ -51,7 +60,9 @@ class CaseArtCache(
             CaseArtwork(
                 spine = CaseArt.bakeSpine(case.albumId, case.title, case.artist, hue, fonts),
                 cover = cover,
-                back = CaseArt.bakeBack(case.albumId, case.title, case.artist, hue, fonts),
+                back = CaseArt.bakeBack(
+                    case.albumId, case.title, case.artist, hue, titles, fonts
+                ),
                 hue = hue
             )
         }

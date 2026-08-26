@@ -32,6 +32,13 @@ class CaseSlot {
     var backArt: ImageNode? = null
 
     /**
+     * The underlight this album levitates in. A SIBLING of [root], never a child: the case
+     * turns and the beam must not turn with it, or the shaft of light swings around the bay
+     * like a searchlight.
+     */
+    var beam: Node? = null
+
+    /**
      * Where this slot sits on the wall before the idle motion is added.
      *
      * [bind] writes these rather than writing `root.position` directly, because the frame
@@ -174,11 +181,13 @@ fun CaseSlots.bind(
             slot.root?.isVisible = false
             slot.body?.name = null
             slot.occupied = false
+            slot.beam?.isVisible = false
             return@forEachIndexed
         }
 
         val (case, artwork) = binding
         slot.occupied = true
+        slot.beam?.isVisible = true
         slot.baseX = case.x
         slot.baseY = case.y
         // The playing album stands out of its slot, so browsing away still shows you
@@ -220,7 +229,8 @@ fun CaseSlots.bind(
 fun SceneScope.CaseSlotNodes(
     slots: CaseSlots,
     size: Int,
-    caseInstances: List<FilamentInstance>
+    caseInstances: List<FilamentInstance>,
+    beamInstances: List<FilamentInstance>
 ) {
     slots.ensure(size)
 
@@ -247,6 +257,20 @@ fun SceneScope.CaseSlotNodes(
         // as the wall scrolls; keying by album is what destroyed them.
         key(index) {
             val slot = slots.slots[index]
+            // The underlight, mounted alongside the case rather than inside it so the shaft
+            // stays put while the album turns. Emissive geometry, not a light: Filament will
+            // not hand out one spot per album, and this costs a single draw.
+            ModelNode(
+                beamInstances[index],
+                apply = {
+                    slot.beam = this
+                    isVisible = false
+                    isTouchable = false
+                    // It is light. It neither casts nor receives.
+                    isShadowCaster = false
+                    isShadowReceiver = false
+                }
+            )
             Node(apply = { slot.root = this }) {
                 // One instance of the shared closed-case asset — geometry, material and
                 // textures are held once and this only adds a transform. Modelled in the

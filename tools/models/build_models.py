@@ -410,8 +410,20 @@ def build_closed_case():
     # fusing into one slab. This is the line that says "this thing opens".
     seam = 0.00014
 
+    # TWO MATERIAL SLOTS, and this is the whole point of the rebuild. The case used to be one
+    # opaque dark slab, which read as a lump of plastic rather than a jewel case. Now the back
+    # half is opaque moulded tray and the front half is the clear shell you actually see the
+    # artwork through.
+    #
+    # Faces are tagged by which pass built them: everything standing when the tray is done is
+    # slot 0, everything added afterwards is slot 1. Tagged before `remove_doubles`, which can
+    # merge geometry and scramble any index-based scheme.
     box(bm, tray_cx, az(0.0), 0.0, TRAY_T - seam, CASE_D, CASE_H)
+    tray_faces = set(bm.faces)
+
     box(bm, lid_cx, az(0.0), 0.0, lid_t - seam, CASE_D, CASE_H)
+    for f in bm.faces:
+        f.material_index = 0 if f in tray_faces else 1
 
     # Hinge barrels. The pin is vertical on a real case, so these run along the
     # height axis and show as two short cylinders at the top and bottom of the
@@ -420,26 +432,152 @@ def build_closed_case():
         cz = sz * (CASE_H / 2.0 - 0.011)
         cylinder(bm, 0.0, az(CASE_D / 2.0 - 0.0017), cz,
                  0.0017, 0.0075, segments=10, axis="Z")
+    # Knuckles belong to the moulded tray, not the clear shell.
+    for f in bm.faces:
+        if f not in tray_faces and f.calc_center_median().x < tray_cx + TRAY_T:
+            f.material_index = 0
 
     bmesh.ops.remove_doubles(bm, verts=bm.verts, dist=1e-6)
     bm.to_mesh(obj.data)
     bm.free()
 
     finish(obj)
+
+    # Slot 0 — the moulded tray. Still dark, because a real jewel case's tray is, but this is
+    # now only the back half of the object rather than all of it.
     obj.data.materials.append(
         principled(
-            "JewelCasePlastic",
-            base_color=(0.055, 0.050, 0.044),
+            "JewelCaseTray",
+            base_color=(0.048, 0.044, 0.040),
             metallic=0.0,
-            roughness=0.22,
-            # Opaque, unlike the held case's lid. The wall used to hang a separate
-            # transparent panel off every slot for the plastic sheen; clearcoat is
-            # that sheen, as a second specular lobe on an opaque surface, and it
-            # costs no blending or sorting across hundreds of instances.
-            coat=0.85,
+            roughness=0.24,
+            coat=0.8,
             coat_roughness=0.06,
         )
     )
+    # Slot 1 — the clear shell.
+    #
+    # Affordable now, and it was not before. When the wall was a packed rack of ~470 cases a
+    # transparent surface per case meant hundreds of blended, depth-sorted draws, which is why
+    # the previous pass deliberately removed the one that existed. A gallery of 150mm bays puts
+    # two or three cases on screen, so the cost is nothing and the look is the whole point.
+    #
+    # Very low roughness with a full clearcoat over it: two speculars, a broad one off the
+    # polystyrene and a tight one off the surface, which is what makes plastic read as *shiny*
+    # rather than merely pale. Alpha is high enough to catch the light and low enough to read
+    # the printed inlay straight through it.
+    obj.data.materials.append(
+        principled(
+            "JewelCaseClear",
+            base_color=(0.82, 0.87, 0.92),
+            metallic=0.0,
+            roughness=0.03,
+            coat=1.0,
+            coat_roughness=0.015,
+            alpha=0.20,
+            blend=True,
+        )
+    )
+    return obj
+
+
+# ---------------------------------------------------------------------------
+# The underlight — the beam each album levitates in.
+# ---------------------------------------------------------------------------
+
+def build_beam():
+    """
+    A cone of light standing on the shelf, plus the pool it throws on the board.
+
+    **Geometry, not a light.** Filament will not give every album a real spot: shadow-casting
+    lights are the scarcest resource in the renderer, and even non-shadowing ones are capped
+    well below the number of bays a wide library has. A cone of emissive, alpha-blended
+    geometry costs one draw, looks the same from the front, and can be handed to as many
+    slots as there are albums.
+
+    Modelled standing at the origin so `CaseSlots` can drop it at a bay's base with no
+    transform. Height runs along **Blender Z**, which the Y-up export turns into the app's
+    +Y — building it along Blender Y instead produces a beam that hangs downwards through
+    the shelf, which is exactly what the first attempt did.
+
+    Vertex colours carry the fade: opaque-ish at the emitter, transparent at the top, so the
+    beam dissolves into the room instead of ending in a hard rim. gltfio multiplies COLOR_0
+    into base colour, so this needs no shader and no `.mat`.
+    """
+    obj = new_mesh_object("beam")
+    bm = bmesh.new()
+
+    # Narrower than the first attempt, which opened to 116mm against a 125mm case and
+    # swallowed the album whole. This grazes it instead.
+    height = 0.150
+    r_base = 0.013
+    r_top = 0.034
+    segments = 28
+
+    # A truncated cone. Built open-ended: caps would read as a lid on the beam.
+    ring_lo = []
+    ring_hi = []
+    for i in range(segments):
+        a = 2.0 * math.pi * i / segments
+        c, s = math.cos(a), math.sin(a)
+        ring_lo.append(bm.verts.new((c * r_base, s * r_base, 0.0)))
+        ring_hi.append(bm.verts.new((c * r_top, s * r_top, height)))
+    bm.verts.ensure_lookup_table()
+    for i in range(segments):
+        j = (i + 1) % segments
+        bm.faces.new((ring_lo[i], ring_lo[j], ring_hi[j], ring_hi[i]))
+
+    # The pool on the board: a disc just above the timber, so the beam has a source.
+    pool = []
+    for i in range(segments):
+        a = 2.0 * math.pi * i / segments
+        pool.append(bm.verts.new((math.cos(a) * r_base * 2.6,
+                                  math.sin(a) * r_base * 2.6, 0.0006)))
+    bm.faces.new(tuple(pool))
+
+    # Fade with height. The pool and the cone's foot are brightest; the top is gone.
+    col = bm.loops.layers.color.new("Col")
+    for face in bm.faces:
+        for loop in face.loops:
+            a = 1.0 - (loop.vert.co.z / height)
+            a = max(0.0, min(1.0, a)) ** 1.6
+            loop[col] = (1.0, 1.0, 1.0, a)
+
+    bm.normal_update()
+    bm.to_mesh(obj.data)
+    bm.free()
+
+    # No bevel and no triangulate pass: this is a soft volume, and beveling it would only
+    # round edges that are meant to be invisible.
+    bpy.context.view_layer.objects.active = obj
+    obj.select_set(True)
+    bpy.ops.object.shade_smooth()
+    obj.select_set(False)
+
+    # Faint, and that is the whole trick.
+    #
+    # glTF has no additive blend mode — BLEND is `src·a + dst·(1-a)`, so a bright surface
+    # *occludes* what is behind it rather than adding to it. The first version ran alpha 0.5
+    # with full emission and came out as a solid white plastic cone standing on the shelf.
+    #
+    # Emission is the specific trap: it is added after the lighting and is not damped by
+    # vertex colour, so a strong emissive term glows uniformly and defeats the height fade
+    # entirely. Kept low, it reads as air catching light; pushed up, it reads as a lampshade.
+    #
+    # A real additive beam would need a hand-written `.mat` (see docs/materials.md), which
+    # costs a 735MB toolchain download for one cone. This is the honest approximation.
+    mat = principled(
+        "Underlight",
+        base_color=(1.0, 0.824, 0.627),   # RoomLighting.KEY_COLOR — the same lamp
+        metallic=0.0,
+        roughness=1.0,
+        alpha=0.14,
+        blend=True,
+    )
+    bsdf = mat.node_tree.nodes["Principled BSDF"]
+    bsdf.inputs["Emission Color"].default_value = (1.0, 0.824, 0.627, 1.0)
+    bsdf.inputs["Emission Strength"].default_value = 0.30
+    obj.data.materials.append(mat)
     return obj
 
 
@@ -587,6 +725,9 @@ def main():
 
     clear_scene()
     paths.append(export([build_closed_case()], "case_closed.glb"))
+
+    clear_scene()
+    paths.append(export([build_beam()], "beam.glb"))
 
     clear_scene()
     paths.append(export([build_disc()], "disc.glb"))
