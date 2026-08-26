@@ -11,6 +11,7 @@ import com.jawon.app.ui.wallscene.WallDimens.CASE_H
 import com.jawon.app.ui.wallscene.WallDimens.CASE_W
 import com.jawon.app.ui.wallscene.WallDimens.PLATE_LIFT
 import com.jawon.app.ui.wallscene.WallDimens.PROUD_Z
+import com.jawon.app.ui.wallscene.WallDimens.TRAY_FRONT_Z
 import io.github.sceneview.SceneScope
 import io.github.sceneview.math.Direction
 import io.github.sceneview.math.Position
@@ -343,7 +344,16 @@ fun SceneScope.CaseSlotNodes(
                         bitmap = blankCover,
                         size = Size(CASE_D, CASE_H, 0f),
                         normal = Direction(z = 1f),
-                        position = Position(CASE_W / 2f + PLATE_LIFT, 0f, 0f),
+                        // UNDER the clear shell, not stuck on the outside of it.
+                        //
+                        // This used to sit PLATE_LIFT proud of the case, which meant the
+                        // largest, most-looked-at surface of every album was an opaque
+                        // bitmap in front of the plastic — so no amount of transmission or
+                        // clearcoat on the shell could make the case read as glass, because
+                        // the glass was behind the picture. The lid occupies +0.001..+0.005;
+                        // sitting just inside it means you look at the artwork through 4mm
+                        // of refracting polystyrene, which is exactly what a jewel case is.
+                        position = Position(TRAY_FRONT_Z - PLATE_LIFT, 0f, 0f),
                         rotation = io.github.sceneview.math.Rotation(0f, 90f, 0f),
                         apply = {
                             slot.coverArt = this

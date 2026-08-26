@@ -526,49 +526,26 @@ def build_beam():
     obj = new_mesh_object("beam")
     bm = bmesh.new()
 
-    # Narrower than the first attempt, which opened to 116mm against a 125mm case and
-    # swallowed the album whole. This grazes it instead.
-    height = 0.150
     r_base = 0.013
-    r_top = 0.034
     segments = 28
 
-    # A truncated cone. Built open-ended: caps would read as a lid on the beam.
-    ring_lo = []
-    ring_hi = []
-    for i in range(segments):
-        a = 2.0 * math.pi * i / segments
-        c, s = math.cos(a), math.sin(a)
-        ring_lo.append(bm.verts.new((c * r_base, s * r_base, 0.0)))
-        ring_hi.append(bm.verts.new((c * r_top, s * r_top, height)))
-    bm.verts.ensure_lookup_table()
-    for i in range(segments):
-        j = (i + 1) % segments
-        bm.faces.new((ring_lo[i], ring_lo[j], ring_hi[j], ring_hi[i]))
-
-    cone_faces = set(bm.faces)
-
-    # The pool on the board: a disc just above the timber, so the beam has a source.
+    # NO SHAFT.
+    #
+    # There was a truncated cone here standing between the board and the album, and it never
+    # worked. glTF has no additive blend mode, so a shaft can only ever be alpha-composited
+    # over the scene — which means it *occludes* rather than adds, and reads as a solid
+    # low-opacity object standing on the shelf rather than as light. Faint enough not to
+    # occlude and it disappears; bright enough to see and it is a plastic cone.
+    #
+    # A real volumetric shaft wants additive blending, which wants a hand-written `.mat` and
+    # the 735MB toolchain that entails (docs/materials.md). Until then the pool alone does the
+    # job: it blooms, so it reads as a genuine source, and the eye supplies the rest.
     pool = []
     for i in range(segments):
         a = 2.0 * math.pi * i / segments
         pool.append(bm.verts.new((math.cos(a) * r_base * 2.6,
                                   math.sin(a) * r_base * 2.6, 0.0006)))
     bm.faces.new(tuple(pool))
-
-    # Two slots: the shaft is haze, the pool is the source. They need opposite treatments —
-    # see the emission note on the materials below.
-    for f in bm.faces:
-        f.material_index = 0 if f in cone_faces else 1
-
-    # Fade with height. The pool and the cone's foot are brightest; the top is gone.
-    col = bm.loops.layers.color.new("Col")
-    for face in bm.faces:
-        for loop in face.loops:
-            a = 1.0 - (loop.vert.co.z / height)
-            a = max(0.0, min(1.0, a)) ** 1.6
-            loop[col] = (1.0, 1.0, 1.0, a)
-
     bm.normal_update()
     bm.to_mesh(obj.data)
     bm.free()
@@ -580,33 +557,7 @@ def build_beam():
     bpy.ops.object.shade_smooth()
     obj.select_set(False)
 
-    # Faint, and that is the whole trick.
-    #
-    # glTF has no additive blend mode — BLEND is `src·a + dst·(1-a)`, so a bright surface
-    # *occludes* what is behind it rather than adding to it. The first version ran alpha 0.5
-    # with full emission and came out as a solid white plastic cone standing on the shelf.
-    #
-    # Emission is the specific trap: it is added after the lighting and is not damped by
-    # vertex colour, so a strong emissive term glows uniformly and defeats the height fade
-    # entirely. Kept low, it reads as air catching light; pushed up, it reads as a lampshade.
-    #
-    # A real additive beam would need a hand-written `.mat` (see docs/materials.md), which
-    # costs a 735MB toolchain download for one cone. This is the honest approximation.
-    # Slot 0 — the shaft. Haze, deliberately dim.
-    shaft = principled(
-        "UnderlightShaft",
-        base_color=(1.0, 0.824, 0.627),   # RoomLighting.KEY_COLOR — the same lamp
-        metallic=0.0,
-        roughness=1.0,
-        alpha=0.13,
-        blend=True,
-    )
-    shaft.node_tree.nodes["Principled BSDF"].inputs["Emission Color"].default_value = \
-        (1.0, 0.824, 0.627, 1.0)
-    shaft.node_tree.nodes["Principled BSDF"].inputs["Emission Strength"].default_value = 0.12
-    obj.data.materials.append(shaft)
-
-    # Slot 1 — the pool where the beam meets the board, and the reason any of this glows.
+    # The pool where the beam meets the board, and the reason any of this glows.
     #
     # `RoomAtmosphere` runs bloom with `threshold = true`, which means **only values above
     # 1.0 bloom at all**. The first beam emitted at 0.3 and therefore could not glow no

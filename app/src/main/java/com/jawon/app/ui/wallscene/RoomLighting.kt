@@ -193,6 +193,38 @@ object RoomLighting {
     private const val VOID_LEVEL = 0.15f
 
     /**
+     * A small, fierce lamp burned into the cubemap — **the thing that makes glossy surfaces
+     * look glossy.**
+     *
+     * Screen-space reflections are off (they cost 7x; see [RoomAtmosphere]), so every shiny
+     * surface in this room reflects the image-based light and nothing else. The cubemap was
+     * a smooth vertical gradient from void to warm, and a mirror reflecting a smooth gradient
+     * looks matte however low you push its roughness — there is no bright *feature* for it to
+     * catch. That, not the material parameters, is why the cases read as dull plastic no
+     * matter how much transmission and clearcoat were thrown at them.
+     *
+     * A hot, small source fixes it: the case's clear shell now has a hard highlight to drag
+     * across itself as it turns, which is what the eye reads as glass. [LAMP_ANGLE_COS] sets
+     * how tight it is — tighter is sharper and more jewel-like, wider is softer and more
+     * like a diffuse ceiling panel.
+     *
+     * Well above 1.0 on purpose. It is HDR, thresholded bloom keys off values over 1.0, and a
+     * reflection of a dim lamp is a dim reflection.
+     */
+    private const val LAMP_HOT_LEVEL = 26f
+    private const val LAMP_ANGLE_COS = 0.955f
+    private const val LAMP_FEATHER = 0.030f
+
+    /**
+     * A second, much broader and cooler source opposite the lamp, so a turning case picks up
+     * a *sequence* of highlights rather than one glint and then nothing for half a
+     * revolution. Real rooms have more than one window.
+     */
+    private const val FILL_HOT_LEVEL = 3.2f
+    private const val FILL_ANGLE_COS = 0.72f
+    private const val FILL_FEATHER = 0.22f
+
+    /**
      * Irradiance as spherical harmonics: 3 bands, 9 coefficients, RGB each.
      *
      * Hand-authored rather than convolved from an environment — a single dim warm fill has
@@ -237,6 +269,17 @@ object RoomLighting {
         // texel, which was survivable at 64px and is 393k throwaway allocations at 256.
         val dir = FloatArray(3)
 
+        // Where the two sources sit, as unit directions. The lamp is the real one the scene
+        // is lit by, so its reflection agrees with its shading; the fill is opposite and low.
+        val lampLen = length(floatArrayOf(KEY_POSITION.x, KEY_POSITION.y, KEY_POSITION.z))
+        val lampX = KEY_POSITION.x / lampLen
+        val lampY = KEY_POSITION.y / lampLen
+        val lampZ = KEY_POSITION.z / lampLen
+        val fillLen = length(floatArrayOf(RIM_POSITION.x, RIM_POSITION.y, RIM_POSITION.z))
+        val fillX = RIM_POSITION.x / fillLen
+        val fillY = RIM_POSITION.y / fillLen
+        val fillZ = RIM_POSITION.z / fillLen
+
         for (face in 0 until 6) {
             for (y in 0 until size) {
                 for (x in 0 until size) {
@@ -250,9 +293,32 @@ object RoomLighting {
                     // falls into the void. Raised to a power so the lamp stays a pool of
                     // light rather than washing the whole upper hemisphere.
                     val t = ((up + 1f) * 0.5f).coerceIn(0f, 1f).pow(2.2f)
-                    floats.put(void[0] + (lamp[0] - void[0]) * t)
-                    floats.put(void[1] + (lamp[1] - void[1]) * t)
-                    floats.put(void[2] + (lamp[2] - void[2]) * t)
+
+                    // Both sources, as smooth-edged discs in the reflected room. Feathered
+                    // rather than hard-cut: a stepped edge here shows up as a jagged rim on
+                    // every reflective surface once the prefilter blurs it into the mips.
+                    val invLen = 1f / length(dir)
+                    val nx = dir[0] * invLen
+                    val ny = dir[1] * invLen
+                    val nz = dir[2] * invLen
+
+                    val lampDot = nx * lampX + ny * lampY + nz * lampZ
+                    val lampHit = smoothStep(
+                        LAMP_ANGLE_COS - LAMP_FEATHER, LAMP_ANGLE_COS + LAMP_FEATHER, lampDot
+                    )
+                    val fillDot = nx * fillX + ny * fillY + nz * fillZ
+                    val fillHit = smoothStep(
+                        FILL_ANGLE_COS - FILL_FEATHER, FILL_ANGLE_COS + FILL_FEATHER, fillDot
+                    )
+
+                    for (c in 0..2) {
+                        val ambientTerm = void[c] + (lamp[c] - void[c]) * t
+                        floats.put(
+                            ambientTerm +
+                                KEY_COLOR[c] * LAMP_HOT_LEVEL * lampHit +
+                                RIM_COLOR[c] * FILL_HOT_LEVEL * fillHit
+                        )
+                    }
                     floats.put(1f)
                 }
             }
@@ -301,6 +367,12 @@ object RoomLighting {
             4 -> { out[0] = u; out[1] = -v; out[2] = 1f }     // +Z
             else -> { out[0] = -u; out[1] = -v; out[2] = -1f } // -Z
         }
+    }
+
+    /** Hermite fade between two edges — the standard smoothstep, feathering the sources. */
+    private fun smoothStep(edge0: Float, edge1: Float, x: Float): Float {
+        val t = ((x - edge0) / (edge1 - edge0)).coerceIn(0f, 1f)
+        return t * t * (3f - 2f * t)
     }
 
     private fun length(v: FloatArray): Float =
