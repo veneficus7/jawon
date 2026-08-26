@@ -344,16 +344,15 @@ fun SceneScope.CaseSlotNodes(
                         bitmap = blankCover,
                         size = Size(CASE_D, CASE_H, 0f),
                         normal = Direction(z = 1f),
-                        // UNDER the clear shell, not stuck on the outside of it.
+                        // Just inside the lid's outer face, so the clear shell sits over the
+                        // artwork the way a jewel case's front does.
                         //
-                        // This used to sit PLATE_LIFT proud of the case, which meant the
-                        // largest, most-looked-at surface of every album was an opaque
-                        // bitmap in front of the plastic — so no amount of transmission or
-                        // clearcoat on the shell could make the case read as glass, because
-                        // the glass was behind the picture. The lid occupies +0.001..+0.005;
-                        // sitting just inside it means you look at the artwork through 4mm
-                        // of refracting polystyrene, which is exactly what a jewel case is.
-                        position = Position(TRAY_FRONT_Z - PLATE_LIFT, 0f, 0f),
+                        // Getting this wrong is easy and silent. The tray spans -0.005..+0.001
+                        // and the LID spans +0.001..+0.005, so `TRAY_FRONT_Z - PLATE_LIFT`
+                        // (+0.0006) is inside the *opaque tray* — the artwork disappears
+                        // entirely, buried in solid plastic, with nothing in any log to say
+                        // so. It has to be near the lid's outer face, not the tray's front.
+                        position = Position(CASE_W / 2f - 0.0006f, 0f, 0f),
                         rotation = io.github.sceneview.math.Rotation(0f, 90f, 0f),
                         apply = {
                             slot.coverArt = this

@@ -475,26 +475,34 @@ def build_closed_case():
     # polystyrene and a tight one off the surface, which is what makes plastic read as *shiny*
     # rather than merely pale. Alpha is high enough to catch the light and low enough to read
     # the printed inlay straight through it.
-    # Crystal, not frosting.
+    # Clear, and you can SEE THROUGH IT — which sounds obvious and was not.
     #
-    # The previous version was alpha 0.20 over a near-black tray, which is a recipe for grey:
-    # alpha blending simply mixes the surface with whatever is behind it, so a pale film over
-    # a dark object averages to a dull dark object. Real transmission refracts instead — the
-    # background bends through the thickness, edges and corners gather light, and the shell
-    # stops reading as a film and starts reading as a solid piece of moulded plastic.
+    # This was briefly KHR_materials_transmission at 0.92, on the reasoning that refraction
+    # is what separates crystal from a pale film. It refracts beautifully and it hid the
+    # album art completely: screen-space refraction samples the opaque colour buffer *behind*
+    # the refracting surface, so it cannot reveal geometry enclosed *inside* the refractor,
+    # which is exactly where a cover inlay sits. Physically the right model, practically a
+    # case with no artwork on it.
     #
-    # Nearly white base colour on purpose: a transmissive material's base colour *tints* what
-    # passes through it, so anything dark here would dirty the artwork behind the shell.
+    # So: alpha blending, which does composite what is behind it, at a low enough alpha that
+    # the cover reads cleanly through the shell.
+    #
+    # What makes it look like glass instead of cling film is no longer this material at all —
+    # it is that the IBL now contains a small fierce lamp for the shell to reflect (see
+    # RoomLighting.LAMP_HOT_LEVEL). Roughness 0.02 under a full clearcoat against a hot
+    # source gives a hard, moving highlight; the same numbers against the old smooth gradient
+    # gave nothing. The environment was the missing half, not the surface.
     obj.data.materials.append(
         principled(
             "JewelCaseClear",
-            base_color=(0.96, 0.97, 0.99),
+            base_color=(0.90, 0.94, 1.0),
             metallic=0.0,
             roughness=0.02,
             coat=1.0,
             coat_roughness=0.01,
-            transmission=0.92,
-            ior=1.59,          # polystyrene
+            alpha=0.16,
+            blend=True,
+            ior=1.59,          # polystyrene, for the fresnel falloff at grazing angles
         )
     )
     return obj
