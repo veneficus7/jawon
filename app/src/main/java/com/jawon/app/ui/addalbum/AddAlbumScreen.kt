@@ -32,6 +32,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import coil3.compose.AsyncImage
 import com.jawon.app.data.importer.TrackMetadata
+import com.jawon.app.ui.common.formatDuration
 import com.jawon.app.ui.theme.JavonTextStyle
 
 @Composable
@@ -223,9 +224,3 @@ private fun TrackRow(track: TrackMetadata) {
     }
 }
 
-private fun formatDuration(ms: Long): String {
-    val totalSeconds = ms / 1000
-    val minutes = totalSeconds / 60
-    val seconds = totalSeconds % 60
-    return "%d:%02d".format(minutes, seconds)
-}

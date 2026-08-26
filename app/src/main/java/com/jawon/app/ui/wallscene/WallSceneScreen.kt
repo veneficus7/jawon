@@ -1,16 +1,28 @@
 package com.jawon.app.ui.wallscene
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.exponentialDecay
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.List
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -27,17 +39,22 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.jawon.app.ui.theme.ArchivoFamily
 import com.jawon.app.ui.theme.CrateBlack
 import com.jawon.app.ui.theme.JavonTextStyle
 import com.jawon.app.ui.theme.JetBrainsMonoFamily
+import com.jawon.app.ui.theme.LabelDim
 import com.jawon.app.ui.wallscene.WallDimens.BOARD_D
 import com.jawon.app.ui.wallscene.WallDimens.BOARD_H
 import com.jawon.app.ui.wallscene.WallDimens.CAMERA_Z
@@ -46,6 +63,7 @@ import com.jawon.app.ui.wallscene.WallDimens.CASE_H
 import com.jawon.app.ui.wallscene.WallDimens.CASE_W
 import com.jawon.app.ui.wallscene.WallDimens.FOCAL_LENGTH_MM
 import com.jawon.app.ui.wallscene.WallDimens.PLATE_LIFT
+import com.jawon.app.ui.wallscene.WallDimens.PROUD_Z
 import com.jawon.app.ui.wallscene.WallDimens.PLATE_W
 import com.jawon.app.ui.wallscene.WallDimens.ROW_PITCH
 import com.jawon.app.ui.wallscene.WallDimens.SLOT_PITCH
@@ -71,6 +89,9 @@ import androidx.compose.ui.graphics.Color as ComposeColor
 /** Fling coast. The prototype's friction of 28 is a ~36ms time constant — barely a coast; */
 /** this is looser so a flick actually travels. Tuning knob. */
 private const val FLING_FRICTION = 2f
+
+/** Progress at which the deck fades in — as the disc squares up, not before. */
+private const val DECK_REVEAL_AT = 0.75f
 
 /** Label plate raster size. World size is these divided by [PLATE_PX_PER_UNIT]. */
 private const val PLATE_PX_W = 400
@@ -101,11 +122,15 @@ private class FrameContext {
 
 @Composable
 fun WallSceneScreen(
-    onBack: () -> Unit,
+    onAddAlbum: () -> Unit,
+    onOpenShelfManager: () -> Unit,
+    onOpenSettings: () -> Unit,
     viewModel: WallSceneViewModel = hiltViewModel()
 ) {
     val layout by viewModel.layout.collectAsStateWithLifecycle()
-    val isPlaying by viewModel.isPlaying.collectAsStateWithLifecycle()
+    val deck by viewModel.deck.collectAsStateWithLifecycle()
+    val nowPlayingAlbumId by viewModel.nowPlayingAlbumId.collectAsStateWithLifecycle()
+    val isPlaying = deck.isPlaying
     val context = LocalContext.current
 
     BoxWithConstraints(
@@ -138,6 +163,7 @@ fun WallSceneScreen(
         }
 
         var selectedAlbumId by remember { mutableStateOf<String?>(null) }
+        var deckRevealed by remember { mutableStateOf(false) }
         val selectedCase = remember(selectedAlbumId, layout) {
             layout.cases.firstOrNull { it.albumId == selectedAlbumId }
         }
@@ -329,6 +355,10 @@ fun WallSceneScreen(
                         sequence.direction = 0
                         selectedAlbumId = null
                     }
+                    // One state write per crossing, not per frame — the panel then fades in
+                    // through an ordinary animation without the sequence recomposing anything.
+                    val settled = sequence.progress > DECK_REVEAL_AT
+                    if (settled != deckRevealed) deckRevealed = settled
                 }
 
                 val selected = frame.selected
@@ -408,7 +438,13 @@ fun WallSceneScreen(
                 key(case.albumId) {
                     val artwork = artCache[case.albumId]
                     Node(
-                        position = Position(case.x, case.y, 0f),
+                        // The playing album stands out of its slot, so browsing away still
+                        // shows you what is on (PLAN.md §9 #3).
+                        position = Position(
+                            case.x,
+                            case.y,
+                            if (case.albumId == nowPlayingAlbumId) PROUD_Z else 0f
+                        ),
                         isVisible = case.albumId != selectedAlbumId
                     ) {
                         CubeNode(
@@ -471,18 +507,89 @@ fun WallSceneScreen(
             // whole subject — the browse label would only collide with it.
             FocusLabel(
                 case = focusCase,
-                modifier = Modifier
-                    .align(Alignment.TopCenter)
-                    .padding(top = 48.dp, start = 24.dp, end = 24.dp)
+                modifier = Modifier.align(Alignment.TopCenter)
             )
         }
 
-        TextButton(
-            onClick = { if (selectedAlbumId != null) closeCase() else onBack() },
-            modifier = Modifier
-                .align(Alignment.BottomStart)
-                .padding(16.dp)
-        ) { Text("BACK", style = JavonTextStyle.mono) }
+        // The room is the home screen now, so back has nowhere to pop to — it closes an open
+        // case, and is left alone while browsing so it exits the app normally.
+        BackHandler(enabled = selectedAlbumId != null) { closeCase() }
+
+        // Chrome, only while browsing: with a case open the deck owns the screen.
+        if (selectedAlbumId == null) {
+            // Centred along the bottom: the top belongs to the focus label (a long title ran
+            // straight under the icons when they lived up there), and on a phone this tall
+            // the bottom is the only comfortable reach. navigationBarsPadding keeps it off
+            // the system nav, which it was sitting on.
+            Row(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    // Its own ground. Bare on the room, the dim labels landed on whatever
+                    // shelf plank happened to be behind them and the shelf's label plate
+                    // beside them read as a fourth chrome item.
+                    .background(
+                        Brush.verticalGradient(
+                            0f to ComposeColor.Transparent,
+                            0.5f to ComposeColor(0xE0060403),
+                            1f to ComposeColor(0xFA060403)
+                        )
+                    )
+                    .navigationBarsPadding()
+                    .padding(top = 44.dp, bottom = 10.dp),
+                verticalAlignment = Alignment.Bottom
+            ) {
+                // Even thirds rather than a huddle in the middle: three wide targets across
+                // the bottom is the easiest thing to hit one-handed on a phone this size.
+                ChromeAction(Icons.Default.Add, "ADD", onAddAlbum, Modifier.weight(1f))
+                ChromeAction(
+                    Icons.AutoMirrored.Filled.List, "SHELVES", onOpenShelfManager,
+                    Modifier.weight(1f)
+                )
+                ChromeAction(
+                    Icons.Default.Settings, "SETTINGS", onOpenSettings, Modifier.weight(1f)
+                )
+            }
+        }
+
+        val deckAlpha by animateFloatAsState(
+            targetValue = if (deckRevealed) 1f else 0f,
+            label = "deckAlpha"
+        )
+        if (deckAlpha > 0.01f) {
+            val openCase = selectedCase
+            DeckOverlay(
+                title = openCase?.title.orEmpty(),
+                artist = openCase?.artist.orEmpty(),
+                deck = deck,
+                positionFlow = viewModel.positionMs,
+                onPlayPause = viewModel::onPlayPause,
+                onNext = viewModel::onNext,
+                onPrevious = viewModel::onPrevious,
+                onSeek = viewModel::onSeek,
+                onSelectTrack = viewModel::onSelectTrack,
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxHeight(0.52f)
+                    .graphicsLayer { alpha = deckAlpha }
+            )
+        }
+    }
+}
+
+/** One room-chrome action: a real 48dp target with a quiet mono label under it. */
+@Composable
+private fun ChromeAction(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    label: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Column(modifier = modifier, horizontalAlignment = Alignment.CenterHorizontally) {
+        IconButton(onClick = onClick, modifier = Modifier.size(48.dp)) {
+            Icon(icon, contentDescription = label, tint = LabelDim)
+        }
+        Text(text = label, style = JavonTextStyle.mono.copy(color = LabelDim))
     }
 }
 
@@ -517,28 +624,51 @@ private fun ShelfPlate(name: String, accentHue: Float) {
     }
 }
 
+/**
+ * The placard for whichever case is centred, built to the prototype's `#spine` rule rather
+ * than to a Material Typography slot: uppercase Archivo at `clamp(17px,4vw,25px)` with
+ * `letter-spacing:.03em`, not `displaySmall`'s 36sp. At display size it swallowed the top of
+ * the frame and ellipsised most titles; the prototype wants a caption over the room, not a
+ * headline. Two lines are allowed so a long title reads in full instead of being cut.
+ *
+ * The scrim matters as much as the size. The focused case is centred by definition, so its
+ * spine — the one piece of the room carrying its own vertical text — is always directly
+ * behind this. Without something to sit on, the two sets of words interleave.
+ */
 @Composable
 private fun FocusLabel(case: CaseLayout?, modifier: Modifier = Modifier) {
-    Box(modifier = modifier.fillMaxWidth()) {
-        Column(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(6.dp)
-        ) {
-            Text(
-                text = case?.title.orEmpty(),
-                style = MaterialTheme.typography.displaySmall,
-                textAlign = TextAlign.Center,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .background(
+                Brush.verticalGradient(
+                    0f to ComposeColor(0xF2060403),
+                    0.62f to ComposeColor(0xC4060403),
+                    1f to ComposeColor.Transparent
+                )
             )
-            Text(
-                text = case?.artist.orEmpty().uppercase(),
-                style = JavonTextStyle.mono,
-                textAlign = TextAlign.Center,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-        }
+            .statusBarsPadding()
+            .padding(start = 24.dp, end = 24.dp, top = 14.dp, bottom = 30.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(9.dp)
+    ) {
+        Text(
+            text = case?.title.orEmpty().uppercase(),
+            fontFamily = ArchivoFamily,
+            fontWeight = FontWeight.ExtraBold,
+            fontSize = 22.sp,
+            lineHeight = 25.sp,
+            letterSpacing = 0.7.sp,
+            textAlign = TextAlign.Center,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis
+        )
+        Text(
+            text = case?.artist.orEmpty().uppercase(),
+            style = JavonTextStyle.mono,
+            textAlign = TextAlign.Center,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
     }
 }

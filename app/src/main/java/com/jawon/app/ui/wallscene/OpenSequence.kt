@@ -65,7 +65,7 @@ object OpenSequence {
     // grey circle of no particular size rather than as a compact disc.
     private const val DISC_VIEW_DIST = 0.55f
     /** Fraction of the half-height the disc sits above centre, leaving room below for M7 part 2's deck. */
-    private const val DISC_BAND = 0.0f
+    private const val DISC_BAND = 0.08f
     const val SPIN_DEG_PER_S = 78f
 
     fun easeOut(t: Float): Float {

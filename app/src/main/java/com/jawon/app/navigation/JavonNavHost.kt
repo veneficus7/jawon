@@ -1,30 +1,23 @@
 package com.jawon.app.navigation
 
 import androidx.compose.runtime.Composable
-import androidx.navigation.NamedNavArgument
 import androidx.navigation.NavHostController
-import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
-import androidx.navigation.navArgument
 import com.jawon.app.ui.addalbum.AddAlbumScreen
-import com.jawon.app.ui.deck.DeckScreen
 import com.jawon.app.ui.settings.SettingsScreen
 import com.jawon.app.ui.shelfmanager.ShelfManagerScreen
-import com.jawon.app.ui.wall.WallScreen
 import com.jawon.app.ui.wallscene.WallSceneScreen
 
 @Composable
 fun JavonNavHost(navController: NavHostController = rememberNavController()) {
     NavHost(navController = navController, startDestination = JavonDestination.Wall.route) {
         composable(JavonDestination.Wall.route) {
-            WallScreen(
+            WallSceneScreen(
                 onAddAlbum = { navController.navigate(JavonDestination.AddAlbum.route) },
                 onOpenShelfManager = { navController.navigate(JavonDestination.ShelfManager.route) },
-                onOpenSettings = { navController.navigate(JavonDestination.Settings.route) },
-                onOpenAlbum = { albumId -> navController.navigate(JavonDestination.Deck.route(albumId)) },
-                onOpenRoom = { navController.navigate(JavonDestination.WallScene.route) }
+                onOpenSettings = { navController.navigate(JavonDestination.Settings.route) }
             )
         }
         composable(JavonDestination.AddAlbum.route) {
@@ -33,25 +26,11 @@ fun JavonNavHost(navController: NavHostController = rememberNavController()) {
                 onCancel = { navController.popBackStack() }
             )
         }
-        composable(
-            JavonDestination.Deck.route,
-            arguments = listOf<NamedNavArgument>(navArgument("albumId") { type = NavType.StringType })
-        ) {
-            DeckScreen(onBack = { navController.popBackStack() })
-        }
         composable(JavonDestination.ShelfManager.route) {
-            ShelfManagerScreen(
-                onBack = { navController.popBackStack() },
-                onPlayAlbum = { album -> navController.navigate(JavonDestination.Deck.route(album.id)) }
-            )
+            ShelfManagerScreen(onBack = { navController.popBackStack() })
         }
         composable(JavonDestination.Settings.route) {
             SettingsScreen(onBack = { navController.popBackStack() })
-        }
-        composable(JavonDestination.WallScene.route) {
-            // Tapping a case now plays the open sequence in-room rather than leaving for the
-            // 2D Deck; the room gains its own transport UI in M7 part 2.
-            WallSceneScreen(onBack = { navController.popBackStack() })
         }
     }
 }

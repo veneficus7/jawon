@@ -29,6 +29,13 @@ object WallDimens {
     /** How far artwork planes sit proud of the case body, to avoid z-fighting. */
     const val PLATE_LIFT = 0.0004f
 
+    /**
+     * How far the now-playing album's case stands out of its slot (PLAN.md §9 #3). Browse
+     * away and you can still see what is on — which is the product's own answer to a
+     * persistent mini-player bar, an anti-pattern it explicitly rules out.
+     */
+    const val PROUD_Z = 0.022f
+
     /** A real CD: 120mm across, 15mm centre hole. */
     const val DISC_RADIUS = 0.060f
     const val DISC_HOLE_RADIUS = 0.0075f
