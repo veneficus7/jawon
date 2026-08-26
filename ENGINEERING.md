@@ -9,13 +9,36 @@ ambiguous, the prototype is the source of truth, not your assumption.
 
 ## Status
 
-**Phase 1 complete (M0–M4), verified on-device on a Galaxy S25 Ultra.**
-Skeleton, Add Album import, Shelf Manager, Media3 playback, and a real 2D UI
-(Wall, Deck, Shelf Manager, Settings) all work end to end. Javon is a
-usable, finished music player as of this line. Currently starting **Phase
-2 / M5 · SceneView bootstrap**.
+**M0–M7 complete, each verified on-device on a Galaxy S25 Ultra.**
+Phase 1 gave a finished music player. Phase 2 has since replaced its 2D front
+end entirely: **the room is the app.** It is the start destination, it browses
+the wall, and it plays. The 2D Wall and 2D Deck are deleted — deliberately, per
+`PLAN.md` §2; they live on only in git history.
+
+Working today: the wall (shelf geometry, spine and cover art, label plates,
+pan/fling, content-derived bounds), the five-beat open/close sequence with
+interruption from any point, the in-room deck (transport, tracklist, seek,
+quality readout), and the now-playing case standing proud of its slot.
+
+Currently starting **M8 · The disc** — iridescence material, spin bound to
+playback, scratch-to-seek with haptics. Two things are explicitly deferred
+into it: the user's `Album.discFaceUri` art, which is imported and stored but
+not yet applied, and the disc's material, which is bare silvered plastic for
+now.
+
 Never assume a milestone is complete. If this status line looks stale or
 contradicts the code, ask — do not infer from the repo.
+
+### One hard-won constraint
+
+**Never destroy an `ImageNode`** on the SceneView version we are pinned to.
+`ImageNode.destroy()` enqueues its texture for destruction but hands
+`MaterialLoader.destroyMaterialInstance()` a wrapper re-fetched via
+`getMaterialInstanceAt(0)` — not the object the loader tracks — so the instance
+survives and Filament aborts the process on the next commit with *"Invalid
+texture still bound to MaterialInstance."* Hide nodes and swap `bitmap` in
+place instead. This cost most of a session to root-cause and will constrain
+M6's frustum culling as the library grows.
 
 ---
 
@@ -94,6 +117,8 @@ are instantiated — never emit nodes for the whole library.
   screen, bluetooth buttons, audio focus, becoming-noisy, gapless, queue,
   quality readout.
 - **M4 · 2D UI complete** — plain but properly designed Compose interface.
+  *Superseded by M7: the Wall and Deck screens are gone and the room does both.
+  Add Album, Shelf Manager and Settings are still Compose and still current.*
 
 > **CHECKPOINT.** At the end of M4 Javon is a finished, shippable music player.
 > Do not begin Phase 2 until M4 genuinely works on-device. Everything after this
