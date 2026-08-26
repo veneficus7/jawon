@@ -1,17 +1,26 @@
 # Custom Filament materials
 
-Javon has one hand-written Filament material: the iridescent CD surface.
+**Javon currently has none.** Everything in the room uses SceneView's stock
+materials.
 
-| | |
-|---|---|
-| Source | `app/src/main/materials/disc_iridescent.mat` |
-| Built output | `app/src/main/assets/materials/disc_iridescent.filamat` |
-| Loaded by | `ui/wallscene/WallSceneScreen.kt` (`DISC_MATERIAL_ASSET`) |
+This document is kept because the procedure was worked out the hard way and is
+not obvious, so anyone adding a custom shader later does not have to rediscover
+it.
 
-**Both files are committed.** The `.mat` is the reviewable artefact; the
-`.filamat` is a build output that is checked in because nothing in the build can
-produce it (see below). SceneView ships its own materials the same way, under
-`assets/materials/`.
+## History
+
+M8 shipped a hand-written iridescent CD surface — `disc_iridescent.mat` — which
+`PLAN.md`'s technology table asks for. **It was removed at the owner's request:
+the rainbow was not wanted on the disc.** With the effect gone, SceneView's stock
+lit textured material did everything that remained, so the custom material was
+removed rather than kept switched off, which also took 577 KB of `.filamat` out
+of the APK.
+
+It is in git at commit `9df705b` if it is ever worth revisiting.
+
+If you add a material, commit **both** the `.mat` (the reviewable artefact) and
+the built `.filamat`, the latter because nothing in the build can produce it (see
+below). SceneView ships its own materials the same way, under `assets/materials/`.
 
 ## Why there is no Gradle task for this
 
@@ -20,7 +29,7 @@ Filament's official `filament-gradle-plugin` — the thing that would compile
 Gradle Plugin Portal.** Both return 404. There is no artifact to depend on, at
 any version.
 
-So the material is compiled by hand, and the output committed. A build that
+So a material has to be compiled by hand and its output committed. A build that
 silently depended on a 735 MB tool no clone of this repo has would be worse than
 a documented manual step for a file that changes maybe twice a year.
 
@@ -52,14 +61,15 @@ tar -xzf filament-v1.72.1-windows.tgz bin/matc.exe
 
 **Do not commit the tarball or the binary.** Keep them outside the repo.
 
-## Rebuilding the material
+## Compiling a material
 
-From the repository root, after editing the `.mat`:
+From the repository root, with the `.mat` under `app/src/main/materials/` and the
+output going to `app/src/main/assets/materials/`:
 
 ```
 matc.exe --api opengl --api vulkan --platform mobile -Os \
-  -o app/src/main/assets/materials/disc_iridescent.filamat \
-     app/src/main/materials/disc_iridescent.mat
+  -o app/src/main/assets/materials/<name>.filamat \
+     app/src/main/materials/<name>.mat
 ```
 
 Note it is `-Os` / `--optimize-size`, **not** `--optimize size` — the latter makes
@@ -72,14 +82,33 @@ only bloat the blob. `matc` prints nothing on success.
 To check the parameter names the Kotlin side must use:
 
 ```
-matc.exe --reflect parameters app/src/main/materials/disc_iridescent.mat
+matc.exe --reflect parameters app/src/main/materials/<name>.mat
 ```
 
 Then rebuild the app normally — the `.filamat` is picked up as an ordinary asset.
 
-## If a Filament upgrade breaks the disc
+Load it with `materialLoader.createMaterial("materials/<name>.filamat")` followed
+by `createInstance(...)`; samplers are set with
+`setParameter(name, texture, TextureSampler())`.
+
+## If a Filament upgrade breaks a material
 
 Bumping SceneView (and with it `filament-android`) can change the `.filamat`
-format. The symptom is the disc failing to load its material at runtime. The fix
-is to download the `matc` matching the *new* Filament version and rerun the
-command above; the `.mat` source itself will usually be unchanged.
+format. The symptom is the material failing to load at runtime. The fix is to
+download the `matc` matching the *new* Filament version and recompile; the `.mat`
+source itself will usually be unchanged.
+
+## Traps worth knowing before writing a shader
+
+Found while building (and then removing) the disc material:
+
+- **Fresnel weighting does not port from the prototype.** Its disc is a lathe
+  with a curved rim, so its normals vary. `DiscGeometry` is a flat annulus —
+  every normal is `+Z`, and a 120 mm disc at 0.55 m spans `dot(N,V)` of 1.0 down
+  to 0.994. Any `pow(1 - |N·V|, k)` term is ~0 across the whole face.
+- **`atan2` leaves a seam.** An angular term wraps at ±π and the discontinuity is
+  plainly visible once the disc fills the frame.
+- **`emissive` is in nits.** A value of 1.0 is enormous — it buried the album art
+  entirely. Effects layered over artwork want something nearer 0.05.
+- Polar coordinates are free from `DiscGeometry`'s UVs: they are radial and
+  normalised, so `uv * 2 - 1` gives a vector whose length is `r/R`.

@@ -149,17 +149,6 @@ private class ScratchDriver {
 /** Mip levels for a [DiscArt.DISC_PX]-square texture: 512, 256, … 1. */
 private const val DISC_MIP_LEVELS = 10
 
-/** Built from `app/src/main/materials/disc_iridescent.mat`; see `docs/materials.md`. */
-private const val DISC_MATERIAL_ASSET = "materials/disc_iridescent.filamat"
-
-// GRATING is the prototype's exported value — about six colour bands from hub to rim.
-//
-// IRIDESCENCE is NOT the prototype's 1.0. Emissive is measured in nits, and at 1.0 the
-// rainbow completely buries the album art. This is a sheen over the label, so it wants to
-// sit an order of magnitude lower. Tuning knob; expect it to move again once M9 gives the
-// room an environment for the disc to reflect.
-private const val DISC_IRIDESCENCE = 0.05f
-private const val DISC_GRATING = 110f
 
 /**
  * Does this node, or any of its parents, belong to the disc?
@@ -303,20 +292,21 @@ fun WallSceneScreen(
                 .usage(Texture.Usage.DEFAULT or Texture.Usage.GEN_MIPMAPPABLE)
                 .build(engine)
         }
-        // The iridescence shader, compiled by hand from
-        // app/src/main/materials/disc_iridescent.mat — see docs/materials.md. Opaque:
-        // the annulus geometry is its own mask, so there is no alpha to sort.
+        // Plain silvered plastic carrying the printed face.
         //
-        // Unlike the prototype, which pushed the camera position into a uniform every
-        // frame, Filament supplies camera and lighting itself. These parameters are set
-        // once and never touched again, so the disc's surface costs nothing per frame.
+        // There was a custom iridescence shader here — PLAN.md's technology table asks
+        // for one — but the rainbow was not wanted and has been removed. SceneView's
+        // stock lit textured material does everything that is left, so the custom
+        // material went with it rather than being kept switched off. It is in git at
+        // 9df705b, and docs/materials.md keeps the procedure, if a disc surface is ever
+        // worth revisiting.
+        //
+        // Opaque, not transparent: the annulus geometry is its own mask, so there is no
+        // alpha to sort. Arguments are positional because the second is an unnamed
+        // opaque/transparent selector — (texture, transparent, metallic, roughness,
+        // reflectance).
         val discMaterial = remember(materialLoader, discTexture) {
-            val material = materialLoader.createMaterial(DISC_MATERIAL_ASSET)
-            materialLoader.createInstance(material).apply {
-                setParameter("face", discTexture, TextureSampler())
-                setParameter("iridescence", DISC_IRIDESCENCE)
-                setParameter("grating", DISC_GRATING)
-            }
+            materialLoader.createTextureInstance(discTexture, false, 0.72f, 0.22f, 0.65f)
         }
 
         // The disc face, finally: `Album.discFaceUri` has been collected since M1 and never

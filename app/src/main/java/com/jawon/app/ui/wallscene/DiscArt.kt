@@ -8,6 +8,7 @@ import android.graphics.Matrix
 import android.graphics.Paint
 import android.graphics.RadialGradient
 import android.graphics.Shader
+import android.graphics.SweepGradient
 
 /**
  * The printed face of the CD, baked to a bitmap.
@@ -70,9 +71,16 @@ object DiscArt {
         canvas.drawCircle(c, c, c * R_OUTER, paint)
         paint.shader = null
 
-        // No painted-on sheen here. The disc's shimmer is real now — the diffraction
-        // rainbow in disc_iridescent.mat is view-dependent, and a baked highlight would
-        // sit still underneath it and fight it.
+        // A faint sweep, so the bare disc reads as reflective rather than as a flat grey
+        // coin. Deliberately colourless and very low contrast — the iridescent version of
+        // this was removed because the rainbow was not wanted.
+        paint.shader = SweepGradient(
+            c, c,
+            intArrayOf(0x18FFFFFF, 0x06FFFFFF, 0x14FFFFFF, 0x04FFFFFF, 0x18FFFFFF),
+            floatArrayOf(0f, 0.25f, 0.5f, 0.75f, 1f)
+        )
+        canvas.drawCircle(c, c, c * R_OUTER, paint)
+        paint.shader = null
 
         // The printed label.
         val art = face ?: fallback

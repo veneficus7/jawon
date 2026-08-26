@@ -20,15 +20,17 @@ pan/fling, content-derived bounds), the five-beat open/close sequence with
 interruption from any point, the in-room deck (transport, tracklist, seek,
 quality readout), and the now-playing case standing proud of its slot.
 
-**M8 is complete**, in two parts: the disc is a platter you can scratch to seek
-(with haptics), it shows the user's uploaded `discFaceUri` art, and its surface
-is a real iridescence shader compiled from
-`app/src/main/materials/disc_iridescent.mat`.
+**M8 is complete**: the disc is a platter you can scratch to seek (with
+haptics) and it shows the user's uploaded `discFaceUri` art.
+
+**Its iridescence was built and then removed** — the owner did not want a
+rainbow on the CD. `PLAN.md`'s technology table still lists an iridescent CD;
+that line is overruled. The disc is plain silvered plastic carrying its label.
+Do not add it back.
 
 Currently starting **M9 · Atmosphere** — lights, shadows, IBL, bloom, DOF, fog,
-dust. Two known things are waiting on it: the case's clear lid reads as a flat
-white strip because there is no environment to reflect, and the disc's
-iridescence is weaker than it should be for the same reason.
+dust. One known thing waits on it: the case's clear lid reads as a flat white
+strip because there is no environment for it to reflect.
 
 Never assume a milestone is complete. If this status line looks stale or
 contradicts the code, ask — do not infer from the repo.
@@ -76,17 +78,19 @@ tracks across a huge library do not belong.
 | Playback | Media3 / ExoPlayer + `MediaSessionService` |
 | Database | Room |
 | DI | Hilt |
-| Custom materials | Compiled **by hand** with a version-matched `matc`; source and built `.filamat` both committed. See `docs/materials.md`. |
+| Disc surface | **No rainbow.** Iridescence was built in M8 and removed on the owner's call. Do not reintroduce it. |
+| Custom materials | None in the tree. If one is ever needed, it is compiled **by hand** with a version-matched `matc` — see `docs/materials.md`. |
 
 ### Custom shaders (`.filamat`)
 
-Filament's Gradle plugin is **not published to Maven Central or the Gradle
-Plugin Portal** — there is no artifact to depend on, so nothing in the build can
-compile a `.mat`. Materials are therefore compiled manually and their output
-committed alongside the source. `matc` must come from the Filament release
-matching the `filament-android` that SceneView pulls, or the runtime rejects the
-blob. This is not a rule-4 violation: `matc` is a build-time tool run by hand,
-never a dependency of the app or the build. Full procedure in
+There are currently no custom materials; everything uses SceneView's stock ones.
+
+Worth knowing if that changes: Filament's Gradle plugin is **not published to
+Maven Central or the Gradle Plugin Portal**, so nothing in the build can compile
+a `.mat`. Materials have to be compiled manually with a `matc` matching the
+`filament-android` SceneView pulls, and their output committed alongside the
+source. That is not a rule-4 violation — `matc` is a build-time tool run by hand,
+never a dependency. Full procedure and the shader traps already discovered are in
 `docs/materials.md`.
 
 ### Shelf bounds ("defence against infinite scroll")
