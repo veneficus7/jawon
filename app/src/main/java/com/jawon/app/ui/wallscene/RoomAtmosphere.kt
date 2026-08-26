@@ -105,12 +105,17 @@ object RoomAtmosphere {
     private const val DOF_NATIVE_RESOLUTION = true
 
     /**
-     * Gather ring counts. Left at Filament's adaptive defaults (0) the pass picks a ring
-     * count from the CoC size, which varies frame to frame as the camera dollies and makes
-     * the blur quality visibly pulse during the open sequence. Pinned so it stays steady.
+     * Gather ring counts. 0 is Filament's default and means adaptive — it picks a ring count
+     * from the actual circle of confusion, which here is usually small.
+     *
+     * These were briefly pinned to 3 and 5, on the untested theory that a per-frame choice
+     * would make blur quality pulse as the camera dollies. Measured on device, pinning them
+     * cost nothing at all, and the pulsing was never observed either. Left adaptive because
+     * that is the default and there is no evidence for doing anything else; if the pulsing
+     * ever turns out to be real, bound the CoC rather than pinning the rings.
      */
-    private const val DOF_FOREGROUND_RINGS = 3
-    private const val DOF_BACKGROUND_RINGS = 5
+    private const val DOF_FOREGROUND_RINGS = 0
+    private const val DOF_BACKGROUND_RINGS = 0
 
     /**
      * Ambient occlusion — the contact shading that was missing entirely.
@@ -152,19 +157,37 @@ object RoomAtmosphere {
     /**
      * Screen-space reflections.
      *
-     * The lid is polished plastic at roughness 0.05 and the disc is 0.22, and until now the
-     * only thing either could reflect was the image-based light — which is a smooth gradient
-     * with no room in it. These give them the actual scene: the lamp, the board, the case
-     * next door.
+     * **OFF, and it should stay off until M10 can put it behind a tier.** The constants are
+     * kept because the decision is worth being able to re-check, not because it is close.
+     *
+     * The idea was sound: the lid is polished plastic and the disc is glossy, and the only
+     * thing either could reflect was the image-based light. Measured on a Galaxy S25 Ultra
+     * with a case open, it is the most expensive thing anyone has put in this room:
+     *
+     * | configuration | fps |
+     * |---|---|
+     * | off (and the pre-M11 baseline) | **124** |
+     * | on, 0.6m reach, stride 2 | **17** |
+     * | on, 0.25m reach, stride 8 | **86** |
+     *
+     * Browsing the wall stays at 124 either way, which is what makes it look innocent: SSR
+     * raymarches per glossy pixel, and browsing has almost none. Open a case and the lid and
+     * disc fill the frame, so nearly every pixel traces.
+     *
+     * Even crippled to a stride of 8 it costs a third of the frame budget on flagship
+     * hardware, for reflections in a room that is deliberately near-black, on a lid at 22%
+     * alpha and a disc mostly covered by artwork. Raising the IBL to 256px already gave both
+     * something to reflect, which was the actual complaint.
      *
      * Distances are in metres and scaled to this room, not to Filament's defaults (0.5m
      * thickness, 3m reach), which are again sized for architecture. A 0.5m ray thickness in
      * a scene 0.4m deep would treat the whole room as one surface.
      */
+    private const val SSR_ENABLED = false
     private const val SSR_THICKNESS = 0.008f
     private const val SSR_BIAS = 0.002f
-    private const val SSR_MAX_DISTANCE = 0.6f
-    private const val SSR_STRIDE = 2.0f
+    private const val SSR_MAX_DISTANCE = 0.25f
+    private const val SSR_STRIDE = 8.0f
 
     /**
      * Soft shadow penumbra, for [View.ShadowType.PCSS].
@@ -237,7 +260,7 @@ object RoomAtmosphere {
         }
 
         view.screenSpaceReflectionsOptions = View.ScreenSpaceReflectionsOptions().apply {
-            enabled = true
+            enabled = SSR_ENABLED
             thickness = SSR_THICKNESS
             bias = SSR_BIAS
             maxDistance = SSR_MAX_DISTANCE

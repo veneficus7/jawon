@@ -55,8 +55,7 @@ across `RoomAtmosphere.kt`, `RoomLighting.kt` and the key light in
   anything. Now SAO at a 20mm radius, plus SSCT along the lamp's direction.
 - **Shadows on bare defaults** — no `ShadowOptions` anywhere. Now a 2048 map
   with room-scaled depth hints and PCSS contact hardening.
-- **A 64px IBL cubemap**, so glossy surfaces reflected a blur. Now 256, plus
-  screen-space reflections for the sharp end.
+- **A 64px IBL cubemap**, so glossy surfaces reflected a blur. Now 256.
 - **Depth of field propped up by a `cocScale` of 2.4** against an aperture
   stopped down to 3.5mm — which deepens the field and then smears everything
   outside it 2.4× too far. That is what read as artificial. Now unity scale
@@ -138,8 +137,31 @@ extensions mean no *new* hand-written `.mat` is expected either. See
 
 **M10 · Polish & release** (performance, GPU tiers, icon, onboarding) follows
 this, not the other way round — tiering a look that is still being rebuilt would
-be wasted work. Pass 1 stacks full-resolution DOF, full-resolution AO, SSR and
-PCSS; all four are M10 tier candidates and none has been measured yet.
+be wasted work.
+
+### Measured, on a Galaxy S25 Ultra, with a case open
+
+Everything in pass 1 is essentially free **except screen-space reflections**,
+which are so expensive they are switched off. Frame pacing via
+`dumpsys SurfaceFlinger --timestats`:
+
+| configuration | fps |
+|---|---|
+| pre-M11 baseline | 124 |
+| SSR on, 0.6m reach, stride 2 | **17** |
+| SSR on, 0.25m reach, stride 8 | 86 |
+| SSR off — everything else on | **124** |
+
+Full-resolution DOF, full-resolution AO with SSCT, PCSS, a 2048 shadow map and
+the 256px IBL together cost nothing measurable. SSR alone was a 7x regression.
+
+**It looks innocent while browsing**, which is the trap: browsing holds 124fps
+either way, because SSR raymarches per glossy pixel and the wall has almost
+none. Open a case and the lid and disc fill the frame, so nearly every pixel
+traces. Measure the *open* state, not the wall.
+
+`RoomAtmosphere.SSR_ENABLED` is false and the constants are kept beside it.
+Turning it back on is an M10 tier decision, not a default.
 
 Still never properly checked: **inter-case shadowing**, which wants a shelf with
 adjacent albums.
