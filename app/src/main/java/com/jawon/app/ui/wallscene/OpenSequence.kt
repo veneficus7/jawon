@@ -64,6 +64,44 @@ object OpenSequence {
     private const val SWAY_Y_DEG = 1.03f
     private const val SWAY_X_DEG = 1.15f
 
+    // ---- Overshoot, per beat ------------------------------------------------------
+    //
+    // Read against [easeOutBack]'s table. Each is chosen from how far the beat actually
+    // travels, because the same percentage means very different things across a 115mm
+    // slide and a 123° swing.
+
+    /** 2.3% of 115mm ≈ 2.6mm past the mark. The case clears the rack and rocks back. */
+    private const val PULL_BACK = 0.8f
+
+    /** 2.3% of the 90° turn ≈ 2°. The case turns square and settles onto square. */
+    private const val TURN_BACK = 0.8f
+
+    /**
+     * 3.0% of 123.2° ≈ 3.7° past the hinge stop.
+     *
+     * The most important of the four: a lid that stops dead at its limit is the single most
+     * obviously fake moment in the sequence. Strictly a hinge cannot travel past its own
+     * stop, so the honest motion would rebound *short* of the mark rather than past it —
+     * but real jewel-case lids flex, the discrepancy lasts under a tenth of a second, and
+     * reading as alive beats being right about it. If it ever looks like flapping rather
+     * than settling, this is the number.
+     */
+    private const val OPEN_BACK = 0.9f
+
+    /** 1.8%, ≈2.7mm along the disc's ~160mm rise — the gentlest settle of the four. */
+    private const val LIFT_BACK = 0.7f
+
+    /**
+     * Anticipation: how far the case sinks back into its slot before pulling out, and over
+     * what fraction of the pull beat.
+     *
+     * 1.8mm into roughly 6mm of clearance behind the case, so it stays inside the rack.
+     * Small, and worth more than its size — the counter-move before a move is most of what
+     * separates something being animated from something being driven.
+     */
+    private const val ANTICIPATE_Z = 0.0018f
+    private const val ANTICIPATE_WINDOW = 0.34f
+
     // Where the disc settles once it is up.
     //
     // The disc is never scaled: a CD is 120mm across and stays 120mm across, so it reads
@@ -75,17 +113,82 @@ object OpenSequence {
     private const val DISC_BAND = 0.08f
     const val SPIN_DEG_PER_S = 78f
 
-    fun easeOut(t: Float): Float {
-        val inv = 1f - t
-        return 1f - inv * inv * inv
+    // ---- Easing -------------------------------------------------------------------
+    //
+    // Every curve here is a **pure function of t**, and that is a hard requirement rather
+    // than a stylistic preference. Closing runs `progress` backwards through these same
+    // curves, which is what makes interruption from any point free and what makes
+    // ENGINEERING.md's "never leave two cases mid-animation" structural. A stateful spring
+    // integrating velocity would be more physical and would break all of that — it cannot
+    // be run backwards, and an interrupted spring has to be caught and re-tensioned. So
+    // overshoot is analytic here, not simulated.
+    //
+    // A pleasant consequence: overshoot run backwards *is* anticipation. The case that
+    // settles into place on the way out draws back slightly before it leaves on the way in,
+    // and both read correctly without a second set of curves.
+
+    /**
+     * Ease out past the target, then settle back onto it.
+     *
+     * This is the curve the sequence was missing. Every beat used to decelerate onto its
+     * target and stop dead, which nothing physical does — a case sliding out of a rack, a
+     * lid reaching its hinge stop and a disc coming to rest all carry momentum past the
+     * mark and come back to it.
+     *
+     * [overshoot] is the classic "back" parameter, and its relationship to how far the
+     * motion actually travels past the target is not obvious — the peak works out to
+     * `4·c³ / 27·(c+1)²`. Some values worth knowing, because the per-beat constants below
+     * are chosen from this table rather than by eye:
+     *
+     * | `overshoot` | travels past target by |
+     * |---|---|
+     * | 0.5 | 0.8% |
+     * | 0.8 | 2.3% |
+     * | 0.9 | 3.0% |
+     * | 1.0 | 3.7% |
+     * | 1.70158 (the CSS default) | 10% |
+     *
+     * The CSS default is far too much here: 10% of the lid's 123° swing is 12° of flap.
+     */
+    fun easeOutBack(t: Float, overshoot: Float): Float {
+        val c1 = overshoot
+        val c3 = c1 + 1f
+        val u = t - 1f
+        return 1f + c3 * u * u * u + c1 * u * u
     }
 
-    fun easeInOut(t: Float): Float =
-        if (t < 0.5f) 4f * t * t * t
-        else {
-            val v = -2f * t + 2f
-            1f - (v * v * v) / 2f
-        }
+    /**
+     * Perlin's smootherstep — zero first *and* second derivative at both ends.
+     *
+     * Reserved for the camera and for the disc's spin-up, where what matters is the absence
+     * of a jerk rather than the presence of a settle. A cubic ease-in-out leaves a step
+     * change in acceleration at t=0 and t=1; on a camera that is felt as a small kick at the
+     * start and end of every move, and it was part of why the camera work read as
+     * mechanical.
+     *
+     * **The camera must never share a curve with the objects.** It used to be driven
+     * straight off the turn and lift beats, so now that those overshoot, reusing them would
+     * bounce the camera along with the case — the one place overshoot is always wrong.
+     */
+    fun smootherStep(t: Float): Float = t * t * t * (t * (t * 6f - 15f) + 10f)
+
+    /**
+     * A smooth 0 → 1 → 0 bump over the first [window] of t, zero everywhere after.
+     *
+     * Anticipation, kept as a separate additive term rather than folded into the pull's
+     * curve. The obvious way to get a counter-move is an ease-in-out-back, but that ties
+     * the size of the dip to the size of the overshoot, and here they want to be very
+     * different — a couple of millimetres back into the slot against a settle measured
+     * across 115mm of travel. Separating them makes each tunable on its own.
+     *
+     * Both value and slope are zero at each end, so it joins the main curve invisibly.
+     */
+    fun bump(t: Float, window: Float): Float {
+        if (t <= 0f || t >= window) return 0f
+        val x = t / window
+        val v = x * (1f - x)
+        return 16f * v * v
+    }
 
     /** Maps global progress into one beat's own 0..1. */
     private fun sub(t: Float, from: Float, to: Float): Float =
@@ -93,21 +196,46 @@ object OpenSequence {
 
     private fun lerp(a: Float, b: Float, t: Float): Float = a + (b - a) * t
 
+    /**
+     * One beat's eased value, plus the two channels that deliberately do not overshoot.
+     *
+     * [turnCamera] and [liftCamera] carry the same beats as [turn] and [lift] on a
+     * jerk-free curve, for the camera alone. Keeping them as separate fields rather than
+     * re-easing at the call site is what stops someone later "simplifying" the camera back
+     * onto the object beats and reintroducing the bounce.
+     */
     data class Beats(
         val pull: Float,
         val turn: Float,
         val open: Float,
         val lift: Float,
-        val spin: Float
+        val spin: Float,
+        val turnCamera: Float,
+        val liftCamera: Float,
+        /** The anticipation bump, 0..1, peaking early in the pull. */
+        val pullNudge: Float
     )
 
-    fun beatsAt(progress: Float) = Beats(
-        pull = easeOut(sub(progress, PULL_FROM, PULL_TO)),
-        turn = easeInOut(sub(progress, TURN_FROM, TURN_TO)),
-        open = easeInOut(sub(progress, OPEN_FROM, OPEN_TO)),
-        lift = easeInOut(sub(progress, LIFT_FROM, LIFT_TO)),
-        spin = easeOut(sub(progress, SPIN_FROM, SPIN_TO))
-    )
+    fun beatsAt(progress: Float): Beats {
+        val pullT = sub(progress, PULL_FROM, PULL_TO)
+        val turnT = sub(progress, TURN_FROM, TURN_TO)
+        val openT = sub(progress, OPEN_FROM, OPEN_TO)
+        val liftT = sub(progress, LIFT_FROM, LIFT_TO)
+        val spinT = sub(progress, SPIN_FROM, SPIN_TO)
+        return Beats(
+            pull = easeOutBack(pullT, PULL_BACK),
+            turn = easeOutBack(turnT, TURN_BACK),
+            open = easeOutBack(openT, OPEN_BACK),
+            lift = easeOutBack(liftT, LIFT_BACK),
+            // Smootherstep, not ease-out: this scales the disc's angular *velocity*, so a
+            // curve with a steep start would step the acceleration and the disc would
+            // snap into motion. Ramping in and out is how a motor comes up to speed.
+            spin = smootherStep(spinT),
+            turnCamera = smootherStep(turnT),
+            liftCamera = smootherStep(liftT),
+            pullNudge = bump(pullT, ANTICIPATE_WINDOW)
+        )
+    }
 
     data class Transforms(
         val caseX: Float,
@@ -142,12 +270,21 @@ object OpenSequence {
     ): Transforms {
         // The case is framed against the turn-phase camera only; the later lift dolly then
         // eases the camera away from everything rather than dragging the case along with it.
-        val turnCameraZ = baseCameraZ + CAMERA_DOLLY * beats.turn
-        val cameraZ = turnCameraZ + LIFT_DOLLY * beats.lift
+        //
+        // Both dollies run on the camera-only channels. Driving them off `beats.turn` and
+        // `beats.lift`, as this used to, now that those overshoot would rock the camera
+        // back and forth with the case — which reads as a wobbling lens rather than as a
+        // settling object, and undoes the very thing the overshoot is there to do.
+        val turnCameraZ = baseCameraZ + CAMERA_DOLLY * beats.turnCamera
+        val cameraZ = turnCameraZ + LIFT_DOLLY * beats.liftCamera
 
         // Pull clears the rack; turn then carries the case out to FRONT_GAP in front of the
         // lens. Kept as the prototype's two additive lerps because the beats overlap.
-        val pulled = lerp(0f, PULL_Z, beats.pull)
+        //
+        // The nudge is subtracted, so the case sinks a little deeper into its slot before
+        // it comes out. Run in reverse it lands at the end of the close instead, where it
+        // reads as the case seating itself home.
+        val pulled = lerp(0f, PULL_Z, beats.pull) - ANTICIPATE_Z * beats.pullNudge
         val caseZ = pulled + lerp(0f, (turnCameraZ - FRONT_GAP) - PULL_Z, beats.turn)
 
         val floatX = sin(clock * 0.43f + 1.7f) * FLOAT_X * beats.turn
