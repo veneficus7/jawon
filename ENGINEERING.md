@@ -1,7 +1,7 @@
 # Javon — Operating Brief
 
-Read this first, every session. Full product spec is in `docs/PLAN.md`.
-Visual and interaction spec is `prototype/javon-shelf-prototype.html` — **open it and
+Read this first, every session. Full product spec is in `PLAN.md`.
+Visual and interaction spec is `javon-shelf-prototype.html` — **open it and
 read the JS before implementing any 3D behaviour.** When a behaviour is
 ambiguous, the prototype is the source of truth, not your assumption.
 
@@ -9,7 +9,7 @@ ambiguous, the prototype is the source of truth, not your assumption.
 
 ## Status
 
-**M0–M7 complete, each verified on-device on a Galaxy S25 Ultra.**
+**M0–M8 complete, each verified on-device on a Galaxy S25 Ultra.**
 Phase 1 gave a finished music player. Phase 2 has since replaced its 2D front
 end entirely: **the room is the app.** It is the start destination, it browses
 the wall, and it plays. The 2D Wall and 2D Deck are deleted — deliberately, per
@@ -20,11 +20,15 @@ pan/fling, content-derived bounds), the five-beat open/close sequence with
 interruption from any point, the in-room deck (transport, tracklist, seek,
 quality readout), and the now-playing case standing proud of its slot.
 
-Currently starting **M8 · The disc** — iridescence material, spin bound to
-playback, scratch-to-seek with haptics. Two things are explicitly deferred
-into it: the user's `Album.discFaceUri` art, which is imported and stored but
-not yet applied, and the disc's material, which is bare silvered plastic for
-now.
+**M8 is complete**, in two parts: the disc is a platter you can scratch to seek
+(with haptics), it shows the user's uploaded `discFaceUri` art, and its surface
+is a real iridescence shader compiled from
+`app/src/main/materials/disc_iridescent.mat`.
+
+Currently starting **M9 · Atmosphere** — lights, shadows, IBL, bloom, DOF, fog,
+dust. Two known things are waiting on it: the case's clear lid reads as a flat
+white strip because there is no environment to reflect, and the disc's
+iridescence is weaker than it should be for the same reason.
 
 Never assume a milestone is complete. If this status line looks stale or
 contradicts the code, ask — do not infer from the repo.
@@ -68,10 +72,22 @@ tracks across a huge library do not belong.
 | Geometry | **Procedural** via SceneView primitives + custom buffers. No Blender, no downloaded models. |
 | Shelf capacity | Unlimited, grows with content, bounded by content (see below) |
 | Album ↔ shelf | **One shelf per album.** A CD is physical; it cannot be in two places. |
-| Room style | **Midnight Shop only.** One room, done excellently. See `docs/DESIGN.md`. |
+| Room style | **Midnight Shop only.** One room, done excellently. See `DESIGN.md`. |
 | Playback | Media3 / ExoPlayer + `MediaSessionService` |
 | Database | Room |
 | DI | Hilt |
+| Custom materials | Compiled **by hand** with a version-matched `matc`; source and built `.filamat` both committed. See `docs/materials.md`. |
+
+### Custom shaders (`.filamat`)
+
+Filament's Gradle plugin is **not published to Maven Central or the Gradle
+Plugin Portal** — there is no artifact to depend on, so nothing in the build can
+compile a `.mat`. Materials are therefore compiled manually and their output
+committed alongside the source. `matc` must come from the Filament release
+matching the `filament-android` that SceneView pulls, or the runtime rejects the
+blob. This is not a rule-4 violation: `matc` is a build-time tool run by hand,
+never a dependency of the app or the build. Full procedure in
+`docs/materials.md`.
 
 ### Shelf bounds ("defence against infinite scroll")
 The wall's scrollable extent is **derived from content**, never fixed or
@@ -139,7 +155,7 @@ are instantiated — never emit nodes for the whole library.
 - **M10 · Polish & release** — performance, GPU tiers, icon, onboarding.
 
 ### The five beats (M7)
-Reference `prototype/javon-shelf-prototype.html` for exact timing fractions.
+Reference `javon-shelf-prototype.html` for exact timing fractions.
 
 1. **Pull** — case slides out of its slot toward the viewer
 2. **Turn** — rotates 90° from spine-on to cover-on

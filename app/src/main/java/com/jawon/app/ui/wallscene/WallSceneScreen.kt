@@ -73,6 +73,7 @@ import com.jawon.app.ui.wallscene.WallDimens.SLOT_PITCH
 import com.jawon.app.ui.wallscene.WallDimens.TAN_HALF_FOV
 import com.jawon.app.ui.wallscene.WallDimens.WALL_Z
 import com.google.android.filament.Texture
+import com.google.android.filament.TextureSampler
 import com.google.android.filament.android.TextureHelper
 import io.github.sceneview.SceneView
 import io.github.sceneview.collision.Vector3
@@ -147,6 +148,18 @@ private class ScratchDriver {
 
 /** Mip levels for a [DiscArt.DISC_PX]-square texture: 512, 256, … 1. */
 private const val DISC_MIP_LEVELS = 10
+
+/** Built from `app/src/main/materials/disc_iridescent.mat`; see `docs/materials.md`. */
+private const val DISC_MATERIAL_ASSET = "materials/disc_iridescent.filamat"
+
+// GRATING is the prototype's exported value — about six colour bands from hub to rim.
+//
+// IRIDESCENCE is NOT the prototype's 1.0. Emissive is measured in nits, and at 1.0 the
+// rainbow completely buries the album art. This is a sheen over the label, so it wants to
+// sit an order of magnitude lower. Tuning knob; expect it to move again once M9 gives the
+// room an environment for the disc to reflect.
+private const val DISC_IRIDESCENCE = 0.05f
+private const val DISC_GRATING = 110f
 
 /**
  * Does this node, or any of its parents, belong to the disc?
@@ -290,12 +303,20 @@ fun WallSceneScreen(
                 .usage(Texture.Usage.DEFAULT or Texture.Usage.GEN_MIPMAPPABLE)
                 .build(engine)
         }
-        // Opaque, not transparent: the annulus geometry is its own mask, so there is no
-        // alpha to sort. Arguments are positional because the second is an unnamed
-        // opaque/transparent selector — (texture, transparent, metallic, roughness,
-        // reflectance).
+        // The iridescence shader, compiled by hand from
+        // app/src/main/materials/disc_iridescent.mat — see docs/materials.md. Opaque:
+        // the annulus geometry is its own mask, so there is no alpha to sort.
+        //
+        // Unlike the prototype, which pushed the camera position into a uniform every
+        // frame, Filament supplies camera and lighting itself. These parameters are set
+        // once and never touched again, so the disc's surface costs nothing per frame.
         val discMaterial = remember(materialLoader, discTexture) {
-            materialLoader.createTextureInstance(discTexture, false, 0.72f, 0.22f, 0.65f)
+            val material = materialLoader.createMaterial(DISC_MATERIAL_ASSET)
+            materialLoader.createInstance(material).apply {
+                setParameter("face", discTexture, TextureSampler())
+                setParameter("iridescence", DISC_IRIDESCENCE)
+                setParameter("grating", DISC_GRATING)
+            }
         }
 
         // The disc face, finally: `Album.discFaceUri` has been collected since M1 and never
