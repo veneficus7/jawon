@@ -1,6 +1,6 @@
 # Custom Filament materials
 
-**Javon ships exactly one:** `materials/dust.mat`, compiled to
+**Jawon ships exactly one:** `materials/dust.mat`, compiled to
 `assets/materials/dust.filamat`, which animates every dust mote in the vertex
 shader from a single `time` uniform. Everything else in the room uses SceneView's
 stock materials.

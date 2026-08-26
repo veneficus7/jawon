@@ -11,7 +11,7 @@ import androidx.compose.ui.unit.sp
  * signature detail rather than styling every button in the app. Callers
  * apply `.uppercase()` to the string themselves.
  */
-object JavonTextStyle {
+object JawonTextStyle {
     val mono = TextStyle(
         fontFamily = JetBrainsMonoFamily,
         fontWeight = FontWeight.Medium,

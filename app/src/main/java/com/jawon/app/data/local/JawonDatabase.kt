@@ -8,7 +8,7 @@ import androidx.room.RoomDatabase
     version = 1,
     exportSchema = false
 )
-abstract class JavonDatabase : RoomDatabase() {
+abstract class JawonDatabase : RoomDatabase() {
     abstract fun shelfDao(): ShelfDao
     abstract fun albumDao(): AlbumDao
     abstract fun trackDao(): TrackDao

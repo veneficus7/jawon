@@ -1,4 +1,4 @@
-# Javon — Operating Brief
+# Jawon — Operating Brief
 
 Read this first, every session. Full product spec is in `PLAN.md`.
 Visual and interaction spec is `javon-shelf-prototype.html` — **open it and
@@ -223,7 +223,7 @@ visible cases.
 
 ---
 
-## What Javon is
+## What Jawon is
 
 A local-first Android music player where the library is a **room**, not a list.
 The user browses a wall of shelves holding CD jewel cases, spines out, reading
@@ -318,7 +318,7 @@ are instantiated — never emit nodes for the whole library.
   *Superseded by M7: the Wall and Deck screens are gone and the room does both.
   Add Album, Shelf Manager and Settings are still Compose and still current.*
 
-> **CHECKPOINT.** At the end of M4 Javon is a finished, shippable music player.
+> **CHECKPOINT.** At the end of M4 Jawon is a finished, shippable music player.
 > Do not begin Phase 2 until M4 genuinely works on-device. Everything after this
 > is the experience layer, and it is where the risk lives.
 

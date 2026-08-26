@@ -16,7 +16,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.jawon.app.R
-import com.jawon.app.ui.theme.JavonTextStyle
+import com.jawon.app.ui.theme.JawonTextStyle
 
 @Composable
 fun SettingsScreen(onBack: () -> Unit) {
@@ -38,7 +38,7 @@ fun SettingsScreen(onBack: () -> Unit) {
         ) {
             Text(stringResource(R.string.app_name), style = MaterialTheme.typography.displaySmall)
             if (versionName.isNotEmpty()) {
-                Text("VERSION $versionName".uppercase(), style = JavonTextStyle.mono)
+                Text("VERSION $versionName".uppercase(), style = JawonTextStyle.mono)
             }
             Text(
                 "Nothing to configure yet — playback and appearance settings land here as they're built.",

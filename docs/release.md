@@ -1,9 +1,9 @@
-# Releasing Javon
+# Releasing Jawon
 
 ## 1. Create your upload key — you, not the build
 
 The signing key is the app's identity on Play. Whoever holds it can ship updates
-as Javon; whoever loses it cannot. It is **not** in this repository and must not
+as Jawon; whoever loses it cannot. It is **not** in this repository and must not
 be: `keystore.properties`, `*.jks` and `*.keystore` are gitignored, and a signing
 key that reaches a repository has to be replaced.
 
@@ -89,6 +89,6 @@ Honest list, in the order they matter:
    shelf-bounds maths, the animation curves and the scrub cursor — and they are
    free to test.
 4. **Play listing assets**: a 512×512 icon, a feature graphic, screenshots, and a
-   privacy policy. Javon collects nothing and has no network access, which makes
+   privacy policy. Jawon collects nothing and has no network access, which makes
    the policy short but not optional.
 5. **`versionCode` is still 1.** Bump it on every upload; Play refuses a repeat.

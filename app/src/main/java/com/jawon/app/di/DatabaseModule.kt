@@ -3,7 +3,7 @@ package com.jawon.app.di
 import android.content.Context
 import androidx.room.Room
 import com.jawon.app.data.local.AlbumDao
-import com.jawon.app.data.local.JavonDatabase
+import com.jawon.app.data.local.JawonDatabase
 import com.jawon.app.data.local.ShelfDao
 import com.jawon.app.data.local.TrackDao
 import dagger.Module
@@ -19,15 +19,15 @@ object DatabaseModule {
 
     @Provides
     @Singleton
-    fun provideDatabase(@ApplicationContext context: Context): JavonDatabase =
-        Room.databaseBuilder(context, JavonDatabase::class.java, "javon.db").build()
+    fun provideDatabase(@ApplicationContext context: Context): JawonDatabase =
+        Room.databaseBuilder(context, JawonDatabase::class.java, "javon.db").build()
 
     @Provides
-    fun provideShelfDao(database: JavonDatabase): ShelfDao = database.shelfDao()
+    fun provideShelfDao(database: JawonDatabase): ShelfDao = database.shelfDao()
 
     @Provides
-    fun provideAlbumDao(database: JavonDatabase): AlbumDao = database.albumDao()
+    fun provideAlbumDao(database: JawonDatabase): AlbumDao = database.albumDao()
 
     @Provides
-    fun provideTrackDao(database: JavonDatabase): TrackDao = database.trackDao()
+    fun provideTrackDao(database: JawonDatabase): TrackDao = database.trackDao()
 }

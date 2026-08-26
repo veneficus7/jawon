@@ -33,7 +33,7 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import coil3.compose.AsyncImage
 import com.jawon.app.data.importer.TrackMetadata
 import com.jawon.app.ui.common.formatDuration
-import com.jawon.app.ui.theme.JavonTextStyle
+import com.jawon.app.ui.theme.JawonTextStyle
 
 @Composable
 fun AddAlbumScreen(
@@ -220,7 +220,7 @@ private fun TrackRow(track: TrackMetadata) {
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text(track.title, modifier = Modifier.weight(1f))
-        Text(formatDuration(track.durationMs), style = JavonTextStyle.mono)
+        Text(formatDuration(track.durationMs), style = JawonTextStyle.mono)
     }
 }
 

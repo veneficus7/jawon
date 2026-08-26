@@ -43,7 +43,7 @@ import com.jawon.app.ui.common.formatDuration
 import com.jawon.app.ui.common.qualityReadoutOutput
 import com.jawon.app.ui.common.qualityReadoutSource
 import com.jawon.app.ui.theme.CrateEdge
-import com.jawon.app.ui.theme.JavonTextStyle
+import com.jawon.app.ui.theme.JawonTextStyle
 import com.jawon.app.ui.theme.LabelDim
 import com.jawon.app.ui.theme.LampAmber
 import kotlinx.coroutines.flow.StateFlow
@@ -103,7 +103,7 @@ fun DeckOverlay(
         )
         Text(
             text = artist.uppercase(),
-            style = JavonTextStyle.mono,
+            style = JawonTextStyle.mono,
             modifier = Modifier.padding(top = 6.dp)
         )
         // The quality readout is the resting state of this slot; a scratch takes it over.
@@ -181,12 +181,12 @@ private fun ScrubOrQuality(scrubReadout: State<ScrubReadout?>, deck: DeckState) 
             text = (if (scrub.forward) "▶▶  " else "◀◀  ") +
                 formatDuration(scrub.positionMs) + " / " +
                 formatDuration(track?.durationMs ?: 0L),
-            style = JavonTextStyle.mono,
+            style = JawonTextStyle.mono,
             modifier = Modifier.padding(top = 10.dp)
         )
         Text(
             text = track?.title.orEmpty().uppercase(),
-            style = JavonTextStyle.mono.copy(color = LabelDim),
+            style = JawonTextStyle.mono.copy(color = LabelDim),
             modifier = Modifier.padding(top = 2.dp),
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
@@ -196,14 +196,14 @@ private fun ScrubOrQuality(scrubReadout: State<ScrubReadout?>, deck: DeckState) 
     deck.currentTrack?.let { track ->
         Text(
             text = qualityReadoutSource(track).uppercase(),
-            style = JavonTextStyle.mono.copy(color = LabelDim),
+            style = JawonTextStyle.mono.copy(color = LabelDim),
             modifier = Modifier.padding(top = 10.dp)
         )
         Text(
             text = qualityReadoutOutput(
                 track, deck.routeLabel, deck.outputSampleRateHz
             ).uppercase(),
-            style = JavonTextStyle.mono.copy(color = LabelDim),
+            style = JawonTextStyle.mono.copy(color = LabelDim),
             modifier = Modifier.padding(top = 2.dp)
         )
     }
@@ -248,8 +248,8 @@ private fun ProgressRow(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            Text(formatDuration(shown.toLong()), style = JavonTextStyle.mono)
-            Text(formatDuration(durationMs), style = JavonTextStyle.mono)
+            Text(formatDuration(shown.toLong()), style = JawonTextStyle.mono)
+            Text(formatDuration(durationMs), style = JawonTextStyle.mono)
         }
     }
 }
@@ -266,7 +266,7 @@ private fun TrackRow(track: Track, isCurrent: Boolean, onClick: () -> Unit) {
     ) {
         Text(
             text = "%02d".format(track.trackNumber),
-            style = JavonTextStyle.mono.copy(
+            style = JawonTextStyle.mono.copy(
                 color = if (isCurrent) LampAmber else LabelDim
             )
         )
@@ -280,7 +280,7 @@ private fun TrackRow(track: Track, isCurrent: Boolean, onClick: () -> Unit) {
         )
         Text(
             text = formatDuration(track.durationMs),
-            style = JavonTextStyle.mono.copy(color = LabelDim)
+            style = JawonTextStyle.mono.copy(color = LabelDim)
         )
     }
 }

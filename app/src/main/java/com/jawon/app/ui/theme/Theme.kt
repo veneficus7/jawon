@@ -7,7 +7,7 @@ import androidx.compose.runtime.Composable
 // Midnight Shop is the only room (ENGINEERING.md locked decision) and dynamic
 // color is a DESIGN.md anti-goal, so this is a single fixed dark scheme —
 // no light variant, no dynamicDarkColorScheme/dynamicLightColorScheme.
-private val JavonColorScheme = darkColorScheme(
+private val JawonColorScheme = darkColorScheme(
     primary = LampAmber,
     onPrimary = CrateBlack,
     secondary = OxideTeal,
@@ -22,9 +22,9 @@ private val JavonColorScheme = darkColorScheme(
 )
 
 @Composable
-fun JavonTheme(content: @Composable () -> Unit) {
+fun JawonTheme(content: @Composable () -> Unit) {
     MaterialTheme(
-        colorScheme = JavonColorScheme,
+        colorScheme = JawonColorScheme,
         typography = Typography,
         content = content
     )

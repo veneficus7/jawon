@@ -57,7 +57,7 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.jawon.app.ui.theme.ArchivoFamily
 import com.jawon.app.ui.theme.CrateBlack
-import com.jawon.app.ui.theme.JavonTextStyle
+import com.jawon.app.ui.theme.JawonTextStyle
 import com.jawon.app.ui.theme.JetBrainsMonoFamily
 import com.jawon.app.ui.theme.LabelDim
 import com.jawon.app.ui.wallscene.WallDimens.BOARD_D
@@ -1210,7 +1210,7 @@ private fun ChromeAction(
         IconButton(onClick = onClick, modifier = Modifier.size(48.dp)) {
             Icon(icon, contentDescription = label, tint = LabelDim)
         }
-        Text(text = label, style = JavonTextStyle.mono.copy(color = LabelDim))
+        Text(text = label, style = JawonTextStyle.mono.copy(color = LabelDim))
     }
 }
 
@@ -1286,7 +1286,7 @@ private fun FocusLabel(case: CaseLayout?, modifier: Modifier = Modifier) {
         )
         Text(
             text = case?.artist.orEmpty().uppercase(),
-            style = JavonTextStyle.mono,
+            style = JawonTextStyle.mono,
             textAlign = TextAlign.Center,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis

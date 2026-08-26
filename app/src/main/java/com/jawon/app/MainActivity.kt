@@ -7,8 +7,8 @@ import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Surface
 import androidx.compose.ui.Modifier
-import com.jawon.app.navigation.JavonNavHost
-import com.jawon.app.ui.theme.JavonTheme
+import com.jawon.app.navigation.JawonNavHost
+import com.jawon.app.ui.theme.JawonTheme
 import dagger.hilt.android.AndroidEntryPoint
 
 @AndroidEntryPoint
@@ -17,9 +17,9 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
-            JavonTheme {
+            JawonTheme {
                 Surface(modifier = Modifier.fillMaxSize()) {
-                    JavonNavHost()
+                    JawonNavHost()
                 }
             }
         }

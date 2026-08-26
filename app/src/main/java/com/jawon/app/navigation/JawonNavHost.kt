@@ -11,25 +11,25 @@ import com.jawon.app.ui.shelfmanager.ShelfManagerScreen
 import com.jawon.app.ui.wallscene.WallSceneScreen
 
 @Composable
-fun JavonNavHost(navController: NavHostController = rememberNavController()) {
-    NavHost(navController = navController, startDestination = JavonDestination.Wall.route) {
-        composable(JavonDestination.Wall.route) {
+fun JawonNavHost(navController: NavHostController = rememberNavController()) {
+    NavHost(navController = navController, startDestination = JawonDestination.Wall.route) {
+        composable(JawonDestination.Wall.route) {
             WallSceneScreen(
-                onAddAlbum = { navController.navigate(JavonDestination.AddAlbum.route) },
-                onOpenShelfManager = { navController.navigate(JavonDestination.ShelfManager.route) },
-                onOpenSettings = { navController.navigate(JavonDestination.Settings.route) }
+                onAddAlbum = { navController.navigate(JawonDestination.AddAlbum.route) },
+                onOpenShelfManager = { navController.navigate(JawonDestination.ShelfManager.route) },
+                onOpenSettings = { navController.navigate(JawonDestination.Settings.route) }
             )
         }
-        composable(JavonDestination.AddAlbum.route) {
+        composable(JawonDestination.AddAlbum.route) {
             AddAlbumScreen(
                 onDone = { navController.popBackStack() },
                 onCancel = { navController.popBackStack() }
             )
         }
-        composable(JavonDestination.ShelfManager.route) {
+        composable(JawonDestination.ShelfManager.route) {
             ShelfManagerScreen(onBack = { navController.popBackStack() })
         }
-        composable(JavonDestination.Settings.route) {
+        composable(JawonDestination.Settings.route) {
             SettingsScreen(onBack = { navController.popBackStack() })
         }
     }
