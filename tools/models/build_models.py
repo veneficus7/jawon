@@ -181,7 +181,7 @@ def finish(obj, bevel=True, bevel_width=None):
 
 def principled(name, base_color, metallic, roughness,
                coat=0.0, coat_roughness=0.05, anisotropic=0.0,
-               alpha=1.0, blend=False):
+               alpha=1.0, blend=False, transmission=0.0, ior=1.5):
     mat = bpy.data.materials.new(name)
     mat.use_nodes = True
     bsdf = mat.node_tree.nodes["Principled BSDF"]
@@ -203,6 +203,12 @@ def principled(name, base_color, metallic, roughness,
     # highlight. NOT iridescence — that was built in M8 and removed because the
     # owner did not want a rainbow, and this is a different thing entirely.
     setv("Anisotropic", anisotropic)
+    # -> KHR_materials_transmission + KHR_materials_ior. This is what separates *clear
+    # plastic* from *a pale surface at low alpha*: alpha blending only lets the background
+    # through, whereas transmission bends it, so edges and corners pick up the thick, bright
+    # caustic-ish look a moulded crystal case actually has. Polystyrene is ior 1.59.
+    setv("Transmission Weight", transmission)
+    setv("IOR", ior)
 
     if blend:
         # Blender 4.2+ renamed/reshuffled these; guard so the script survives it.
@@ -445,14 +451,17 @@ def build_closed_case():
 
     # Slot 0 — the moulded tray. Still dark, because a real jewel case's tray is, but this is
     # now only the back half of the object rather than all of it.
+    # Lifted well off near-black. At 0.048 the tray swallowed every highlight the clear shell
+    # threw, so the whole case read as one dull dark lump however shiny the front was — a
+    # transparent thing over a black thing still looks black.
     obj.data.materials.append(
         principled(
             "JewelCaseTray",
-            base_color=(0.048, 0.044, 0.040),
+            base_color=(0.16, 0.155, 0.15),
             metallic=0.0,
-            roughness=0.24,
-            coat=0.8,
-            coat_roughness=0.06,
+            roughness=0.30,
+            coat=0.7,
+            coat_roughness=0.07,
         )
     )
     # Slot 1 — the clear shell.
@@ -466,16 +475,26 @@ def build_closed_case():
     # polystyrene and a tight one off the surface, which is what makes plastic read as *shiny*
     # rather than merely pale. Alpha is high enough to catch the light and low enough to read
     # the printed inlay straight through it.
+    # Crystal, not frosting.
+    #
+    # The previous version was alpha 0.20 over a near-black tray, which is a recipe for grey:
+    # alpha blending simply mixes the surface with whatever is behind it, so a pale film over
+    # a dark object averages to a dull dark object. Real transmission refracts instead — the
+    # background bends through the thickness, edges and corners gather light, and the shell
+    # stops reading as a film and starts reading as a solid piece of moulded plastic.
+    #
+    # Nearly white base colour on purpose: a transmissive material's base colour *tints* what
+    # passes through it, so anything dark here would dirty the artwork behind the shell.
     obj.data.materials.append(
         principled(
             "JewelCaseClear",
-            base_color=(0.82, 0.87, 0.92),
+            base_color=(0.96, 0.97, 0.99),
             metallic=0.0,
-            roughness=0.03,
+            roughness=0.02,
             coat=1.0,
-            coat_roughness=0.015,
-            alpha=0.20,
-            blend=True,
+            coat_roughness=0.01,
+            transmission=0.92,
+            ior=1.59,          # polystyrene
         )
     )
     return obj
@@ -527,6 +546,8 @@ def build_beam():
         j = (i + 1) % segments
         bm.faces.new((ring_lo[i], ring_lo[j], ring_hi[j], ring_hi[i]))
 
+    cone_faces = set(bm.faces)
+
     # The pool on the board: a disc just above the timber, so the beam has a source.
     pool = []
     for i in range(segments):
@@ -534,6 +555,11 @@ def build_beam():
         pool.append(bm.verts.new((math.cos(a) * r_base * 2.6,
                                   math.sin(a) * r_base * 2.6, 0.0006)))
     bm.faces.new(tuple(pool))
+
+    # Two slots: the shaft is haze, the pool is the source. They need opposite treatments —
+    # see the emission note on the materials below.
+    for f in bm.faces:
+        f.material_index = 0 if f in cone_faces else 1
 
     # Fade with height. The pool and the cone's foot are brightest; the top is gone.
     col = bm.loops.layers.color.new("Col")
@@ -566,18 +592,44 @@ def build_beam():
     #
     # A real additive beam would need a hand-written `.mat` (see docs/materials.md), which
     # costs a 735MB toolchain download for one cone. This is the honest approximation.
-    mat = principled(
-        "Underlight",
+    # Slot 0 — the shaft. Haze, deliberately dim.
+    shaft = principled(
+        "UnderlightShaft",
         base_color=(1.0, 0.824, 0.627),   # RoomLighting.KEY_COLOR — the same lamp
         metallic=0.0,
         roughness=1.0,
-        alpha=0.14,
+        alpha=0.13,
         blend=True,
     )
-    bsdf = mat.node_tree.nodes["Principled BSDF"]
-    bsdf.inputs["Emission Color"].default_value = (1.0, 0.824, 0.627, 1.0)
-    bsdf.inputs["Emission Strength"].default_value = 0.30
-    obj.data.materials.append(mat)
+    shaft.node_tree.nodes["Principled BSDF"].inputs["Emission Color"].default_value = \
+        (1.0, 0.824, 0.627, 1.0)
+    shaft.node_tree.nodes["Principled BSDF"].inputs["Emission Strength"].default_value = 0.12
+    obj.data.materials.append(shaft)
+
+    # Slot 1 — the pool where the beam meets the board, and the reason any of this glows.
+    #
+    # `RoomAtmosphere` runs bloom with `threshold = true`, which means **only values above
+    # 1.0 bloom at all**. The first beam emitted at 0.3 and therefore could not glow no
+    # matter how it was tuned — it was always going to sit there as a low-opacity cone.
+    #
+    # Splitting the beam in two is what lets both things be true at once: the shaft stays
+    # faint so it does not occlude the album behind it (glTF has no additive blend, so a
+    # bright surface hides what is behind it), while the pool is driven well past 1.0 and
+    # blooms into an actual pool of light. Emission is not damped by alpha or vertex colour,
+    # so it had to be a separate material rather than a gradient.
+    pool_mat = principled(
+        "UnderlightPool",
+        base_color=(1.0, 0.824, 0.627),
+        metallic=0.0,
+        roughness=1.0,
+        alpha=0.85,
+        blend=True,
+    )
+    pb = pool_mat.node_tree.nodes["Principled BSDF"]
+    pb.inputs["Emission Color"].default_value = (1.0, 0.86, 0.70, 1.0)
+    # Exported as KHR_materials_emissive_strength. Above the bloom threshold on purpose.
+    pb.inputs["Emission Strength"].default_value = 4.5
+    obj.data.materials.append(pool_mat)
     return obj
 
 

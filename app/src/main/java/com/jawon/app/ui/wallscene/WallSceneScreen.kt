@@ -104,6 +104,7 @@ import kotlinx.coroutines.withContext
 import kotlin.math.abs
 import kotlin.math.atan2
 import kotlin.math.floor
+import kotlin.math.pow
 import androidx.compose.ui.graphics.Color as ComposeColor
 
 /** Fling coast. The prototype's friction of 28 is a ~36ms time constant â€” barely a coast; */
@@ -169,6 +170,22 @@ private class FrameContext {
  * This keeps DESIGN.md's "one warm lamp over the racks" reading true — there is still one
  * lamp and one pool of light — it just no longer requires the shop to be one metre wide.
  */
+/**
+ * A shelved album being turned by hand.
+ *
+ * Deliberately not Compose state, like the other gesture drivers here: turning a case writes
+ * a rotation every frame and must not recompose anything (ENGINEERING.md rule 3).
+ *
+ * Its existence is also what stops the wall panning mid-turn. Horizontal drag means two
+ * different things depending on what is under the finger — pan the shelf, or spin the record
+ * — and `onScroll` fires regardless of what was picked. So the grab is resolved once in
+ * `onMoveBegin`, and `onScroll` stands down for as long as [slot] is non-null.
+ */
+private class CaseDrag {
+    var slot: CaseSlot? = null
+    var lastX = 0f
+}
+
 private class RoomNodes {
     var keyLight: SceneNode? = null
     var rimLight: SceneNode? = null
@@ -350,6 +367,7 @@ fun WallSceneScreen(
         val frame = remember { FrameContext() }
         val actNodes = remember { ActiveCaseNodes() }
         val roomNodes = remember { RoomNodes() }
+        val caseDrag = remember { CaseDrag() }
         val scratch = remember { ScratchDriver() }
         val view = LocalView.current
 
@@ -622,8 +640,10 @@ fun WallSceneScreen(
                 scope.launch { panY.stop() }
             },
             onScroll = { _, _, _, distance ->
-                // No panning while a case is out â€” the prototype does the same.
-                if (selectedAlbumId == null) {
+                // No panning while a case is out â€” the prototype does the same â€” and none
+                // while an album is being turned by hand, or the shelf would slide away
+                // under the record you are trying to look at.
+                if (selectedAlbumId == null && caseDrag.slot == null) {
                     scope.launch { panX.snapTo(panX.value + distance.x * metresPerPx) }
                     scope.launch { panY.snapTo(panY.value - distance.y * metresPerPx) }
                 }
@@ -677,6 +697,20 @@ fun WallSceneScreen(
             // Panning stays on onScroll, which is already inert while a case is open, so the
             // two never contend.
             onMoveBegin = { _, e, node ->
+                // Browsing: grabbing an album turns it in place. Resolved once, here, using
+                // the same walk the tap handler does — picking lands on a node the glTF
+                // asset named itself, below the slot node carrying the album id.
+                if (selectedAlbumId == null) {
+                    val albumId = generateSequence(node) { it.parent }
+                        .mapNotNull { it.name }
+                        .firstOrNull { name -> layout.cases.any { it.albumId == name } }
+                    if (albumId != null) {
+                        caseDrag.slot = caseSlots.slots.firstOrNull { it.body?.name == albumId }
+                        caseDrag.lastX = e.x
+                        // Catch it: a spinning case stops dead under the finger.
+                        caseDrag.slot?.spinVelocity = 0f
+                    }
+                }
                 if (selectedAlbumId != null &&
                     sequence.progress > Scratch.ARM_AT &&
                     node.isDisc()
@@ -705,6 +739,16 @@ fun WallSceneScreen(
                 }
             },
             onMove = { _, e, _ ->
+                caseDrag.slot?.let { slot ->
+                    val dx = e.x - caseDrag.lastX
+                    caseDrag.lastX = e.x
+                    val degrees = dx / ShelfHover.DRAG_PX_PER_DEG
+                    slot.manualTurn += degrees
+                    // Remembered so releasing mid-drag carries the throw. Divided by a
+                    // nominal frame rather than real dt: this is a feel constant, and
+                    // sampling dt here would make a flick's strength depend on frame rate.
+                    slot.spinVelocity = degrees * 60f
+                }
                 if (scratch.active) {
                     discScreenCenter()?.let { c ->
                         val angle = atan2(e.y - c.y, e.x - c.x)
@@ -741,7 +785,11 @@ fun WallSceneScreen(
                     }
                 }
             },
-            onMoveEnd = { _, _, _ -> endScratch() }
+            onMoveEnd = { _, _, _ ->
+                // Let go of the record; its momentum carries on in the frame driver.
+                caseDrag.slot = null
+                endScratch()
+            }
         )
 
         SceneView(
@@ -866,9 +914,17 @@ fun WallSceneScreen(
                                 slot.baseY + ShelfHover.lift(t, slot.phase),
                                 slot.baseZ
                             )
+                            // Carry any throw the user gave this case, shedding it over
+                            // about a second. Skipped while the finger is down, because
+                            // onMove is already writing manualTurn directly.
+                            if (slot !== caseDrag.slot && slot.spinVelocity != 0f) {
+                                slot.manualTurn += slot.spinVelocity * dt
+                                slot.spinVelocity *= ShelfHover.SPIN_RETAIN_PER_S.pow(dt)
+                                if (abs(slot.spinVelocity) < 1f) slot.spinVelocity = 0f
+                            }
                             root.rotation = Rotation(
                                 ShelfHover.tilt(t, slot.phase),
-                                ShelfHover.turn(t, slot.phase),
+                                ShelfHover.turn(t, slot.phase) + slot.manualTurn,
                                 0f
                             )
                         }

@@ -59,6 +59,19 @@ class CaseSlot {
      * the same way and re-binding a slot to it does not make it jump.
      */
     var phase = 0f
+
+    /**
+     * Degrees the user has turned this album by hand, on top of its automatic presentation
+     * turn. Persists after the finger lifts — letting go of a record you turned to look at
+     * should not snap it back.
+     */
+    var manualTurn = 0f
+
+    /**
+     * Degrees per second still carried from a flick, decaying to nothing. This is what makes
+     * a case feel like it has mass rather than being dragged on a rail.
+     */
+    var spinVelocity = 0f
 }
 
 /**
@@ -144,6 +157,19 @@ object ShelfHover {
      */
     fun turn(t: Float, phase: Float): Float =
         (-90f + t * TURN_DEG_PER_S + phase * 360f) % 360f
+
+    /**
+     * How fast a hand-flicked case sheds its spin, as a fraction retained per second.
+     *
+     * Not friction in the physical sense — there is nothing for a levitating case to rub
+     * against — so this is tuned for feel: long enough that a flick spins a couple of turns
+     * and you watch it come round, short enough that it settles back into its slow automatic
+     * presentation rather than whirling indefinitely.
+     */
+    const val SPIN_RETAIN_PER_S = 0.22f
+
+    /** Screen pixels of horizontal drag per degree of turn. */
+    const val DRAG_PX_PER_DEG = 2.4f
 
     /** X tilt in degrees — the lean that keeps the turn from reading as flat. */
     fun tilt(t: Float, phase: Float): Float =

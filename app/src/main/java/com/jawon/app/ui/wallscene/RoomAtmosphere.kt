@@ -270,6 +270,17 @@ object RoomAtmosphere {
             stride = SSR_STRIDE
         }
 
+        // Screen-space refraction, for the cases' clear shells.
+        //
+        // Without this the shells' KHR_materials_transmission does nothing and they fall
+        // back to looking like flat pale surfaces — which is exactly the "dull plastic"
+        // problem transmission was added to solve. It is what bends the background through
+        // the thickness and gathers light at the edges.
+        //
+        // Unlike SSR (off, and a 7x regression) this only costs where transmissive pixels
+        // actually are, and in a gallery of bays that is two or three cases.
+        view.setScreenSpaceRefractionEnabled(true)
+
         // Contact-hardening shadows. The key light's own map size and bulb radius are set
         // where the light is built, in WallSceneScreen — this is only the filter.
         // Called, not assigned: Filament exposes `setShadowType` with no matching getter,
