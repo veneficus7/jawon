@@ -14,11 +14,15 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
+import java.io.File
 import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
 
 private const val UNSORTED_SHELF_NAME = "Unsorted"
+
+/** How many files to check for embedded art before concluding the album has none. */
+private const val EMBEDDED_ART_PROBE_LIMIT = 5
 
 @Singleton
 class AlbumImportRepository @Inject constructor(
@@ -31,13 +35,45 @@ class AlbumImportRepository @Inject constructor(
     private val metadataReader = TrackMetadataReader()
     private val coverStore = CoverImageStore()
 
-    suspend fun scanFolder(treeUri: Uri): ImportPreview = withContext(Dispatchers.IO) {
+    /**
+     * Scans a picked folder and returns **one preview per album found in it**.
+     *
+     * **The scanner has always recursed, and that used to be a trap.** Everything it found
+     * anywhere under the picked folder was collapsed into a single album — so a user who
+     * pointed Jawon at their `Music` directory, which is the obvious thing to do, got one
+     * "album" containing their entire library, with the track numbers of forty records
+     * fighting each other. The only way to import properly was to add albums one folder at a
+     * time and know that in advance.
+     *
+     * Files are grouped by the folder that contains them, which is how people actually
+     * organise music and is more reliable than the album tag: untagged rips still group
+     * correctly, and two different albums that share a title do not merge.
+     *
+     * Returns a single-element list for the ordinary "picked one album folder" case, so the
+     * caller can treat one and many the same way.
+     */
+    suspend fun scanTree(treeUri: Uri): List<ImportPreview> = withContext(Dispatchers.IO) {
         context.contentResolver.takePersistableUriPermission(
             treeUri,
             Intent.FLAG_GRANT_READ_URI_PERMISSION
         )
 
         val files = scanner.scan(context, treeUri)
+        if (files.isEmpty()) return@withContext emptyList()
+
+        val rootName = DocumentFile.fromTreeUri(context, treeUri)?.name
+        files
+            .groupBy { it.parentFile?.uri?.toString().orEmpty() }
+            .values
+            .map { group -> buildPreview(treeUri, group, rootName) }
+            .sortedBy { it.suggestedTitle.lowercase() }
+    }
+
+    private suspend fun buildPreview(
+        treeUri: Uri,
+        files: List<DocumentFile>,
+        rootName: String?
+    ): ImportPreview {
         val read = mutableListOf<TrackMetadata>()
         var failedCount = 0
         for (file in files) {
@@ -51,9 +87,11 @@ class AlbumImportRepository @Inject constructor(
         val ordered = read.sortedWith(
             compareBy({ it.trackNumber ?: Int.MAX_VALUE }, { it.displayName })
         )
-        val folderName = DocumentFile.fromTreeUri(context, treeUri)?.name
+        // This group's own folder, not the picked root — with nested folders they differ, and
+        // the containing folder is what names the album when the tags do not.
+        val folderName = files.firstOrNull()?.parentFile?.name ?: rootName
 
-        ImportPreview(
+        return ImportPreview(
             treeUri = treeUri,
             tracks = ordered,
             suggestedTitle = mostCommon(ordered.mapNotNull { it.album })
@@ -61,8 +99,37 @@ class AlbumImportRepository @Inject constructor(
                 ?: "Untitled Album",
             suggestedArtist = mostCommon(ordered.mapNotNull { it.artist }) ?: "Unknown Artist",
             suggestedYear = mostCommon(ordered.mapNotNull { it.year }),
-            failedCount = failedCount
+            failedCount = failedCount,
+            embeddedCoverUri = extractEmbeddedCover(files)
         )
+    }
+
+    /**
+     * Pulls the album's own cover out of the first track that has one.
+     *
+     * **Stops after [EMBEDDED_ART_PROBE_LIMIT] files.** Reading embedded art means opening
+     * each file with a fresh `MediaMetadataRetriever`, which is not cheap, and art is a
+     * property of the album rather than the track — if the first handful do not have it, the
+     * rest almost certainly do not either. Scanning a 40-track box set to prove a negative
+     * would make every artless import visibly slower for nothing.
+     *
+     * Written to the cache directory rather than straight into the album's storage, because
+     * at scan time there is no album yet — the user is still looking at the preview and may
+     * back out. `commit` copies whatever cover survives that screen into private storage.
+     */
+    private suspend fun extractEmbeddedCover(files: List<DocumentFile>): Uri? {
+        for (file in files.take(EMBEDDED_ART_PROBE_LIMIT)) {
+            val bytes = metadataReader.embeddedPicture(context, file.uri) ?: continue
+            return withContext(Dispatchers.IO) {
+                runCatching {
+                    val dir = File(context.cacheDir, "import").apply { mkdirs() }
+                    val out = File(dir, "cover-${UUID.randomUUID()}.img")
+                    out.writeBytes(bytes)
+                    Uri.fromFile(out)
+                }.getOrNull()
+            }
+        }
+        return null
     }
 
     suspend fun commit(
@@ -125,6 +192,36 @@ class AlbumImportRepository @Inject constructor(
         }
 
         albumId
+    }
+
+    /**
+     * Imports several albums in one go, using each one's own detected title, artist, year and
+     * embedded cover.
+     *
+     * The point of the batch path is that it asks nothing. A user adding forty albums is not
+     * going to type forty titles, and the tags are almost always right — anything wrong can be
+     * corrected afterwards on the album itself. The single-album path keeps its editing form,
+     * because someone adding one record often does want to fix its name.
+     *
+     * Failures are per-album rather than fatal: one unreadable folder in a library of forty
+     * should cost that folder, not the other thirty-nine. Returns how many actually landed.
+     */
+    suspend fun commitAll(previews: List<ImportPreview>): Int = withContext(Dispatchers.IO) {
+        var imported = 0
+        for (preview in previews) {
+            runCatching {
+                commit(
+                    preview = preview,
+                    title = preview.suggestedTitle,
+                    artist = preview.suggestedArtist,
+                    year = preview.suggestedYear,
+                    caseCoverUri = preview.embeddedCoverUri,
+                    discFaceUri = null,
+                    spineHue = 0f
+                )
+            }.onSuccess { imported++ }
+        }
+        imported
     }
 
     private suspend fun ensureDefaultShelf(): String {

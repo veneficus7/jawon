@@ -16,7 +16,9 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material3.Button
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -74,6 +76,16 @@ fun AddAlbumScreen(
                     onSpineHueChanged = viewModel::onSpineHueChanged,
                     onSave = viewModel::onSave
                 )
+                is AddAlbumUiState.MultiPreview -> MultiPreviewContent(
+                    state = state,
+                    onToggle = viewModel::onToggleAlbum,
+                    onImport = viewModel::onImportSelected
+                )
+                is AddAlbumUiState.DoneMany -> {
+                    // Nothing to open — a batch has no single album to land on, so this
+                    // returns to the room where the new records are now on the shelf.
+                    LaunchedEffect(state) { onCancel() }
+                }
                 is AddAlbumUiState.Saving -> CenteredMessage("Saving…")
                 is AddAlbumUiState.Done -> Unit // handled by LaunchedEffect above
                 is AddAlbumUiState.Error -> CenteredMessage("${state.message} — go back and try again")
@@ -90,7 +102,10 @@ private fun IdleContent(onChooseFolder: () -> Unit, onCancel: () -> Unit) {
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Text("Add Album", style = MaterialTheme.typography.displaySmall)
-        Text("Pick a folder containing one album's audio files.")
+        // Says what actually happens now. It used to read "a folder containing one album's
+        // audio files", which was both a rule the user had to obey and a lie about the
+        // scanner — it always recursed, it just merged everything it found into one album.
+        Text("Pick a folder. One album, or a whole library — Jawon sorts it out.")
         Button(onClick = onChooseFolder) { Text("Choose folder") }
         Button(onClick = onCancel) { Text("Cancel") }
     }
@@ -105,6 +120,77 @@ private fun CenteredMessage(text: String) {
     ) {
         CircularProgressIndicator()
         Text(text, modifier = Modifier.padding(top = 12.dp))
+    }
+}
+
+/**
+ * What you get when the picked folder held more than one album.
+ *
+ * **No text fields, on purpose.** Someone importing a whole library is not going to type
+ * forty titles, and the tags are almost always right — so this shows what was found, lets
+ * them untick anything they do not want, and imports the rest in one press. Getting a title
+ * wrong is recoverable; making the user do forty rounds of a form is not.
+ */
+@Composable
+private fun MultiPreviewContent(
+    state: AddAlbumUiState.MultiPreview,
+    onToggle: (Int) -> Unit,
+    onImport: () -> Unit
+) {
+    Column(modifier = Modifier.fillMaxSize()) {
+        Column(
+            modifier = Modifier.padding(start = 24.dp, end = 24.dp, top = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            Text(
+                "${state.albums.size} albums found",
+                style = MaterialTheme.typography.headlineSmall
+            )
+            Text(
+                "Grouped by folder. Untick anything you'd rather not add.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+
+        LazyColumn(
+            modifier = Modifier.weight(1f).padding(horizontal = 24.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            itemsIndexed(state.albums) { index, album ->
+                val checked = index in state.selected
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { onToggle(index) }
+                        .padding(vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Checkbox(checked = checked, onCheckedChange = { onToggle(index) })
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(album.suggestedTitle, style = MaterialTheme.typography.bodyLarge)
+                        Text(
+                            "${album.suggestedArtist} · ${album.tracks.size} tracks" +
+                                if (album.embeddedCoverUri != null) " · cover found" else "",
+                            style = JawonTextStyle.mono,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+        }
+
+        Button(
+            onClick = onImport,
+            enabled = state.selectedCount > 0,
+            modifier = Modifier.padding(24.dp)
+        ) {
+            Text(
+                if (state.selectedCount == 1) "Add 1 album"
+                else "Add ${state.selectedCount} albums"
+            )
+        }
     }
 }
 

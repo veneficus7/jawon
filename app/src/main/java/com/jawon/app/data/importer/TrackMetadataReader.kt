@@ -41,6 +41,33 @@ class TrackMetadataReader {
         )
     }
 
+    /**
+     * The album art embedded in a file's tags, or null if it has none.
+     *
+     * Most ripped or downloaded albums carry their cover inside every track, and Jawon was
+     * ignoring it and asking the user to go and find the image themselves — the single
+     * biggest piece of busywork in adding an album. `MediaMetadataRetriever` was already open
+     * here reading the title and artist; this is the same call on the same object.
+     *
+     * Deliberately not part of [TrackMetadata]. That is a data class held in a list, one per
+     * track, and carrying a few hundred KB of JPEG per entry would mean an album's worth of
+     * duplicated bitmaps in memory and an `equals` that compares image bytes.
+     */
+    suspend fun embeddedPicture(context: Context, uri: Uri): ByteArray? =
+        withContext(Dispatchers.IO) {
+            val retriever = MediaMetadataRetriever()
+            try {
+                retriever.setDataSource(context, uri)
+                retriever.embeddedPicture
+            } catch (_: Exception) {
+                // A file whose art cannot be read is not an import failure — the album still
+                // imports, it just does not get a free cover.
+                null
+            } finally {
+                retriever.release()
+            }
+        }
+
     private data class Tags(
         val title: String?,
         val album: String?,
