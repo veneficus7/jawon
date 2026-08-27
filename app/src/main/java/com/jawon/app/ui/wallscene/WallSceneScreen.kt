@@ -231,7 +231,21 @@ private class WallZoom(start: Float) {
 }
 
 private class WallSettle {
+    /**
+     * When the gesture detector last called a fling, and how fast — recorded by `onFling`,
+     * consumed by the single settle on release.
+     *
+     * **`onFling` deliberately does not animate anything itself.** It used to, and so did the
+     * raw ACTION_UP handler, which gave the wall two settles racing for the same two
+     * `Animatable`s. Their order is not guaranteed — SceneView feeds the gesture detector and
+     * the touch hook from the same event stream — so whichever started second cancelled the
+     * first, sometimes after it had already retargeted to a different album. Horizontal
+     * survived it more often than vertical purely by luck, which is exactly what "snapping
+     * works horizontally only" looked like from the outside.
+     */
     var flungAt = 0L
+    var flungVx = 0f
+    var flungVy = 0f
 
     /**
      * Whether the gesture currently in progress has actually panned the wall.
@@ -918,41 +932,14 @@ fun WallSceneScreen(
                     zoom.target = (zoom.target / factor).coerceIn(ZOOM_NEAR, ZOOM_FAR)
                 }
             },
+            // Records the throw; does NOT animate. The single settle on release reads this
+            // and projects from it — see WallSettle for why there is only one settle site.
             onFling = { _, _, _, velocity ->
                 if (selectedAlbumId == null) {
-                    settle.flungAt = SystemClock.uptimeMillis()
-                    // Where the fling *would* have stopped, then snap to the album nearest
-                    // that — one continuous movement, rather than coasting to a stop and
-                    // then visibly correcting itself afterwards.
-                    val decay = exponentialDecay<Float>(FLING_FRICTION)
                     val scale = metresPerPx()
-                    val vx = -velocity.x * scale
-                    val vy = velocity.y * scale
-                    // Project where the throw would have stopped in BOTH axes first, then
-                    // pick the one album nearest that point — rather than snapping each axis
-                    // to its own nearest, which need not describe the same record.
-                    val target = layout.nearestCase(
-                        decay.calculateTargetValue(panX.value, vx),
-                        decay.calculateTargetValue(panY.value, vy)
-                    )
-                    scope.launch {
-                        panX.animateTo(
-                            targetValue = target?.x ?: panX.value,
-                            initialVelocity = vx,
-                            animationSpec = SETTLE_SPRING
-                        )
-                        // Only on a genuine arrival: a cancelled animation — another fling,
-                        // or a finger landing mid-flight — throws out of the coroutine
-                        // before reaching this, which is exactly right.
-                        haptics.tick()
-                    }
-                    scope.launch {
-                        panY.animateTo(
-                            targetValue = target?.y ?: panY.value,
-                            initialVelocity = vy,
-                            animationSpec = SETTLE_SPRING
-                        )
-                    }
+                    settle.flungAt = SystemClock.uptimeMillis()
+                    settle.flungVx = -velocity.x * scale
+                    settle.flungVy = velocity.y * scale
                 }
             },
             // Long-press an album on the wall to take it off the shelf.
@@ -1128,29 +1115,53 @@ fun WallSceneScreen(
                         caseDrag.slot = null
                         endScratch()
 
-                        // A drag that ended too slowly to fling still has to land on an
-                        // album. Waits one frame first so that if the gesture detector is
-                        // about to call it a fling, that has happened and can be deferred
-                        // to — the fling's own settle is better, because it knows where the
-                        // throw was heading.
-                        // `settle.panned` gates this to gestures that actually browsed. A tap
-                        // is not a browse, and without the gate every tap slid the wall —
-                        // including the tap meant to open a case.
+                        // THE settle — the only one. Both a slow drag and a fling end here.
+                        //
+                        // `settle.panned` gates it to gestures that actually browsed: a tap is
+                        // not a browse, and without the gate every tap slid the wall, including
+                        // the tap meant to open a case.
+                        //
+                        // One frame of delay so a fling, if the detector is about to call one,
+                        // has recorded its velocity by the time this reads it. That is all
+                        // `onFling` does now.
                         if (selectedAlbumId == null && settle.panned) {
                             scope.launch {
                                 withFrameNanos { }
-                                val claimed =
+
+                                // A fling gets projected to where its decay would have run
+                                // out, so the wall lands on the record the throw was aimed at
+                                // rather than the one it happened to be passing. A slow
+                                // release just settles from where it is.
+                                val flung =
                                     SystemClock.uptimeMillis() - settle.flungAt < FLING_CLAIM_MS
-                                if (!claimed) {
-                                    // One album, centred on both axes — see nearestCase.
-                                    val target = layout.nearestCase(panX.value, panY.value)
-                                    if (target != null) {
-                                        launch {
-                                            panX.animateTo(target.x, SETTLE_SPRING)
-                                            haptics.tick()
-                                        }
-                                        launch { panY.animateTo(target.y, SETTLE_SPRING) }
+                                val decay = exponentialDecay<Float>(FLING_FRICTION)
+                                val fromX = if (flung) {
+                                    decay.calculateTargetValue(panX.value, settle.flungVx)
+                                } else panX.value
+                                val fromY = if (flung) {
+                                    decay.calculateTargetValue(panY.value, settle.flungVy)
+                                } else panY.value
+
+                                layout.nearestCase(fromX, fromY)?.let { target ->
+                                    // Both axes driven from ONE album, and no initial velocity
+                                    // handed to the springs: with bounds set, a spring given a
+                                    // fling's velocity can reach a bound and terminate there
+                                    // instead of at the target, which leaves the wall parked
+                                    // somewhere no album is.
+                                    //
+                                    // NOTE: pan lands on these values exactly — logged and
+                                    // confirmed on device — and horizontally the album ends up
+                                    // dead centre. Vertically it still sits high in frame, so
+                                    // something between `panY` and the projected image adds a
+                                    // constant offset that is NOT in the snap and NOT a parent
+                                    // transform (world and local position were measured equal).
+                                    // A camera pitch of a few degrees would produce exactly
+                                    // this, and is where to look next.
+                                    launch {
+                                        panX.animateTo(target.x, SETTLE_SPRING)
+                                        haptics.tick()
                                     }
+                                    launch { panY.animateTo(target.y, SETTLE_SPRING) }
                                 }
                             }
                         }
