@@ -94,9 +94,12 @@ object RoomLighting {
      *
      * 2048 rather than 4096: this is a depth texture, so each step doubles memory as well
      * as texels, and 4096² is ~67MB of it for one light. 2048 quadruples the default's
-     * texel count for ~17MB, which is the honest trade on a phone. If contact lines still
-     * read as coarse after this pass, 4096 is the knob — but measure it, and expect it to
-     * become an M10 tier.
+     * texel count for ~17MB, which is the honest trade on a phone.
+     *
+     * **This is the HIGH tier's value only** — that "expect it to become a tier" prediction
+     * came true, and the per-tier sizes are on [QualityTier.shadowMapPx]. Unlike the View
+     * options, the size is fixed when the light is built and does not follow a mid-session
+     * tier step; see the note at the light in `WallSceneScreen`.
      */
     const val KEY_SHADOW_MAP_PX = 2048
 
@@ -149,8 +152,18 @@ object RoomLighting {
      * No skybox: the room is a lit wall standing in blackness, and a skybox would paint
      * over that blackness.
      */
-    fun createEnvironment(engine: Engine, prefilter: (Texture) -> Texture): Environment {
-        val cubemap = buildRoomCubemap(engine)
+    /**
+     * @param cubemapPx face size for the generated cubemap, from [QualityTier.cubemapPx].
+     *   Chosen once at startup and never changed: the environment is built before the first
+     *   frame and prefiltered into a mip chain, so rebuilding it to match a mid-session tier
+     *   step would stall the very frames the step is trying to rescue.
+     */
+    fun createEnvironment(
+        engine: Engine,
+        cubemapPx: Int,
+        prefilter: (Texture) -> Texture
+    ): Environment {
+        val cubemap = buildRoomCubemap(engine, cubemapPx)
         val reflections = prefilter(cubemap)
         val indirectLight = IndirectLight.Builder()
             .reflections(reflections)
@@ -178,11 +191,14 @@ object RoomLighting {
      * the engine thread, so moving the arithmetic away would buy a few milliseconds and
      * hand back a threading bug.
      *
-     * Sharp reflections now come from [RoomAtmosphere]'s screen-space reflections; this is
-     * the fallback for rough surfaces and for whatever SSR's rays miss. If the lid still
-     * reads flat, this is the knob — 512 is affordable — but check SSR first.
+     * **This is the room's only source of sharp reflections.** Screen-space reflections were
+     * built and measured at a 7× cost, and are off. So if the lid reads flat, this is the
+     * knob, along with the hot lamp and fill discs burned into the map below — there is
+     * nothing else for a glossy surface to see.
+     *
+     * The value now lives on [QualityTier.cubemapPx], since it is the one lighting
+     * parameter a weaker device benefits from dropping.
      */
-    private const val CUBEMAP_PX = 256
 
     /**
      * How bright the reflected lamp and the reflected void are, in the cubemap's own HDR
@@ -252,8 +268,7 @@ object RoomLighting {
      * function of how far up that direction points — which is the whole of the shop's
      * lighting story, and enough for a reflection to read as a room rather than a colour.
      */
-    private fun buildRoomCubemap(engine: Engine): Texture {
-        val size = CUBEMAP_PX
+    private fun buildRoomCubemap(engine: Engine, size: Int): Texture {
         // RGBA float. IBL wants HDR — Filament's specular prefilter rejects an LDR
         // single-level cubemap outright, and the lamp needs headroom above 1.0 anyway if it
         // is going to read as a light source rather than as a pale patch.

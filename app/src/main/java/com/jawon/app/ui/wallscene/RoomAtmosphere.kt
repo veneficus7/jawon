@@ -228,7 +228,15 @@ object RoomAtmosphere {
     /** How fast focus eases between the two, in units per second. */
     const val FOCUS_RATE = 1.6f
 
-    fun apply(view: View) {
+    /**
+     * Configure the whole post chain for a device at [tier].
+     *
+     * Safe to call again when [FrameWatch] steps the tier down mid-session — every option
+     * struct here is replaced wholesale rather than mutated, so re-applying is idempotent.
+     * The one thing that cannot be re-applied is the IBL, which is baked once; see
+     * [QualityTier.cubemapPx].
+     */
+    fun apply(view: View, tier: QualityTier) {
         view.fogOptions = View.FogOptions().apply {
             enabled = true
             distance = FOG_START
@@ -249,22 +257,24 @@ object RoomAtmosphere {
         // Contact shading. Unlike the effects above this one is not mood — it is the thing
         // that makes a rendered object look like it is resting on something.
         view.ambientOcclusionOptions = View.AmbientOcclusionOptions().apply {
-            enabled = true
+            enabled = tier.ambientOcclusion
             radius = AO_RADIUS
             intensity = AO_INTENSITY
             power = AO_POWER
             bias = AO_BIAS
-            quality = View.QualityLevel.HIGH
-            // Full-resolution AO. At the default half resolution the occlusion line where
-            // the lid meets the tray — a 1mm seam — lands between samples and disappears.
-            resolution = 1.0f
-            upsampling = View.QualityLevel.HIGH
+            quality = if (tier == QualityTier.HIGH) View.QualityLevel.HIGH else View.QualityLevel.MEDIUM
+            // Full-resolution AO at HIGH. At the half resolution Filament defaults to, the
+            // occlusion line where the lid meets the tray — a 1mm seam — lands between
+            // samples and disappears. That is a real loss, and it is still the right trade
+            // below HIGH: the shading survives as shading, just without the crisp seam.
+            resolution = tier.aoResolution
+            upsampling = if (tier == QualityTier.HIGH) View.QualityLevel.HIGH else View.QualityLevel.LOW
             lowPassFilter = View.QualityLevel.MEDIUM
             // Feeds occluded directions back into the indirect light, so the IBL arrives
             // from where it can actually reach rather than uniformly.
-            bentNormals = true
+            bentNormals = tier == QualityTier.HIGH
 
-            ssctEnabled = true
+            ssctEnabled = tier.ssct
             ssctIntensity = SSCT_INTENSITY
             ssctShadowDistance = SSCT_SHADOW_DISTANCE
             ssctContactDistanceMax = SSCT_CONTACT_DISTANCE_MAX
@@ -291,7 +301,13 @@ object RoomAtmosphere {
         // where the light is built, in WallSceneScreen — this is only the filter.
         // Called, not assigned: Filament exposes `setShadowType` with no matching getter,
         // so Kotlin cannot synthesize a property for it the way it does for the rest.
-        view.setShadowType(View.ShadowType.PCSS)
+        //
+        // PCSS samples a variable penumbra per pixel and is the expensive one. PCF is a
+        // fixed kernel — the shadow lands in the same place and is the same darkness, it
+        // just no longer hardens at the contact point.
+        view.setShadowType(
+            if (tier.softShadows) View.ShadowType.PCSS else View.ShadowType.PCF
+        )
         view.softShadowOptions = View.SoftShadowOptions().apply {
             penumbraScale = PENUMBRA_SCALE
             penumbraRatioScale = PENUMBRA_RATIO_SCALE
@@ -299,7 +315,7 @@ object RoomAtmosphere {
 
         // Off to begin with; the frame driver turns it on only when a case is open. See
         // [setDepthOfField].
-        setDepthOfField(view, false)
+        setDepthOfField(view, false, tier)
 
         view.vignetteOptions = View.VignetteOptions().apply {
             enabled = true
@@ -323,12 +339,14 @@ object RoomAtmosphere {
      * Once a case is out there is real depth to work with — the case flies toward the lens
      * and the disc settles in front of it — and that is worth having.
      *
-     * It is also the costliest thing in Filament's post chain, so confining it to the open
-     * state is a performance win too, and it stays the first thing M10's tiers should drop.
+     * It is also the costliest thing in Filament's post chain, which is why
+     * [QualityTier.depthOfField] drops it first — below HIGH the open state simply has a
+     * sharp background. Nobody who has not seen the other version misses it; a dropped
+     * frame during the one moment the user is watching an animation is noticed by everyone.
      */
-    fun setDepthOfField(view: View, enabled: Boolean) {
+    fun setDepthOfField(view: View, enabled: Boolean, tier: QualityTier) {
         view.depthOfFieldOptions = View.DepthOfFieldOptions().apply {
-            this.enabled = enabled
+            this.enabled = enabled && tier.depthOfField
             cocScale = DOF_COC_SCALE
             maxApertureDiameter = DOF_MAX_APERTURE
             maxBackgroundCOC = DOF_MAX_BACKGROUND_COC

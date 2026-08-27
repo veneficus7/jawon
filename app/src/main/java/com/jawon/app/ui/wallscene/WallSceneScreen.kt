@@ -2,6 +2,7 @@
 
 import android.os.SystemClock
 import android.provider.Settings
+import android.util.Log
 import android.view.HapticFeedbackConstants
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.Animatable
@@ -325,10 +326,21 @@ fun WallSceneScreen(
         val environmentLoader = rememberEnvironmentLoader(engine)
         val viewNodeManager = rememberViewNodeManager()
 
+        // How much rendering this device gets. See RoomQuality for why this both guesses and
+        // measures rather than only guessing.
+        //
+        // Two values, deliberately. `initialTier` is fixed for the session and drives the
+        // things that are baked once — the IBL cubemap and the shadow map. `tier` is state
+        // and can step down mid-session, driving everything on the Filament View, which is
+        // where the per-frame cost actually is.
+        val initialTier = remember(context) { QualityTier.detect(context) }
+        var tier by remember { mutableStateOf(initialTier) }
+        val frameWatch = remember { FrameWatch() }
+
         // The room's image-based lighting, generated rather than loaded â€” see RoomLighting.
         // Filament's own prefilter turns the procedural cubemap into a roughness mip chain.
         val environment = remember(engine, environmentLoader) {
-            RoomLighting.createEnvironment(engine) { cubemap ->
+            RoomLighting.createEnvironment(engine, initialTier.cubemapPx) { cubemap ->
                 environmentLoader.iblPrefilter.specularFilter(cubemap)
             }
         }
@@ -345,7 +357,11 @@ fun WallSceneScreen(
         // before the atmosphere arrived and everything dropped into place.
         //
         // `remember` runs while composing, which is before the renderer's first frame.
-        remember(filamentView) { RoomAtmosphere.apply(filamentView) }
+        //
+        // Keyed on the tier as well, so a mid-session step down re-applies the whole post
+        // chain. `RoomAtmosphere.apply` replaces each option struct wholesale rather than
+        // mutating it, so running it again is safe.
+        remember(filamentView, tier) { RoomAtmosphere.apply(filamentView, tier) }
 
         // DESIGN.md Â§4: "Respect reduced-motion settings: drop ambient rotation, parallax,
         // and dust; keep press feedback and the open sequence." Android reports this as an
@@ -438,7 +454,15 @@ fun WallSceneScreen(
         // Sized to the wall so density holds as the library grows, and rebuilt only when
         // those dimensions actually change â€” which is when albums are added, not per frame.
         val dustGeometry = remember(engine, layout.wallWidth, layout.wallHeight) {
-            DustGeometry.build(engine, layout.wallWidth, layout.wallHeight)
+            // Density from the *initial* tier, not the current one: rebuilding this geometry
+            // destroys and recreates a Filament buffer, which is the last thing a device
+            // that has just been caught dropping frames needs.
+            DustGeometry.build(
+                engine,
+                layout.wallWidth,
+                layout.wallHeight,
+                initialTier.dustDensity
+            )
         }
         DisposableEffect(dustGeometry) {
             onDispose { engine.safeDestroyGeometry(dustGeometry) }
@@ -822,6 +846,24 @@ fun WallSceneScreen(
                 sequence.lastFrameNanos = frameNanos
                 sequence.clock += dt
 
+                // Was the opening guess about this device optimistic? `dt` is clamped above
+                // at 1/24s, which is fine here — anything at the clamp is already far past
+                // the slow-frame threshold and counts the same either way.
+                //
+                // Writing Compose state here is safe: it schedules a recomposition rather
+                // than running one, so the `remember` that re-applies the View options fires
+                // between frames rather than in the middle of this one. `FrameWatch` latches
+                // after firing, so this happens at most once per session.
+                if (dt > 0f && frameWatch.onFrame(dt)) {
+                    tier.below?.let { stepped ->
+                        Log.i(
+                            "Jawon.Quality",
+                            "Frame times are missing the mark; quality $tier -> $stepped"
+                        )
+                        tier = stepped
+                    }
+                }
+
                 // The dust's whole animation, in one uniform write per frame â€” no CPU work
                 // per mote, which is what DESIGN.md asks for.
                 if (!reduceMotion) dustMaterial.setParameter("time", sequence.clock)
@@ -831,7 +873,7 @@ fun WallSceneScreen(
                 val wantsDof = frame.selected != null
                 if (wantsDof != sequence.dofEnabled) {
                     sequence.dofEnabled = wantsDof
-                    RoomAtmosphere.setDepthOfField(filamentView, wantsDof)
+                    RoomAtmosphere.setDepthOfField(filamentView, wantsDof, tier)
                 }
 
                 // Focus follows the subject, eased rather than snapped so opening a case
@@ -1012,7 +1054,12 @@ fun WallSceneScreen(
                     // the room lets a 10mm spine cast an edge you can actually read.
                     shadowOptions(
                         LightManager.ShadowOptions().apply {
-                            mapSize = RoomLighting.KEY_SHADOW_MAP_PX
+                            // From the *initial* tier: the map is allocated when the light is
+                            // built, so unlike the View options it does not follow a
+                            // mid-session step down. A device that steps down still gets the
+                            // cheaper shadow *filter* immediately, which is the larger of the
+                            // two costs; the map size takes effect on the next launch.
+                            mapSize = initialTier.shadowMapPx
                             // Drives the PCSS penumbra set in RoomAtmosphere: the larger
                             // the emitter, the faster its shadow softens with distance.
                             // A shop spot is small, so the softening is gentle and contact

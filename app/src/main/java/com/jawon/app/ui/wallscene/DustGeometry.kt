@@ -32,9 +32,6 @@ object DustGeometry {
     /** Mote width in metres. About 1.5mm — a speck, not a snowflake. */
     private const val MOTE_SIZE = 0.0015f
 
-    /** Motes per square metre of wall, so a bigger library gets a proportionally full room. */
-    private const val DENSITY = 700f
-
     private const val MIN_MOTES = 220
     private const val MAX_MOTES = 900
 
@@ -47,6 +44,10 @@ object DustGeometry {
 
     /**
      * @param width/height the wall's extent, so the cloud covers wherever the user can pan
+     * @param density motes per square metre of wall, so a bigger library gets a
+     *   proportionally full room. Comes from [QualityTier.dustDensity] — dust is pure
+     *   atmosphere and every mote is a blended quad, so it is among the first things a
+     *   struggling device should stop paying for.
      * @param seed fixed by default, so the room looks the same every launch rather than
      *   reshuffling its dust each time the app starts
      */
@@ -54,10 +55,11 @@ object DustGeometry {
         engine: Engine,
         width: Float,
         height: Float,
+        density: Float,
         seed: Int = 1_705
     ): Geometry {
         val random = Random(seed)
-        val count = (width * height * DENSITY).toInt().coerceIn(MIN_MOTES, MAX_MOTES)
+        val count = (width * height * density).toInt().coerceIn(MIN_MOTES, MAX_MOTES)
 
         val vertices = ArrayList<Geometry.Vertex>(count * 4)
         val indices = ArrayList<Int>(count * 6)
