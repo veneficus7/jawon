@@ -95,7 +95,17 @@ object OpenSequence {
     private const val FRONT_GAP = 0.46f
     const val CAMERA_DOLLY = 0.23f
     private const val RAISE_Y = 0.030f
-    private const val LIFT_DROP_Y = 0.055f
+
+    /**
+     * How far the case sinks as the disc rises out of it — beat four's "case drifts back and
+     * down".
+     *
+     * 35mm rather than 55mm: at 55 the settled case sat low enough that the album title
+     * crowded its lower edge. This is the lever for the *settled* case's height specifically,
+     * because it applies only at the end of the lift — [RAISE_Y] would move the turn as well,
+     * and [OPEN_CAMERA_DROP] would take the disc with it.
+     */
+    private const val LIFT_DROP_Y = 0.035f
     private const val LIFT_PUSH_Z = 0.042f
     /**
      * The camera also eases back as the disc comes up. At true scale the case alone fills
@@ -209,8 +219,18 @@ object OpenSequence {
      * together, which is what "back where it was" means; raising the disc alone left the case
      * sitting under the text.
      *
-     * Ramped on the turn's camera channel, so it eases in with the pull and is exactly zero
-     * while browsing — the wall itself must stay square in frame.
+     * **Ramped on the LIFT camera channel, not the turn's.** On the turn's it was fully
+     * applied by the time the case had finished turning — which is the exact moment the case
+     * is at its highest, since [RAISE_Y] has lifted it and [LIFT_DROP_Y] has not yet brought
+     * it down. Camera drop and case rise stacked, and the top of the case went off frame
+     * mid-sequence.
+     *
+     * On the lift channel the two move together instead: the case settles down by
+     * `LIFT_DROP_Y` over the same beat that the camera drops, so the case stays put in frame
+     * while the disc rises out of it. The settled shot is identical either way — both
+     * channels reach 1 — so this only changes the journey, which is where the fault was.
+     *
+     * Zero while browsing, so the wall stays square in frame.
      *
      * Unlike the tilt it replaces, this does not vary with pan position. The old shot sat at
      * a different height depending which shelf the record came off.
@@ -457,7 +477,7 @@ object OpenSequence {
             caseRotX = caseRotX,
             caseRotY = caseRotY,
             hingeRotY = -beats.open * HINGE_DEG,
-            cameraY = panY - OPEN_CAMERA_DROP * beats.turnCamera,
+            cameraY = panY - OPEN_CAMERA_DROP * beats.liftCamera,
             cameraZ = cameraZ,
             // Height on the leading channel, depth on the trailing one: the disc lifts clear
             // of the case and only then travels to the lens. Driving both from `lift` sends

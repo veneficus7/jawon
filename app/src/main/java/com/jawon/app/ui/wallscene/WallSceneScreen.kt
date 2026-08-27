@@ -199,6 +199,18 @@ private const val ZOOM_EASE_RATE = 6f
  */
 private val LOOK_STRAIGHT_AHEAD = Rotation(0f, 0f, 0f)
 
+/**
+ * How the disc's printed face behaves under the room's light.
+ *
+ * Ink on plastic, not polished metal — see the disc material block in the frame setup for
+ * why that distinction is what decides whether the artwork survives the lamp. Clearcoat is
+ * kept, just far lower: a CD label is lacquered, and losing the sheen entirely would make it
+ * read as a paper coaster.
+ */
+private const val DISC_LABEL_METALLIC = 0f
+private const val DISC_LABEL_ROUGHNESS = 0.42f
+private const val DISC_LABEL_CLEARCOAT = 0.3f
+
 
 /** Progress at which the deck fades in â€” as the disc squares up, not before. */
 private const val DECK_REVEAL_AT = 0.75f
@@ -761,7 +773,38 @@ fun WallSceneScreen(
                 TextureSampler.WrapMode.CLAMP_TO_EDGE
             )
             actNodes.discMesh?.materialInstances?.forEach { primitives ->
-                primitives.forEach { it.setParameter("baseColorMap", discTexture, sampler) }
+                primitives.forEach { instance ->
+                    instance.setParameter("baseColorMap", discTexture, sampler)
+
+                    // Make the label read as PRINT, not as polished metal.
+                    //
+                    // The disc ships as a glossy, metallic-ish material — reasonable for a CD
+                    // — and that is why the artwork looked washed out and whitish however
+                    // much contrast was baked into it. A metal has no diffuse response: its
+                    // base colour only tints what it reflects, and what this disc reflects is
+                    // an IBL with the shop's lamp burned in at RoomLighting.LAMP_HOT_LEVEL,
+                    // which is 26. Any picture painted onto that surface loses to the lamp.
+                    //
+                    // The label side of a real CD is ink on plastic under lacquer, so it is
+                    // not metal. Dropping metallic gives the artwork its diffuse response
+                    // back; the roughness lift spreads the lamp's highlight instead of
+                    // letting it blow out one patch, and the clearcoat stays on but much
+                    // lower — enough to read as lacquer, not enough to whiten the print.
+                    //
+                    // Guarded by name because these come from the glTF asset rather than a
+                    // .mat in this repo, and Filament logs and ignores an unknown parameter
+                    // rather than failing, which would leave this silently doing nothing.
+                    val material = instance.material
+                    if (material.hasParameter("metallicFactor")) {
+                        instance.setParameter("metallicFactor", DISC_LABEL_METALLIC)
+                    }
+                    if (material.hasParameter("roughnessFactor")) {
+                        instance.setParameter("roughnessFactor", DISC_LABEL_ROUGHNESS)
+                    }
+                    if (material.hasParameter("clearCoatFactor")) {
+                        instance.setParameter("clearCoatFactor", DISC_LABEL_CLEARCOAT)
+                    }
+                }
             }
         }
 
