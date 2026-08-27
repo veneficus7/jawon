@@ -188,6 +188,19 @@ private const val PLATE_PX_PER_UNIT = PLATE_PX_W / PLATE_W
  */
 private class WallSettle {
     var flungAt = 0L
+
+    /**
+     * Whether the gesture currently in progress has actually panned the wall.
+     *
+     * **Without this the magnet fires on every tap.** The settle hangs off the raw ACTION_UP,
+     * which arrives for taps just as much as for drags — so tapping a case to open it also
+     * slid the whole wall sideways underneath it, and so did a tap on empty space. Verified on
+     * device: one tap on the background moved a half-off-screen case to dead centre.
+     *
+     * Snapping is for browsing. A tap is not browsing, so it is only armed once `onScroll`
+     * has reported real movement, and disarmed again as each new touch lands.
+     */
+    var panned = false
 }
 
 private class SequenceDriver {
@@ -411,9 +424,26 @@ fun WallSceneScreen(
          */
         fun metresPerPx(): Float = (2f * zoomZ.value * TAN_HALF_FOV) / viewportHeightPx
 
+        var alignedOnLoad by remember { mutableStateOf(false) }
         LaunchedEffect(layout) {
             panX.updateBounds(layout.minPanX, layout.maxPanX)
             panY.updateBounds(layout.minPanY, layout.maxPanY)
+
+            // Open centred on a record, not mid-gap.
+            //
+            // Pan starts at 0, which is the wall's *origin* and not any album's position —
+            // `colX` centres the widest shelf about zero, so with an even album count, or
+            // with shelves of differing lengths, nothing sits at 0. On device the app was
+            // opening with the first case half off the left edge.
+            //
+            // Snapped rather than animated, and only once: this is where the wall *starts*,
+            // so there is nothing to animate from, and re-running it whenever `layout`
+            // changes would yank the wall back every time an album was added or removed.
+            if (!alignedOnLoad && layout.cases.isNotEmpty()) {
+                alignedOnLoad = true
+                panX.snapTo(layout.nearestSlotX(0f))
+                panY.snapTo(layout.nearestRowY(0f))
+            }
         }
 
         val engine = rememberEngine()
@@ -783,6 +813,8 @@ fun WallSceneScreen(
             onDown = { e, node ->
                 scope.launch { panX.stop() }
                 scope.launch { panY.stop() }
+                // Each new touch starts as "not a browse" until onScroll says otherwise.
+                settle.panned = false
 
                 // Grabbing the platter happens HERE, on the touch landing — not in
                 // onMoveBegin, where it used to live.
@@ -824,6 +856,9 @@ fun WallSceneScreen(
                 // while an album is being turned by hand, or the shelf would slide away
                 // under the record you are trying to look at.
                 if (selectedAlbumId == null && caseDrag.slot == null) {
+                    // Arms the magnet: this gesture is a browse, so its release should land
+                    // on an album. See WallSettle.panned.
+                    settle.panned = true
                     val scale = metresPerPx()
                     scope.launch { panX.snapTo(panX.value + distance.x * scale) }
                     scope.launch { panY.snapTo(panY.value - distance.y * scale) }
@@ -1053,7 +1088,10 @@ fun WallSceneScreen(
                         // about to call it a fling, that has happened and can be deferred
                         // to — the fling's own settle is better, because it knows where the
                         // throw was heading.
-                        if (selectedAlbumId == null) {
+                        // `settle.panned` gates this to gestures that actually browsed. A tap
+                        // is not a browse, and without the gate every tap slid the wall —
+                        // including the tap meant to open a case.
+                        if (selectedAlbumId == null && settle.panned) {
                             scope.launch {
                                 withFrameNanos { }
                                 val claimed =
