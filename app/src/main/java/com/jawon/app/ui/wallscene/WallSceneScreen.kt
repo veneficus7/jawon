@@ -111,6 +111,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlin.math.abs
 import kotlin.math.atan2
+import kotlin.math.exp
 import kotlin.math.floor
 import kotlin.math.pow
 import androidx.compose.ui.graphics.Color as ComposeColor
@@ -169,6 +170,16 @@ private const val ZOOM_FAR = 1.30f
  */
 private const val ZOOM_GAIN = 0.65f
 
+/**
+ * How fast the camera catches up to the pinch, per second.
+ *
+ * A compromise. Too low and the zoom lags the fingers, which feels broken; too high and the
+ * filtering stops working and the finger jitter is back in the lens. At 6 the camera is ~95%
+ * of the way there in half a second — fast enough to read as direct, slow enough to smooth a
+ * touch sample's worth of noise.
+ */
+private const val ZOOM_EASE_RATE = 6f
+
 
 /** Progress at which the deck fades in â€” as the disc squares up, not before. */
 private const val DECK_REVEAL_AT = 0.75f
@@ -186,6 +197,39 @@ private const val PLATE_PX_PER_UNIT = PLATE_PX_W / PLATE_W
  * Bookkeeping for the wall's magnet, so a release and a fling do not both try to move it.
  * Not Compose state — nothing about it is drawn.
  */
+/**
+ * The browse camera's distance, and where it is heading.
+ *
+ * **Two values rather than one, because a pinch is not smooth input.** `ScaleGestureDetector`
+ * reports a fresh `scaleFactor` per touch sample, computed from finger positions that jitter
+ * by a pixel or two — writing that straight to the camera put the jitter directly into the
+ * lens, which is what "the zoom doesn't look smooth" was. The gesture now moves [target] and
+ * the frame loop eases [current] toward it, so finger noise is filtered out and the camera
+ * only ever moves continuously.
+ *
+ * It also gives the open sequence its camera correction for free: `openCase` sets [target]
+ * back to the canonical distance and the same easing carries it there, with no second
+ * mechanism and no animation to keep in step with the beats.
+ *
+ * Not Compose state — the frame driver owns it and reads it every frame (ENGINEERING.md rule 3).
+ */
+private class WallZoom(start: Float) {
+    var current = start
+    var target = start
+
+    /**
+     * Ease toward [target], frame-rate independently.
+     *
+     * The `1 - exp(-rate * dt)` form matters: a plain `current += (target - current) * k`
+     * converges at a speed that depends on how often it is called, so the same pinch would
+     * feel different at 60fps and 120fps — and this app runs at both.
+     */
+    fun advance(dt: Float) {
+        if (dt <= 0f) return
+        current += (target - current) * (1f - exp(-ZOOM_EASE_RATE * dt))
+    }
+}
+
 private class WallSettle {
     var flungAt = 0L
 
@@ -401,7 +445,7 @@ fun WallSceneScreen(
          * see [OPEN_DURATION_MS] at the call site — and because it is a stable object the
          * gesture callbacks can read live, rather than a value they would capture once.
          */
-        val zoomZ = remember { Animatable(CAMERA_Z) }
+        val zoom = remember { WallZoom(CAMERA_Z) }
 
         // Culling and pool sizing are computed at the WIDEST the camera can go, not at the
         // current zoom. They feed `remember` keys, and a value that changes continuously
@@ -422,7 +466,7 @@ fun WallSceneScreen(
          * zoom happened to be when the listener was built. Zoomed out, a drag has to cover
          * more wall for the same finger travel or the wall feels glued down.
          */
-        fun metresPerPx(): Float = (2f * zoomZ.value * TAN_HALF_FOV) / viewportHeightPx
+        fun metresPerPx(): Float = (2f * zoom.current * TAN_HALF_FOV) / viewportHeightPx
 
         var alignedOnLoad by remember { mutableStateOf(false) }
         LaunchedEffect(layout) {
@@ -441,8 +485,10 @@ fun WallSceneScreen(
             // changes would yank the wall back every time an album was added or removed.
             if (!alignedOnLoad && layout.cases.isNotEmpty()) {
                 alignedOnLoad = true
-                panX.snapTo(layout.nearestSlotX(0f))
-                panY.snapTo(layout.nearestRowY(0f))
+                layout.nearestCase(0f, 0f)?.let { first ->
+                    panX.snapTo(first.x)
+                    panY.snapTo(first.y)
+                }
             }
         }
 
@@ -766,15 +812,10 @@ fun WallSceneScreen(
             sequence.spinAngle = 0f
             // The open sequence's framing is tuned against the canonical CAMERA_Z — see
             // OpenSequence.FRONT_GAP — so a case opened from a zoomed-out wall has to arrive
-            // back there. Animated over the sequence's own duration and in step with it
-            // (DURATION_MS is what sequence.progress itself advances against, one screen up),
-            // so the correction reads as part of the pull rather than a jump before it starts.
-            scope.launch {
-                zoomZ.animateTo(
-                    CAMERA_Z,
-                    tween(OpenSequence.DURATION_MS.toInt(), easing = LinearEasing)
-                )
-            }
+            // back there. Just retargeting the zoom does it: the same per-frame easing that
+            // smooths a pinch carries the camera home, well inside the sequence, with no
+            // separate animation to keep in step with the beats.
+            zoom.target = CAMERA_Z
         }
 
         fun closeCase() {
@@ -871,11 +912,10 @@ fun WallSceneScreen(
                 if (selectedAlbumId == null) {
                     // Damped, and about 1.0 rather than multiplied raw — see ZOOM_GAIN.
                     val factor = 1f + (detector.scaleFactor - 1f) * ZOOM_GAIN
-                    scope.launch {
-                        zoomZ.snapTo(
-                            (zoomZ.value / factor).coerceIn(ZOOM_NEAR, ZOOM_FAR)
-                        )
-                    }
+                    // Moves the TARGET. The camera itself is eased toward it in the frame
+                    // loop, which is what filters out the per-sample jitter that made the
+                    // zoom judder — see WallZoom.
+                    zoom.target = (zoom.target / factor).coerceIn(ZOOM_NEAR, ZOOM_FAR)
                 }
             },
             onFling = { _, _, _, velocity ->
@@ -886,11 +926,18 @@ fun WallSceneScreen(
                     // then visibly correcting itself afterwards.
                     val decay = exponentialDecay<Float>(FLING_FRICTION)
                     val scale = metresPerPx()
+                    val vx = -velocity.x * scale
+                    val vy = velocity.y * scale
+                    // Project where the throw would have stopped in BOTH axes first, then
+                    // pick the one album nearest that point — rather than snapping each axis
+                    // to its own nearest, which need not describe the same record.
+                    val target = layout.nearestCase(
+                        decay.calculateTargetValue(panX.value, vx),
+                        decay.calculateTargetValue(panY.value, vy)
+                    )
                     scope.launch {
-                        val vx = -velocity.x * scale
-                        val landing = decay.calculateTargetValue(panX.value, vx)
                         panX.animateTo(
-                            targetValue = layout.nearestSlotX(landing),
+                            targetValue = target?.x ?: panX.value,
                             initialVelocity = vx,
                             animationSpec = SETTLE_SPRING
                         )
@@ -900,10 +947,8 @@ fun WallSceneScreen(
                         haptics.tick()
                     }
                     scope.launch {
-                        val vy = velocity.y * scale
-                        val landing = decay.calculateTargetValue(panY.value, vy)
                         panY.animateTo(
-                            targetValue = layout.nearestRowY(landing),
+                            targetValue = target?.y ?: panY.value,
                             initialVelocity = vy,
                             animationSpec = SETTLE_SPRING
                         )
@@ -1097,16 +1142,14 @@ fun WallSceneScreen(
                                 val claimed =
                                     SystemClock.uptimeMillis() - settle.flungAt < FLING_CLAIM_MS
                                 if (!claimed) {
-                                    launch {
-                                        panX.animateTo(
-                                            layout.nearestSlotX(panX.value), SETTLE_SPRING
-                                        )
-                                        haptics.tick()
-                                    }
-                                    launch {
-                                        panY.animateTo(
-                                            layout.nearestRowY(panY.value), SETTLE_SPRING
-                                        )
+                                    // One album, centred on both axes — see nearestCase.
+                                    val target = layout.nearestCase(panX.value, panY.value)
+                                    if (target != null) {
+                                        launch {
+                                            panX.animateTo(target.x, SETTLE_SPRING)
+                                            haptics.tick()
+                                        }
+                                        launch { panY.animateTo(target.y, SETTLE_SPRING) }
                                     }
                                 }
                             }
@@ -1120,6 +1163,11 @@ fun WallSceneScreen(
                 else ((frameNanos - sequence.lastFrameNanos) / 1_000_000_000f).coerceIn(0f, 1f / 24f)
                 sequence.lastFrameNanos = frameNanos
                 sequence.clock += dt
+
+                // Walk the browse camera toward wherever the pinch left it. Every frame,
+                // whether or not anything is pinching — it is a no-op once it has arrived,
+                // and this is also what carries the camera home when a case opens.
+                zoom.advance(dt)
 
                 // Was the opening guess about this device optimistic? `dt` is clamped above
                 // at 1/24s, which is fine here — anything at the clamp is already far past
@@ -1259,7 +1307,7 @@ fun WallSceneScreen(
 
                 val selected = frame.selected
                 if (selected == null) {
-                    cameraNode.position = Position(panX.value, panY.value, zoomZ.value)
+                    cameraNode.position = Position(panX.value, panY.value, zoom.current)
                 } else {
                     val beats = OpenSequence.beatsAt(sequence.progress)
                     val t = OpenSequence.transformsFor(
@@ -1275,7 +1323,7 @@ fun WallSceneScreen(
                         // sequence's tuned framing smoothly. Hardcoding CAMERA_Z here would
                         // make the correction above dead code: the camera would jump to it the
                         // instant the tap registered, before the pull even begins.
-                        baseCameraZ = zoomZ.value,
+                        baseCameraZ = zoom.current,
                         tanHalfFov = TAN_HALF_FOV,
                         aspect = frame.aspect,
                         clock = sequence.clock

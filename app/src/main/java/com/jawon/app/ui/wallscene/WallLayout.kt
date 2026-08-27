@@ -174,31 +174,35 @@ data class WallLayout(
     val isWaiting: Boolean get() = loaded && cases.isEmpty()
 
     /**
-     * The pan position that centres an album, given where a drag or fling was heading.
+     * The album nearest a point on the wall — what the magnet centres on.
      *
-     * This is the magnet: browsing settles *onto* a record rather than wherever friction
-     * happened to run out. The wall is a gallery of objects at a 150mm pitch, not a
-     * continuous strip, so coming to rest halfway between two albums is never a position
-     * anyone meant to be in.
+     * Browsing settles *onto* a record rather than wherever friction ran out. The wall is a
+     * gallery of objects at a 150mm pitch, not a continuous strip, so coming to rest halfway
+     * between two albums is never a position anyone meant to be in.
      *
-     * Snapping to an actual case rather than to a multiple of the pitch matters at the ends
-     * of a row: the margin the bounds allow is a full empty slot either side, and snapping
-     * to the grid there would happily centre a gap.
+     * **One album, both axes.** This replaced a pair of per-axis helpers that snapped X to
+     * the nearest column and Y to the nearest row independently — two answers that need not
+     * describe the same record, and on a wall whose shelves hold different numbers of albums
+     * usually do not. The vertical half was worse than merely inconsistent: it centred the
+     * *row*, so the album standing in that row still sat low in frame, which is what
+     * "snapping works horizontally only" was describing.
      *
-     * Returns [target] unchanged when there is nothing to snap to, so an empty wall and a
-     * one-album wall both behave sensibly rather than yanking to the origin.
+     * Snapping to a real case rather than to a multiple of the pitch matters at the ends of a
+     * row: the bounds allow a full empty slot of margin either side, and a grid would happily
+     * centre that gap.
+     *
+     * Distances are normalised by each axis's own pitch before comparing, because rows are
+     * 205mm apart and slots 150mm — comparing raw metres would bias the magnet toward
+     * vertical neighbours for no reason a user could see.
+     *
+     * Null when there is nothing to snap to, so an empty wall stays where it is rather than
+     * yanking to the origin.
      */
-    fun nearestSlotX(target: Float): Float =
-        cases.minByOrNull { abs(it.x - target) }?.x ?: target
-
-    /**
-     * As [nearestSlotX], for rows.
-     *
-     * Rows sit 205mm apart against a viewport that frames about three of them, so this
-     * centres the shelf you were heading for rather than leaving two half-rows in frame.
-     */
-    fun nearestRowY(target: Float): Float =
-        rows.minByOrNull { abs(it.centerY - target) }?.centerY ?: target
+    fun nearestCase(targetX: Float, targetY: Float): CaseLayout? = cases.minByOrNull {
+        val dx = (it.x - targetX) / WallDimens.SLOT_PITCH
+        val dy = (it.y - targetY) / WallDimens.ROW_PITCH
+        dx * dx + dy * dy
+    }
 
     companion object {
         /**
