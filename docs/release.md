@@ -135,3 +135,28 @@ the import path needs a second, legacy branch. And the device it would buy is a
 LOW and it would still likely disappoint. Worth doing if Play Console later shows
 a real population there; not worth doing for one tester who can take an OS
 update instead.
+
+## 6. On-device verification log
+
+Galaxy S25 Ultra, debug build, 2026-08-27. Thermal Status 2 for most of it, so
+**no performance numbers were taken** — see `ENGINEERING.md` on why hot-device fps is
+worthless. These are behavioural checks only.
+
+| check | result |
+|---|---|
+| Press and hold the disc, no movement | `PLAYING` → `PAUSED` (`speed=0.0`) → `PLAYING` on release. **The reported bug is fixed.** |
+| Notification identity | `appIcon:Icon(pkg=com.jawon.app id=0x7f06000d)`, `songTitle:Find Your Love` — the app's own mark, not Media3's note |
+| Magnet snap on a tap | Before fix: one tap moved a half-off-screen case to centre. After: wall does not move |
+| Launch alignment | Before fix: opened with first case half off the left edge. After: opens framed on a record |
+| Open sequence, settled | Disc sharp edge to edge, tray centred, background correctly defocused |
+| Depth of field on the disc | No blur bleeding over the disc's top edge — the original M11 complaint stays fixed |
+| Underlight per album | Coloured pools under each case, blooming |
+
+**Not yet verified:** zoom limits, the empty/first-run screen (the test library has
+albums), quality tiers on anything but this device, and the delete dialog's full
+path now that the discard animation is reverted.
+
+**One unexplained observation.** On the first open of a session the case opened
+and then closed itself about two seconds later, with no second input. It did not
+reproduce on the next three attempts and playback was running normally
+afterwards. Not chased down; noted here so it is not forgotten if it resurfaces.
