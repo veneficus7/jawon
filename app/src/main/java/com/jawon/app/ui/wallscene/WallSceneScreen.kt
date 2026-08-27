@@ -753,45 +753,6 @@ fun WallSceneScreen(
         }
 
         /**
-         * Starts taking [case] off the shelf: hands its pool slot to [CaseDiscard] and defers
-         * the actual database delete until that finishes.
-         *
-         * **Why deferred rather than immediate.** See `CaseSlot.discardClock`'s KDoc — deleting
-         * up front would drop the album from `layout` on the next recomposition and let `bind`
-         * re-home this exact pool index to a different, still-living record while the case was
-         * still mid-flight.
-         */
-        fun discardCase(case: CaseLayout) {
-            val slot = caseSlots.slots.firstOrNull { it.body?.name == case.albumId }
-            if (slot == null) {
-                // Not currently on screen to animate — nothing to play, so just delete.
-                viewModel.deleteAlbum(case.albumId)
-                return
-            }
-            slot.discardClock = 0f
-            // Alternated by a bit of the album id rather than random, so two albums removed
-            // back to back don't visibly mirror each other by coincidence half the time.
-            slot.discardDirection = if (case.albumId.hashCode() and 1 == 0) 1f else -1f
-
-            // A small margin over the animation's own length, so the visual always finishes
-            // before the album vanishes from the database — never the reverse. Scheduled on
-            // the view model, not here — see `scheduleDiscard`'s KDoc for why.
-            viewModel.scheduleDiscard(
-                case.albumId, (CaseDiscard.DURATION_S * 1000L).toLong() + 80L
-            )
-        }
-
-        /** The second tap on a case already breaking apart — finish it now, don't make them wait. */
-        fun skipDiscard(albumId: String) {
-            val slot = caseSlots.slots.firstOrNull { it.discardClock != null && it.body?.name == albumId }
-                ?: return
-            viewModel.skipDiscard(albumId)
-            // Jumped past DURATION_S so the frame loop's own `done` check retires the slot on
-            // the very next frame, rather than snapping it here and duplicating that cleanup.
-            slot.discardClock = CaseDiscard.DURATION_S + 1f
-        }
-
-        /**
          * Where the disc's centre lands on screen, right now.
          *
          * The prototype measures the scratch angle in screen space about the disc's
@@ -927,16 +888,8 @@ fun WallSceneScreen(
                         .mapNotNull { it.name }
                         .firstOrNull { name -> layout.cases.any { it.albumId == name } }
                         ?.let { albumId ->
-                            // Already on its way off the shelf — a second confirmation for a
-                            // deletion already in flight would be nonsense, and the frontmost
-                            // tap gesture for it is already the skip above.
-                            val discarding = caseSlots.slots.any {
-                                it.discardClock != null && it.body?.name == albumId
-                            }
-                            if (!discarding) {
-                                haptics.detent()
-                                pendingDelete = layout.cases.firstOrNull { it.albumId == albumId }
-                            }
+                            haptics.detent()
+                            pendingDelete = layout.cases.firstOrNull { it.albumId == albumId }
                         }
                 }
             },
@@ -964,19 +917,10 @@ fun WallSceneScreen(
                     // ("case_closed"), which sits below the slot node carrying the album id
                     // — so the old order found the model's own name, failed the test, and
                     // silently dropped every tap on the wall.
-                    val albumId = generateSequence(node) { it.parent }
+                    generateSequence(node) { it.parent }
                         .mapNotNull { it.name }
                         .firstOrNull { name -> layout.cases.any { it.albumId == name } }
-                    if (albumId != null) {
-                        // A tap on a case already breaking apart skips straight to the end
-                        // instead of opening it — the album's row is still in the database
-                        // for the whole discard window (see `discardCase`), so without this
-                        // check the walk above would find it and open it mid-collapse.
-                        val discarding = caseSlots.slots.any {
-                            it.discardClock != null && it.body?.name == albumId
-                        }
-                        if (discarding) skipDiscard(albumId) else openCase(albumId)
-                    }
+                        ?.let { openCase(it) }
                 }
             },
             // Turning a shelved album uses the move-gesture trio rather than onScroll,
@@ -1248,49 +1192,6 @@ fun WallSceneScreen(
                         slot.beam?.position =
                             Position(slot.baseX, slot.baseY - CASE_H / 2f, slot.baseZ)
 
-                        val discardClock = slot.discardClock
-                        if (discardClock != null) {
-                            // Being removed. This branch OWNS the node while it runs — no
-                            // hover, no manual-turn carry, no idle tilt — because a case
-                            // breaking apart should not also be gently bobbing.
-                            //
-                            // Not gated on `reduceMotion`: DESIGN.md asks reduced motion to
-                            // drop "ambient rotation, parallax, and dust" while keeping "press
-                            // feedback and the open sequence", and this is much closer to the
-                            // open sequence — a deliberate, meaningful transition the user just
-                            // confirmed — than to ambient bobbing. It does skip the tumble and
-                            // crack wobble under reduced motion, though: a plain shrink still
-                            // confirms the action without the vestibular motion.
-                            val advanced = discardClock + dt
-                            slot.discardClock = advanced
-                            val discard = if (reduceMotion) {
-                                val shrink = (1f - advanced / CaseDiscard.DURATION_S).coerceAtLeast(0f)
-                                CaseDiscard.Transforms(0f, 0f, 0f, shrink, shrink, advanced >= CaseDiscard.DURATION_S)
-                            } else {
-                                CaseDiscard.at(advanced, slot.discardDirection)
-                            }
-
-                            root.position = Position(
-                                slot.baseX + discard.offsetX,
-                                slot.baseY + discard.offsetY,
-                                slot.baseZ
-                            )
-                            root.rotation = Rotation(0f, discard.spinDeg, 0f)
-                            root.scale = Scale(discard.scaleX, discard.scaleY, 1f)
-
-                            if (discard.done) {
-                                // The pool index is free the instant this returns to false —
-                                // exactly the same park a normal unbind does, just fired from
-                                // here instead of from `bind`. See `discardClock`'s KDoc for
-                                // why the database delete already happened well before this.
-                                slot.discardClock = null
-                                slot.occupied = false
-                                root.isVisible = false
-                                slot.beam?.isVisible = false
-                            }
-                            return@forEach
-                        }
-
                         if (reduceMotion) {
                             // Seated on the shelf, square on, exactly as before.
                             root.position = Position(slot.baseX, slot.baseY, slot.baseZ)
@@ -1549,7 +1450,7 @@ fun WallSceneScreen(
             RemoveAlbumDialog(
                 case = case,
                 onConfirm = {
-                    discardCase(case)
+                    viewModel.deleteAlbum(case.albumId)
                     pendingDelete = null
                 },
                 onDismiss = { pendingDelete = null }

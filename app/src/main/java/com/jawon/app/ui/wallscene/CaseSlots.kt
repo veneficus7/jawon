@@ -94,26 +94,6 @@ class CaseSlot {
     var spinVelocity = 0f
 
     /**
-     * Elapsed time since this slot started being discarded, in seconds, or `null` while it is
-     * not — see [CaseDiscard]. A field [bind] never touches, for the same reason
-     * [manualTurn] and [spinVelocity] are not: it is transient per-frame state, not part of
-     * where this slot sits or which album is in it.
-     *
-     * **This is what makes deferring the actual deletion safe.** `WallSceneScreen` does not
-     * call `deleteAlbum` the moment the user confirms — it waits out the animation first, so
-     * the album stays in the database and [bind] keeps pointing this exact pool index at it
-     * for the whole ~0.6s discard. Deleting immediately would drop the album from `layout` on
-     * the next recomposition, shift every album after it up one position in the visible list,
-     * and hand this pool index to a *different* record mid-flight — exactly the class of bug
-     * ENGINEERING.md's "never destroy a node, never repoint one mid-animation" warnings are about,
-     * just with a re-bind standing in for a destroy.
-     */
-    var discardClock: Float? = null
-
-    /** Set once, when the discard starts, and read every frame by [discardClock]'s driver. */
-    var discardDirection = 1f
-
-    /**
      * Tint this album's underlight.
      *
      * Testers asked for the colour chosen at upload to become the album's underlight. The
