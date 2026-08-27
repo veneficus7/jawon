@@ -64,6 +64,7 @@ import com.jawon.app.ui.theme.CrateBlack
 import com.jawon.app.ui.theme.JawonTextStyle
 import com.jawon.app.ui.theme.JetBrainsMonoFamily
 import com.jawon.app.ui.theme.LabelDim
+import com.jawon.app.ui.theme.LampAmber
 import com.jawon.app.ui.wallscene.WallDimens.BOARD_D
 import com.jawon.app.ui.wallscene.WallDimens.BOARD_H
 import com.jawon.app.ui.wallscene.WallDimens.CAMERA_Z
@@ -1224,17 +1225,18 @@ fun WallSceneScreen(
                 }
             )
 
-            // No shelves, no wall. This is what caused the brown flash on launch.
+            // Nothing loaded, no wall. This is what caused the brown flash on launch.
             //
             // `layout` arrives from the database, so for the first frames after the splash
-            // it is the empty default — no rows, no cases — while this backing panel was
-            // drawn regardless, at its default size, filling the frame. With nothing in
-            // front of it to give the eye scale or contrast, a near-black wall under the
-            // room's ambient reads as a flat lit brown field, which is exactly what it was.
+            // it is the placeholder — no rows, no cases — while this backing panel was drawn
+            // regardless, at its default size, filling the frame. With nothing in front of it
+            // to give the eye scale or contrast, a near-black wall under the room's ambient
+            // reads as a flat lit brown field, which is exactly what it was.
             //
-            // Gating it on content also makes the empty state honest: an empty library
-            // should be a dark room you have not filled yet, not a blank wall.
-            if (!layout.isEmpty) {
+            // Gated on `loaded` rather than on having content, which is what it used to be.
+            // That older test also caught the genuinely-empty library, so a new user's first
+            // screen had no wall either — see WallLayout.loaded.
+            if (layout.loaded) {
                 CubeNode(
                     size = Size(layout.wallWidth, layout.wallHeight, 0.01f),
                     position = Position(0f, 0f, WALL_Z - 0.005f),
@@ -1311,11 +1313,13 @@ fun WallSceneScreen(
             )
         }
 
-        if (layout.isEmpty) {
-            Text(
-                text = "Your shelves are waiting",
-                style = MaterialTheme.typography.displaySmall,
-                modifier = Modifier.align(Alignment.Center)
+        if (layout.isWaiting) {
+            // Sits low, under the empty board rather than over the middle of it, so the shelf
+            // itself is what the eye lands on first. The room is the pitch; this is the
+            // caption.
+            WaitingForRecords(
+                onAddAlbum = onAddAlbum,
+                modifier = Modifier.align(Alignment.BottomCenter)
             )
         } else if (selectedAlbumId == null) {
             // While a case is open the disc occupies this band, and the album is already the
@@ -1451,6 +1455,65 @@ private fun ShelfPlate(name: String, accentHue: Float) {
  * spine â€” the one piece of the room carrying its own vertical text â€” is always directly
  * behind this. Without something to sit on, the two sets of words interleave.
  */
+/**
+ * The first thing anyone sees, and per `PLAN.md` §4 the most important screen in the app: it
+ * "must read as 'your shelves, waiting' rather than 'broken app'".
+ *
+ * What used to be here was one line of centred text over black — and the room behind it was
+ * genuinely empty, because the wall and its boards were suppressed whenever there were no
+ * albums. So a new user's first impression of a product whose whole pitch is *the library is
+ * a room* was a black screen. `WallLayout.waitingRow` supplies the lit, labelled board; this
+ * is the invitation that goes with it.
+ *
+ * Deliberately in the upper third, in the slot the browse label occupies once there are
+ * records. The shelf sits low in frame, so the room stays the subject and this reads as a
+ * caption on it rather than a dialog over it.
+ */
+@Composable
+private fun WaitingForRecords(onAddAlbum: () -> Unit, modifier: Modifier = Modifier) {
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .statusBarsPadding()
+            .padding(horizontal = 32.dp)
+            .padding(top = 64.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(14.dp)
+    ) {
+        Text(
+            text = "YOUR SHELVES ARE WAITING",
+            fontFamily = ArchivoFamily,
+            fontWeight = FontWeight.ExtraBold,
+            fontSize = 24.sp,
+            lineHeight = 28.sp,
+            letterSpacing = 0.8.sp,
+            textAlign = TextAlign.Center
+        )
+        Text(
+            // Says what to bring and what happens to it. "Add an album" alone does not
+            // explain that Jawon wants a folder of the user's own files, which is the one
+            // thing a new user has to understand before anything else works.
+            text = "Point Jawon at a folder of your music and it takes a place on the shelf.",
+            style = JawonTextStyle.mono.copy(color = LabelDim),
+            textAlign = TextAlign.Center,
+            lineHeight = 19.sp
+        )
+        TextButton(
+            onClick = onAddAlbum,
+            modifier = Modifier.padding(top = 6.dp)
+        ) {
+            Text(
+                text = "ADD YOUR FIRST ALBUM",
+                fontFamily = JetBrainsMonoFamily,
+                fontWeight = FontWeight.Bold,
+                fontSize = 14.sp,
+                letterSpacing = 1.6.sp,
+                color = LampAmber
+            )
+        }
+    }
+}
+
 @Composable
 private fun FocusLabel(case: CaseLayout?, modifier: Modifier = Modifier) {
     Column(

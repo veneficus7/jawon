@@ -140,9 +140,38 @@ data class WallLayout(
     val minPanX: Float = 0f,
     val maxPanX: Float = 0f,
     val minPanY: Float = 0f,
-    val maxPanY: Float = 0f
+    val maxPanY: Float = 0f,
+
+    /**
+     * Whether this layout came from the database, as opposed to being the placeholder the
+     * flow starts on.
+     *
+     * **These two were indistinguishable, and conflating them cost a bug and a feature.**
+     * The state flow starts on `WallLayout()`, so for the first frames after the splash an
+     * app with a full library looks exactly like an app with an empty one. The wall backing
+     * was drawn for both, which is what flashed a lit brown panel on launch; the fix at the
+     * time was to stop drawing it whenever `rows` was empty. That killed the flash and also
+     * guaranteed that a genuinely empty library could never render anything either — which
+     * is why the first screen a new user sees is a black void with one line of text.
+     *
+     * So: "nothing to draw yet" is a different state from "nothing in the library", and this
+     * is what separates them.
+     */
+    val loaded: Boolean = false
 ) {
-    val isEmpty: Boolean get() = rows.isEmpty()
+    /**
+     * The library has loaded and there is nothing on the shelves — the new-user state, and
+     * per `PLAN.md` §4 the most important screen in the app.
+     *
+     * There used to be an `isEmpty` here, defined as `rows.isEmpty()`, and it is deliberately
+     * gone rather than kept alongside this. An empty library now gets a shelf to look at, so
+     * that property would answer *false* for the emptiest possible library — a name that
+     * means the opposite of what it says is worse than no name at all.
+     *
+     * Note this is about *cases*, not rows: a user who has made shelves but put no albums on
+     * them is in the same position as one who has just installed the app.
+     */
+    val isWaiting: Boolean get() = loaded && cases.isEmpty()
 
     /**
      * The pan position that centres an album, given where a drag or fling was heading.
@@ -177,8 +206,40 @@ data class WallLayout(
          * row in `slotIndex` order (the DAO already sorts them, so the list index is used
          * directly — that keeps a shelf packed even if stored slot indices have gaps).
          */
+        /**
+         * The shelf a brand-new library gets, so the room has something in it.
+         *
+         * `PLAN.md` §4: the empty state "must read as 'your shelves, waiting' rather than
+         * 'broken app' — one labelled empty shelf, warm lighting, a single obvious way to add
+         * the first album." A real board under the real lamp is most of that; without it the
+         * app opens on black and the lamp lights nothing.
+         *
+         * Synthetic rather than written to the database. A row created here vanishes the
+         * moment a real shelf exists, whereas seeding a row on first launch would leave every
+         * user with a shelf they did not make and might not want — and would need a migration
+         * to change its mind later.
+         */
+        private fun waitingRow() = RowLayout(
+            shelfId = "waiting",
+            name = "Your first shelf",
+            accentHue = 0.09f,
+            row = 0,
+            centerY = 0f,
+            boardY = -WallDimens.CASE_H / 2f - WallDimens.BOARD_H / 2f,
+            plateX = -WallDimens.SLOT_PITCH / 2f + WallDimens.PLATE_W / 2f
+        )
+
         fun from(shelves: List<ShelfWithAlbums>): WallLayout {
-            if (shelves.isEmpty()) return WallLayout()
+            // Loaded, and there is genuinely nothing — not the placeholder. One lit, labelled
+            // board, and no cases.
+            if (shelves.isEmpty()) {
+                return WallLayout(
+                    rows = listOf(waitingRow()),
+                    wallWidth = 3f * WallDimens.SLOT_PITCH + WallDimens.WALL_MARGIN * 2f,
+                    wallHeight = WallDimens.ROW_PITCH + WallDimens.WALL_MARGIN * 2f,
+                    loaded = true
+                )
+            }
 
             val rowCount = shelves.size
             val maxCols = shelves.maxOf { it.albums.size }.coerceAtLeast(1)
@@ -236,7 +297,8 @@ data class WallLayout(
                 minPanX = panXRange.first,
                 maxPanX = panXRange.second,
                 minPanY = rowCenterY(rowCount - 1) - WallDimens.ROW_PITCH,
-                maxPanY = rowCenterY(0) + WallDimens.ROW_PITCH
+                maxPanY = rowCenterY(0) + WallDimens.ROW_PITCH,
+                loaded = true
             )
         }
 
