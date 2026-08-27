@@ -3,7 +3,7 @@
 import android.os.SystemClock
 import android.provider.Settings
 import android.util.Log
-import android.view.HapticFeedbackConstants
+import android.view.MotionEvent
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.animateFloatAsState
@@ -48,7 +48,6 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -394,7 +393,9 @@ fun WallSceneScreen(
         val roomNodes = remember { RoomNodes() }
         val caseDrag = remember { CaseDrag() }
         val scratch = remember { ScratchDriver() }
-        val view = LocalView.current
+        // Goes to the vibrator directly rather than through the view's haptic feedback —
+        // see RoomHaptics for why the disc had no vibration at all before this.
+        val haptics = remember(context) { RoomHaptics(context) }
 
         // Read only inside the readout composable, so its ~12Hz updates during a scratch
         // recompose one line of text and nothing else.
@@ -668,9 +669,44 @@ fun WallSceneScreen(
         }
 
         val gestureListener = rememberOnGestureListener(
-            onDown = { _, _ ->
+            onDown = { e, node ->
                 scope.launch { panX.stop() }
                 scope.launch { panY.stop() }
+
+                // Grabbing the platter happens HERE, on the touch landing — not in
+                // onMoveBegin, where it used to live.
+                //
+                // onMoveBegin fires only once a drag has travelled past touch slop, so
+                // "press and hold the disc to pause" did not pause on a press at all: it
+                // waited until the finger moved a few millimetres, which is exactly what
+                // testers described. A hand laid flat on a turntable stops it immediately,
+                // and the code has to do the same.
+                if (selectedAlbumId != null &&
+                    sequence.progress > Scratch.ARM_AT &&
+                    node.isDisc()
+                ) {
+                    discScreenCenter()?.let { c ->
+                        scratch.active = true
+                        scratch.lastAngle = atan2(e.y - c.y, e.x - c.x)
+                        scratch.durations = deck.tracks.map { it.durationMs }
+                        scratch.cursor = Scratch.Cursor(
+                            trackIndex = deck.currentTrackIndex.coerceAtLeast(0),
+                            offsetMs = viewModel.positionMs.value
+                        )
+                        scratch.haptics.reset()
+                        scratch.lastSeekAt = 0L
+
+                        // A hand on the platter stops the platter. Hold the disc and the
+                        // music holds with it, for as long as the finger is down — which is
+                        // both what a turntable does and what makes scrubbing legible,
+                        // because you are no longer hearing playback fight the scrub.
+                        //
+                        // Remembered rather than assumed: releasing must restore what was
+                        // true before the grab, or grabbing a paused disc would start it.
+                        scratch.resumeOnRelease = frame.isPlaying
+                        if (frame.isPlaying) viewModel.setPlaying(false)
+                    }
+                }
             },
             onScroll = { _, _, _, distance ->
                 // No panning while a case is out â€” the prototype does the same â€” and none
@@ -725,10 +761,10 @@ fun WallSceneScreen(
                         ?.let { openCase(it) }
                 }
             },
-            // The scratch uses the move-gesture trio rather than onScroll because
-            // OnGestureListener has no onUp, and a platter needs a reliable "finger lifted".
-            // Panning stays on onScroll, which is already inert while a case is open, so the
-            // two never contend.
+            // Turning a shelved album uses the move-gesture trio rather than onScroll,
+            // because it wants touch slop first — a case should not spin on a stray tap.
+            // The disc is the opposite and is handled in onDown. Panning stays on onScroll,
+            // which is already inert while a case is open, so the two never contend.
             onMoveBegin = { _, e, node ->
                 // Browsing: grabbing an album turns it in place. Resolved once, here, using
                 // the same walk the tap handler does — picking lands on a node the glTF
@@ -744,32 +780,9 @@ fun WallSceneScreen(
                         caseDrag.slot?.spinVelocity = 0f
                     }
                 }
-                if (selectedAlbumId != null &&
-                    sequence.progress > Scratch.ARM_AT &&
-                    node.isDisc()
-                ) {
-                    discScreenCenter()?.let { c ->
-                        scratch.active = true
-                        scratch.lastAngle = atan2(e.y - c.y, e.x - c.x)
-                        scratch.durations = deck.tracks.map { it.durationMs }
-                        scratch.cursor = Scratch.Cursor(
-                            trackIndex = deck.currentTrackIndex.coerceAtLeast(0),
-                            offsetMs = viewModel.positionMs.value
-                        )
-                        scratch.haptics.reset()
-                        scratch.lastSeekAt = 0L
-
-                        // A hand on the platter stops the platter. Hold the disc and the
-                        // music holds with it, for as long as the finger is down — which is
-                        // both what a turntable does and what makes scrubbing legible,
-                        // because you are no longer hearing playback fight the scrub.
-                        //
-                        // Remembered rather than assumed: releasing must restore what was
-                        // true before the grab, or grabbing a paused disc would start it.
-                        scratch.resumeOnRelease = frame.isPlaying
-                        if (frame.isPlaying) viewModel.setPlaying(false)
-                    }
-                }
+                // The disc is already armed by onDown, which fires before this. Re-arming
+                // here would reset the cursor to the live playback position and throw away
+                // whatever the first few millimetres of the drag had already scrubbed.
             },
             onMove = { _, e, _ ->
                 caseDrag.slot?.let { slot ->
@@ -792,15 +805,25 @@ fun WallSceneScreen(
                         // The disc tracks the finger exactly â€” this is the whole illusion.
                         sequence.spinAngle -= degrees
 
+                        val before = scratch.cursor.trackIndex
                         scratch.cursor = Scratch.advance(
                             scratch.cursor, Scratch.radiansToMs(delta), scratch.durations
                         )
 
                         val now = SystemClock.uptimeMillis()
-                        if (scratch.haptics.accept(degrees, now)) {
-                            // CLOCK_TICK needs no permission and honours the user's system
-                            // haptics setting, unlike a raw Vibrator call.
-                            view.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+                        if (scratch.cursor.trackIndex != before) {
+                            // A track boundary went past under the finger. Heavier than the
+                            // scrub texture and deliberately a different effect, so a skip
+                            // can be felt without looking — this is the "vibration on skip"
+                            // testers asked for.
+                            //
+                            // Fired ahead of the tick and clearing its debt, so a boundary
+                            // crossed mid-notch is one detent rather than a detent and a
+                            // tick landing on top of each other.
+                            haptics.detent()
+                            scratch.haptics.reset()
+                        } else if (scratch.haptics.accept(degrees, now)) {
+                            haptics.tick()
                         }
                         if (now - scratch.lastSeekAt >= Scratch.SEEK_THROTTLE_MS) {
                             scratch.lastSeekAt = now
@@ -840,6 +863,32 @@ fun WallSceneScreen(
             autoCenterContent = false,
             viewNodeWindowManager = viewNodeManager,
             onGestureListener = gestureListener,
+            // Releasing the platter, from the one place that reliably knows the finger is
+            // gone: the raw touch stream, before any gesture detector has interpreted it.
+            //
+            // `OnGestureListener` has no `onUp` — checked against the interface, it has
+            // nineteen callbacks and not one of them is a plain release. That did not matter
+            // while the grab began at `onMoveBegin`, because it then always ended at
+            // `onMoveEnd`. Moving the grab to `onDown` breaks that pairing: press the disc,
+            // hold it still, and no move gesture ever begins, so none ever ends — the music
+            // would stop and never start again.
+            //
+            // `onSingleTapUp` does not cover it either. Once `onLongPress` has fired, which
+            // it does after half a second, the platform stops delivering it — and half a
+            // second is well inside what "press and hold" means.
+            //
+            // Returns false always: this only observes. SceneView's own gesture handling
+            // runs exactly as before, and `endScratch` is idempotent, so `onMoveEnd` calling
+            // it too is harmless.
+            onTouchEvent = { motionEvent, _ ->
+                when (motionEvent.actionMasked) {
+                    MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                        caseDrag.slot = null
+                        endScratch()
+                    }
+                }
+                false
+            },
             onFrame = { frameNanos ->
                 val dt = if (sequence.lastFrameNanos == 0L) 0f
                 else ((frameNanos - sequence.lastFrameNanos) / 1_000_000_000f).coerceIn(0f, 1f / 24f)

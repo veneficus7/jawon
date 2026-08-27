@@ -5,6 +5,14 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!--
+        For the platter's haptics. A normal permission — granted at install, no prompt, and
+        nothing to declare on Play's data safety form. See RoomHaptics for why the disc does
+        not use View.performHapticFeedback: that route depends on the separate "touch
+        feedback" system setting, which is off on many phones, and testers reported the disc
+        had no vibration at all because of it.
+    -->
+    <uses-permission android:name="android.permission.VIBRATE" />
 
     <uses-feature android:glEsVersion="0x00030000" android:required="true" />
 
