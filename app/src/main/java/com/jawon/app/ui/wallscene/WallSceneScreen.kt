@@ -1395,6 +1395,13 @@ fun WallSceneScreen(
                                 slot.occupied = false
                                 root.isVisible = false
                                 slot.beam?.isVisible = false
+                                // Hand the slot back at its normal size. `bind` also restores
+                                // this, but relying on that alone is what broke the wall the
+                                // first time: a slot left at zero scale is invisible to every
+                                // album that lands on it afterwards, and it only gets fixed if
+                                // something later happens to re-bind. Leave it clean here so
+                                // the pool never depends on that.
+                                root.scale = Scale(1f)
                             }
                             return@forEach
                         }

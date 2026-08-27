@@ -17,6 +17,7 @@ import com.jawon.app.ui.wallscene.WallDimens.TRAY_FRONT_Z
 import io.github.sceneview.SceneScope
 import io.github.sceneview.math.Direction
 import io.github.sceneview.math.Position
+import io.github.sceneview.math.Scale
 import io.github.sceneview.math.Size
 import io.github.sceneview.node.ImageNode
 import io.github.sceneview.node.ModelNode
@@ -329,6 +330,22 @@ fun CaseSlots.bind(
         val (case, artwork) = binding
         slot.occupied = true
         slot.beam?.isVisible = true
+
+        // Undo anything the discard animation did to this slot's scale.
+        //
+        // **This is the bug that broke the wall the first time the animation shipped.**
+        // `CaseDiscard` shrinks a case to nothing on its way out, and this function — which
+        // is what hands a pooled slot to its next album — restored position, visibility and
+        // artwork but never scale. Since the pool is index-keyed and deliberately never
+        // destroyed, one deletion left that slot at zero size permanently, and every album
+        // that later landed on the same index rendered invisible. What gave it away was a
+        // shelf of glowing underlights with no cases above them: the beam is a sibling of
+        // the case root, so it was never scaled.
+        //
+        // Skipped while a discard is actually running, because the frame driver owns the
+        // scale then — the album stays in the database for the length of the animation, so
+        // `bind` keeps being called on a slot that is mid-flight.
+        if (slot.discardClock == null) slot.root?.scale = Scale(1f)
         artwork?.hue?.let { slot.setBeamHue(it) }
         slot.baseX = case.x
         slot.baseY = case.y
