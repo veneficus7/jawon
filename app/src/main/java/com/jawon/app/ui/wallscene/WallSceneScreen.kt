@@ -1569,9 +1569,29 @@ fun WallSceneScreen(
             // That older test also caught the genuinely-empty library, so a new user's first
             // screen had no wall either — see WallLayout.loaded.
             if (layout.loaded) {
+                // Sized to what the CAMERA can reach, not to what the content occupies.
+                //
+                // It used to be the content's own extent, centred on the world origin, and
+                // that only worked because the camera used to tilt back toward the origin
+                // wherever it panned — the backing was always in the middle of the shot by
+                // construction. Now that the lens looks straight ahead (see
+                // LOOK_STRAIGHT_AHEAD), panning to a low shelf walks the view clean off the
+                // bottom edge of the panel and the room behind the records goes black.
+                //
+                // Spanning the full pan range plus a frustum in each direction covers every
+                // position the user can reach, at any zoom: halfW and halfH are computed at
+                // ZOOM_FAR, the furthest the camera is allowed to stand.
                 CubeNode(
-                    size = Size(layout.wallWidth, layout.wallHeight, 0.01f),
-                    position = Position(0f, 0f, WALL_Z - 0.005f),
+                    size = Size(
+                        (layout.maxPanX - layout.minPanX) + halfW * 2f,
+                        (layout.maxPanY - layout.minPanY) + halfH * 2f,
+                        0.01f
+                    ),
+                    position = Position(
+                        (layout.maxPanX + layout.minPanX) / 2f,
+                        (layout.maxPanY + layout.minPanY) / 2f,
+                        WALL_Z - 0.005f
+                    ),
                     materialInstance = wallMaterial,
                     apply = {
                         isTouchable = false

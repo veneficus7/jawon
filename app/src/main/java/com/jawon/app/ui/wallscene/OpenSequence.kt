@@ -191,8 +191,26 @@ object OpenSequence {
     // real ratio). The prototype magnified it to fill a deck panel; that made it read as a
     // grey circle of no particular size rather than as a compact disc.
     private const val DISC_VIEW_DIST = 0.55f
-    /** Fraction of the half-height the disc sits above centre, leaving room below for M7 part 2's deck. */
-    private const val DISC_BAND = 0.08f
+    /**
+     * Fraction of the half-height the disc sits above centre, leaving the room below it for
+     * the deck.
+     *
+     * **Was 0.08, which is all but centred, and the deck's title ran straight through the
+     * disc.** It looked right for as long as it did because the camera was quietly tilting:
+     * the lens used to re-aim at the world origin as the wall panned, which lifted everything
+     * in the frame by roughly 40% of a half-height and did the composing that this constant
+     * was supposed to be doing. Locking the camera square on (`LOOK_STRAIGHT_AHEAD`) removed
+     * the tilt, and with it the free lift, so the disc dropped onto the tracklist.
+     *
+     * 0.48 puts it back where it was, deliberately rather than accidentally. At
+     * [DISC_VIEW_DIST] the half-frame is 200mm and the disc's radius is 60mm, so its centre
+     * sits 96mm up, its rim reaches ~78% of the way to the top edge, and its lower edge
+     * clears the album title below with room to spare.
+     *
+     * The other thing this buys is consistency: the old tilt varied with pan position, so the
+     * disc sat at a different height depending on which shelf the record came from.
+     */
+    private const val DISC_BAND = 0.48f
     const val SPIN_DEG_PER_S = 78f
 
     // ---- Easing -------------------------------------------------------------------
