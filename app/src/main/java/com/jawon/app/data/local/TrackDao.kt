@@ -27,4 +27,15 @@ interface TrackDao {
 
     @Delete
     suspend fun delete(track: Track)
+
+    /**
+     * Forgets every track on an album.
+     *
+     * **This removes Jawon's record of the files, never the files.** They are the user's own
+     * audio, in their own folders, reached through a document URI that only grants read
+     * access — deleting an album takes it off the shelf and leaves the music exactly where
+     * the user put it. Anything else would be a music player deleting music.
+     */
+    @Query("DELETE FROM Track WHERE albumId = :albumId")
+    suspend fun deleteForAlbum(albumId: String)
 }

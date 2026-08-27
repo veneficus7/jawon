@@ -2,6 +2,7 @@ package com.jawon.app.ui.wallscene
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.jawon.app.data.importer.CoverImageStore
 import com.jawon.app.data.local.AlbumDao
 import com.jawon.app.data.local.ShelfDao
 import com.jawon.app.data.local.ShelfWithAlbums
@@ -43,9 +44,10 @@ data class DeckState(
 @HiltViewModel
 class WallSceneViewModel @Inject constructor(
     shelfDao: ShelfDao,
-    albumDao: AlbumDao,
+    private val albumDao: AlbumDao,
     private val trackDao: TrackDao,
     private val playbackRepository: PlaybackRepository,
+    private val coverStore: CoverImageStore,
     audioRouteReader: AudioRouteReader
 ) : ViewModel() {
 
@@ -82,6 +84,28 @@ class WallSceneViewModel @Inject constructor(
             )
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), DeckState())
+
+    /**
+     * Takes an album off the shelf.
+     *
+     * **The user's audio files are never touched, and the confirmation says so.** They live
+     * in the user's own folders and Jawon holds only a read grant on them; an album is a
+     * record *about* those files. What does get deleted is what Jawon made: the row, its
+     * tracks, and the cover and disc images copied into private storage at import — leaving
+     * those behind would slowly fill the phone with orphans nothing can reach.
+     *
+     * Stops playback first if this is the album playing, so the deck is not left driving a
+     * queue whose album no longer exists.
+     */
+    fun deleteAlbum(albumId: String) {
+        viewModelScope.launch {
+            if (_nowPlayingAlbumId.value == albumId) stop()
+            val album = albumDao.findById(albumId)
+            trackDao.deleteForAlbum(albumId)
+            albumDao.deleteById(albumId)
+            album?.let { coverStore.deleteAll(it.caseCoverUri, it.discFaceUri) }
+        }
+    }
 
     /** Called when the open sequence lands — the disc is up and spinning. */
     fun playAlbum(albumId: String) {

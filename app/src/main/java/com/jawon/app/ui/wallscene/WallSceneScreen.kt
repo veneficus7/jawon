@@ -28,6 +28,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -429,6 +430,9 @@ fun WallSceneScreen(
         val caseDrag = remember { CaseDrag() }
         val scratch = remember { ScratchDriver() }
         val settle = remember { WallSettle() }
+
+        /** The album a long press has proposed removing, until it is confirmed or dismissed. */
+        var pendingDelete by remember { mutableStateOf<CaseLayout?>(null) }
         // Goes to the vibrator directly rather than through the view's haptic feedback —
         // see RoomHaptics for why the disc had no vibration at all before this.
         val haptics = remember(context) { RoomHaptics(context) }
@@ -782,6 +786,24 @@ fun WallSceneScreen(
                             animationSpec = SETTLE_SPRING
                         )
                     }
+                }
+            },
+            // Long-press an album on the wall to take it off the shelf.
+            //
+            // Chosen over a button in the deck deliberately: the deck is open while music is
+            // playing and its controls are pressed constantly, which is the worst possible
+            // neighbourhood for a destructive action. A long press on the wall is a gesture
+            // you cannot arrive at by accident, and it acts on the record you are pointing
+            // at rather than on "the current album".
+            onLongPress = { _, node ->
+                if (selectedAlbumId == null) {
+                    generateSequence(node) { it.parent }
+                        .mapNotNull { it.name }
+                        .firstOrNull { name -> layout.cases.any { it.albumId == name } }
+                        ?.let { albumId ->
+                            haptics.detent()
+                            pendingDelete = layout.cases.firstOrNull { it.albumId == albumId }
+                        }
                 }
             },
             // onSingleTapUp, not onSingleTapConfirmed: the latter waits out the double-tap
@@ -1330,6 +1352,17 @@ fun WallSceneScreen(
             )
         }
 
+        pendingDelete?.let { case ->
+            RemoveAlbumDialog(
+                case = case,
+                onConfirm = {
+                    viewModel.deleteAlbum(case.albumId)
+                    pendingDelete = null
+                },
+                onDismiss = { pendingDelete = null }
+            )
+        }
+
         // The room is the home screen now, so back has nowhere to pop to â€” it closes an open
         // case, and is left alone while browsing so it exits the app normally.
         BackHandler(enabled = selectedAlbumId != null) { closeCase() }
@@ -1455,6 +1488,41 @@ private fun ShelfPlate(name: String, accentHue: Float) {
  * spine â€” the one piece of the room carrying its own vertical text â€” is always directly
  * behind this. Without something to sit on, the two sets of words interleave.
  */
+/**
+ * Confirms taking an album off the shelf.
+ *
+ * **The second line is the whole point of this dialog.** Jawon's albums are records *about*
+ * files that belong to the user and live in the user's own folders, and no confirmation that
+ * just says "are you sure?" tells them whether their music is about to be deleted. It is not,
+ * and it never can be — Jawon holds a read-only grant on those files — so the dialog says so
+ * plainly rather than leaving the user to find out by checking afterwards.
+ */
+@Composable
+private fun RemoveAlbumDialog(
+    case: CaseLayout,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Remove ${case.title}?") },
+        text = {
+            Text(
+                "It comes off the shelf, along with the artwork you gave it. " +
+                    "Your audio files stay exactly where they are — Jawon never deletes " +
+                    "your music."
+            )
+        },
+        confirmButton = {
+            TextButton(onClick = onConfirm) { Text("Remove", color = LampAmber) }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Keep it") }
+        },
+        containerColor = CrateBlack
+    )
+}
+
 /**
  * The first thing anyone sees, and per `PLAN.md` §4 the most important screen in the app: it
  * "must read as 'your shelves, waiting' rather than 'broken app'".

@@ -23,4 +23,11 @@ interface AlbumDao {
 
     @Delete
     suspend fun delete(album: Album)
+
+    /** One-shot read, for the delete path — which needs the row once, not a subscription. */
+    @Query("SELECT * FROM Album WHERE id = :id")
+    suspend fun findById(id: String): Album?
+
+    @Query("DELETE FROM Album WHERE id = :id")
+    suspend fun deleteById(id: String)
 }
