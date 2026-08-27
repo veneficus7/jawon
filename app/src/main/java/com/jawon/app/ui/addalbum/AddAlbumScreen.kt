@@ -21,6 +21,8 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Slider
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -28,6 +30,8 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import coil3.compose.AsyncImage
@@ -67,6 +71,7 @@ fun AddAlbumScreen(
                     onYearChanged = viewModel::onYearChanged,
                     onCaseCoverPicked = viewModel::onCaseCoverPicked,
                     onDiscFacePicked = viewModel::onDiscFacePicked,
+                    onSpineHueChanged = viewModel::onSpineHueChanged,
                     onSave = viewModel::onSave
                 )
                 is AddAlbumUiState.Saving -> CenteredMessage("Saving…")
@@ -111,6 +116,7 @@ private fun PreviewContent(
     onYearChanged: (String) -> Unit,
     onCaseCoverPicked: (android.net.Uri?) -> Unit,
     onDiscFacePicked: (android.net.Uri?) -> Unit,
+    onSpineHueChanged: (Float) -> Unit,
     onSave: () -> Unit
 ) {
     val caseCoverLauncher = rememberLauncherForActivityResult(
@@ -173,12 +179,64 @@ private fun PreviewContent(
                 )
             }
         }
+        item { UnderlightPicker(hue = state.spineHue, onHueChanged = onSpineHueChanged) }
         items(state.preview.tracks) { track -> TrackRow(track) }
         item {
             Button(onClick = onSave, modifier = Modifier.padding(vertical = 16.dp)) {
                 Text("Save album")
             }
         }
+    }
+}
+
+/**
+ * The album's accent colour, which becomes the underlight it stands in on the shelf.
+ *
+ * **Off by default, and that is the point.** Jawon already takes the dominant hue from the
+ * cover art, which is usually a better answer than anything picked off a slider and asks the
+ * user for nothing — the same reasoning that ruled out asking for a third uploaded image.
+ * This exists for the album where that guess is wrong, so it opens on "From the cover" and
+ * only starts overriding once the strip is actually touched.
+ */
+@Composable
+private fun UnderlightPicker(hue: Float, onHueChanged: (Float) -> Unit) {
+    val chosen = hue != 0f
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text("Shelf underlight", style = MaterialTheme.typography.bodyLarge)
+            if (chosen) {
+                TextButton(onClick = { onHueChanged(0f) }) { Text("From the cover") }
+            } else {
+                Text(
+                    "From the cover",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(34.dp)
+                .background(
+                    // The wheel itself, so the control shows what it does rather than
+                    // needing a swatch beside it to explain.
+                    Brush.horizontalGradient(
+                        (0..6).map { Color.hsv(it * 60f % 360f, 0.62f, 0.92f) }
+                    )
+                )
+        )
+        Slider(
+            value = if (chosen) hue else 0f,
+            // Nudged off zero on first touch, because zero is the sentinel for "unset" and a
+            // user dragging to the far left should still get red, not the cover's colour.
+            onValueChange = { onHueChanged(it.coerceAtLeast(0.001f)) },
+            valueRange = 0f..1f
+        )
     }
 }
 

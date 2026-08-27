@@ -30,7 +30,8 @@ class AddAlbumViewModel @Inject constructor(
                     artist = preview.suggestedArtist,
                     year = preview.suggestedYear?.toString().orEmpty(),
                     caseCoverUri = null,
-                    discFaceUri = null
+                    discFaceUri = null,
+                    spineHue = 0f
                 )
             } catch (e: Exception) {
                 AddAlbumUiState.Error(e.message ?: "Couldn't scan that folder")
@@ -43,6 +44,9 @@ class AddAlbumViewModel @Inject constructor(
     fun onYearChanged(value: String) = updatePreview { it.copy(year = value) }
     fun onCaseCoverPicked(uri: Uri?) = updatePreview { it.copy(caseCoverUri = uri) }
     fun onDiscFacePicked(uri: Uri?) = updatePreview { it.copy(discFaceUri = uri) }
+
+    /** The album's accent, which becomes its underlight on the shelf. */
+    fun onSpineHueChanged(value: Float) = updatePreview { it.copy(spineHue = value) }
 
     private fun updatePreview(transform: (AddAlbumUiState.Preview) -> AddAlbumUiState.Preview) {
         val current = _uiState.value
@@ -61,7 +65,8 @@ class AddAlbumViewModel @Inject constructor(
                     artist = current.artist,
                     year = current.year.toIntOrNull(),
                     caseCoverUri = current.caseCoverUri,
-                    discFaceUri = current.discFaceUri
+                    discFaceUri = current.discFaceUri,
+                    spineHue = current.spineHue
                 )
                 AddAlbumUiState.Done(albumId)
             } catch (e: Exception) {

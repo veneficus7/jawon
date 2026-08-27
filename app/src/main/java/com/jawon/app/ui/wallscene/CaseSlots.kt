@@ -4,7 +4,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
+import kotlin.math.floor
 import kotlin.math.sin
+import com.google.android.filament.MaterialInstance
 import com.google.android.filament.gltfio.FilamentInstance
 import com.jawon.app.ui.wallscene.WallDimens.CASE_D
 import com.jawon.app.ui.wallscene.WallDimens.CASE_H
@@ -40,6 +42,23 @@ class CaseSlot {
     var beam: Node? = null
 
     /**
+     * The beam's own material instances, so its colour can be set per album.
+     *
+     * Held here rather than reached for through [beam] because gltfio hands them out per
+     * `FilamentInstance`: instancing shares the geometry and the textures, but each instance
+     * gets its own material instances, which is exactly what makes a per-album colour
+     * affordable at several hundred cases.
+     */
+    var beamMaterials: Array<MaterialInstance>? = null
+
+    /**
+     * Last hue written to [beamMaterials], so binding does not re-push the same colour into
+     * native on every pass. `Float.NaN` because it never compares equal to itself, so the
+     * first bind always writes.
+     */
+    private var appliedBeamHue = Float.NaN
+
+    /**
      * Where this slot sits on the wall before the idle motion is added.
      *
      * [bind] writes these rather than writing `root.position` directly, because the frame
@@ -73,7 +92,82 @@ class CaseSlot {
      * a case feel like it has mass rather than being dragged on a rail.
      */
     var spinVelocity = 0f
+
+    /**
+     * Tint this album's underlight.
+     *
+     * Testers asked for the colour chosen at upload to become the album's underlight. The
+     * hue is already resolved for every album — [CaseArtCache] takes the one stored on the
+     * album if the user set it, then the cover's dominant hue, then a stable per-album
+     * fallback — so every record on the wall gets its own colour with no extra step, and a
+     * user who does pick one simply overrides it.
+     *
+     * **Guarded by `hasParameter`.** These materials come from the glTF asset rather than
+     * from a `.mat` in this repository, so the parameter list is whatever gltfio generated
+     * for the beam's emissive material. Filament logs and ignores an unknown parameter name,
+     * which would leave every beam stuck on the asset's authored colour with nothing to
+     * explain why — so the name is checked rather than assumed, and both spellings gltfio
+     * might have produced are tried.
+     */
+    fun setBeamHue(hue: Float) {
+        if (hue == appliedBeamHue) return
+        val materials = beamMaterials ?: return
+        appliedBeamHue = hue
+
+        val rgb = beamRgb(hue)
+        materials.forEach { instance ->
+            val material = instance.material
+            if (material.hasParameter(EMISSIVE_PARAM)) {
+                instance.setParameter(EMISSIVE_PARAM, rgb[0], rgb[1], rgb[2])
+            }
+            if (material.hasParameter(BASE_COLOR_PARAM)) {
+                instance.setParameter(BASE_COLOR_PARAM, rgb[0], rgb[1], rgb[2], 1f)
+            }
+        }
+    }
+
+    private companion object {
+        const val EMISSIVE_PARAM = "emissiveFactor"
+        const val BASE_COLOR_PARAM = "baseColorFactor"
+    }
 }
+
+/**
+ * An album's hue as linear RGB for the underlight, at [BEAM_VALUE] so it clears bloom's
+ * threshold and actually glows rather than sitting there as a coloured shape.
+ *
+ * Saturation is held below full: a fully saturated beam reads as a stage gel, and DESIGN.md
+ * wants a shop lit warmly, not a nightclub. The conversion is done here rather than through
+ * `android.graphics.Color` because Filament wants linear values and that returns sRGB.
+ */
+private fun beamRgb(hue: Float): FloatArray {
+    val h = ((hue % 1f) + 1f) % 1f * 6f
+    val sector = floor(h).toInt()
+    val f = h - sector
+    val v = BEAM_VALUE
+    val p = v * (1f - BEAM_SATURATION)
+    val q = v * (1f - BEAM_SATURATION * f)
+    val t = v * (1f - BEAM_SATURATION * (1f - f))
+    return when (sector % 6) {
+        0 -> floatArrayOf(v, t, p)
+        1 -> floatArrayOf(q, v, p)
+        2 -> floatArrayOf(p, v, t)
+        3 -> floatArrayOf(p, q, v)
+        4 -> floatArrayOf(t, p, v)
+        else -> floatArrayOf(v, p, q)
+    }
+}
+
+/**
+ * Well above 1.0 on purpose. Bloom runs thresholded — DESIGN.md asks for glow "on the lamp
+ * and the disc's specular highlight only, not a global haze" — so anything at or below 1.0
+ * cannot bloom at all. That is the exact bug the beam had when it was first built: it
+ * emitted 0.3 and was structurally incapable of glowing.
+ */
+private const val BEAM_VALUE = 4.5f
+
+/** Coloured, not gelled. See [beamRgb]. */
+private const val BEAM_SATURATION = 0.62f
 
 /**
  * The wall's pool of case slots.
@@ -215,6 +309,7 @@ fun CaseSlots.bind(
         val (case, artwork) = binding
         slot.occupied = true
         slot.beam?.isVisible = true
+        artwork?.hue?.let { slot.setBeamHue(it) }
         slot.baseX = case.x
         slot.baseY = case.y
         // The playing album stands out of its slot, so browsing away still shows you
@@ -291,6 +386,9 @@ fun SceneScope.CaseSlotNodes(
                 beamInstances[index],
                 apply = {
                     slot.beam = this
+                    // Per-instance, so each album's beam can take its own colour. See
+                    // CaseSlot.setBeamHue.
+                    slot.beamMaterials = beamInstances[index].materialInstances
                     isVisible = false
                     isTouchable = false
                     // It is light. It neither casts nor receives.

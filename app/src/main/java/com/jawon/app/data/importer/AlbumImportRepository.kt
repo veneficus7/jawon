@@ -71,7 +71,16 @@ class AlbumImportRepository @Inject constructor(
         artist: String,
         year: Int?,
         caseCoverUri: Uri?,
-        discFaceUri: Uri?
+        discFaceUri: Uri?,
+        /**
+         * The album's accent, 0..1 round the colour wheel, or `0f` to leave it unset.
+         *
+         * Unset is the useful default rather than a missing value: `CaseArtCache` falls back
+         * to the cover's own dominant hue, which is usually a better answer than anything a
+         * user would pick from a slider, and costs them nothing. This is the override for
+         * when it is not.
+         */
+        spineHue: Float
     ): String = withContext(Dispatchers.IO) {
         val shelfId = ensureDefaultShelf()
         val albumId = UUID.randomUUID().toString()
@@ -91,7 +100,7 @@ class AlbumImportRepository @Inject constructor(
                 year = year,
                 caseCoverUri = caseCoverPath,
                 discFaceUri = discFacePath,
-                spineHue = 0f,
+                spineHue = spineHue,
                 slotIndex = slotIndex,
                 playCount = 0,
                 addedAt = now
