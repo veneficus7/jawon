@@ -202,14 +202,31 @@ private val LOOK_STRAIGHT_AHEAD = Rotation(0f, 0f, 0f)
 /**
  * How the disc's printed face behaves under the room's light.
  *
- * Ink on plastic, not polished metal — see the disc material block in the frame setup for
- * why that distinction is what decides whether the artwork survives the lamp. Clearcoat is
- * kept, just far lower: a CD label is lacquered, and losing the sheen entirely would make it
- * read as a paper coaster.
+ * **Tuned to stop the lamp bleaching the artwork, which took three attempts.** The first two
+ * — baking more contrast into the texture, then dropping metallic — were aimed at the right
+ * idea and were not enough on their own. Dumping the material's parameter list settled it:
+ * every name being set does exist, so nothing was silently failing; there was simply more
+ * than one route for light to come back off this surface, and killing metallic only closed
+ * one of them.
+ *
+ * The three that matter, in order of how much they were costing:
+ *
+ * - **[DISC_LABEL_REFLECTANCE]** is the one that was missed. On a non-metal, Filament takes
+ *   specular from `reflectance`, not from `metallicFactor` — so zeroing metallic left the
+ *   surface still throwing back the default 4% of a lamp burned into the IBL at intensity
+ *   26. Halving it halves the highlight the print is competing with.
+ * - **[DISC_LABEL_ROUGHNESS]** at 0.78 spreads what is left over the whole face instead of
+ *   concentrating it into a blown-out patch. A CD label is printed paper under lacquer; it
+ *   is much closer to matte than to a mirror.
+ * - **[DISC_LABEL_CLEARCOAT]** off. It is a second specular lobe stacked on top of the
+ *   first, and it was adding a white sheen over everything for a lacquer effect nobody can
+ *   see once the print underneath is legible. Worth restoring at a low value if the disc
+ *   ever reads as too papery.
  */
 private const val DISC_LABEL_METALLIC = 0f
-private const val DISC_LABEL_ROUGHNESS = 0.42f
-private const val DISC_LABEL_CLEARCOAT = 0.3f
+private const val DISC_LABEL_ROUGHNESS = 0.78f
+private const val DISC_LABEL_CLEARCOAT = 0f
+private const val DISC_LABEL_REFLECTANCE = 0.22f
 
 
 /** Progress at which the deck fades in â€” as the disc squares up, not before. */
@@ -794,6 +811,11 @@ fun WallSceneScreen(
                     // Guarded by name because these come from the glTF asset rather than a
                     // .mat in this repo, and Filament logs and ignores an unknown parameter
                     // rather than failing, which would leave this silently doing nothing.
+                    // Names verified against the material's own parameter list rather than
+                    // guessed: it is gltfio's `base_lit_opaque`, and all four of these exist
+                    // on it. Worth knowing, because Filament ignores an unknown parameter
+                    // silently, so a typo here would look exactly like a setting that had no
+                    // effect — which is how two rounds of this went by.
                     val material = instance.material
                     if (material.hasParameter("metallicFactor")) {
                         instance.setParameter("metallicFactor", DISC_LABEL_METALLIC)
@@ -803,6 +825,11 @@ fun WallSceneScreen(
                     }
                     if (material.hasParameter("clearCoatFactor")) {
                         instance.setParameter("clearCoatFactor", DISC_LABEL_CLEARCOAT)
+                    }
+                    // The one that was missing. On a non-metal, specular comes from here and
+                    // not from metallicFactor at all.
+                    if (material.hasParameter("reflectance")) {
+                        instance.setParameter("reflectance", DISC_LABEL_REFLECTANCE)
                     }
                 }
             }
