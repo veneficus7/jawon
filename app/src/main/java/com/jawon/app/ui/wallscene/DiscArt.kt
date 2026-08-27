@@ -4,6 +4,8 @@ import android.graphics.Bitmap
 import android.graphics.BitmapShader
 import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.ColorMatrix
+import android.graphics.ColorMatrixColorFilter
 import android.graphics.Matrix
 import android.graphics.Paint
 import android.graphics.RadialGradient
@@ -32,8 +34,16 @@ object DiscArt {
      * Every disc face is baked to exactly this, square. Fixed size is not just tidiness —
      * the face is uploaded into one texture that is allocated once and reused for every
      * album, so the dimensions can never change. See the disc texture in `WallSceneScreen`.
+     *
+     * **1024, up from 512.** Once a case is open the disc is the largest thing on screen —
+     * it spans most of the frame's width on a phone — so it is the one texture in the room
+     * that is looked at closely. 512 across a screen-filling circle is roughly half a device
+     * pixel per texel, and the artwork visibly softened.
+     *
+     * One texture at 4MB plus its mip chain, for the single album that is open. The wall's
+     * hundreds of covers stay small; this is the exception that earns the memory.
      */
-    const val DISC_PX = 512
+    const val DISC_PX = 1024
 
     // Fractions of the bitmap's half-width, matching a real CD (120mm disc, 15mm hole,
     // ~46mm printable inner edge, ~33mm clamping ring).
@@ -98,6 +108,24 @@ object DiscArt {
         return bitmap
     }
 
+    /** Contrast and saturation applied to a label as it is printed — see [drawLabel]. */
+    private const val LABEL_CONTRAST = 1.22f
+    private const val LABEL_SATURATION = 1.16f
+
+    /**
+     * A contrast matrix that pivots about mid-grey, so raising contrast brightens the top half
+     * and darkens the bottom half rather than shifting the whole image.
+     */
+    private fun contrastMatrix(scale: Float): FloatArray {
+        val shift = 127.5f * (1f - scale)
+        return floatArrayOf(
+            scale, 0f, 0f, 0f, shift,
+            0f, scale, 0f, 0f, shift,
+            0f, 0f, scale, 0f, shift,
+            0f, 0f, 0f, 1f, 0f
+        )
+    }
+
     /**
      * Draws [art] centre-cropped into the label annulus.
      *
@@ -118,7 +146,27 @@ object DiscArt {
                 )
             }
         )
-        val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply { this.shader = shader }
+        val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            this.shader = shader
+            // Printed, not displayed.
+            //
+            // The label is a lit, glossy surface in a dim room: the lamp's specular sheen
+            // lifts its blacks and the warm ambient pulls everything toward the room's own
+            // amber, so artwork that looks right as a flat image arrives on the disc washed
+            // out and low-contrast. Pushing contrast and saturation in the bake is the cheap
+            // half of the answer — it costs one filter on a bitmap drawn once per album,
+            // where the alternative is fighting the material and the lighting.
+            //
+            // Held modest on purpose. This is a correction for what the room does to the
+            // image, not a look: crushed blacks on a real CD label would read as a printing
+            // fault rather than as contrast.
+            colorFilter = ColorMatrixColorFilter(
+                ColorMatrix().apply {
+                    setSaturation(LABEL_SATURATION)
+                    postConcat(ColorMatrix(contrastMatrix(LABEL_CONTRAST)))
+                }
+            )
+        }
         canvas.drawCircle(c, c, outer, paint)
     }
 }

@@ -191,26 +191,31 @@ object OpenSequence {
     // real ratio). The prototype magnified it to fill a deck panel; that made it read as a
     // grey circle of no particular size rather than as a compact disc.
     private const val DISC_VIEW_DIST = 0.55f
+    /** Fraction of the half-height the disc sits above centre, above the deck below it. */
+    private const val DISC_BAND = 0.08f
+
     /**
-     * Fraction of the half-height the disc sits above centre, leaving the room below it for
-     * the deck.
+     * How far the camera drops once a case is out, in metres, lifting the whole tableau in
+     * frame.
      *
-     * **Was 0.08, which is all but centred, and the deck's title ran straight through the
-     * disc.** It looked right for as long as it did because the camera was quietly tilting:
-     * the lens used to re-aim at the world origin as the wall panned, which lifted everything
-     * in the frame by roughly 40% of a half-height and did the composing that this constant
-     * was supposed to be doing. Locking the camera square on (`LOOK_STRAIGHT_AHEAD`) removed
-     * the tilt, and with it the free lift, so the disc dropped onto the tracklist.
+     * **This replaces something that used to happen by accident.** The camera used to re-aim
+     * at the world origin as the wall panned, and that tilt lifted everything in the open
+     * shot by roughly 40% of a half-frame. Nothing was composed for the untilted view, so
+     * locking the lens square on (`LOOK_STRAIGHT_AHEAD`) dropped the disc onto the tracklist
+     * and buried the case behind the album title.
      *
-     * 0.48 puts it back where it was, deliberately rather than accidentally. At
-     * [DISC_VIEW_DIST] the half-frame is 200mm and the disc's radius is 60mm, so its centre
-     * sits 96mm up, its rim reaches ~78% of the way to the top edge, and its lower edge
-     * clears the album title below with room to spare.
+     * Correcting it here rather than in [DISC_BAND] is the difference between fixing the shot
+     * and fixing one object in it. A camera move lifts the disc *and* the case *and* the lid
+     * together, which is what "back where it was" means; raising the disc alone left the case
+     * sitting under the text.
      *
-     * The other thing this buys is consistency: the old tilt varied with pan position, so the
-     * disc sat at a different height depending on which shelf the record came from.
+     * Ramped on the turn's camera channel, so it eases in with the pull and is exactly zero
+     * while browsing — the wall itself must stay square in frame.
+     *
+     * Unlike the tilt it replaces, this does not vary with pan position. The old shot sat at
+     * a different height depending which shelf the record came off.
      */
-    private const val DISC_BAND = 0.48f
+    private const val OPEN_CAMERA_DROP = 0.088f
     const val SPIN_DEG_PER_S = 78f
 
     // ---- Easing -------------------------------------------------------------------
@@ -376,6 +381,8 @@ object OpenSequence {
         val caseRotX: Float,
         val caseRotY: Float,
         val hingeRotY: Float,
+        /** Where the lens sits vertically — see [OPEN_CAMERA_DROP]. */
+        val cameraY: Float,
         val cameraZ: Float,
         val discX: Float,
         val discY: Float,
@@ -450,6 +457,7 @@ object OpenSequence {
             caseRotX = caseRotX,
             caseRotY = caseRotY,
             hingeRotY = -beats.open * HINGE_DEG,
+            cameraY = panY - OPEN_CAMERA_DROP * beats.turnCamera,
             cameraZ = cameraZ,
             // Height on the leading channel, depth on the trailing one: the disc lifts clear
             // of the case and only then travels to the lens. Driving both from `lift` sends

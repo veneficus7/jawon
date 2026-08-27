@@ -776,7 +776,15 @@ fun WallSceneScreen(
             val face = withContext(Dispatchers.IO) {
                 DiscArt.bakeFace(
                     face = CaseArt.loadCover(case.discFacePath, DiscArt.DISC_PX),
-                    fallback = artCache[case.albumId]?.cover
+                    // Loaded fresh at the disc's own resolution, NOT taken from the art cache.
+                    //
+                    // The cache holds the *case* cover, baked at CaseArt.COVER_PX — 256px,
+                    // which is right for a case 10mm wide on a shelf and badly wrong for a
+                    // disc filling the screen. Reusing it meant that every album without its
+                    // own uploaded disc face — now the common case, since covers arrive
+                    // automatically from the file tags — had its label upscaled 4× from a
+                    // thumbnail. That is what "the quality on the CD art is bad" was.
+                    fallback = CaseArt.loadCover(case.coverPath, DiscArt.DISC_PX)
                 )
             }
             TextureHelper.setBitmap(engine, discTexture, 0, face)
@@ -1457,7 +1465,7 @@ fun WallSceneScreen(
                         aspect = frame.aspect,
                         clock = sequence.clock
                     )
-                    cameraNode.position = Position(panX.value, panY.value, t.cameraZ)
+                    cameraNode.position = Position(panX.value, t.cameraY, t.cameraZ)
                     cameraNode.rotation = LOOK_STRAIGHT_AHEAD
                     actNodes.root?.let { root ->
                         root.position = Position(t.caseX, t.caseY, t.caseZ)
