@@ -66,7 +66,33 @@ object OpenSequence {
 
     // Motion, in metres and degrees (prototype units x 0.1).
     private const val PULL_Z = 0.115f
-    private const val FRONT_GAP = 0.21f
+
+    /**
+     * How close the case gets to the lens at the end of the turn — its closest approach, and
+     * the moment testers described as the case being "very close to the camera".
+     *
+     * **Was 0.21m, and that was too close by arithmetic rather than by taste.** The lens is
+     * 33mm against Filament's 24mm sensor height, so `tan(halfFov) = 12/33`. At 0.21m the
+     * frame is 153mm tall and, on a 1080×2340 phone, only 70mm wide:
+     *
+     * | | at 0.21m | at 0.46m |
+     * |---|---|---|
+     * | frame | 153 × 70mm | 335 × 154mm |
+     * | case, cover-on (125 × 142mm) | 93% tall, **178% wide** | 42% tall, 81% wide |
+     *
+     * The case was nearly twice as wide as the frame. Height was the number quoted when
+     * these were tuned, and height was the forgiving axis — a portrait phone's horizontal
+     * field of view is less than half its vertical one, and the case turns cover-on, so it
+     * presents its 125mm width exactly when it is closest.
+     *
+     * **[LIFT_DOLLY] moves the opposite way by the same amount, deliberately.** The disc is
+     * pinned at [DISC_VIEW_DIST] from the lens, so nothing here changes how the disc is
+     * framed; all these two constants decide between them is how large the case is *relative
+     * to it*, which is set by the sum `FRONT_GAP + LIFT_PUSH_Z + LIFT_DOLLY`. That sum is
+     * unchanged at 0.702m, so the settled shot is identical to before — only the approach is
+     * less extreme.
+     */
+    private const val FRONT_GAP = 0.46f
     const val CAMERA_DOLLY = 0.23f
     private const val RAISE_Y = 0.030f
     private const val LIFT_DROP_Y = 0.055f
@@ -77,14 +103,22 @@ object OpenSequence {
      * the prototype solved that by magnifying the disc instead, which is what stopped it
      * reading as a CD.
      *
-     * **Do not trim this to smooth the camera move.** Tried, at 0.24, on the reasoning that
-     * 0.68m of camera travel felt lurchy now the lens rests at 0.78m rather than 0.5m. The
-     * result is above: the case fills the frame, the disc rises behind it, and all you see
-     * at the end of the sequence is an empty tray with a sliver of disc above it. The
-     * paragraph above this is not decoration — it is the reason the number is what it is.
-     * Smooth the *timing* instead.
+     * **Do not trim this on its own.** Tried, at 0.24, on the reasoning that 0.68m of camera
+     * travel felt lurchy now the lens rests at 0.78m rather than 0.5m. The result is above:
+     * the case fills the frame, the disc rises behind it, and all you see at the end of the
+     * sequence is an empty tray with a sliver of disc above it.
+     *
+     * It is down to 0.20 now, and that is not a reversal of the warning — it is the one case
+     * the warning allows. What decides the settled shot is the *sum* of [FRONT_GAP],
+     * [LIFT_PUSH_Z] and this, because the disc is pinned at [DISC_VIEW_DIST] from the lens
+     * and cannot move relative to it. That sum is still 0.702m. The earlier attempt cut this
+     * while leaving `FRONT_GAP` at 0.21, which shortened the sum to 0.49 and put the case
+     * almost level with the disc; here `FRONT_GAP` grew by the same amount this shrank.
+     *
+     * So: change these two together, keep the sum, and check the sum before trusting either
+     * number alone.
      */
-    private const val LIFT_DOLLY = 0.45f
+    private const val LIFT_DOLLY = 0.20f
     /**
      * How far the lid swings — the prototype's value.
      *

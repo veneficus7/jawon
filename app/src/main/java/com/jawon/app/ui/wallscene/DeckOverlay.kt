@@ -130,6 +130,8 @@ fun DeckOverlay(
 
         ProgressRow(
             positionFlow = positionFlow,
+            scrubReadout = scrubReadout,
+            deck = deck,
             durationMs = deck.durationMs,
             onSeek = onSeek
         )
@@ -212,10 +214,16 @@ private fun ScrubOrQuality(scrubReadout: State<ScrubReadout?>, deck: DeckState) 
 /**
  * Isolated so the 2Hz position tick recomposes only the bar and its two labels — the
  * tracklist above it doesn't need to redraw twice a second.
+ *
+ * That isolation is also why the scrub readout is read *here* rather than passed in as a
+ * value: turning the disc updates it about twelve times a second, and reading it at this
+ * depth keeps those updates inside this composable.
  */
 @Composable
 private fun ProgressRow(
     positionFlow: StateFlow<Long>,
+    scrubReadout: State<ScrubReadout?>,
+    deck: DeckState,
     durationMs: Long,
     onSeek: (Long) -> Unit
 ) {
@@ -223,8 +231,24 @@ private fun ProgressRow(
     var isDragging by remember { mutableStateOf(false) }
     var dragValue by remember { mutableFloatStateOf(0f) }
 
-    val range = durationMs.coerceAtLeast(1L).toFloat()
-    val shown = if (isDragging) dragValue else position.toFloat().coerceIn(0f, range)
+    // While the disc is being turned the bar follows the *scrub*, not the player.
+    //
+    // It used to follow `positionFlow`, which is polled at 2Hz — so spinning the platter
+    // moved the disc immediately and dragged the bar along behind it in visible steps, a
+    // third of a second late. The scrub cursor is the value the disc itself is drawn from,
+    // so taking it here is what puts the two in sync.
+    //
+    // The duration comes from the scrubbed track rather than the playing one, because a
+    // scrub can cross track boundaries well before the player has been told to follow.
+    val scrub = scrubReadout.value
+    val scrubTrack = scrub?.let { deck.tracks.getOrNull(it.trackIndex) }
+
+    val range = (scrubTrack?.durationMs ?: durationMs).coerceAtLeast(1L).toFloat()
+    val shown = when {
+        scrub != null -> scrub.positionMs.toFloat().coerceIn(0f, range)
+        isDragging -> dragValue
+        else -> position.toFloat().coerceIn(0f, range)
+    }
 
     Column(modifier = Modifier.fillMaxWidth()) {
         Slider(

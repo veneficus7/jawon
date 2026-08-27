@@ -7,7 +7,10 @@ import android.view.MotionEvent
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.calculateTargetValue
 import androidx.compose.animation.core.exponentialDecay
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -34,6 +37,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
@@ -111,6 +115,28 @@ import androidx.compose.ui.graphics.Color as ComposeColor
 /** this is looser so a flick actually travels. Tuning knob. */
 private const val FLING_FRICTION = 2f
 
+/**
+ * How the wall comes to rest on an album.
+ *
+ * Low stiffness and no bounce: this is a heavy rack sliding to a stop, not a UI element
+ * springing into place. `DampingRatioNoBouncy` matters more than the stiffness — overshooting
+ * past a record and coming back would undo the point of snapping to it at all.
+ */
+private val SETTLE_SPRING = spring<Float>(
+    dampingRatio = Spring.DampingRatioNoBouncy,
+    stiffness = Spring.StiffnessLow
+)
+
+/**
+ * How long after a fling begins a release is assumed to belong to it.
+ *
+ * The release settle and the fling both want to move the wall, and they are driven from the
+ * same finger lifting. Whether SceneView hands us the raw ACTION_UP before or after its
+ * gesture detector has decided there was a fling is an ordering detail not worth depending
+ * on — so the release waits one frame and then checks whether a fling claimed the gesture.
+ */
+private const val FLING_CLAIM_MS = 120L
+
 /** Progress at which the deck fades in â€” as the disc squares up, not before. */
 private const val DECK_REVEAL_AT = 0.75f
 
@@ -123,6 +149,14 @@ private const val PLATE_PX_PER_UNIT = PLATE_PX_W / PLATE_W
  * Mutable state the per-frame driver owns. Deliberately not Compose state: the open
  * sequence advances every frame and must not recompose anything (ENGINEERING.md rule 3).
  */
+/**
+ * Bookkeeping for the wall's magnet, so a release and a fling do not both try to move it.
+ * Not Compose state — nothing about it is drawn.
+ */
+private class WallSettle {
+    var flungAt = 0L
+}
+
 private class SequenceDriver {
     var progress = 0f
     var direction = 0
@@ -393,6 +427,7 @@ fun WallSceneScreen(
         val roomNodes = remember { RoomNodes() }
         val caseDrag = remember { CaseDrag() }
         val scratch = remember { ScratchDriver() }
+        val settle = remember { WallSettle() }
         // Goes to the vibrator directly rather than through the view's haptic feedback —
         // see RoomHaptics for why the disc had no vibration at all before this.
         val haptics = remember(context) { RoomHaptics(context) }
@@ -719,14 +754,31 @@ fun WallSceneScreen(
             },
             onFling = { _, _, _, velocity ->
                 if (selectedAlbumId == null) {
+                    settle.flungAt = SystemClock.uptimeMillis()
+                    // Where the fling *would* have stopped, then snap to the album nearest
+                    // that — one continuous movement, rather than coasting to a stop and
+                    // then visibly correcting itself afterwards.
+                    val decay = exponentialDecay<Float>(FLING_FRICTION)
                     scope.launch {
-                        panX.animateDecay(
-                            -velocity.x * metresPerPx, exponentialDecay(FLING_FRICTION)
+                        val vx = -velocity.x * metresPerPx
+                        val landing = decay.calculateTargetValue(panX.value, vx)
+                        panX.animateTo(
+                            targetValue = layout.nearestSlotX(landing),
+                            initialVelocity = vx,
+                            animationSpec = SETTLE_SPRING
                         )
+                        // Only on a genuine arrival: a cancelled animation — another fling,
+                        // or a finger landing mid-flight — throws out of the coroutine
+                        // before reaching this, which is exactly right.
+                        haptics.tick()
                     }
                     scope.launch {
-                        panY.animateDecay(
-                            velocity.y * metresPerPx, exponentialDecay(FLING_FRICTION)
+                        val vy = velocity.y * metresPerPx
+                        val landing = decay.calculateTargetValue(panY.value, vy)
+                        panY.animateTo(
+                            targetValue = layout.nearestRowY(landing),
+                            initialVelocity = vy,
+                            animationSpec = SETTLE_SPRING
                         )
                     }
                 }
@@ -885,6 +937,32 @@ fun WallSceneScreen(
                     MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                         caseDrag.slot = null
                         endScratch()
+
+                        // A drag that ended too slowly to fling still has to land on an
+                        // album. Waits one frame first so that if the gesture detector is
+                        // about to call it a fling, that has happened and can be deferred
+                        // to — the fling's own settle is better, because it knows where the
+                        // throw was heading.
+                        if (selectedAlbumId == null) {
+                            scope.launch {
+                                withFrameNanos { }
+                                val claimed =
+                                    SystemClock.uptimeMillis() - settle.flungAt < FLING_CLAIM_MS
+                                if (!claimed) {
+                                    launch {
+                                        panX.animateTo(
+                                            layout.nearestSlotX(panX.value), SETTLE_SPRING
+                                        )
+                                        haptics.tick()
+                                    }
+                                    launch {
+                                        panY.animateTo(
+                                            layout.nearestRowY(panY.value), SETTLE_SPRING
+                                        )
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
                 false

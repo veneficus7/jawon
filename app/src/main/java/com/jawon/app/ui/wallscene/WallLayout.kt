@@ -1,6 +1,7 @@
 package com.jawon.app.ui.wallscene
 
 import com.jawon.app.data.local.ShelfWithAlbums
+import kotlin.math.abs
 
 /**
  * Wall geometry, in metres — Filament's unit. These are the prototype's exported
@@ -142,6 +143,33 @@ data class WallLayout(
     val maxPanY: Float = 0f
 ) {
     val isEmpty: Boolean get() = rows.isEmpty()
+
+    /**
+     * The pan position that centres an album, given where a drag or fling was heading.
+     *
+     * This is the magnet: browsing settles *onto* a record rather than wherever friction
+     * happened to run out. The wall is a gallery of objects at a 150mm pitch, not a
+     * continuous strip, so coming to rest halfway between two albums is never a position
+     * anyone meant to be in.
+     *
+     * Snapping to an actual case rather than to a multiple of the pitch matters at the ends
+     * of a row: the margin the bounds allow is a full empty slot either side, and snapping
+     * to the grid there would happily centre a gap.
+     *
+     * Returns [target] unchanged when there is nothing to snap to, so an empty wall and a
+     * one-album wall both behave sensibly rather than yanking to the origin.
+     */
+    fun nearestSlotX(target: Float): Float =
+        cases.minByOrNull { abs(it.x - target) }?.x ?: target
+
+    /**
+     * As [nearestSlotX], for rows.
+     *
+     * Rows sit 205mm apart against a viewport that frames about three of them, so this
+     * centres the shelf you were heading for rather than leaving two half-rows in frame.
+     */
+    fun nearestRowY(target: Float): Float =
+        rows.minByOrNull { abs(it.centerY - target) }?.centerY ?: target
 
     companion object {
         /**
