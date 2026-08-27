@@ -180,6 +180,25 @@ private const val ZOOM_GAIN = 0.65f
  */
 private const val ZOOM_EASE_RATE = 6f
 
+/**
+ * The camera's orientation: square on to the wall, always.
+ *
+ * **Written every frame because something else keeps changing it.** SceneView's camera node
+ * re-aims itself at the world origin as it moves, so panning away from the wall's centre
+ * tilted the lens back toward it — measured at −8.28° after a modest pan, which is exactly
+ * `atan(0.113 / 0.78)` for a camera 113mm below the origin at 780mm back.
+ *
+ * That tilt is why an album settled high in the frame even when the magnet had put the camera
+ * *exactly* on the album's own Y: at 8.28° the whole view shifts up by 627px of a 1560px half
+ * frame, which dwarfs the 107px the album's real offset accounted for. Everything moved
+ * together — cases, boards, underlight pools — which is what pointed at the camera rather
+ * than at the wall.
+ *
+ * A wall is a flat plane and this room is looked at square on; a lens that yaws and pitches
+ * toward the origin is never what this scene wants, at any pan position.
+ */
+private val LOOK_STRAIGHT_AHEAD = Rotation(0f, 0f, 0f)
+
 
 /** Progress at which the deck fades in â€” as the disc squares up, not before. */
 private const val DECK_REVEAL_AT = 0.75f
@@ -1149,14 +1168,6 @@ fun WallSceneScreen(
                                     // instead of at the target, which leaves the wall parked
                                     // somewhere no album is.
                                     //
-                                    // NOTE: pan lands on these values exactly — logged and
-                                    // confirmed on device — and horizontally the album ends up
-                                    // dead centre. Vertically it still sits high in frame, so
-                                    // something between `panY` and the projected image adds a
-                                    // constant offset that is NOT in the snap and NOT a parent
-                                    // transform (world and local position were measured equal).
-                                    // A camera pitch of a few degrees would produce exactly
-                                    // this, and is where to look next.
                                     launch {
                                         panX.animateTo(target.x, SETTLE_SPRING)
                                         haptics.tick()
@@ -1319,6 +1330,7 @@ fun WallSceneScreen(
                 val selected = frame.selected
                 if (selected == null) {
                     cameraNode.position = Position(panX.value, panY.value, zoom.current)
+                    cameraNode.rotation = LOOK_STRAIGHT_AHEAD
                 } else {
                     val beats = OpenSequence.beatsAt(sequence.progress)
                     val t = OpenSequence.transformsFor(
@@ -1340,6 +1352,7 @@ fun WallSceneScreen(
                         clock = sequence.clock
                     )
                     cameraNode.position = Position(panX.value, panY.value, t.cameraZ)
+                    cameraNode.rotation = LOOK_STRAIGHT_AHEAD
                     actNodes.root?.let { root ->
                         root.position = Position(t.caseX, t.caseY, t.caseZ)
                         root.rotation = Rotation(t.caseRotX, t.caseRotY, 0f)
