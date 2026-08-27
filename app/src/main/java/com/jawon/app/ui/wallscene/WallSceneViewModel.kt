@@ -11,6 +11,8 @@ import com.jawon.app.data.local.TrackDao
 import com.jawon.app.data.playback.AudioRouteReader
 import com.jawon.app.data.playback.PlaybackRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -105,6 +107,35 @@ class WallSceneViewModel @Inject constructor(
             albumDao.deleteById(albumId)
             album?.let { coverStore.deleteAll(it.caseCoverUri, it.discFaceUri) }
         }
+    }
+
+    /** Outstanding [scheduleDiscard] timers, so [skipDiscard] can cut one short. */
+    private val discardJobs = mutableMapOf<String, Job>()
+
+    /**
+     * Deletes [albumId] after [afterMs] rather than immediately — this is what lets the wall
+     * play [CaseDiscard] to completion on the shelf before the album disappears from [layout].
+     *
+     * **On [viewModelScope], deliberately not on a scope owned by the composable that calls
+     * it.** A `rememberCoroutineScope()` in `WallSceneScreen` is cancelled the moment that
+     * composable leaves composition — which a confirmed deletion must survive. The room is the
+     * app's start destination, but a user can still background the app or open Settings in the
+     * roughly one second between confirming and this actually running, and the album has to
+     * come off the shelf either way. `viewModelScope` lives with the ViewModel, not the screen.
+     */
+    fun scheduleDiscard(albumId: String, afterMs: Long) {
+        discardJobs[albumId]?.cancel()
+        discardJobs[albumId] = viewModelScope.launch {
+            delay(afterMs)
+            deleteAlbum(albumId)
+            discardJobs.remove(albumId)
+        }
+    }
+
+    /** A second tap on a case already breaking apart — finish now instead of waiting it out. */
+    fun skipDiscard(albumId: String) {
+        discardJobs.remove(albumId)?.cancel()
+        deleteAlbum(albumId)
     }
 
     /** Called when the open sequence lands — the disc is up and spinning. */
