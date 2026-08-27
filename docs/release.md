@@ -160,3 +160,25 @@ path now that the discard animation is reverted.
 and then closed itself about two seconds later, with no second input. It did not
 reproduce on the next three attempts and playback was running normally
 afterwards. Not chased down; noted here so it is not forgotten if it resurfaces.
+
+### Correction: album deletion is NOT verified
+
+An earlier pass through this read as a successful deletion — a case confirmed via
+the Remove dialog and then absent from the wall. Reading the database afterwards
+shows all four albums still present, so **the case was not deleted, it had simply
+scrolled out of frame** when the wall panned to another shelf. The library spans
+four shelves and the camera frames roughly one row, so "the case is gone" is not
+evidence of anything on its own.
+
+Verify against the database, not the wall:
+
+```bash
+adb shell "run-as com.jawon.app cat databases/javon.db" > out.db
+```
+
+(`sqlite3` is not on the device; copy the file off and read it locally.)
+
+What this leaves genuinely unknown: whether `deleteAlbum` runs at all. The dialog
+appears and is correctly worded, but nothing past the confirm button has been
+observed working. It was not chased further because the only albums available to
+test on are real ones the owner would have to re-import.
