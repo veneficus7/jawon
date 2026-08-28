@@ -181,6 +181,16 @@ private const val ZOOM_GAIN = 0.65f
 private const val ZOOM_EASE_RATE = 6f
 
 /**
+ * How wide and tall the wall behind the shelves is, in metres.
+ *
+ * Fixed and generous rather than fitted to the library: at 150mm a slot and 205mm a row this
+ * covers hundreds of albums in both directions, and a flat panel costs two triangles whatever
+ * its size. Fitting it to the content is what recreated the node on every library change and
+ * turned the room black — see the node itself.
+ */
+private const val WALL_BACKING_SPAN = 24f
+
+/**
  * The camera's orientation: square on to the wall, always.
  *
  * **Written every frame because something else keeps changing it.** SceneView's camera node
@@ -1679,17 +1689,20 @@ fun WallSceneScreen(
                 // Spanning the full pan range plus a frustum in each direction covers every
                 // position the user can reach, at any zoom: halfW and halfH are computed at
                 // ZOOM_FAR, the furthest the camera is allowed to stand.
+                // FIXED size, deliberately not derived from the layout.
+                //
+                // It used to be sized to the pan range, and that recreated the node every
+                // time the library changed — which destroys the `MaterialInstance` this node
+                // was handed, an instance the composable does not own. After deleting an
+                // album the whole room went black and stayed black.
+                //
+                // A flat panel behind everything costs two triangles whatever its size, and
+                // the fog and vignette hide its edges, so there is nothing to buy by fitting
+                // it to the content. Big enough for a library far larger than anyone will
+                // have, and it never changes again.
                 CubeNode(
-                    size = Size(
-                        (layout.maxPanX - layout.minPanX) + halfW * 2f,
-                        (layout.maxPanY - layout.minPanY) + halfH * 2f,
-                        0.01f
-                    ),
-                    position = Position(
-                        (layout.maxPanX + layout.minPanX) / 2f,
-                        (layout.maxPanY + layout.minPanY) / 2f,
-                        WALL_Z - 0.005f
-                    ),
+                    size = Size(WALL_BACKING_SPAN, WALL_BACKING_SPAN, 0.01f),
+                    position = Position(0f, 0f, WALL_Z - 0.005f),
                     materialInstance = wallMaterial,
                     apply = {
                         isTouchable = false
@@ -1775,9 +1788,12 @@ fun WallSceneScreen(
             // Sits low, under the empty board rather than over the middle of it, so the shelf
             // itself is what the eye lands on first. The room is the pitch; this is the
             // caption.
+            // TopCenter, matching how this is laid out — it pads down from the status bar and
+            // occupies the slot the browse label uses once there are records. Aligned to the
+            // bottom it ran straight through the ADD / SHELVES / SETTINGS row.
             WaitingForRecords(
                 onAddAlbum = onAddAlbum,
-                modifier = Modifier.align(Alignment.BottomCenter)
+                modifier = Modifier.align(Alignment.TopCenter)
             )
         } else if (selectedAlbumId == null) {
             // While a case is open the disc occupies this band, and the album is already the

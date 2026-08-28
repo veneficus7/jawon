@@ -831,8 +831,24 @@ def build_disc_shards():
         bpy.ops.object.origin_set(type="ORIGIN_GEOMETRY", center="MEDIAN")
         obj.select_set(False)
 
+        # Name carries everything the app needs to place and move this piece:
+        #
+        #     shard_<index>_<per-mille area>_<centre x>_<centre y>
+        #
+        # **The centre is in the name because the app cannot read it off the node.**
+        # SceneView's `Node.position` is its own transform, which starts at identity — not
+        # the glTF node's translation, which is what actually holds each shard's centroid.
+        # Reading `position` gives zero for every piece, and writing it then *overwrites*
+        # the real placement, collapsing all 27 fragments onto the disc's centre. That is
+        # exactly what happened.
+        #
+        # Encoded as tenths of a millimetre, offset by 1000 so negatives survive a name:
+        # `app_metres = (value - 1000) / 10000`. Blender X and Z are the app's X and Y —
+        # see the module docstring on the axis mapping.
         per_mille = max(1, min(999, int(round(area / total * 999))))
-        obj.name = f"shard_{index:02d}_{per_mille:03d}"
+        ex = int(round(obj.location.x * 10000.0)) + 1000
+        ey = int(round(obj.location.z * 10000.0)) + 1000
+        obj.name = f"shard_{index:02d}_{per_mille:03d}_{ex:04d}_{ey:04d}"
         obj.data.name = obj.name
         objects.append(obj)
 

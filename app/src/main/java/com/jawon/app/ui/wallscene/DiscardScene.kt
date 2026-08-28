@@ -128,9 +128,24 @@ fun SceneScope.DiscardSceneNodes(
                         val parts = name.removePrefix(SHARD_PREFIX).split('_')
                         val index = parts.getOrNull(0)?.toIntOrNull() ?: return@mapNotNull null
                         val perMille = parts.getOrNull(1)?.toIntOrNull() ?: return@mapNotNull null
-                        val rest = child.position
+                        val ex = parts.getOrNull(2)?.toIntOrNull() ?: return@mapNotNull null
+                        val ey = parts.getOrNull(3)?.toIntOrNull() ?: return@mapNotNull null
                         child.isVisible = false
-                        index to DiscardNodes.Piece(child, rest.x, rest.y, perMille / 999f)
+                        index to DiscardNodes.Piece(
+                            node = child,
+                            // From the NAME, not from `child.position`.
+                            //
+                            // SceneView's `Node.position` is the node's own transform and
+                            // starts at identity — it is not the glTF node's translation,
+                            // which is where each shard's centroid actually lives. Reading it
+                            // gave zero for every piece, and writing it back then wiped the
+                            // real placement, so all 27 fragments collapsed onto the disc's
+                            // centre in a heap. The build script encodes the centroid in the
+                            // name for exactly this reason; see it for the format.
+                            restX = (ex - 1000) / 10000f,
+                            restY = (ey - 1000) / 10000f,
+                            mass = perMille / 999f
+                        )
                     }
                     .sortedBy { it.first }
                     .map { it.second }
