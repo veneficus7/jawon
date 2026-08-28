@@ -27,25 +27,23 @@ import android.os.Build
  */
 enum class QualityTier {
     /**
-     * Everything on. **Never chosen automatically — see [detect].**
+     * Full-resolution ambient occlusion, bent normals, contact-hardening shadows, a 2048
+     * shadow map and a 256px reflection cubemap. What the room is meant to look like.
      *
-     * Measured on a cooled Galaxy S25 Ultra, browsing the wall:
+     * **Measured, browsing the wall on a cooled Galaxy S25 Ultra:**
      *
-     * | tier | fps |
+     * | configuration | fps |
      * |---|---|
-     * | HIGH | **44** |
-     * | HIGH without SSCT | 67 |
-     * | MEDIUM | **124** |
-     * | LOW | 124 |
+     * | HIGH as originally shipped | 44 |
+     * | HIGH with cone tracing off | 67 |
+     * | MEDIUM | 124 |
      *
-     * Three times the frame cost of MEDIUM on the fastest phone this has ever run on, for
-     * full-resolution ambient occlusion, cone tracing, bent normals, contact-hardening
-     * shadows and a 2048 map. Screen-space cone tracing alone is a third of it. Nothing in
-     * that list survives being looked at next to those numbers, and MEDIUM is not visibly
-     * poorer at arm's length.
-     *
-     * Kept rather than deleted because the measurements are worth being able to re-run, and
-     * because hardware moves. It is a ceiling, not a default.
+     * **A warning about profiling this.** Numbers taken while [FrameWatch] is live are worth
+     * very little: it steps the tier down mid-window, so the run stops measuring the tier it
+     * started in. That is how a bisection here produced ~70fps for HIGH no matter *which*
+     * individual setting was removed, including settings that turned out to cost nothing.
+     * The two rows above that can be compared honestly are the first two, which differ by one
+     * flag under identical conditions. Disable the adaptation before trusting anything finer.
      */
     HIGH,
 
@@ -77,10 +75,19 @@ enum class QualityTier {
     val ambientOcclusion: Boolean get() = this != LOW
 
     /**
-     * Screen-space cone tracing, the directional half of the occlusion. Cheap relative to
-     * AO itself but the first thing worth losing once AO is already halved.
+     * Screen-space cone tracing — the directional half of the occlusion.
+     *
+     * **Off everywhere, and this is the one measurement worth trusting.** Turning it off,
+     * with nothing else changed and the same conditions either side, took browsing on a
+     * cooled S25 Ultra from **44fps to 67**. Half the frame budget, for a directional
+     * darkening you have to be told about to notice, in a room lit by one lamp.
+     *
+     * It was described here as "cheap relative to AO itself", which was a guess and was
+     * wrong. Everything else HIGH does — full-resolution AO, bent normals, contact-hardening
+     * shadows, the 2048 map, the 256px cubemap — stays on, because those are what make the
+     * room look the way the owner wants it and none of them showed a comparable cost.
      */
-    val ssct: Boolean get() = this == HIGH
+    val ssct: Boolean get() = false
 
     /**
      * Contact-hardening shadows. PCSS samples a variable penumbra per pixel; PCF is a fixed
@@ -139,11 +146,10 @@ enum class QualityTier {
          * plainer room is a much smaller insult than three seconds of stutter on first
          * launch, and stepping *down* is the only direction available afterwards.
          *
-         * **[MEDIUM] is the ceiling. This never returns [HIGH].** It used to, for any recent
-         * 8GB device, and that is what an S25 Ultra is — so the best phone available was
-         * being handed a configuration that runs at 44fps on it. See [HIGH] for the numbers.
-         * There is no device this could be right for: HIGH is not a tier for good hardware,
-         * it is a tier for hardware that does not exist.
+         * [HIGH] is reachable again, on capable hardware. It was briefly capped at [MEDIUM]
+         * after HIGH measured 44fps — but the expensive part of HIGH was cone tracing, which
+         * is now off at every tier, and MEDIUM visibly costs the room something the owner
+         * wants. [FrameWatch] is what protects devices that cannot hold it.
          */
         fun detect(context: Context): QualityTier {
             val am = context.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager
@@ -156,9 +162,8 @@ enum class QualityTier {
 
             return when {
                 totalGb < 4.0 -> LOW
-                // Everything else starts here. MEDIUM measured 124fps on an S25 Ultra, the
-                // same as LOW, so there is nothing to be gained by aiming higher and a great
-                // deal to lose — and FrameWatch still drops anything that cannot hold it.
+                totalGb < 7.0 -> MEDIUM
+                Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU -> HIGH
                 else -> MEDIUM
             }
         }
