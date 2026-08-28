@@ -93,17 +93,19 @@ object CaseDiscard {
      * How far a fragment drifts from its place in the whole disc, in metres, before mass
      * scales it.
      *
-     * **Millimetres, not centimetres.** The lid closes over these, so they have to stay
-     * inside a 125mm tray. What sells the break is the *cracks opening* and the pieces
-     * catching the light at slightly different angles, not distance travelled.
+     * **A few millimetres, and that is deliberate.** The disc has broken *where it lies* —
+     * it is still in the tray and the lid is about to close over it. What sells the break is
+     * the cracks opening and the pieces sitting at slightly different angles so the light
+     * catches each one differently, not distance travelled. At 13.5mm it read as the disc
+     * coming apart and drifting; the pieces are supposed to stay put.
      */
-    private const val SPREAD = 0.0135f
+    private const val SPREAD = 0.0038f
 
     /** How quickly the pieces stop moving. High: this settles, it does not fly. */
     private const val DRAG = 7.5f
 
-    /** Degrees a fragment tips as it settles. Small — they are lying in a tray, not tumbling. */
-    private const val SHARD_TILT_DEG = 34f
+    /** Degrees a fragment tips where it lies. Small: they are settling in a tray, not tumbling. */
+    private const val SHARD_TILT_DEG = 11f
 
     /** Where the impact lands, in disc-local metres. Off-centre, so the break is not symmetric. */
     private const val IMPACT_X = 0.016f
@@ -119,14 +121,34 @@ object CaseDiscard {
      * come from [shardAt], one call per piece.
      */
     data class Frame(
+        val caseX: Float,
         val caseY: Float,
         val caseZ: Float,
         val caseRotX: Float,
         val caseRotY: Float,
         val caseRotZ: Float,
         val hingeRotY: Float,
-        val discVisible: Boolean,
+        /**
+         * The intact disc, shown from the lid opening until the strike.
+         *
+         * **The fragment set cannot stand in for a whole disc**, which is what it was asked
+         * to do at first: the pieces are bevelled and their cut edges are jittered
+         * independently, so even sitting at zero offset there are visible seams between them
+         * and the disc reads as *already broken* before anything hits it. So the real disc
+         * is shown until the strike and the fragments replace it on that frame.
+         */
+        val wholeDiscVisible: Boolean,
+        /** The fragments, from the strike onward. Never on screen at the same time as above. */
+        val shardsVisible: Boolean,
         val struck: Boolean,
+        /**
+         * The album's underlight, 1 at full and 0 once it is gone.
+         *
+         * Fades across the whole removal rather than being cut on the first frame. The light
+         * belongs to the album, so it should leave with it — snapping it off the instant the
+         * case moves reads as a bug in the shelf rather than as the record going.
+         */
+        val beamGlow: Float,
         /** 0..1, peaking at the strike and gone shortly after. Drives the flash light. */
         val flash: Float,
         val done: Boolean
@@ -148,7 +170,22 @@ object CaseDiscard {
     /** Zero velocity at both ends — what lets overlapping beats cross-fade. */
     private fun smootherStep(t: Float): Float = t * t * t * (t * (t * 6f - 15f) + 10f)
 
-    fun frameAt(t: Float): Frame {
+    /**
+     * @param slotX/slotY where the album sits on the wall — where the case starts.
+     * @param panX/panY where the camera is looking. **The case is carried here as it rises**,
+     *   exactly as `OpenSequence` does, and for a reason found the hard way: without it the
+     *   whole removal plays wherever that album happens to hang on the wall, which is very
+     *   often not where the user is looking. The first build of this sequence ran entirely
+     *   off-screen — the album being removed was on a different shelf from the one in frame,
+     *   so all that was visible was its neighbours carrying on as normal.
+     */
+    fun frameAt(
+        t: Float,
+        slotX: Float,
+        slotY: Float,
+        panX: Float,
+        panY: Float
+    ): Frame {
         val clamped = t.coerceIn(0f, 1f)
 
         val rise = smootherStep(sub(clamped, RISE_FROM, RISE_TO))
@@ -165,7 +202,10 @@ object CaseDiscard {
         val sinceImpact = secondsSinceImpact(clamped)
 
         return Frame(
-            caseY = RISE_Y * rise - drop,
+            // Carried from its slot to in front of the lens as it rises. This is what puts
+            // the removal on screen at all — see the parameter docs.
+            caseX = slotX + (panX - slotX) * rise,
+            caseY = slotY + (panY + RISE_Y - slotY) * rise - drop,
             caseZ = RISE_Z * rise,
             // Tips forward only as it falls, so the fall reads as losing its footing rather
             // than as being pushed.
@@ -175,14 +215,27 @@ object CaseDiscard {
             // Opens, then shuts over the pieces. One channel minus the other, so the two
             // overlap naturally instead of needing a state machine.
             hingeRotY = -HINGE_DEG * (open - close).coerceAtLeast(0f),
-            discVisible = open > 0.02f,
+            wholeDiscVisible = open > 0.02f && clamped < IMPACT_AT,
+            shardsVisible = clamped >= IMPACT_AT,
             struck = clamped >= IMPACT_AT,
+            // Eased out over the approach, gone by the time the lid shuts.
+            beamGlow = beamGlowAt(clamped),
             // A hard spike that decays — a strike, not a fade in and out.
             flash = if (sinceImpact <= 0f) 0f
             else exp(-sinceImpact / (FLASH_S * 0.34f)).coerceIn(0f, 1f),
             done = clamped >= 1f
         )
     }
+
+    /**
+     * How brightly the album's underlight is still burning at sequence time [t].
+     *
+     * Its own function because the shelf slot needs it during the slot pass, which runs
+     * before the removal is driven — building a whole [Frame] there just to read one number
+     * would be wasteful and would need four position arguments it does not have.
+     */
+    fun beamGlowAt(t: Float): Float =
+        1f - smootherStep(sub(t.coerceIn(0f, 1f), 0.04f, CLOSE_TO))
 
     /** Seconds since the disc was struck, at sequence time [t]. */
     fun secondsSinceImpact(t: Float): Float =

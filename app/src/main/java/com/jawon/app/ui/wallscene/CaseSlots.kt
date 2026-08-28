@@ -147,6 +147,29 @@ class CaseSlot {
         }
     }
 
+    /**
+     * Dims this album's underlight to [amount] of its normal brightness.
+     *
+     * Used while the album is being removed, so its light leaves with it instead of being cut
+     * on the first frame — a shelf light that vanishes the instant a case moves reads as a
+     * fault in the shelf rather than as the record going.
+     *
+     * Deliberately re-derives the colour rather than scaling whatever is there, so repeated
+     * calls cannot compound into black. [appliedBeamHue] is left alone, which means the next
+     * `bind` of this slot restores full brightness on its own.
+     */
+    fun setBeamGlow(amount: Float) {
+        val materials = beamMaterials ?: return
+        if (appliedBeamHue.isNaN()) return
+        val rgb = beamRgb(appliedBeamHue)
+        val k = amount.coerceIn(0f, 1f)
+        materials.forEach { instance ->
+            if (instance.material.hasParameter(EMISSIVE_PARAM)) {
+                instance.setParameter(EMISSIVE_PARAM, rgb[0] * k, rgb[1] * k, rgb[2] * k)
+            }
+        }
+    }
+
     private companion object {
         const val EMISSIVE_PARAM = "emissiveFactor"
         const val BASE_COLOR_PARAM = "baseColorFactor"

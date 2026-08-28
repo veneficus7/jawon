@@ -1458,6 +1458,11 @@ fun WallSceneScreen(
                 // would leave every case stacked at the wall's origin.
                 run {
                     val t = if (reduceMotion) 0f else sequence.clock
+                    // How lit the underlight of an album being removed still is. Computed once
+                    // here because this pass runs before the removal is driven.
+                    val discardBeamGlow = discardNodes.clock
+                        ?.let { CaseDiscard.beamGlowAt(it / CaseDiscard.DURATION_S) }
+                        ?: 0f
                     caseSlots.slots.forEach { slot ->
                         if (!slot.occupied) return@forEach
                         val root = slot.root ?: return@forEach
@@ -1473,7 +1478,10 @@ fun WallSceneScreen(
                             // same handover opening does — so this branch only keeps the slot
                             // parked and lets DiscardScene drive everything visible.
                             root.isVisible = false
-                            slot.beam?.isVisible = false
+                            // The underlight stays lit and fades out over the sequence rather
+                            // than being cut on the first frame — see CaseDiscard.beamGlow.
+                            slot.setBeamGlow(discardBeamGlow)
+                            slot.beam?.isVisible = discardBeamGlow > 0.01f
                             return@forEach
                         }
 
@@ -1508,7 +1516,7 @@ fun WallSceneScreen(
                 // loop: it moves the *held* case, which is not any slot's node, and the slot
                 // it came from is only parked.
                 if (discardNodes.isRunning) {
-                    if (driveDiscard(discardNodes, actNodes, dt, reduceMotion)) {
+                    if (driveDiscard(discardNodes, actNodes, dt, panX.value, panY.value, reduceMotion)) {
                         // The slot is free the moment the case is gone. `driveDiscard` has
                         // already put the held case back to a neutral transform — see its
                         // tail for why leaving it rotated would show the next opened album

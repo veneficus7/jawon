@@ -106,6 +106,14 @@ fun SceneScope.DiscardSceneNodes(
             shardsInstance,
             apply = {
                 isTouchable = false
+                // Hidden HERE as well as on the parent group.
+                //
+                // SceneView does not propagate visibility down, so a hidden group with a
+                // visible model in it still draws — which is exactly what it did: launching
+                // the app showed a disc-shaped object standing at the world origin, in front
+                // of the shelves, for no reason anyone could see. Every shard node below is
+                // hidden individually for the same reason.
+                isVisible = false
                 // Broken plastic catches the lamp, but 27 tumbling shadow casters for half a
                 // second is a great deal of shadow-map churn for something nobody is reading.
                 isShadowCaster = false
@@ -121,6 +129,7 @@ fun SceneScope.DiscardSceneNodes(
                         val index = parts.getOrNull(0)?.toIntOrNull() ?: return@mapNotNull null
                         val perMille = parts.getOrNull(1)?.toIntOrNull() ?: return@mapNotNull null
                         val rest = child.position
+                        child.isVisible = false
                         index to DiscardNodes.Piece(child, rest.x, rest.y, perMille / 999f)
                     }
                     .sortedBy { it.first }
@@ -189,6 +198,8 @@ fun driveDiscard(
     nodes: DiscardNodes,
     active: ActiveCaseNodes,
     dt: Float,
+    panX: Float,
+    panY: Float,
     reduceMotion: Boolean
 ): Boolean {
     val clock = nodes.clock ?: return false
@@ -196,37 +207,39 @@ fun driveDiscard(
     nodes.clock = advanced
 
     val t = advanced / CaseDiscard.DURATION_S
-    val frame = CaseDiscard.frameAt(t)
+    val frame = CaseDiscard.frameAt(t, nodes.slotX, nodes.slotY, panX, panY)
 
     if (reduceMotion) {
         // DESIGN.md drops ambient motion but keeps deliberate transitions, and this is one —
         // the user just confirmed it. What it loses is the tumbling and the flash, which are
         // the parts carrying vestibular motion and a hard luminance spike.
-        active.root?.position = Position(nodes.slotX, nodes.slotY, 0f)
+        active.root?.position = Position(panX, panY, 0f)
         active.root?.scale = Scale((1f - t).coerceIn(0.001f, 1f))
         nodes.group?.isVisible = false
         nodes.setGlow(0f)
     } else {
         active.root?.position = Position(
-            nodes.slotX,
-            nodes.slotY + frame.caseY,
+            frame.caseX,
+            frame.caseY,
             frame.caseZ
         )
         active.root?.rotation = Rotation(frame.caseRotX, frame.caseRotY, frame.caseRotZ)
         active.root?.scale = Scale(1f)
         active.hinge?.rotation = Rotation(0f, frame.hingeRotY, 0f)
 
-        // The intact disc is never shown during a removal — the fragments stand in for it from
-        // the moment the lid opens, sitting exactly where a whole disc would until struck.
-        active.disc?.isVisible = false
+        // Whole until it is struck, fragments after — never both. The fragment set cannot
+        // stand in for an intact disc: its pieces are bevelled and their cut edges jittered
+        // independently, so at zero offset there are still seams between them and the disc
+        // reads as already broken before anything has hit it.
+        active.disc?.isVisible = frame.wholeDiscVisible
 
         val group = nodes.group
         if (group != null) {
-            group.isVisible = frame.discVisible
+            group.isVisible = frame.shardsVisible
             // Rides with the case, in the tray, so the lid shuts over the pieces.
             group.position = Position(
-                nodes.slotX,
-                nodes.slotY + frame.caseY,
+                frame.caseX,
+                frame.caseY,
                 frame.caseZ + WallDimens.TRAY_FRONT_Z + 0.0014f
             )
             group.rotation = Rotation(frame.caseRotX, frame.caseRotY, frame.caseRotZ)
@@ -236,9 +249,9 @@ fun driveDiscard(
                 val shard = CaseDiscard.shardAt(
                     index, piece.restX, piece.restY, piece.mass, since
                 )
-                // Offsets add to where the piece already rests, so before the strike every
-                // fragment sits exactly where it did in the whole disc — an intact disc that
-                // happens to be made of 27 pieces which have not moved yet.
+                piece.node.isVisible = frame.shardsVisible
+                // Offsets add to where the piece already rests, so each fragment appears
+                // exactly where that part of the disc was and then cracks away from it.
                 piece.node.position = Position(
                     piece.restX + shard.offsetX,
                     piece.restY + shard.offsetY,
