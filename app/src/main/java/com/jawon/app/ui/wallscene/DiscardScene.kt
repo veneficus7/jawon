@@ -2,6 +2,7 @@ package com.jawon.app.ui.wallscene
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+
 import com.google.android.filament.Texture
 import com.google.android.filament.TextureSampler
 import com.google.android.filament.gltfio.FilamentInstance
@@ -9,48 +10,62 @@ import io.github.sceneview.SceneScope
 import io.github.sceneview.math.Position
 import io.github.sceneview.math.Rotation
 import io.github.sceneview.math.Scale
+
 import io.github.sceneview.node.ModelNode
 import io.github.sceneview.node.Node
 
 /**
- * The disc that breaks when an album is removed.
+ * Removing an album, on screen.
  *
  * Lives in its own file rather than inside `WallSceneScreen`, which is already two thousand
- * lines and is where every 3D bug in this project has ended up being traced. The discard owns
- * a small, self-contained set of nodes and one per-frame function, so it can be read — and
- * changed — without holding the rest of the scene in your head.
+ * lines and is where every 3D bug in this project has ended up being traced. This owns a small
+ * set of nodes and one per-frame function, so it can be read and changed without holding the
+ * rest of the scene in your head.
  *
- * **The shards are the disc.** `disc_shards.glb` holds 27 fragments that, at rest, sit
- * exactly where a whole disc would; [CaseDiscard.shardAt] returns zero offsets until the
- * impact, so the same nodes read as one disc falling and then as the pieces it comes
- * apart into. That is why there is no separate disc model here — a second one would need its
- * own `FilamentInstance`, and would have to be swapped for the shards on the exact frame of
- * the break.
+ * **It drives the held case** — the same tray, lid and hinge the open sequence uses — because
+ * removal should read in the same physical language as opening, and because the shelved case
+ * has no interior to show a disc in. See [CaseDiscard] for the choreography.
  *
- * **One discard at a time.** The nodes are allocated once and reused for whichever album is
- * being removed, which is safe because a long-press is ignored while one is running — the
- * same "never two cases mid-animation" guarantee the open sequence gets structurally.
+ * **The fragments stand in for the disc rather than joining it.** `disc_shards.glb` holds 27
+ * pieces that at rest sit exactly where a whole disc would, so the same nodes read as an
+ * intact disc in the tray and then as the pieces it breaks into — no second model, and no
+ * swap on the frame of the strike.
+ *
+ * **One removal at a time.** These nodes are allocated once and reused, which is safe because
+ * a long-press is refused while one is running.
  */
 class DiscardNodes {
-    /** Parent of the shards; placed at the case being removed. */
+    /** Holds the fragments; follows the case's tray so the lid can shut over them. */
     var group: Node? = null
 
     /**
      * The fragments, each paired with what the geometry knows about it.
      *
-     * Both facts come off the glTF node rather than being duplicated in Kotlin: the build
-     * script puts each shard's origin at its own centroid, so [Piece.restX]/[Piece.restY] is
-     * simply where the node already sits, and it encodes the piece's share of the disc's area
-     * in the node's name. Keeping the layout in one place is the point — a second copy of it
-     * here would drift the first time the fracture pattern changed.
+     * Both facts are read off the glTF node rather than duplicated in Kotlin: the build script
+     * puts each shard's origin at its own centroid, so the rest position is simply where the
+     * node already sits, and it encodes the piece's share of the disc's area in the node name.
+     * A second copy of that layout here would drift the first time the fracture changed.
      */
     var shards: List<Piece> = emptyList()
 
     /** One fragment: its node, where it rested in the whole disc, and its relative mass. */
     class Piece(val node: Node, val restX: Float, val restY: Float, val mass: Float)
 
-    /** Which album is being removed, or null when nothing is. */
+    /**
+     * The fragments' materials, so the strike can make them blaze.
+     *
+     * The flash is emission on the pieces themselves rather than a light shining on them.
+     * That was partly forced — SceneView's `LightNode` hands its `apply` block a
+     * `LightManager.Builder`, not the node, so there is no handle to drive intensity per
+     * frame — but it is the better image regardless: the disc lighting up *from inside* reads
+     * as something happening to it, where a lamp pointed at it reads as stage lighting.
+     */
+    var shardMaterials: List<com.google.android.filament.MaterialInstance> = emptyList()
+
+    /** Which album is being removed, and where its case sat, or null when idle. */
     var albumId: String? = null
+    var slotX = 0f
+    var slotY = 0f
 
     /** Seconds into [CaseDiscard.DURATION_S], or null when idle. */
     var clock: Float? = null
@@ -59,11 +74,11 @@ class DiscardNodes {
 }
 
 /**
- * Mounts the discard's nodes, hidden.
+ * Mounts the removal's nodes, hidden.
  *
- * Mounted hidden and never destroyed, for the same reason the wall's case slots are pooled:
- * nothing in this scene should be torn down and rebuilt on a state change. See `CaseSlots`
- * for the failure that discipline exists to prevent.
+ * Never destroyed, for the same reason the wall's case slots are pooled: nothing in this scene
+ * should be torn down and rebuilt on a state change. See `CaseSlots` for the failure that
+ * discipline exists to prevent.
  */
 @Composable
 fun SceneScope.DiscardSceneNodes(
@@ -76,6 +91,7 @@ fun SceneScope.DiscardSceneNodes(
         onDispose {
             nodes.group = null
             nodes.shards = emptyList()
+            nodes.shardMaterials = emptyList()
         }
     }
 
@@ -90,49 +106,41 @@ fun SceneScope.DiscardSceneNodes(
             shardsInstance,
             apply = {
                 isTouchable = false
-                // Broken plastic still catches the lamp, but it must not cast shadows onto
-                // the shelf it is falling past — 27 tumbling shadow casters for half a
-                // second is a lot of shadow-map churn for something nobody is looking at.
+                // Broken plastic catches the lamp, but 27 tumbling shadow casters for half a
+                // second is a great deal of shadow-map churn for something nobody is reading.
                 isShadowCaster = false
                 isShadowReceiver = false
 
-                // Read the fragments off the asset by the names the Blender script gave
-                // them: `shard_<index>_<per-mille area>`.
+                // Read the fragments off the asset by the names the build script gave them:
+                // `shard_<index>_<per-mille area>`.
                 nodes.shards = this.nodes
-                    .mapNotNull { node -> node.name?.let { name -> node to name } }
+                    .mapNotNull { child -> child.name?.let { child to it } }
                     .filter { (_, name) -> name.startsWith(SHARD_PREFIX) }
-                    .mapNotNull { (node, name) ->
+                    .mapNotNull { (child, name) ->
                         val parts = name.removePrefix(SHARD_PREFIX).split('_')
                         val index = parts.getOrNull(0)?.toIntOrNull() ?: return@mapNotNull null
                         val perMille = parts.getOrNull(1)?.toIntOrNull() ?: return@mapNotNull null
-                        val rest = node.position
-                        node.isVisible = false
-                        index to DiscardNodes.Piece(
-                            node = node,
-                            restX = rest.x,
-                            restY = rest.y,
-                            mass = perMille / 999f
-                        )
+                        val rest = child.position
+                        index to DiscardNodes.Piece(child, rest.x, rest.y, perMille / 999f)
                     }
                     .sortedBy { it.first }
                     .map { it.second }
 
-                // The album's own artwork, continuous across the cracks, because the shards
-                // carry the disc's UV convention unchanged. Safe to reuse the active case's
-                // texture: removal only happens from the wall, and no case can be open then.
-                materialInstances.forEach { primitives ->
-                    primitives.forEach { instance ->
-                        instance.setParameter("baseColorMap", discTexture, sampler)
-                        val material = instance.material
-                        if (material.hasParameter("metallicFactor")) {
-                            instance.setParameter("metallicFactor", DISC_LABEL_METALLIC)
-                        }
-                        if (material.hasParameter("roughnessFactor")) {
-                            instance.setParameter("roughnessFactor", DISC_LABEL_ROUGHNESS)
-                        }
-                        if (material.hasParameter("reflectance")) {
-                            instance.setParameter("reflectance", DISC_LABEL_REFLECTANCE)
-                        }
+                // The album's own artwork, continuous across every crack, because the shards
+                // carry the disc's UV convention unchanged. Safe to share the active case's
+                // texture: a removal cannot start while a case is open.
+                nodes.shardMaterials = materialInstances.flatten()
+                nodes.shardMaterials.forEach { instance ->
+                    instance.setParameter("baseColorMap", discTexture, sampler)
+                    val material = instance.material
+                    if (material.hasParameter("metallicFactor")) {
+                        instance.setParameter("metallicFactor", DISC_LABEL_METALLIC)
+                    }
+                    if (material.hasParameter("roughnessFactor")) {
+                        instance.setParameter("roughnessFactor", DISC_LABEL_ROUGHNESS)
+                    }
+                    if (material.hasParameter("reflectance")) {
+                        instance.setParameter("reflectance", DISC_LABEL_REFLECTANCE)
                     }
                 }
             }
@@ -140,11 +148,38 @@ fun SceneScope.DiscardSceneNodes(
     }
 }
 
+/**
+ * Sets how hard the fragments are glowing, 0..1.
+ *
+ * Cold, against the room's amber — DESIGN.md keeps saturated colour to the underlights, and
+ * white going blue reads as not belonging to this room at all, which is what makes the strike
+ * feel like it came from outside it.
+ *
+ * The peak is far above 1.0 on purpose: bloom is thresholded, so anything at or below it
+ * cannot flare at all. That is the same trap the underlight beam shipped with originally.
+ */
+private fun DiscardNodes.setGlow(amount: Float) {
+    val v = amount.coerceIn(0f, 1f) * FLASH_EMISSION
+    shardMaterials.forEach { instance ->
+        val material = instance.material
+        if (material.hasParameter("emissiveFactor")) {
+            instance.setParameter("emissiveFactor", v * 0.82f, v * 0.90f, v)
+        }
+        if (material.hasParameter("emissiveStrength")) {
+            instance.setParameter("emissiveStrength", 1f + amount * 2.5f)
+        }
+    }
+}
+
 private const val SHARD_PREFIX = "shard_"
 
+
+/** Peak emission on the fragments at the strike. Well past bloom's threshold, so it flares. */
+private const val FLASH_EMISSION = 5.5f
+
 /**
- * Advances one frame of a discard, moving both the case on the shelf and the disc coming out
- * of it. Returns true on the frame it finishes.
+ * Advances one frame of a removal, driving the held case, the fragments and the flash.
+ * Returns true on the frame it finishes.
  *
  * The caller owns *when* the album leaves the database; this owns only what is on screen. The
  * two are deliberately decoupled — the row stays until the animation ends, so the pool slot
@@ -152,7 +187,7 @@ private const val SHARD_PREFIX = "shard_"
  */
 fun driveDiscard(
     nodes: DiscardNodes,
-    slot: CaseSlot,
+    active: ActiveCaseNodes,
     dt: Float,
     reduceMotion: Boolean
 ): Boolean {
@@ -162,73 +197,75 @@ fun driveDiscard(
 
     val t = advanced / CaseDiscard.DURATION_S
     val frame = CaseDiscard.frameAt(t)
-    val root = slot.root
 
     if (reduceMotion) {
-        // DESIGN.md drops ambient motion under reduced motion but keeps deliberate
-        // transitions, and this is one — the user just confirmed it. What it loses is the
-        // tumbling, which is the part that carries vestibular motion: the case simply
-        // shrinks away and the disc never appears.
-        val shrink = (1f - t).coerceIn(0f, 1f)
-        root?.scale = Scale(shrink)
+        // DESIGN.md drops ambient motion but keeps deliberate transitions, and this is one —
+        // the user just confirmed it. What it loses is the tumbling and the flash, which are
+        // the parts carrying vestibular motion and a hard luminance spike.
+        active.root?.position = Position(nodes.slotX, nodes.slotY, 0f)
+        active.root?.scale = Scale((1f - t).coerceIn(0.001f, 1f))
         nodes.group?.isVisible = false
+        nodes.setGlow(0f)
     } else {
-        root?.position = Position(
-            slot.baseX,
-            slot.baseY + frame.caseY,
-            slot.baseZ + frame.caseZ
+        active.root?.position = Position(
+            nodes.slotX,
+            nodes.slotY + frame.caseY,
+            frame.caseZ
         )
-        // Tipped about X, so the case leans back and the disc slides out of its open edge
-        // toward the viewer rather than sideways.
-        root?.rotation = Rotation(frame.caseTipDeg, 0f, 0f)
-        root?.scale = Scale(frame.caseScale.coerceAtLeast(0.001f))
+        active.root?.rotation = Rotation(frame.caseRotX, frame.caseRotY, frame.caseRotZ)
+        active.root?.scale = Scale(1f)
+        active.hinge?.rotation = Rotation(0f, frame.hingeRotY, 0f)
+
+        // The intact disc is never shown during a removal — the fragments stand in for it from
+        // the moment the lid opens, sitting exactly where a whole disc would until struck.
+        active.disc?.isVisible = false
 
         val group = nodes.group
         if (group != null) {
             group.isVisible = frame.discVisible
+            // Rides with the case, in the tray, so the lid shuts over the pieces.
             group.position = Position(
-                slot.baseX,
-                slot.baseY + frame.discY,
-                slot.baseZ + frame.discZ
+                nodes.slotX,
+                nodes.slotY + frame.caseY,
+                frame.caseZ + WallDimens.TRAY_FRONT_Z + 0.0014f
             )
-            // The whole disc tips as it falls, so it meets the shelf edge-on. After the
-            // impact the group stops turning and the fragments carry the motion.
-            group.rotation = Rotation(frame.discTiltDeg, 0f, 0f)
+            group.rotation = Rotation(frame.caseRotX, frame.caseRotY, frame.caseRotZ)
 
             val since = CaseDiscard.secondsSinceImpact(t)
             nodes.shards.forEachIndexed { index, piece ->
                 val shard = CaseDiscard.shardAt(
-                    index = index,
-                    restX = piece.restX,
-                    restY = piece.restY,
-                    mass = piece.mass,
-                    seconds = since
+                    index, piece.restX, piece.restY, piece.mass, since
                 )
-                piece.node.isVisible = shard.scale > 0.01f
-                // Offsets are added to where the piece already rests, so before the impact
-                // every fragment sits exactly where it did in the whole disc.
+                // Offsets add to where the piece already rests, so before the strike every
+                // fragment sits exactly where it did in the whole disc — an intact disc that
+                // happens to be made of 27 pieces which have not moved yet.
                 piece.node.position = Position(
                     piece.restX + shard.offsetX,
                     piece.restY + shard.offsetY,
                     shard.offsetZ
                 )
                 // About its own centroid, because the build script put each origin there.
-                piece.node.rotation = Rotation(shard.spinX, shard.spinY, shard.spinZ)
-                piece.node.scale = Scale(shard.scale)
+                piece.node.rotation = Rotation(shard.tiltX, shard.tiltY, shard.tiltZ)
             }
         }
+
+        // The strike itself: the fragments blaze from within and fade over a quarter second.
+        nodes.setGlow(frame.flash)
     }
 
     if (!frame.done) return false
 
-    // Hand everything back clean. The slot's scale in particular — leaving it at zero is
-    // what broke the wall the first time this animation shipped, because the pool is
-    // index-keyed and every album that later landed on this slot rendered invisible.
+    // Hand everything back clean. The active case in particular: the open sequence writes its
+    // transform every frame while a case is open, but nothing resets it otherwise, so a
+    // removal that left it rotated would show the *next* opened album mid-tumble.
     nodes.clock = null
     nodes.albumId = null
     nodes.group?.isVisible = false
-    nodes.shards.forEach { it.node.isVisible = false }
-    root?.scale = Scale(1f)
-    root?.rotation = Rotation(0f, 0f, 0f)
+    nodes.setGlow(0f)
+    active.root?.isVisible = false
+    active.root?.rotation = Rotation(0f, 0f, 0f)
+    active.root?.scale = Scale(1f)
+    active.hinge?.rotation = Rotation(0f, 0f, 0f)
+    active.disc?.isVisible = false
     return true
 }

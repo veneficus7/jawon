@@ -632,6 +632,8 @@ fun WallSceneScreen(
         val scratch = remember { ScratchDriver() }
         val settle = remember { WallSettle() }
         val discardNodes = remember { DiscardNodes() }
+        /** Compose-visible mirror of `discardNodes.albumId`, so artwork effects can key on it. */
+        var discardingAlbumId by remember { mutableStateOf<String?>(null) }
 
         /** The album a long press has proposed removing, until it is confirmed or dismissed. */
         var pendingDelete by remember { mutableStateOf<CaseLayout?>(null) }
@@ -733,7 +735,13 @@ fun WallSceneScreen(
         // Push the open album's art onto the permanently-mounted active case, and hide the
         // whole group when nothing is open. Writing `bitmap` re-uploads into the node's
         // existing texture; rebuilding the node instead would abort the process.
-        val activeArtwork = selectedAlbumId?.let { artCache[it] }
+        // Which album the held case is currently showing.
+        //
+        // Not just the open one any more: removing an album also drives this case — see
+        // `DiscardScene` — and it has to be wearing that album's cover and spine while it is
+        // taken off the shelf, not the last-opened album's.
+        val heldAlbumId = selectedAlbumId ?: discardingAlbumId
+        val activeArtwork = heldAlbumId?.let { artCache[it] }
         // Keyed on the models as well as the artwork, because the nodes these write to do
         // not exist until the models land. Without that key the effect fires once against
         // null handles, does nothing, and never runs again — leaving a case that opens
@@ -742,10 +750,13 @@ fun WallSceneScreen(
             activeArtwork?.spine?.let { actNodes.spineArt?.bitmap = it }
             activeArtwork?.cover?.let { actNodes.coverArt?.bitmap = it }
         }
-        LaunchedEffect(selectedAlbumId, actNodes, trayModel, lidModel, discModel) {
-            val visible = selectedAlbumId != null
+        LaunchedEffect(heldAlbumId, selectedAlbumId, actNodes, trayModel, lidModel, discModel) {
+            val visible = heldAlbumId != null
             actNodes.root?.isVisible = visible
-            actNodes.disc?.isVisible = visible
+            // The whole disc belongs to the open sequence only. A removal shows the fragment
+            // set in its place from the moment the lid opens, so an intact disc here would
+            // sit inside the broken one.
+            actNodes.disc?.isVisible = selectedAlbumId != null
             // Hidden is not the same as unpickable. The disc is mounted for the life of
             // the scene, so when it is hidden it stays parked in front of whichever case
             // was last open â€” and SceneView still hit-tests it. Left touchable it both
@@ -850,8 +861,14 @@ fun WallSceneScreen(
         //
         // Only the open album is baked â€” unlike spine and cover art there is no reason to
         // pre-load the neighbours, because exactly one disc is ever on screen.
-        LaunchedEffect(selectedCase, discTexture) {
-            val case = selectedCase ?: return@LaunchedEffect
+        // Keyed on the *held* album, not the open one: a removal puts this album's fragments
+        // on screen, and they share this texture. Without it the pieces would wear whichever
+        // album happened to be opened last.
+        val heldCase = remember(layout, heldAlbumId) {
+            heldAlbumId?.let { id -> layout.cases.firstOrNull { it.albumId == id } }
+        }
+        LaunchedEffect(heldCase, discTexture) {
+            val case = heldCase ?: return@LaunchedEffect
             val face = withContext(Dispatchers.IO) {
                 DiscArt.bakeFace(
                     face = CaseArt.loadCover(case.discFacePath, DiscArt.DISC_PX),
@@ -960,9 +977,17 @@ fun WallSceneScreen(
                 viewModel.deleteAlbum(case.albumId)
                 return
             }
+            // The shelved case hides for the whole removal and the *held* case takes over
+            // from its slot — the same handover the open sequence does, so an album is never
+            // on screen twice.
             slot.discardClock = 0f
+            slot.root?.isVisible = false
+            slot.beam?.isVisible = false
             discardNodes.albumId = case.albumId
+            discardNodes.slotX = slot.baseX
+            discardNodes.slotY = slot.baseY
             discardNodes.clock = 0f
+            discardingAlbumId = case.albumId
 
             // A small margin over the animation's own length, so the visual always finishes
             // before the album vanishes from the database — never the reverse. Scheduled on
@@ -1443,21 +1468,12 @@ fun WallSceneScreen(
                             Position(slot.baseX, slot.baseY - CASE_H / 2f, slot.baseZ)
 
                         if (slot.discardClock != null) {
-                            // Being removed. This branch OWNS the node while it runs — no
-                            // hover, no manual-turn carry, no idle tilt — because a case
-                            // breaking apart should not also be gently bobbing. All of the
-                            // motion itself lives in DiscardScene; this only decides that the
-                            // discard, rather than the idle behaviour, is driving this slot.
-                            if (driveDiscard(discardNodes, slot, dt, reduceMotion)) {
-                                // The pool index is free the instant this returns — the same
-                                // park a normal unbind does, fired from here instead of from
-                                // `bind`. `driveDiscard` has already restored the node's scale
-                                // and rotation; see its tail for why that matters.
-                                slot.discardClock = null
-                                slot.occupied = false
-                                root.isVisible = false
-                                slot.beam?.isVisible = false
-                            }
+                            // Being removed. The shelved case stays hidden for the whole
+                            // sequence — the *held* case has taken over from this slot, the
+                            // same handover opening does — so this branch only keeps the slot
+                            // parked and lets DiscardScene drive everything visible.
+                            root.isVisible = false
+                            slot.beam?.isVisible = false
                             return@forEach
                         }
 
@@ -1485,6 +1501,25 @@ fun WallSceneScreen(
                                 0f
                             )
                         }
+                    }
+                }
+
+                // A removal in flight. Driven here, once, rather than from inside the slot
+                // loop: it moves the *held* case, which is not any slot's node, and the slot
+                // it came from is only parked.
+                if (discardNodes.isRunning) {
+                    if (driveDiscard(discardNodes, actNodes, dt, reduceMotion)) {
+                        // The slot is free the moment the case is gone. `driveDiscard` has
+                        // already put the held case back to a neutral transform — see its
+                        // tail for why leaving it rotated would show the next opened album
+                        // mid-tumble.
+                        caseSlots.slots.forEach { slot ->
+                            if (slot.discardClock != null) {
+                                slot.discardClock = null
+                                slot.occupied = false
+                            }
+                        }
+                        discardingAlbumId = null
                     }
                 }
 
