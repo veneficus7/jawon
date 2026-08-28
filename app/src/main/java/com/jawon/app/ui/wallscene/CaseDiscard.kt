@@ -60,11 +60,25 @@ object CaseDiscard {
     /** The moment the disc is struck. Everything before is approach, everything after is loss. */
     const val impactAt = 0.56f
 
+    /**
+     * The gathering before the strike.
+     *
+     * Something has to be *about* to happen, or the flash is just a flash. Over this window
+     * the disc takes on a faint cold glow and the case starts to shiver — small, fast, and
+     * growing — so the break reads as the release of something that had been building rather
+     * than an effect that fired.
+     */
+    private const val BUILD_FROM = 0.40f
+
     private const val SHATTER_FROM = 0.56f
     private const val SHATTER_TO = 0.76f
-    private const val CLOSE_FROM = 0.68f
-    private const val CLOSE_TO = 0.88f
-    private const val FALL_FROM = 0.80f
+
+    // Close and fall now overlap almost entirely: the lid is coming down *as* the case
+    // drops away, rather than shutting first and then being released. Two things happening
+    // at once is what the whole sequence is built on.
+    private const val CLOSE_FROM = 0.60f
+    private const val CLOSE_TO = 0.84f
+    private const val FALL_FROM = 0.64f
     private const val FALL_TO = 1.00f
 
     // ---- Motion, in metres and degrees ------------------------------------------------
@@ -106,6 +120,15 @@ object CaseDiscard {
 
     /** Degrees a fragment tips where it lies. Small: they are settling in a tray, not tumbling. */
     private const val SHARD_TILT_DEG = 11f
+
+    /** How far a suspended fragment drifts from where it broke, in metres. Sub-millimetre. */
+    private const val HOVER_MM = 0.00085f
+
+    /** And how far it turns as it hangs, in degrees. */
+    private const val HOVER_TILT_DEG = 1.6f
+
+    /** How long the drift takes to reach full strength, so it begins at the break, not before. */
+    private const val HOVER_IN_S = 0.35f
 
     /** Where the impact lands, in disc-local metres. Off-centre, so the break is not symmetric. */
     private const val IMPACT_X = 0.016f
@@ -171,6 +194,29 @@ object CaseDiscard {
     private fun smootherStep(t: Float): Float = t * t * t * (t * (t * 6f - 15f) + 10f)
 
     /**
+     * The case's shiver as the strike builds, in degrees.
+     *
+     * Grows with the square of the build-up so it stays imperceptible for most of the window
+     * and only becomes obvious just before the break — which is what makes it read as
+     * something straining rather than as a wobble. Ends exactly at the strike: the shiver is
+     * the cause, so it must not outlive its effect.
+     *
+     * Each axis passes a different [rate] so they never line up into one clean oscillation,
+     * which would read as rocking rather than shaking.
+     */
+    private fun shiver(t: Float, rate: Float): Float {
+        if (t >= impactAt) return 0f
+        val build = sub(t, BUILD_FROM, impactAt)
+        return sin(t * rate * 60f) * SHIVER_DEG * build * build
+    }
+
+    /** How hard the case shakes at the very peak of the build-up, in degrees. */
+    private const val SHIVER_DEG = 1.15f
+
+    /** How brightly the disc glows just before the strike, as a fraction of the flash. */
+    private const val BUILD_GLOW = 0.26f
+
+    /**
      * @param slotX/slotY where the album sits on the wall — where the case starts.
      * @param panX/panY where the camera is looking. **The case is carried here as it rises**,
      *   exactly as `OpenSequence` does, and for a reason found the hard way: without it the
@@ -208,10 +254,11 @@ object CaseDiscard {
             caseY = slotY + (panY + RISE_Y - slotY) * rise - drop,
             caseZ = RISE_Z * rise,
             // Tips forward only as it falls, so the fall reads as losing its footing rather
-            // than as being pushed.
-            caseRotX = FALL_TUMBLE_DEG * smootherStep(fall),
-            caseRotY = TURN_FROM_DEG * (1f - turn),
-            caseRotZ = 0.5f * FALL_TUMBLE_DEG * smootherStep(fall),
+            // than as being pushed — plus the shiver of the build-up, which grows as the
+            // strike approaches and stops dead on it.
+            caseRotX = FALL_TUMBLE_DEG * smootherStep(fall) + shiver(clamped, 13.7f),
+            caseRotY = TURN_FROM_DEG * (1f - turn) + shiver(clamped, 17.3f),
+            caseRotZ = 0.5f * FALL_TUMBLE_DEG * smootherStep(fall) + shiver(clamped, 11.1f),
             // Opens, then shuts over the pieces. One channel minus the other, so the two
             // overlap naturally instead of needing a state machine.
             hingeRotY = -HINGE_DEG * (open - close).coerceAtLeast(0f),
@@ -220,9 +267,15 @@ object CaseDiscard {
             struck = clamped >= impactAt,
             // Eased out over the approach, gone by the time the lid shuts.
             beamGlow = beamGlowAt(clamped),
-            // A hard spike that decays — a strike, not a fade in and out.
-            flash = if (sinceImpact <= 0f) 0f
-            else exp(-sinceImpact / (FLASH_S * 0.34f)).coerceIn(0f, 1f),
+            // Two shapes joined at the strike. Before it, a slow swell to a fraction of full
+            // — enough to see something coming, not enough to pre-empt it. After it, a hard
+            // spike that decays. The discontinuity at the join is the point: the climax has
+            // to arrive, not be eased into.
+            flash = if (sinceImpact <= 0f) {
+                BUILD_GLOW * smootherStep(sub(clamped, BUILD_FROM, impactAt))
+            } else {
+                exp(-sinceImpact / (FLASH_S * 0.34f)).coerceIn(0f, 1f)
+            },
             done = clamped >= 1f
         )
     }
@@ -310,15 +363,34 @@ object CaseDiscard {
         // and the opposite of easing outward.
         val travel = reach * (1f - exp(-DRAG * s))
 
+        // Each piece hangs on its own once it has broken — drifting, turning a little,
+        // never settling. It is what keeps the shattered disc *alive* in the frame instead
+        // of becoming a static cracked texture, and it is why the pieces read as suspended
+        // rather than as fallen.
+        //
+        // Every fragment has its own period and phase, taken from its index, so no two are
+        // ever in step and the group never pulses together. The amplitudes are tiny — under
+        // a millimetre — because the disc has to keep its shape: the pieces are a broken
+        // disc floating, not a cloud of debris that used to be one. Lighter fragments drift
+        // further, which is the same mass relationship the break itself uses.
+        val drift = HOVER_MM * (0.45f + 0.55f * byMass)
+        val hx = sin(s * (0.9f + 0.21f * index) + index * 1.7f) * drift
+        val hy = sin(s * (1.1f + 0.17f * index) + index * 2.9f) * drift
+        val hz = sin(s * (0.7f + 0.13f * index) + index * 0.6f) * drift * 1.4f
+        val hover = smootherStep((s / HOVER_IN_S).coerceIn(0f, 1f))
+
         return Shard(
-            offsetX = dx * travel,
-            offsetY = dy * travel,
+            offsetX = dx * travel + hx * hover,
+            offsetY = dy * travel + hy * hover,
             // Lifted a little out of the disc's plane, so the cracks catch the light and the
             // pieces do not read as a flat decal. Alternating, so the surface breaks up.
-            offsetZ = travel * 0.42f * sin(index * 1.117f),
-            tiltX = SHARD_TILT_DEG * travel / SPREAD * sin(index * 0.913f) * byMass * 0.4f,
-            tiltY = SHARD_TILT_DEG * travel / SPREAD * sin(index * 1.771f) * byMass * 0.4f,
-            tiltZ = SHARD_TILT_DEG * travel / SPREAD * jitter * byMass * 0.3f
+            offsetZ = travel * 0.42f * sin(index * 1.117f) + hz * hover,
+            tiltX = SHARD_TILT_DEG * travel / SPREAD * sin(index * 0.913f) * byMass * 0.4f +
+                sin(s * 0.8f + index) * HOVER_TILT_DEG * hover,
+            tiltY = SHARD_TILT_DEG * travel / SPREAD * sin(index * 1.771f) * byMass * 0.4f +
+                sin(s * 0.6f + index * 2.1f) * HOVER_TILT_DEG * hover,
+            tiltZ = SHARD_TILT_DEG * travel / SPREAD * jitter * byMass * 0.3f +
+                sin(s * 0.5f + index * 3.3f) * HOVER_TILT_DEG * hover
         )
     }
 }
