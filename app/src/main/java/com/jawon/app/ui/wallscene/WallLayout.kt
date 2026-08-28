@@ -246,7 +246,11 @@ data class WallLayout(
             }
 
             val rowCount = shelves.size
-            val maxCols = shelves.maxOf { it.albums.size }.coerceAtLeast(1)
+            // Widest shelf by the slots it *occupies*, not by how many albums it holds — see
+            // the case loop below for why those differ.
+            val maxCols = shelves
+                .maxOf { shelf -> (shelf.albums.maxOfOrNull { it.slotIndex } ?: -1) + 1 }
+                .coerceAtLeast(1)
 
             fun rowCenterY(row: Int) = ((rowCount - 1) / 2f - row) * WallDimens.ROW_PITCH
             fun colX(col: Int) = (col - (maxCols - 1) / 2f) * WallDimens.SLOT_PITCH
@@ -265,8 +269,18 @@ data class WallLayout(
                 )
             }
 
+            // Position comes from the album's OWN `slotIndex`, not its position in this list.
+            //
+            // It used to be the list index, which meant removing an album slid every album
+            // after it one slot to the left — the shelf closed the gap and a neighbour
+            // snapped into the deleted record's place. On a shelf you have just taken a
+            // record out of, the gap is the truthful thing to show, and it is also what stops
+            // the wall rearranging itself under someone who is looking at it.
+            //
+            // This reverses the older note about list indices keeping a shelf packed. That
+            // was written to tolerate gaps in stored indices; gaps are now the point.
             val cases = shelves.flatMapIndexed { row, shelf ->
-                shelf.albums.mapIndexed { col, album ->
+                shelf.albums.map { album ->
                     CaseLayout(
                         albumId = album.id,
                         title = album.title,
@@ -276,8 +290,8 @@ data class WallLayout(
                         coverPath = album.caseCoverUri,
                         discFacePath = album.discFaceUri,
                         row = row,
-                        col = col,
-                        x = colX(col),
+                        col = album.slotIndex,
+                        x = colX(album.slotIndex),
                         y = rowCenterY(row)
                     )
                 }

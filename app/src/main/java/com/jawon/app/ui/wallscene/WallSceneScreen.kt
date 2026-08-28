@@ -545,8 +545,23 @@ fun WallSceneScreen(
 
         var alignedOnLoad by remember { mutableStateOf(false) }
         LaunchedEffect(layout) {
-            panX.updateBounds(layout.minPanX, layout.maxPanX)
-            panY.updateBounds(layout.minPanY, layout.maxPanY)
+            // Bounds are widened to include wherever the camera already is.
+            //
+            // `updateBounds` clamps the current value on the spot, so tightening them under
+            // the user yanks the wall sideways — which is what happened after removing an
+            // album near either end: the shelf got shorter and the view jumped. Nothing
+            // should move the wall except the user's own hand and the magnet.
+            //
+            // Letting it sit briefly outside the content is harmless: the magnet settles onto
+            // a real record on the next release, which brings it back on its own.
+            panX.updateBounds(
+                minOf(layout.minPanX, panX.value),
+                maxOf(layout.maxPanX, panX.value)
+            )
+            panY.updateBounds(
+                minOf(layout.minPanY, panY.value),
+                maxOf(layout.maxPanY, panY.value)
+            )
 
             // Open centred on a record, not mid-gap.
             //

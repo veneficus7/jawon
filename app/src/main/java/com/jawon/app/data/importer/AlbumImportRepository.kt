@@ -156,7 +156,13 @@ class AlbumImportRepository @Inject constructor(
         val caseCoverPath = caseCoverUri?.let { coverStore.store(context, it, "$albumId-cover.jpg") }
         val discFacePath = discFaceUri?.let { coverStore.store(context, it, "$albumId-disc.jpg") }
 
-        val slotIndex = albumDao.getForShelf(shelfId).first().size
+        // One past the highest slot in use, NOT the album count.
+        //
+        // Those differ the moment anything is removed, and the difference matters now that a
+        // deleted album leaves its gap on the shelf rather than the rest closing up: counting
+        // would hand a new album the index of a record that is gone, dropping it into the
+        // hole instead of at the end of the shelf.
+        val slotIndex = (albumDao.getForShelf(shelfId).first().maxOfOrNull { it.slotIndex } ?: -1) + 1
 
         albumDao.insert(
             Album(
