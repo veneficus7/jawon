@@ -1526,7 +1526,7 @@ fun WallSceneScreen(
                 // loop: it moves the *held* case, which is not any slot's node, and the slot
                 // it came from is only parked.
                 if (discardNodes.isRunning) {
-                    if (driveDiscard(discardNodes, actNodes, dt, panX.value, panY.value, reduceMotion)) {
+                    if (driveDiscard(discardNodes, actNodes, dt, panX.value, panY.value, reduceMotion, haptics)) {
                         // The slot is free the moment the case is gone. `driveDiscard` has
                         // already put the held case back to a neutral transform — see its
                         // tail for why leaving it rotated would show the next opened album
@@ -1712,8 +1712,20 @@ fun WallSceneScreen(
                     }
                 )
             }
-            visibleRows.forEach { row ->
-                key(row.shelfId) {
+            // Keyed by INDEX, not shelf id — the same discipline the case pool uses, and for
+            // the same reason.
+            //
+            // On shelf id, every change to the shelf list rebuilds these nodes, and a
+            // CubeNode destroys the `MaterialInstance` it was handed on the way out. That
+            // instance is shared and remembered above, so the *next* board gets a dead one:
+            // importing albums into an empty library swapped the placeholder row for real
+            // ones and the shelf boards vanished until the app was relaunched. Exactly the
+            // fault the wall backing had, one node along.
+            //
+            // By index, a row change re-points a node that already exists instead of
+            // destroying it, so the material outlives the churn.
+            visibleRows.forEachIndexed { rowIndex, row ->
+                key(rowIndex) {
                     CubeNode(
                         size = Size(layout.wallWidth, BOARD_H, BOARD_D),
                         position = Position(0f, row.boardY, 0f),

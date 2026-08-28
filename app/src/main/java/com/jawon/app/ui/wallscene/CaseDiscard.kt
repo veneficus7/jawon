@@ -58,7 +58,7 @@ object CaseDiscard {
     private const val OPEN_TO = 0.54f
 
     /** The moment the disc is struck. Everything before is approach, everything after is loss. */
-    private const val IMPACT_AT = 0.56f
+    const val impactAt = 0.56f
 
     private const val SHATTER_FROM = 0.56f
     private const val SHATTER_TO = 0.76f
@@ -215,9 +215,9 @@ object CaseDiscard {
             // Opens, then shuts over the pieces. One channel minus the other, so the two
             // overlap naturally instead of needing a state machine.
             hingeRotY = -HINGE_DEG * (open - close).coerceAtLeast(0f),
-            wholeDiscVisible = open > 0.02f && clamped < IMPACT_AT,
-            shardsVisible = clamped >= IMPACT_AT,
-            struck = clamped >= IMPACT_AT,
+            wholeDiscVisible = open > 0.02f && clamped < impactAt,
+            shardsVisible = clamped >= impactAt,
+            struck = clamped >= impactAt,
             // Eased out over the approach, gone by the time the lid shuts.
             beamGlow = beamGlowAt(clamped),
             // A hard spike that decays — a strike, not a fade in and out.
@@ -237,9 +237,36 @@ object CaseDiscard {
     fun beamGlowAt(t: Float): Float =
         1f - smootherStep(sub(t.coerceIn(0f, 1f), 0.04f, CLOSE_TO))
 
+    /**
+     * How fast the sequence runs at [t], as a multiple of real time.
+     *
+     * **The break is worth slowing down for.** Everything up to the strike plays at speed;
+     * around it the sequence drops to [SLOW_SCALE] for a moment and then recovers. It is the
+     * oldest trick there is for making an impact land — the eye gets time to register that
+     * the disc has come apart, instead of the whole thing being over before it has read — and
+     * it costs one multiplier on `dt`.
+     *
+     * The ramp in and out is [smootherStep] rather than a step, because time itself jerking
+     * is far more obvious than any object jerking. Total real duration comes out around 2.2s
+     * for a nominal 1.9.
+     */
+    fun timeScaleAt(t: Float): Float {
+        val d = kotlin.math.abs(t - impactAt)
+        if (d >= SLOW_HALF_WIDTH) return 1f
+        // 1 at the edges of the window, SLOW_SCALE at its centre.
+        val edge = smootherStep(d / SLOW_HALF_WIDTH)
+        return SLOW_SCALE + (1f - SLOW_SCALE) * edge
+    }
+
+    /** How far either side of the strike time is dilated, in sequence units. */
+    private const val SLOW_HALF_WIDTH = 0.14f
+
+    /** How slowly time runs at the strike itself. */
+    private const val SLOW_SCALE = 0.34f
+
     /** Seconds since the disc was struck, at sequence time [t]. */
     fun secondsSinceImpact(t: Float): Float =
-        ((t - IMPACT_AT) * DURATION_S).coerceAtLeast(0f)
+        ((t - impactAt) * DURATION_S).coerceAtLeast(0f)
 
     /**
      * Where fragment [index] has moved to, [seconds] after the strike.

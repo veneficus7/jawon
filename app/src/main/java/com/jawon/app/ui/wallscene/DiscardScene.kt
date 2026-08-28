@@ -67,6 +67,9 @@ class DiscardNodes {
     var slotX = 0f
     var slotY = 0f
 
+    /** Whether the strike's haptic has fired. One knock per removal, on the frame it breaks. */
+    var struckFelt = false
+
     /** Seconds into [CaseDiscard.DURATION_S], or null when idle. */
     var clock: Float? = null
 
@@ -215,13 +218,26 @@ fun driveDiscard(
     dt: Float,
     panX: Float,
     panY: Float,
-    reduceMotion: Boolean
+    reduceMotion: Boolean,
+    haptics: RoomHaptics?
 ): Boolean {
     val clock = nodes.clock ?: return false
-    val advanced = clock + dt
+
+    // Time slows around the strike — see CaseDiscard.timeScaleAt. Applied to `dt` rather
+    // than to the curves, so every beat, the fall and the fragments all dilate together and
+    // none of them has to know it is happening.
+    val scale = if (reduceMotion) 1f else CaseDiscard.timeScaleAt(clock / CaseDiscard.DURATION_S)
+    val advanced = clock + dt * scale
     nodes.clock = advanced
 
     val t = advanced / CaseDiscard.DURATION_S
+
+    // One hard knock on the frame the disc breaks, and nowhere else. The strike is the only
+    // moment in the sequence with an impact to feel.
+    if (!nodes.struckFelt && t >= CaseDiscard.impactAt) {
+        nodes.struckFelt = true
+        haptics?.detent()
+    }
     val frame = CaseDiscard.frameAt(t, nodes.slotX, nodes.slotY, panX, panY)
 
     if (reduceMotion) {
@@ -288,6 +304,7 @@ fun driveDiscard(
     // removal that left it rotated would show the *next* opened album mid-tumble.
     nodes.clock = null
     nodes.albumId = null
+    nodes.struckFelt = false
     nodes.group?.isVisible = false
     nodes.setGlow(0f)
     active.root?.isVisible = false
