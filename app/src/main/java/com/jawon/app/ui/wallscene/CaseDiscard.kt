@@ -1,114 +1,173 @@
 package com.jawon.app.ui.wallscene
 
-import kotlin.math.pow
+import kotlin.math.cos
 import kotlin.math.sin
 
 /**
- * The motion for taking an album off the shelf for good — testers asked for "its own
- * animation where it breaks the CD and throws it at trash can."
+ * What happens when an album is removed: the case leaves the shelf, tips, lets its disc slide
+ * out, and the disc cracks apart and falls away into the dark under the shelves.
  *
- * Pure arithmetic, no Android or Filament types, for the same reason [OpenSequence], [Scratch]
- * and [ShelfHover] are: the feel lives in these numbers and they should be reviewable without
- * a device attached.
+ * Pure maths, no Filament types — the same discipline as [OpenSequence], and for the same
+ * reasons. Every value is a function of one scalar `t` in 0..1, so the whole thing is
+ * reproducible, skippable by jumping the clock, and testable without a device.
  *
- * **What this deliberately is not.** A literal trash can is not part of `DESIGN.md`'s Midnight
- * Shop, and modelling one — plus real fracture geometry for the case — is an asset-pipeline
- * undertaking on the scale of M11 Pass 2, not a bug-fix-sized addition. What testers actually
- * asked for is a *sensation*: the case is gone, and it went out badly. This gets there with
- * the node the shelf already has — no new model, no new material, nothing for
- * [CaseSlots]'s never-destroy pool to worry about — driven by two beats:
+ * **Why the disc has to be revealed first.** Removal starts from the wall, where a *closed*
+ * case is all that is on screen — there is no disc to break. The first two beats exist to put
+ * one there. Skipping them and simply shattering the case was the alternative; breaking the
+ * disc is what was asked for, and it is also the more legible image, because a cracked disc
+ * reads instantly and a cracked case reads as a cracked box.
  *
- * 1. **Crack** (0 → [CRACK_TO]): a fast, non-uniform squash and a hard rotational snap. There
- *    is no fracture geometry, so the *sudden, wrong* deformation is what reads as "broken"
- *    rather than "bounced".
- * 2. **Discard** (overlapping, from [DISCARD_FROM]): flung down and to one side, tumbling and
- *    shrinking, off the visible frame. "Toward a bin" without asserting where one is.
- *
- * **Brisk on purpose.** ENGINEERING.md's own note on this feature warns that "an animation that is
- * delightful once is tiresome on the twentieth album" — this runs in well under a second, and
- * the caller (`WallSceneScreen`) lets a second tap on a discarding case skip straight to
- * completion by jumping its own elapsed clock past [DURATION_S], rather than making the user
- * sit through it on every deletion. [at] saturates past the end, so that is all skipping is.
+ * **Nothing here is allowed to be slow.** `ENGINEERING.md` warns that an animation delightful once
+ * is tiresome on the twentieth album, so the whole sequence is [DURATION_S] and a tap jumps
+ * the clock past the end. Under reduced motion the caller skips it entirely.
  */
 object CaseDiscard {
 
-    /** Total run, in seconds. Brief by design — see the class doc. */
-    const val DURATION_S = 0.62f
+    /**
+     * 1.05 seconds for four beats.
+     *
+     * Long enough to read as: taken off the shelf, opened, broken, gone. Short enough that
+     * clearing out a shelf does not become a chore. The open sequence gets 1.9s because it is
+     * an invitation; this is a dismissal and should not linger.
+     */
+    const val DURATION_S = 1.05f
 
-    private const val CRACK_TO = 0.28f
-    private const val DISCARD_FROM = 0.16f
+    /** Shard count. Must match `SHARD_COUNT` in `tools/models/build_models.py`. */
+    const val SHARDS = 8
+
+    // Beat windows, overlapped the way OpenSequence's are so each blends into the next
+    // instead of starting from a standstill.
+    private const val PULL_FROM = 0.00f
+    private const val PULL_TO = 0.30f
+    private const val SLIDE_FROM = 0.24f
+    private const val SLIDE_TO = 0.55f
+    private const val CRACK_AT = 0.52f
+    private const val FALL_FROM = 0.55f
+    private const val FALL_TO = 1.00f
+
+    /** How far the case comes off the wall toward the viewer, in metres. */
+    private const val PULL_Z = 0.085f
+
+    /** How far it tips while doing it, in degrees — enough to spill the disc out. */
+    private const val TIP_DEG = 38f
+
+    /** How far the disc slides clear of the case before it breaks, in metres. */
+    private const val SLIDE_Y = 0.055f
+
+    /** Downward acceleration once things are falling, in metres per second squared. */
+    private const val GRAVITY = 1.9f
+
+    /** How fast shards fly apart from the break, in metres per second. */
+    private const val BURST_SPEED = 0.115f
+
+    /** Degrees per second a shard tumbles. Scaled per shard so none match. */
+    private const val TUMBLE_DEG_PER_S = 420f
 
     /**
-     * How far the case falls and slides before it's off-frame, in metres. Generous against
-     * [WallSceneScreen]'s zoom range on purpose: the display only has to clear the *widest*
-     * the camera can ever be (`ZOOM_FAR`), and it is cheaper to overshoot than to under-throw
-     * and leave the case visibly clipping out mid-flight.
+     * Everything the scene needs for one frame of a discard.
+     *
+     * The case and the disc are whole until [cracked]; after it the disc is hidden and the
+     * eight shards take over.
      */
-    private const val FALL_Y = 0.85f
-    private const val SLIDE_X = 0.55f
-
-    /** Full turns the case tumbles through on its way down. Not a clean number on purpose. */
-    private const val TUMBLE_TURNS = 2.35f
-
-    /** The crack's squash, as a fraction of the case's own size. */
-    private const val CRACK_SQUASH = 0.34f
-    private const val CRACK_SNAP_DEG = 22f
-
-    data class Transforms(
-        val offsetX: Float,
-        val offsetY: Float,
-        val spinDeg: Float,
-        val scaleX: Float,
-        val scaleY: Float,
-        /** True once the case has fully left the frame and the slot can be freed. */
+    data class Frame(
+        val caseZ: Float,
+        val caseY: Float,
+        val caseTipDeg: Float,
+        val caseAlpha: Float,
+        val discY: Float,
+        val discZ: Float,
+        val discVisible: Boolean,
+        val cracked: Boolean,
         val done: Boolean
     )
 
+    /** Where one shard is, relative to the disc's centre at the moment it broke. */
+    data class Shard(
+        val x: Float,
+        val y: Float,
+        val z: Float,
+        val spinDeg: Float,
+        val alpha: Float
+    )
+
     /**
-     * @param t elapsed time since the discard began, in seconds. Values at or past
-     *   [DURATION_S] all return the same settled [end] state, so the caller can keep calling
-     *   this every frame without clamping `t` itself first.
-     * @param direction ±1, which way the case slides as it falls. Alternated per album (see
-     *   `WallSceneScreen`'s call site) purely so removing several in a row doesn't look like
-     *   the same clip playing on repeat.
+     * Saturating sub-range, so a beat is 0 before its window and 1 after it. Identical in
+     * spirit to `OpenSequence.sub` — kept local rather than shared because these two
+     * sequences should stay free to diverge.
      */
-    fun at(t: Float, direction: Float): Transforms {
-        if (t <= 0f) return Transforms(0f, 0f, 0f, 1f, 1f, done = false)
-        val p = t / DURATION_S
-        if (p >= 1f) {
-            return Transforms(
-                offsetX = SLIDE_X * direction,
-                offsetY = -FALL_Y,
-                spinDeg = 360f * TUMBLE_TURNS * direction,
-                scaleX = 0f,
-                scaleY = 0f,
-                done = true
-            )
-        }
+    private fun sub(t: Float, from: Float, to: Float): Float =
+        ((t - from) / (to - from)).coerceIn(0f, 1f)
 
-        val crack = (p / CRACK_TO).coerceIn(0f, 1f)
-        // A snap has no ease-in — it is already moving at the first instant, which is what a
-        // slow-in curve can never sell. u(1-u) peaks mid-beat and returns cleanly to zero at
-        // both ends, so the squash resolves exactly as the discard beat picks up.
-        val crackEnvelope = crack * (1f - crack) * 4f
-        val squashX = 1f + CRACK_SQUASH * crackEnvelope
-        val squashY = 1f - CRACK_SQUASH * crackEnvelope
-        // Two quick opposed kicks rather than one, so it reads as a jolt rather than a lean.
-        val snapDeg = sin(crack * Math.PI.toFloat() * 2.4f) * CRACK_SNAP_DEG * (1f - crack)
+    /** Smooth start and end, zero velocity at both — Ken Perlin's smootherstep. */
+    private fun ease(t: Float): Float = t * t * t * (t * (t * 6f - 15f) + 10f)
 
-        val discard = ((p - DISCARD_FROM) / (1f - DISCARD_FROM)).coerceIn(0f, 1f)
-        // Accelerating fall, not eased — this is a thing being dropped, not settling.
-        val fall = discard * discard
-        val slide = 1f - (1f - discard).pow(2)
-        val shrink = 1f - discard.pow(3)
+    fun frameAt(t: Float): Frame {
+        val clamped = t.coerceIn(0f, 1f)
+        val pull = ease(sub(clamped, PULL_FROM, PULL_TO))
+        val slide = ease(sub(clamped, SLIDE_FROM, SLIDE_TO))
+        val cracked = clamped >= CRACK_AT
+        val fall = sub(clamped, FALL_FROM, FALL_TO)
 
-        return Transforms(
-            offsetX = SLIDE_X * direction * slide,
-            offsetY = -FALL_Y * fall,
-            spinDeg = snapDeg + 360f * TUMBLE_TURNS * direction * discard,
-            scaleX = squashX * shrink,
-            scaleY = squashY * shrink,
-            done = false
+        // Gravity is integrated over the fall's own seconds, not over `t`, so changing
+        // DURATION_S changes how long it falls rather than how hard it is pulled.
+        val fallSeconds = fall * (FALL_TO - FALL_FROM) * DURATION_S
+        val drop = 0.5f * GRAVITY * fallSeconds * fallSeconds
+
+        return Frame(
+            caseZ = PULL_Z * pull,
+            caseY = -drop,
+            caseTipDeg = TIP_DEG * pull,
+            // The case fades as it leaves the lamp's pool rather than vanishing on a
+            // frame — DESIGN.md's darkness does most of the work, this finishes it.
+            caseAlpha = 1f - sub(clamped, 0.72f, 1f),
+            discY = SLIDE_Y * slide,
+            discZ = PULL_Z * pull,
+            discVisible = slide > 0.01f && !cracked,
+            cracked = cracked,
+            done = clamped >= 1f
         )
     }
+
+    /**
+     * Where shard [index] is, [secondsSinceCrack] after the disc came apart.
+     *
+     * Each shard flies outward along its own wedge's bisector, which is what makes the break
+     * read as the disc coming apart rather than as pieces being scattered — a real fracture
+     * throws mass away from the centre. On top of that it tumbles and falls.
+     *
+     * Deterministic in [index], so the same album always breaks the same way. No randomness
+     * at runtime: this is called every frame for eight shards and must not allocate or
+     * surprise.
+     */
+    fun shardAt(index: Int, secondsSinceCrack: Float): Shard {
+        val s = secondsSinceCrack.coerceAtLeast(0f)
+        val bisector = (index + 0.5f) / SHARDS * TAU
+
+        // Uneven speeds, from the index rather than a random source. Without this the eight
+        // pieces stay on a perfect expanding circle, which reads as a mechanism.
+        val speed = BURST_SPEED * (0.72f + 0.28f * sin(index * 2.4f))
+        val outward = speed * s
+
+        // A little forward as well as outward, so the break has depth on screen instead of
+        // happening entirely within one plane.
+        val toward = 0.35f * speed * s
+
+        return Shard(
+            x = cos(bisector) * outward,
+            y = sin(bisector) * outward - 0.5f * GRAVITY * s * s,
+            z = toward,
+            spinDeg = TUMBLE_DEG_PER_S * s * (0.55f + 0.45f * cos(index * 1.7f)),
+            // Gone by the time they would reach the shelf below.
+            alpha = (1f - s / SHARD_LIFE_S).coerceIn(0f, 1f)
+        )
+    }
+
+    /** How long a shard stays visible after the break, in seconds. */
+    private const val SHARD_LIFE_S = 0.5f
+
+    private const val TAU = 6.2831855f
+
+    /** Seconds of fall a shard has had at sequence time [t]. */
+    fun secondsSinceCrack(t: Float): Float =
+        ((t - CRACK_AT) * DURATION_S).coerceAtLeast(0f)
 }

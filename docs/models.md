@@ -163,3 +163,27 @@ mistake.
 
 A tray whose Z straddles zero, or a lid whose X is centred on zero, is the axis
 trap or the origin trap respectively.
+
+## `disc_shards.glb` — the disc, cracked
+
+Eight wedges, one object each, for the deletion animation. Built by
+`build_disc_shards()` alongside the others.
+
+**They use `build_disc`'s UV formula verbatim.** That is the whole reason the
+shards are generated here rather than faked in the app by scaling copies of the
+disc: an album's already-baked disc texture lands on the pieces with the artwork
+*continuous across the cracks*. Change the disc's UV convention and this must
+change with it, or the picture will tear along the breaks.
+
+They are also the disc *before* it breaks — at rest the eight wedges sit exactly
+where a whole disc would, so the app shows the same nodes sliding out as one disc
+and then coming apart. There is no separate whole-disc model in the discard.
+
+- One object per shard, because each has to move independently. A single mesh
+  with disconnected islands exports as one node and can only move as one piece.
+- Cuts run hub to rim, because that is where a real CD cracks — the centre hole
+  is the stress concentrator.
+- Cut positions and the cut lines themselves are jittered from a **fixed seed**.
+  Eight even wedges read as a pie chart; a fixed seed keeps the build
+  reproducible and means an album always breaks the same way.
+- `SHARD_COUNT` here must match `CaseDiscard.SHARDS` in the app.

@@ -48,6 +48,7 @@ the kind of bug that looks like an animation problem for a day.
 """
 
 import math
+import random
 import os
 import sys
 
@@ -692,6 +693,123 @@ def build_disc():
 # Export
 # ---------------------------------------------------------------------------
 
+SHARD_COUNT = 8
+
+
+def build_disc_shards():
+    """
+    The disc, cracked into wedges, for the deletion animation.
+
+    One object per shard, because each has to move independently once the disc
+    breaks — the app parents them separately and drives each with its own
+    velocity and spin. A single mesh with disconnected islands would export as
+    one node and could only move as one piece.
+
+    **UVs use exactly `build_disc`'s formula**, so an album's already-baked disc
+    texture lands on the pieces with the artwork continuous across the cracks.
+    That is the whole reason the shards are built here rather than faked by
+    scaling copies of the disc: the picture has to break along with the plastic.
+
+    A real CD cracks radially out of the hub — the centre hole is the stress
+    concentrator — so the cuts run from the hole to the rim. They are *not*
+    evenly spaced and the cut lines are not perfectly straight: both are jittered
+    from a fixed seed, because eight identical wedges read as a pie chart rather
+    than as something broken. Fixed seed so the same album always breaks the same
+    way and the build is reproducible.
+    """
+    rng = random.Random(20260827)
+    objects = []
+
+    # Where each cut falls, as a fraction around the disc. Jittered, then sorted,
+    # so wedges come out visibly different sizes.
+    cuts = sorted(
+        (i + rng.uniform(-0.30, 0.30)) / SHARD_COUNT for i in range(SHARD_COUNT)
+    )
+
+    for index in range(SHARD_COUNT):
+        a0 = cuts[index] * math.tau
+        a1 = (cuts[(index + 1) % SHARD_COUNT] + (1.0 if index == SHARD_COUNT - 1 else 0.0)) * math.tau
+
+        obj = new_mesh_object(f"shard_{index}")
+        bm = bmesh.new()
+
+        # Enough steps that the rim stays round; the disc is 120mm and these are
+        # seen close up as they tumble.
+        steps = max(4, int(round((a1 - a0) / math.tau * 96)))
+
+        # A crack wanders. Offsetting each cut edge by a small angle that varies
+        # with radius gives the two shards either side of it matching jagged
+        # edges, because both are generated from the same wander function.
+        def wander(angle, t):
+            return angle + math.sin(t * 7.0 + angle * 3.0) * 0.018
+
+        ring = []
+        for s in range(steps + 1):
+            t = s / steps
+            angle = a0 + (a1 - a0) * t
+            # Only the two boundary edges wander; the interior follows the circle
+            # so the rim and hole stay true.
+            if s == 0 or s == steps:
+                pass
+            outer_a = angle
+            inner_a = angle
+            if s == 0:
+                outer_a = wander(a0, 1.0)
+                inner_a = wander(a0, 0.0)
+            elif s == steps:
+                outer_a = wander(a1, 1.0)
+                inner_a = wander(a1, 0.0)
+
+            outer = bm.verts.new((DISC_R * math.cos(outer_a), 0.0, DISC_R * math.sin(outer_a)))
+            inner = bm.verts.new((
+                DISC_HOLE_R * math.cos(inner_a), 0.0, DISC_HOLE_R * math.sin(inner_a)
+            ))
+            ring.append((inner, outer))
+
+        for s in range(steps):
+            i0, o0 = ring[s]
+            i1, o1 = ring[s + 1]
+            bm.faces.new((i0, o0, o1, i1))
+
+        bm.normal_update()
+        bm.to_mesh(obj.data)
+        bm.free()
+
+        solidify = obj.modifiers.new(name="Thickness", type="SOLIDIFY")
+        solidify.thickness = DISC_T
+        solidify.offset = 0.0
+        solidify.use_even_offset = True
+
+        finish(obj, bevel_width=0.00012)
+
+        mesh = obj.data
+        if not mesh.uv_layers:
+            mesh.uv_layers.new(name="UVMap")
+        uv = mesh.uv_layers.active.data
+        for poly in mesh.polygons:
+            for li in poly.loop_indices:
+                v = mesh.vertices[mesh.loops[li].vertex_index].co
+                uv[li].uv = (v.x / (2.0 * DISC_R) + 0.5, v.z / (2.0 * DISC_R) + 0.5)
+
+        mesh.materials.append(
+            attach_placeholder_basecolor(
+                principled(
+                    f"ShardFace{index}",
+                    base_color=(0.80, 0.80, 0.82),
+                    metallic=0.25,
+                    roughness=0.28,
+                    coat=0.6,
+                    coat_roughness=0.10,
+                ),
+                f"shard_placeholder_{index}",
+            )
+        )
+
+        objects.append(obj)
+
+    return objects
+
+
 def export(objects, filename):
     bpy.ops.object.select_all(action="DESELECT")
     for obj in objects:
@@ -742,6 +860,12 @@ def main():
 
     clear_scene()
     paths.append(export([build_disc()], "disc.glb"))
+
+    # Exported together, unlike the case parts: these eight are one object that
+    # has come apart, the app wants them all or none, and it addresses them by
+    # the names they carry here.
+    clear_scene()
+    paths.append(export(build_disc_shards(), "disc_shards.glb"))
 
     for path in paths:
         size = os.path.getsize(path)

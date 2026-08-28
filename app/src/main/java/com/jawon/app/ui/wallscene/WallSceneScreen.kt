@@ -223,10 +223,10 @@ private val LOOK_STRAIGHT_AHEAD = Rotation(0f, 0f, 0f)
  *   see once the print underneath is legible. Worth restoring at a low value if the disc
  *   ever reads as too papery.
  */
-private const val DISC_LABEL_METALLIC = 0f
-private const val DISC_LABEL_ROUGHNESS = 0.78f
-private const val DISC_LABEL_CLEARCOAT = 0f
-private const val DISC_LABEL_REFLECTANCE = 0.22f
+internal const val DISC_LABEL_METALLIC = 0f
+internal const val DISC_LABEL_ROUGHNESS = 0.78f
+internal const val DISC_LABEL_CLEARCOAT = 0f
+internal const val DISC_LABEL_REFLECTANCE = 0.22f
 
 
 /** Progress at which the deck fades in â€” as the disc squares up, not before. */
@@ -419,6 +419,9 @@ private const val DUST_MATERIAL_ASSET = "materials/dust.filamat"
 private const val TRAY_MODEL_ASSET = "models/case_tray.glb"
 private const val LID_MODEL_ASSET = "models/case_lid.glb"
 private const val DISC_MODEL_ASSET = "models/disc.glb"
+
+/** The disc pre-cracked into eight wedges, for removing an album. See `DiscardScene`. */
+private const val DISC_SHARDS_MODEL_ASSET = "models/disc_shards.glb"
 
 /**
  * The shelved case — a shut jewel case at 768 triangles, against the held case's 2884.
@@ -628,6 +631,7 @@ fun WallSceneScreen(
         val caseDrag = remember { CaseDrag() }
         val scratch = remember { ScratchDriver() }
         val settle = remember { WallSettle() }
+        val discardNodes = remember { DiscardNodes() }
 
         /** The album a long press has proposed removing, until it is confirmed or dismissed. */
         var pendingDelete by remember { mutableStateOf<CaseLayout?>(null) }
@@ -689,6 +693,7 @@ fun WallSceneScreen(
         val trayModel = rememberModelInstance(modelLoader, TRAY_MODEL_ASSET)
         val lidModel = rememberModelInstance(modelLoader, LID_MODEL_ASSET)
         val discModel = rememberModelInstance(modelLoader, DISC_MODEL_ASSET)
+        val shardsModel = rememberModelInstance(modelLoader, DISC_SHARDS_MODEL_ASSET)
 
         // Sized to the wall so density holds as the library grows, and rebuilt only when
         // those dimensions actually change â€” which is when albums are added, not per frame.
@@ -783,12 +788,16 @@ fun WallSceneScreen(
         // the shader variant on which slots the glTF material declares, and a material
         // exported without one compiles to a shader that never samples. See
         // `attach_placeholder_basecolor` in the build script.
-        LaunchedEffect(discModel, discTexture, actNodes) {
-            val sampler = TextureSampler(
+        // Hoisted, because the discard's shards need the same one — they carry the disc's UV
+        // convention and sample the same texture.
+        val sampler = remember {
+            TextureSampler(
                 TextureSampler.MinFilter.LINEAR_MIPMAP_LINEAR,
                 TextureSampler.MagFilter.LINEAR,
                 TextureSampler.WrapMode.CLAMP_TO_EDGE
             )
+        }
+        LaunchedEffect(discModel, discTexture, actNodes) {
             actNodes.discMesh?.materialInstances?.forEach { primitives ->
                 primitives.forEach { instance ->
                     instance.setParameter("baseColorMap", discTexture, sampler)
@@ -945,15 +954,15 @@ fun WallSceneScreen(
          */
         fun discardCase(case: CaseLayout) {
             val slot = caseSlots.slots.firstOrNull { it.body?.name == case.albumId }
-            if (slot == null) {
-                // Not currently on screen to animate — nothing to play, so just delete.
+            if (slot == null || discardNodes.isRunning) {
+                // Nothing on screen to animate, or one is already running — the discard owns
+                // a single set of nodes, so a second would fight it for them. Delete outright.
                 viewModel.deleteAlbum(case.albumId)
                 return
             }
             slot.discardClock = 0f
-            // Alternated by a bit of the album id rather than random, so two albums removed
-            // back to back don't visibly mirror each other by coincidence half the time.
-            slot.discardDirection = if (case.albumId.hashCode() and 1 == 0) 1f else -1f
+            discardNodes.albumId = case.albumId
+            discardNodes.clock = 0f
 
             // A small margin over the animation's own length, so the visual always finishes
             // before the album vanishes from the database — never the reverse. Scheduled on
@@ -963,14 +972,13 @@ fun WallSceneScreen(
             )
         }
 
-        /** The second tap on a case already breaking apart — finish it now, don't make them wait. */
+        /** A tap while a case is breaking apart — finish it now, don't make them wait. */
         fun skipDiscard(albumId: String) {
-            val slot = caseSlots.slots.firstOrNull { it.discardClock != null && it.body?.name == albumId }
-                ?: return
+            if (discardNodes.albumId != albumId) return
             viewModel.skipDiscard(albumId)
-            // Jumped past DURATION_S so the frame loop's own `done` check retires the slot on
-            // the very next frame, rather than snapping it here and duplicating that cleanup.
-            slot.discardClock = CaseDiscard.DURATION_S + 1f
+            // Jumped past the end so the frame loop's own `done` path retires everything on
+            // the next frame, rather than duplicating that cleanup here.
+            discardNodes.clock = CaseDiscard.DURATION_S + 1f
         }
 
         /**
@@ -1434,52 +1442,21 @@ fun WallSceneScreen(
                         slot.beam?.position =
                             Position(slot.baseX, slot.baseY - CASE_H / 2f, slot.baseZ)
 
-                        val discardClock = slot.discardClock
-                        if (discardClock != null) {
+                        if (slot.discardClock != null) {
                             // Being removed. This branch OWNS the node while it runs — no
                             // hover, no manual-turn carry, no idle tilt — because a case
-                            // breaking apart should not also be gently bobbing.
-                            //
-                            // Not gated on `reduceMotion`: DESIGN.md asks reduced motion to
-                            // drop "ambient rotation, parallax, and dust" while keeping "press
-                            // feedback and the open sequence", and this is much closer to the
-                            // open sequence — a deliberate, meaningful transition the user just
-                            // confirmed — than to ambient bobbing. It does skip the tumble and
-                            // crack wobble under reduced motion, though: a plain shrink still
-                            // confirms the action without the vestibular motion.
-                            val advanced = discardClock + dt
-                            slot.discardClock = advanced
-                            val discard = if (reduceMotion) {
-                                val shrink = (1f - advanced / CaseDiscard.DURATION_S).coerceAtLeast(0f)
-                                CaseDiscard.Transforms(0f, 0f, 0f, shrink, shrink, advanced >= CaseDiscard.DURATION_S)
-                            } else {
-                                CaseDiscard.at(advanced, slot.discardDirection)
-                            }
-
-                            root.position = Position(
-                                slot.baseX + discard.offsetX,
-                                slot.baseY + discard.offsetY,
-                                slot.baseZ
-                            )
-                            root.rotation = Rotation(0f, discard.spinDeg, 0f)
-                            root.scale = Scale(discard.scaleX, discard.scaleY, 1f)
-
-                            if (discard.done) {
-                                // The pool index is free the instant this returns to false —
-                                // exactly the same park a normal unbind does, just fired from
-                                // here instead of from `bind`. See `discardClock`'s KDoc for
-                                // why the database delete already happened well before this.
+                            // breaking apart should not also be gently bobbing. All of the
+                            // motion itself lives in DiscardScene; this only decides that the
+                            // discard, rather than the idle behaviour, is driving this slot.
+                            if (driveDiscard(discardNodes, slot, dt, reduceMotion)) {
+                                // The pool index is free the instant this returns — the same
+                                // park a normal unbind does, fired from here instead of from
+                                // `bind`. `driveDiscard` has already restored the node's scale
+                                // and rotation; see its tail for why that matters.
                                 slot.discardClock = null
                                 slot.occupied = false
                                 root.isVisible = false
                                 slot.beam?.isVisible = false
-                                // Hand the slot back at its normal size. `bind` also restores
-                                // this, but relying on that alone is what broke the wall the
-                                // first time: a slot left at zero scale is invisible to every
-                                // album that lands on it afterwards, and it only gets fixed if
-                                // something later happens to re-bind. Leave it clean here so
-                                // the pool never depends on that.
-                                root.scale = Scale(1f)
                             }
                             return@forEach
                         }
@@ -1717,6 +1694,14 @@ fun WallSceneScreen(
                 size = casePoolSize,
                 caseInstances = caseInstances,
                 beamInstances = beamInstances
+            )
+            // The disc that breaks when an album is removed. Mounted always, hidden until
+            // it is needed — see DiscardScene.
+            DiscardSceneNodes(
+                nodes = discardNodes,
+                shardsInstance = shardsModel,
+                discTexture = discTexture,
+                sampler = sampler
             )
             // Dust hangs in front of the wall, animated entirely on the GPU. Not touchable
             // and casts nothing â€” it is glow, and a shadow-casting mote would be absurd.
