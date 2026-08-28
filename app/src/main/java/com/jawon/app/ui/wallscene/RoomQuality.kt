@@ -26,7 +26,27 @@ import android.os.Build
  * device that has slowed once will usually slow again.
  */
 enum class QualityTier {
-    /** Everything. What the S25 Ultra has been running all along. */
+    /**
+     * Everything on. **Never chosen automatically — see [detect].**
+     *
+     * Measured on a cooled Galaxy S25 Ultra, browsing the wall:
+     *
+     * | tier | fps |
+     * |---|---|
+     * | HIGH | **44** |
+     * | HIGH without SSCT | 67 |
+     * | MEDIUM | **124** |
+     * | LOW | 124 |
+     *
+     * Three times the frame cost of MEDIUM on the fastest phone this has ever run on, for
+     * full-resolution ambient occlusion, cone tracing, bent normals, contact-hardening
+     * shadows and a 2048 map. Screen-space cone tracing alone is a third of it. Nothing in
+     * that list survives being looked at next to those numbers, and MEDIUM is not visibly
+     * poorer at arm's length.
+     *
+     * Kept rather than deleted because the measurements are worth being able to re-run, and
+     * because hardware moves. It is a ceiling, not a default.
+     */
     HIGH,
 
     /** The expensive-but-subtle passes come down. Aimed at the S23-class reports. */
@@ -118,6 +138,12 @@ enum class QualityTier {
          * Biased toward starting one notch low rather than high. Being handed a slightly
          * plainer room is a much smaller insult than three seconds of stutter on first
          * launch, and stepping *down* is the only direction available afterwards.
+         *
+         * **[MEDIUM] is the ceiling. This never returns [HIGH].** It used to, for any recent
+         * 8GB device, and that is what an S25 Ultra is — so the best phone available was
+         * being handed a configuration that runs at 44fps on it. See [HIGH] for the numbers.
+         * There is no device this could be right for: HIGH is not a tier for good hardware,
+         * it is a tier for hardware that does not exist.
          */
         fun detect(context: Context): QualityTier {
             val am = context.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager
@@ -130,10 +156,9 @@ enum class QualityTier {
 
             return when {
                 totalGb < 4.0 -> LOW
-                totalGb < 7.0 -> MEDIUM
-                // 8GB+ and a recent platform. Still only a guess — the S23 reports that
-                // prompted all this are 8GB devices, which is why FrameWatch exists.
-                Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU -> HIGH
+                // Everything else starts here. MEDIUM measured 124fps on an S25 Ultra, the
+                // same as LOW, so there is nothing to be gained by aiming higher and a great
+                // deal to lose — and FrameWatch still drops anything that cannot hold it.
                 else -> MEDIUM
             }
         }
@@ -153,19 +178,22 @@ class FrameWatch {
 
     private var slowFrames = 0
     private var totalFrames = 0
-    private var stepped = false
 
     /**
-     * Feed it the frame delta in seconds. Returns true exactly once, when the evidence is
-     * strong enough to step down a tier.
+     * Feed it the frame delta in seconds. Returns true when the evidence is strong enough to
+     * step down a tier.
      *
      * A "slow" frame is one that missed a 60fps deadline by a clear margin. Not 120: plenty
      * of perfectly good devices run at 60, and treating that as failure would downgrade
      * every one of them.
+     *
+     * **It can fire more than once.** It used to latch after a single step, which quietly
+     * capped how much help a struggling device could get: one notch, and then nothing however
+     * badly it ran. A phone that cannot hold MEDIUM should reach LOW. There is no oscillation
+     * risk in letting it repeat, because the tier only ever moves one way and stops at LOW —
+     * the caller has nowhere further to go.
      */
     fun onFrame(dt: Float): Boolean {
-        if (stepped) return false
-
         totalFrames++
         if (dt > SLOW_FRAME_S) slowFrames++
 
@@ -177,11 +205,7 @@ class FrameWatch {
         totalFrames = 0
         slowFrames = 0
 
-        if (ratio > SLOW_FRAME_RATIO) {
-            stepped = true
-            return true
-        }
-        return false
+        return ratio > SLOW_FRAME_RATIO
     }
 
     private companion object {

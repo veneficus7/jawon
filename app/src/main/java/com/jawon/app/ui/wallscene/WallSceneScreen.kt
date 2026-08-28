@@ -1,4 +1,4 @@
-﻿package com.jawon.app.ui.wallscene
+package com.jawon.app.ui.wallscene
 
 import android.os.SystemClock
 import android.provider.Settings
@@ -116,7 +116,7 @@ import kotlin.math.floor
 import kotlin.math.pow
 import androidx.compose.ui.graphics.Color as ComposeColor
 
-/** Fling coast. The prototype's friction of 28 is a ~36ms time constant â€” barely a coast; */
+/** Fling coast. The prototype's friction of 28 is a ~36ms time constant — barely a coast; */
 /** this is looser so a flick actually travels. Tuning knob. */
 private const val FLING_FRICTION = 2f
 
@@ -124,7 +124,7 @@ private const val FLING_FRICTION = 2f
  * How the wall comes to rest on an album.
  *
  * Low stiffness and no bounce: this is a heavy rack sliding to a stop, not a UI element
- * springing into place. `DampingRatioNoBouncy` matters more than the stiffness — overshooting
+ * springing into place. `DampingRatioNoBouncy` matters more than the stiffness � overshooting
  * past a record and coming back would undo the point of snapping to it at all.
  */
 private val SETTLE_SPRING = spring<Float>(
@@ -138,7 +138,7 @@ private val SETTLE_SPRING = spring<Float>(
  * The release settle and the fling both want to move the wall, and they are driven from the
  * same finger lifting. Whether SceneView hands us the raw ACTION_UP before or after its
  * gesture detector has decided there was a fling is an ordering detail not worth depending
- * on — so the release waits one frame and then checks whether a fling claimed the gesture.
+ * on � so the release waits one frame and then checks whether a fling claimed the gesture.
  */
 private const val FLING_CLAIM_MS = 120L
 
@@ -146,12 +146,12 @@ private const val FLING_CLAIM_MS = 120L
  * How close and how far the browse camera may stand, in metres.
  *
  * The limits are the feature. Unbounded zoom is what makes a 3D view read as a zoomed web
- * page — go far enough in and you are looking at a texture, far enough out and the room
+ * page � go far enough in and you are looking at a texture, far enough out and the room
  * becomes a diagram. These two are picked from what the room is *for*:
  *
  * - **Near**, one album fills the frame the way it does when you take a record off a shelf to
  *   look at it. Closer than this and the case's cover is bigger than its own texture.
- * - **Far**, about three bays across and three rows down — enough to find something, still
+ * - **Far**, about three bays across and three rows down � enough to find something, still
  *   close enough that a 10mm spine is legible. Further out and the wall stops being a room
  *   you are standing in.
  *
@@ -175,7 +175,7 @@ private const val ZOOM_GAIN = 0.65f
  *
  * A compromise. Too low and the zoom lags the fingers, which feels broken; too high and the
  * filtering stops working and the finger jitter is back in the lens. At 6 the camera is ~95%
- * of the way there in half a second — fast enough to read as direct, slow enough to smooth a
+ * of the way there in half a second � fast enough to read as direct, slow enough to smooth a
  * touch sample's worth of noise.
  */
 private const val ZOOM_EASE_RATE = 6f
@@ -185,13 +185,13 @@ private const val ZOOM_EASE_RATE = 6f
  *
  * **Written every frame because something else keeps changing it.** SceneView's camera node
  * re-aims itself at the world origin as it moves, so panning away from the wall's centre
- * tilted the lens back toward it — measured at −8.28° after a modest pan, which is exactly
+ * tilted the lens back toward it � measured at -8.28� after a modest pan, which is exactly
  * `atan(0.113 / 0.78)` for a camera 113mm below the origin at 780mm back.
  *
  * That tilt is why an album settled high in the frame even when the magnet had put the camera
- * *exactly* on the album's own Y: at 8.28° the whole view shifts up by 627px of a 1560px half
+ * *exactly* on the album's own Y: at 8.28� the whole view shifts up by 627px of a 1560px half
  * frame, which dwarfs the 107px the album's real offset accounted for. Everything moved
- * together — cases, boards, underlight pools — which is what pointed at the camera rather
+ * together � cases, boards, underlight pools � which is what pointed at the camera rather
  * than at the wall.
  *
  * A wall is a flat plane and this room is looked at square on; a lens that yaws and pitches
@@ -203,7 +203,7 @@ private val LOOK_STRAIGHT_AHEAD = Rotation(0f, 0f, 0f)
  * How the disc's printed face behaves under the room's light.
  *
  * **Tuned to stop the lamp bleaching the artwork, which took three attempts.** The first two
- * — baking more contrast into the texture, then dropping metallic — were aimed at the right
+ * � baking more contrast into the texture, then dropping metallic � were aimed at the right
  * idea and were not enough on their own. Dumping the material's parameter list settled it:
  * every name being set does exist, so nothing was silently failing; there was simply more
  * than one route for light to come back off this surface, and killing metallic only closed
@@ -212,7 +212,7 @@ private val LOOK_STRAIGHT_AHEAD = Rotation(0f, 0f, 0f)
  * The three that matter, in order of how much they were costing:
  *
  * - **[DISC_LABEL_REFLECTANCE]** is the one that was missed. On a non-metal, Filament takes
- *   specular from `reflectance`, not from `metallicFactor` — so zeroing metallic left the
+ *   specular from `reflectance`, not from `metallicFactor` � so zeroing metallic left the
  *   surface still throwing back the default 4% of a lamp burned into the IBL at intensity
  *   26. Halving it halves the highlight the print is competing with.
  * - **[DISC_LABEL_ROUGHNESS]** at 0.78 spreads what is left over the whole face instead of
@@ -229,7 +229,7 @@ internal const val DISC_LABEL_CLEARCOAT = 0f
 internal const val DISC_LABEL_REFLECTANCE = 0.22f
 
 
-/** Progress at which the deck fades in â€” as the disc squares up, not before. */
+/** Progress at which the deck fades in — as the disc squares up, not before. */
 private const val DECK_REVEAL_AT = 0.75f
 
 /** Label plate raster size. World size is these divided by [PLATE_PX_PER_UNIT]. */
@@ -243,14 +243,14 @@ private const val PLATE_PX_PER_UNIT = PLATE_PX_W / PLATE_W
  */
 /**
  * Bookkeeping for the wall's magnet, so a release and a fling do not both try to move it.
- * Not Compose state — nothing about it is drawn.
+ * Not Compose state � nothing about it is drawn.
  */
 /**
  * The browse camera's distance, and where it is heading.
  *
  * **Two values rather than one, because a pinch is not smooth input.** `ScaleGestureDetector`
  * reports a fresh `scaleFactor` per touch sample, computed from finger positions that jitter
- * by a pixel or two — writing that straight to the camera put the jitter directly into the
+ * by a pixel or two � writing that straight to the camera put the jitter directly into the
  * lens, which is what "the zoom doesn't look smooth" was. The gesture now moves [target] and
  * the frame loop eases [current] toward it, so finger noise is filtered out and the camera
  * only ever moves continuously.
@@ -259,7 +259,7 @@ private const val PLATE_PX_PER_UNIT = PLATE_PX_W / PLATE_W
  * back to the canonical distance and the same easing carries it there, with no second
  * mechanism and no animation to keep in step with the beats.
  *
- * Not Compose state — the frame driver owns it and reads it every frame (ENGINEERING.md rule 3).
+ * Not Compose state � the frame driver owns it and reads it every frame (ENGINEERING.md rule 3).
  */
 private class WallZoom(start: Float) {
     var current = start
@@ -270,7 +270,7 @@ private class WallZoom(start: Float) {
      *
      * The `1 - exp(-rate * dt)` form matters: a plain `current += (target - current) * k`
      * converges at a speed that depends on how often it is called, so the same pinch would
-     * feel different at 60fps and 120fps — and this app runs at both.
+     * feel different at 60fps and 120fps � and this app runs at both.
      */
     fun advance(dt: Float) {
         if (dt <= 0f) return
@@ -280,13 +280,13 @@ private class WallZoom(start: Float) {
 
 private class WallSettle {
     /**
-     * When the gesture detector last called a fling, and how fast — recorded by `onFling`,
+     * When the gesture detector last called a fling, and how fast � recorded by `onFling`,
      * consumed by the single settle on release.
      *
      * **`onFling` deliberately does not animate anything itself.** It used to, and so did the
      * raw ACTION_UP handler, which gave the wall two settles racing for the same two
-     * `Animatable`s. Their order is not guaranteed — SceneView feeds the gesture detector and
-     * the touch hook from the same event stream — so whichever started second cancelled the
+     * `Animatable`s. Their order is not guaranteed � SceneView feeds the gesture detector and
+     * the touch hook from the same event stream � so whichever started second cancelled the
      * first, sometimes after it had already retargeted to a different album. Horizontal
      * survived it more often than vertical purely by luck, which is exactly what "snapping
      * works horizontally only" looked like from the outside.
@@ -299,7 +299,7 @@ private class WallSettle {
      * Whether the gesture currently in progress has actually panned the wall.
      *
      * **Without this the magnet fires on every tap.** The settle hangs off the raw ACTION_UP,
-     * which arrives for taps just as much as for drags — so tapping a case to open it also
+     * which arrives for taps just as much as for drags � so tapping a case to open it also
      * slid the whole wall sideways underneath it, and so did a tap on empty space. Verified on
      * device: one tap on the background moved a half-off-screen case to dead centre.
      *
@@ -318,7 +318,7 @@ private class SequenceDriver {
 
     /**
      * Whether depth of field is currently switched on. Lives here rather than in Compose
-     * state precisely because the frame loop owns it â€” a `mutableStateOf` would recompose
+     * state precisely because the frame loop owns it — a `mutableStateOf` would recompose
      * the screen every time a case opened or closed.
      */
     var dofEnabled = false
@@ -329,8 +329,8 @@ private class SequenceDriver {
      * Held here and written to the camera every frame rather than eased from
      * `cameraNode.focusDistance`. Reading it back made the easing depend on the getter
      * returning what the setter stored; when it did not, the value never converged, the
-     * focal plane sat a few centimetres from the lens, and the disc â€” the one thing that
-     * must be sharp â€” was blurred along with everything else.
+     * focal plane sat a few centimetres from the lens, and the disc — the one thing that
+     * must be sharp — was blurred along with everything else.
      */
     var focusDistance = RoomAtmosphere.FOCUS_BROWSING
 }
@@ -353,8 +353,8 @@ private class FrameContext {
  * records walked straight out of the lit pool and into black. The lamp now rides with the
  * browse position, so it is always the light over *what you are looking at*.
  *
- * This keeps DESIGN.md's "one warm lamp over the racks" reading true — there is still one
- * lamp and one pool of light — it just no longer requires the shop to be one metre wide.
+ * This keeps DESIGN.md's "one warm lamp over the racks" reading true � there is still one
+ * lamp and one pool of light � it just no longer requires the shop to be one metre wide.
  */
 /**
  * A shelved album being turned by hand.
@@ -363,8 +363,8 @@ private class FrameContext {
  * a rotation every frame and must not recompose anything (ENGINEERING.md rule 3).
  *
  * Its existence is also what stops the wall panning mid-turn. Horizontal drag means two
- * different things depending on what is under the finger — pan the shelf, or spin the record
- * — and `onScroll` fires regardless of what was picked. So the grab is resolved once in
+ * different things depending on what is under the finger � pan the shelf, or spin the record
+ * � and `onScroll` fires regardless of what was picked. So the grab is resolved once in
  * `onMoveBegin`, and `onScroll` stands down for as long as [slot] is non-null.
  */
 private class CaseDrag {
@@ -387,7 +387,7 @@ private class ScratchDriver {
     var active = false
 
     /**
-     * Whether letting go of the disc should start the music again — i.e. whether it was
+     * Whether letting go of the disc should start the music again � i.e. whether it was
      * playing when the finger landed. Holding the platter pauses; releasing restores what
      * was there rather than assuming play.
      */
@@ -399,7 +399,7 @@ private class ScratchDriver {
     val haptics = Scratch.HapticAccumulator()
 }
 
-/** Mip levels for a [DiscArt.DISC_PX]-square texture: 512, 256, â€¦ 1. */
+/** Mip levels for a [DiscArt.DISC_PX]-square texture: 512, 256, … 1. */
 private const val DISC_MIP_LEVELS = 10
 
 /** Built from `app/src/main/materials/dust.mat`; see `docs/materials.md`. */
@@ -424,14 +424,14 @@ private const val DISC_MODEL_ASSET = "models/disc.glb"
 private const val DISC_SHARDS_MODEL_ASSET = "models/disc_shards.glb"
 
 /**
- * The shelved case — a shut jewel case at 768 triangles, against the held case's 2884.
+ * The shelved case � a shut jewel case at 768 triangles, against the held case's 2884.
  * Everything the tray carries inside it is enclosed when the lid is down, and the wall
  * draws hundreds of these at once.
  */
 private const val CLOSED_CASE_MODEL_ASSET = "models/case_closed.glb"
 
 /**
- * The underlight cone each album levitates in. Geometry rather than a real spot light —
+ * The underlight cone each album levitates in. Geometry rather than a real spot light �
  * Filament will not give every bay its own light, and this is one draw. See build_beam().
  */
 private const val BEAM_MODEL_ASSET = "models/beam.glb"
@@ -439,13 +439,13 @@ private const val BEAM_MODEL_ASSET = "models/beam.glb"
 /**
  * How many case instances the wall allocates, once, at startup.
  *
- * The pool is bounded by the viewport rather than by the library — `wantedPoolSize` below
+ * The pool is bounded by the viewport rather than by the library � `wantedPoolSize` below
  * works out to about 132 slots in portrait on a 1080x2340 screen, and about 468 in
  * landscape, where the wall is nearly four times wider in slot-pitch terms. 512 clears
  * both with room to spare.
  *
  * It has to be a fixed number decided before the first frame. `createInstancedModel` takes
- * its count up front, and the alternative — growing the instance list as the pool grows —
+ * its count up front, and the alternative � growing the instance list as the pool grows �
  * would mean re-creating the asset, which means re-keying the slot composables, which
  * destroys their `ImageNode`s and aborts the process. See [CaseSlots].
  *
@@ -459,7 +459,7 @@ private const val BEAM_MODEL_ASSET = "models/beam.glb"
 private const val MAX_CASE_SLOTS = 512
 
 /**
- * Master dust brightness. Tuning knob â€” dust should suggest air, not snow. At 0.55 the
+ * Master dust brightness. Tuning knob — dust should suggest air, not snow. At 0.55 the
  * motes read as distinct white specks; this is deliberately below the point where you
  * notice them individually.
  */
@@ -497,7 +497,7 @@ fun WallSceneScreen(
         val aspect = constraints.maxWidth.toFloat() / viewportHeightPx
 
         /**
-         * How far back the camera stands while browsing — the zoom.
+         * How far back the camera stands while browsing � the zoom.
          *
          * A camera dolly, not a scale. That is the difference between the request ("make it
          * more satisfying, not like a website page zoomed in/out") and the thing it was
@@ -506,8 +506,8 @@ fun WallSceneScreen(
          * ones at the edges and the shelf boards fan out. The room is 3D; the zoom should use
          * that rather than paper over it.
          *
-         * An `Animatable` because the open sequence eases it back to the canonical distance —
-         * see [OPEN_DURATION_MS] at the call site — and because it is a stable object the
+         * An `Animatable` because the open sequence eases it back to the canonical distance �
+         * see [OPEN_DURATION_MS] at the call site � and because it is a stable object the
          * gesture callbacks can read live, rather than a value they would capture once.
          */
         val zoom = remember { WallZoom(CAMERA_Z) }
@@ -538,7 +538,7 @@ fun WallSceneScreen(
             // Bounds are widened to include wherever the camera already is.
             //
             // `updateBounds` clamps the current value on the spot, so tightening them under
-            // the user yanks the wall sideways — which is what happened after removing an
+            // the user yanks the wall sideways � which is what happened after removing an
             // album near either end: the shelf got shorter and the view jumped. Nothing
             // should move the wall except the user's own hand and the magnet.
             //
@@ -555,7 +555,7 @@ fun WallSceneScreen(
 
             // Open centred on a record, not mid-gap.
             //
-            // Pan starts at 0, which is the wall's *origin* and not any album's position —
+            // Pan starts at 0, which is the wall's *origin* and not any album's position �
             // `colX` centres the widest shelf about zero, so with an even album count, or
             // with shelves of differing lengths, nothing sits at 0. On device the app was
             // opening with the first case half off the left edge.
@@ -581,14 +581,14 @@ fun WallSceneScreen(
         // measures rather than only guessing.
         //
         // Two values, deliberately. `initialTier` is fixed for the session and drives the
-        // things that are baked once — the IBL cubemap and the shadow map. `tier` is state
+        // things that are baked once � the IBL cubemap and the shadow map. `tier` is state
         // and can step down mid-session, driving everything on the Filament View, which is
         // where the per-frame cost actually is.
         val initialTier = remember(context) { QualityTier.detect(context) }
         var tier by remember { mutableStateOf(initialTier) }
         val frameWatch = remember { FrameWatch() }
 
-        // The room's image-based lighting, generated rather than loaded â€” see RoomLighting.
+        // The room's image-based lighting, generated rather than loaded — see RoomLighting.
         // Filament's own prefilter turns the procedural cubemap into a roughness mip chain.
         val environment = remember(engine, environmentLoader) {
             RoomLighting.createEnvironment(engine, initialTier.cubemapPx) { cubemap ->
@@ -602,7 +602,7 @@ fun WallSceneScreen(
         // Applied during composition, NOT from a LaunchedEffect.
         //
         // A LaunchedEffect runs after composition commits, so the first frames rendered with
-        // Filament's stock View options — no fog, no vignette, no ambient occlusion, bloom
+        // Filament's stock View options � no fog, no vignette, no ambient occlusion, bloom
         // unthresholded. Those four are most of what makes this room dark and grounded, so
         // launching the app flashed a flat, brightly-lit brown wall for a frame or two
         // before the atmosphere arrived and everything dropped into place.
@@ -614,7 +614,7 @@ fun WallSceneScreen(
         // mutating it, so running it again is safe.
         remember(filamentView, tier) { RoomAtmosphere.apply(filamentView, tier) }
 
-        // DESIGN.md Â§4: "Respect reduced-motion settings: drop ambient rotation, parallax,
+        // DESIGN.md §4: "Respect reduced-motion settings: drop ambient rotation, parallax,
         // and dust; keep press feedback and the open sequence." Android reports this as an
         // animator duration scale of zero.
         val reduceMotion = remember(context) {
@@ -629,7 +629,7 @@ fun WallSceneScreen(
             position = Position(0f, 0f, CAMERA_Z)
             // Seeded before the first frame, not just eased toward in onFrame. Filament's
             // depth-of-field pass asserts a positive focus distance, and a camera starts at
-            // zero â€” enabling DOF without this aborts the process on the first frame.
+            // zero — enabling DOF without this aborts the process on the first frame.
             focusDistance = RoomAtmosphere.FOCUS_BROWSING
             camera.setFocusDistance(RoomAtmosphere.FOCUS_BROWSING)
         }
@@ -652,7 +652,7 @@ fun WallSceneScreen(
 
         /** The album a long press has proposed removing, until it is confirmed or dismissed. */
         var pendingDelete by remember { mutableStateOf<CaseLayout?>(null) }
-        // Goes to the vibrator directly rather than through the view's haptic feedback —
+        // Goes to the vibrator directly rather than through the view's haptic feedback �
         // see RoomHaptics for why the disc had no vibration at all before this.
         val haptics = remember(context) { RoomHaptics(context) }
 
@@ -670,7 +670,7 @@ fun WallSceneScreen(
         // The case and disc, built by tools/models/build_models.py and loaded from assets.
         //
         // Three files rather than one, because ActiveCaseNodes already has the hierarchy
-        // they belong in — tray under the case root, lid under the hinge — and one
+        // they belong in � tray under the case root, lid under the hinge � and one
         // instance per file drops straight into it with no reparenting.
         //
         // These arrive asynchronously: each is null for the first frames and then becomes
@@ -678,7 +678,7 @@ fun WallSceneScreen(
         val modelLoader = rememberModelLoader(engine)
 
         // The wall's shelved cases: ONE asset, MAX_CASE_SLOTS instances sharing its
-        // geometry, material and textures — each instance is little more than a transform.
+        // geometry, material and textures � each instance is little more than a transform.
         //
         // Loaded synchronously, unlike the three above, and that is deliberate. `bind()`
         // writes through the slot handles from a LaunchedEffect keyed on the pool size; if
@@ -688,7 +688,7 @@ fun WallSceneScreen(
         //
         // Allocated once at MAX_CASE_SLOTS and never re-created. The pool grows at runtime,
         // and re-keying anything on its size would drop every slot composable out of
-        // composition and destroy its ImageNodes — the process abort this file exists to
+        // composition and destroy its ImageNodes � the process abort this file exists to
         // prevent. So the count is fixed up front and the pool is clamped to it.
         val caseInstances = remember(modelLoader) {
             modelLoader.createInstancedModel(CLOSED_CASE_MODEL_ASSET, MAX_CASE_SLOTS)
@@ -703,7 +703,7 @@ fun WallSceneScreen(
         val shardsModel = rememberModelInstance(modelLoader, DISC_SHARDS_MODEL_ASSET)
 
         // Sized to the wall so density holds as the library grows, and rebuilt only when
-        // those dimensions actually change â€” which is when albums are added, not per frame.
+        // those dimensions actually change — which is when albums are added, not per frame.
         val dustGeometry = remember(engine, layout.wallWidth, layout.wallHeight) {
             // Density from the *initial* tier, not the current one: rebuilding this geometry
             // destroys and recreates a Filament buffer, which is the last thing a device
@@ -742,14 +742,14 @@ fun WallSceneScreen(
         // existing texture; rebuilding the node instead would abort the process.
         // Which album the held case is currently showing.
         //
-        // Not just the open one any more: removing an album also drives this case — see
-        // `DiscardScene` — and it has to be wearing that album's cover and spine while it is
+        // Not just the open one any more: removing an album also drives this case � see
+        // `DiscardScene` � and it has to be wearing that album's cover and spine while it is
         // taken off the shelf, not the last-opened album's.
         val heldAlbumId = selectedAlbumId ?: discardingAlbumId
         val activeArtwork = heldAlbumId?.let { artCache[it] }
         // Keyed on the models as well as the artwork, because the nodes these write to do
         // not exist until the models land. Without that key the effect fires once against
-        // null handles, does nothing, and never runs again — leaving a case that opens
+        // null handles, does nothing, and never runs again � leaving a case that opens
         // blank whenever the art resolved faster than the geometry.
         LaunchedEffect(activeArtwork, actNodes, trayModel, lidModel) {
             activeArtwork?.spine?.let { actNodes.spineArt?.bitmap = it }
@@ -764,7 +764,7 @@ fun WallSceneScreen(
             actNodes.disc?.isVisible = selectedAlbumId != null
             // Hidden is not the same as unpickable. The disc is mounted for the life of
             // the scene, so when it is hidden it stays parked in front of whichever case
-            // was last open â€” and SceneView still hit-tests it. Left touchable it both
+            // was last open — and SceneView still hit-tests it. Left touchable it both
             // swallowed taps meant for that case and, worse, answered them with its own
             // node name, which the browse path took for an album id.
             actNodes.discMesh?.isTouchable = visible
@@ -772,7 +772,7 @@ fun WallSceneScreen(
 
         // The disc's printed face.
         //
-        // ONE texture, allocated once for the life of the scene, re-uploaded per album â€” the
+        // ONE texture, allocated once for the life of the scene, re-uploaded per album — the
         // rule M7 paid for. Creating a texture per album would mean destroying the old one,
         // and a texture still bound to a MaterialInstance aborts the process on the next
         // commit. Every face is baked to exactly DISC_PX square precisely so this one
@@ -794,7 +794,7 @@ fun WallSceneScreen(
         // material with a stock textured one.
         //
         // The distinction matters. The glb's material is generated by gltfio and carries
-        // KHR_materials_clearcoat — the lacquer over the print, which is most of what makes
+        // KHR_materials_clearcoat � the lacquer over the print, which is most of what makes
         // the face read as a disc rather than as a sticker. SceneView's stock material has
         // no clearcoat parameter at all (see docs/materials.md), so calling
         // `setMaterialInstance` here would silently throw the coat away.
@@ -804,7 +804,7 @@ fun WallSceneScreen(
         // the shader variant on which slots the glTF material declares, and a material
         // exported without one compiles to a shader that never samples. See
         // `attach_placeholder_basecolor` in the build script.
-        // Hoisted, because the discard's shards need the same one — they carry the disc's UV
+        // Hoisted, because the discard's shards need the same one � they carry the disc's UV
         // convention and sample the same texture.
         val sampler = remember {
             TextureSampler(
@@ -820,8 +820,8 @@ fun WallSceneScreen(
 
                     // Make the label read as PRINT, not as polished metal.
                     //
-                    // The disc ships as a glossy, metallic-ish material — reasonable for a CD
-                    // — and that is why the artwork looked washed out and whitish however
+                    // The disc ships as a glossy, metallic-ish material � reasonable for a CD
+                    // � and that is why the artwork looked washed out and whitish however
                     // much contrast was baked into it. A metal has no diffuse response: its
                     // base colour only tints what it reflects, and what this disc reflects is
                     // an IBL with the shop's lamp burned in at RoomLighting.LAMP_HOT_LEVEL,
@@ -831,7 +831,7 @@ fun WallSceneScreen(
                     // not metal. Dropping metallic gives the artwork its diffuse response
                     // back; the roughness lift spreads the lamp's highlight instead of
                     // letting it blow out one patch, and the clearcoat stays on but much
-                    // lower — enough to read as lacquer, not enough to whiten the print.
+                    // lower � enough to read as lacquer, not enough to whiten the print.
                     //
                     // Guarded by name because these come from the glTF asset rather than a
                     // .mat in this repo, and Filament logs and ignores an unknown parameter
@@ -840,7 +840,7 @@ fun WallSceneScreen(
                     // guessed: it is gltfio's `base_lit_opaque`, and all four of these exist
                     // on it. Worth knowing, because Filament ignores an unknown parameter
                     // silently, so a typo here would look exactly like a setting that had no
-                    // effect — which is how two rounds of this went by.
+                    // effect � which is how two rounds of this went by.
                     val material = instance.material
                     if (material.hasParameter("metallicFactor")) {
                         instance.setParameter("metallicFactor", DISC_LABEL_METALLIC)
@@ -864,7 +864,7 @@ fun WallSceneScreen(
         // shown. Baked off the main thread (ENGINEERING.md rule 5), then uploaded into the
         // texture that already exists rather than building a new one.
         //
-        // Only the open album is baked â€” unlike spine and cover art there is no reason to
+        // Only the open album is baked — unlike spine and cover art there is no reason to
         // pre-load the neighbours, because exactly one disc is ever on screen.
         // Keyed on the *held* album, not the open one: a removal puts this album's fragments
         // on screen, and they share this texture. Without it the pieces would wear whichever
@@ -879,11 +879,11 @@ fun WallSceneScreen(
                     face = CaseArt.loadCover(case.discFacePath, DiscArt.DISC_PX),
                     // Loaded fresh at the disc's own resolution, NOT taken from the art cache.
                     //
-                    // The cache holds the *case* cover, baked at CaseArt.COVER_PX — 256px,
+                    // The cache holds the *case* cover, baked at CaseArt.COVER_PX � 256px,
                     // which is right for a case 10mm wide on a shelf and badly wrong for a
                     // disc filling the screen. Reusing it meant that every album without its
-                    // own uploaded disc face — now the common case, since covers arrive
-                    // automatically from the file tags — had its label upscaled 4× from a
+                    // own uploaded disc face � now the common case, since covers arrive
+                    // automatically from the file tags � had its label upscaled 4� from a
                     // thumbnail. That is what "the quality on the CD art is bad" was.
                     fallback = CaseArt.loadCover(case.coverPath, DiscArt.DISC_PX)
                 )
@@ -913,8 +913,8 @@ fun WallSceneScreen(
             artCache.trim(visibleCases.mapTo(mutableSetOf()) { it.albumId })
         }
 
-        // The case pool. Sized to the same window `visibleCases` uses — about 21 slots
-        // across by 5 rows at this camera — and capped to the library so a three-album
+        // The case pool. Sized to the same window `visibleCases` uses � about 21 slots
+        // across by 5 rows at this camera � and capped to the library so a three-album
         // shelf does not mount a hundred hidden slots and their textures.
         //
         // It only ever GROWS. Adding slots is free; removing them would destroy their
@@ -924,13 +924,13 @@ fun WallSceneScreen(
         val wantedPoolSize = remember(layout, halfW, halfH) {
             val across = ((halfW + SLOT_PITCH * 3f) * 2f / SLOT_PITCH).toInt() + 2
             val down = ((halfH + ROW_PITCH) * 2f / ROW_PITCH).toInt() + 2
-            // Clamped to the instances actually allocated — indexing past them would throw.
+            // Clamped to the instances actually allocated � indexing past them would throw.
             (across * down).coerceAtMost(layout.cases.size).coerceAtMost(MAX_CASE_SLOTS)
         }
         if (wantedPoolSize > casePoolSize) casePoolSize = wantedPoolSize
 
         // Point the slots at whatever is on screen. Recomposes when the visible set changes
-        // or when art finishes loading — CaseArtCache is state-backed, so reading it here
+        // or when art finishes loading � CaseArtCache is state-backed, so reading it here
         // is what makes late-arriving spines reach their slot.
         val slotBindings = visibleCases.map { it to artCache[it.albumId] }
         LaunchedEffect(slotBindings, selectedAlbumId, nowPlayingAlbumId, casePoolSize) {
@@ -952,8 +952,8 @@ fun WallSceneScreen(
             sequence.progress = 0f
             sequence.direction = 1
             sequence.spinAngle = 0f
-            // The open sequence's framing is tuned against the canonical CAMERA_Z — see
-            // OpenSequence.FRONT_GAP — so a case opened from a zoomed-out wall has to arrive
+            // The open sequence's framing is tuned against the canonical CAMERA_Z � see
+            // OpenSequence.FRONT_GAP � so a case opened from a zoomed-out wall has to arrive
             // back there. Just retargeting the zoom does it: the same per-frame easing that
             // smooths a pinch carries the camera home, well inside the sequence, with no
             // separate animation to keep in step with the beats.
@@ -969,7 +969,7 @@ fun WallSceneScreen(
          * Starts taking [case] off the shelf: hands its pool slot to [CaseDiscard] and defers
          * the actual database delete until that finishes.
          *
-         * **Why deferred rather than immediate.** See `CaseSlot.discardClock`'s KDoc — deleting
+         * **Why deferred rather than immediate.** See `CaseSlot.discardClock`'s KDoc � deleting
          * up front would drop the album from `layout` on the next recomposition and let `bind`
          * re-home this exact pool index to a different, still-living record while the case was
          * still mid-flight.
@@ -977,13 +977,13 @@ fun WallSceneScreen(
         fun discardCase(case: CaseLayout) {
             val slot = caseSlots.slots.firstOrNull { it.body?.name == case.albumId }
             if (slot == null || discardNodes.isRunning) {
-                // Nothing on screen to animate, or one is already running — the discard owns
+                // Nothing on screen to animate, or one is already running � the discard owns
                 // a single set of nodes, so a second would fight it for them. Delete outright.
                 viewModel.deleteAlbum(case.albumId)
                 return
             }
             // The shelved case hides for the whole removal and the *held* case takes over
-            // from its slot — the same handover the open sequence does, so an album is never
+            // from its slot � the same handover the open sequence does, so an album is never
             // on screen twice.
             slot.discardClock = 0f
             slot.root?.isVisible = false
@@ -995,14 +995,14 @@ fun WallSceneScreen(
             discardingAlbumId = case.albumId
 
             // A small margin over the animation's own length, so the visual always finishes
-            // before the album vanishes from the database — never the reverse. Scheduled on
-            // the view model, not here — see `scheduleDiscard`'s KDoc for why.
+            // before the album vanishes from the database � never the reverse. Scheduled on
+            // the view model, not here � see `scheduleDiscard`'s KDoc for why.
             viewModel.scheduleDiscard(
                 case.albumId, (CaseDiscard.DURATION_S * 1000L).toLong() + 80L
             )
         }
 
-        /** A tap while a case is breaking apart — finish it now, don't make them wait. */
+        /** A tap while a case is breaking apart � finish it now, don't make them wait. */
         fun skipDiscard(albumId: String) {
             if (discardNodes.albumId != albumId) return
             viewModel.skipDiscard(albumId)
@@ -1045,7 +1045,7 @@ fun WallSceneScreen(
                 // Each new touch starts as "not a browse" until onScroll says otherwise.
                 settle.panned = false
 
-                // Grabbing the platter happens HERE, on the touch landing — not in
+                // Grabbing the platter happens HERE, on the touch landing � not in
                 // onMoveBegin, where it used to live.
                 //
                 // onMoveBegin fires only once a drag has travelled past touch slop, so
@@ -1069,7 +1069,7 @@ fun WallSceneScreen(
                         scratch.lastSeekAt = 0L
 
                         // A hand on the platter stops the platter. Hold the disc and the
-                        // music holds with it, for as long as the finger is down — which is
+                        // music holds with it, for as long as the finger is down � which is
                         // both what a turntable does and what makes scrubbing legible,
                         // because you are no longer hearing playback fight the scrub.
                         //
@@ -1081,7 +1081,7 @@ fun WallSceneScreen(
                 }
             },
             onScroll = { _, _, _, distance ->
-                // No panning while a case is out â€” the prototype does the same â€” and none
+                // No panning while a case is out — the prototype does the same — and none
                 // while an album is being turned by hand, or the shelf would slide away
                 // under the record you are trying to look at.
                 if (selectedAlbumId == null && caseDrag.slot == null) {
@@ -1090,7 +1090,7 @@ fun WallSceneScreen(
                     settle.panned = true
                     // ONE coroutine, not two.
                     //
-                    // This fires on every touch sample — 120 a second on this hardware — and
+                    // This fires on every touch sample � 120 a second on this hardware � and
                     // launching a coroutine per axis meant 240 of them a second just to drag
                     // the wall, all of them resuming on the frame the finger is moving. Both
                     // snaps happen in the same one now.
@@ -1108,16 +1108,16 @@ fun WallSceneScreen(
             // channel.
             onScale = { detector, _, _ ->
                 if (selectedAlbumId == null) {
-                    // Damped, and about 1.0 rather than multiplied raw — see ZOOM_GAIN.
+                    // Damped, and about 1.0 rather than multiplied raw � see ZOOM_GAIN.
                     val factor = 1f + (detector.scaleFactor - 1f) * ZOOM_GAIN
                     // Moves the TARGET. The camera itself is eased toward it in the frame
                     // loop, which is what filters out the per-sample jitter that made the
-                    // zoom judder — see WallZoom.
+                    // zoom judder � see WallZoom.
                     zoom.target = (zoom.target / factor).coerceIn(ZOOM_NEAR, ZOOM_FAR)
                 }
             },
             // Records the throw; does NOT animate. The single settle on release reads this
-            // and projects from it — see WallSettle for why there is only one settle site.
+            // and projects from it � see WallSettle for why there is only one settle site.
             onFling = { _, _, _, velocity ->
                 if (selectedAlbumId == null) {
                     val scale = metresPerPx()
@@ -1139,7 +1139,7 @@ fun WallSceneScreen(
                         .mapNotNull { it.name }
                         .firstOrNull { name -> layout.cases.any { it.albumId == name } }
                         ?.let { albumId ->
-                            // Already on its way off the shelf — a second confirmation for a
+                            // Already on its way off the shelf � a second confirmation for a
                             // deletion already in flight would be nonsense, and the frontmost
                             // tap gesture for it is already the skip above.
                             val discarding = caseSlots.slots.any {
@@ -1153,11 +1153,11 @@ fun WallSceneScreen(
                 }
             },
             // onSingleTapUp, not onSingleTapConfirmed: the latter waits out the double-tap
-            // timeout, so a second tap arriving soon after the first â€” exactly what
-            // interrupting a 1.5s sequence looks like â€” was being swallowed as a double tap.
+            // timeout, so a second tap arriving soon after the first — exactly what
+            // interrupting a 1.5s sequence looks like — was being swallowed as a double tap.
             onSingleTapUp = { _, node ->
                 if (selectedAlbumId != null) {
-                    // A tap that landed on the disc belongs to the platter â€” the prototype
+                    // A tap that landed on the disc belongs to the platter — the prototype
                     // consumes it the same way. Without this, grabbing the disc and letting
                     // go without turning it would close the case.
                     if (!node.isDisc()) {
@@ -1167,21 +1167,21 @@ fun WallSceneScreen(
                 } else {
                     // Only ever open something that is actually an album. Taking the first
                     // named ancestor on trust meant any named node in the scene could be
-                    // opened as a "case" â€” which is exactly what the hidden disc did,
+                    // opened as a "case" — which is exactly what the hidden disc did,
                     // leaving it stranded on screen with a deck that had no album behind it.
                     //
                     // Walk for the first ancestor whose name IS an album, rather than taking
                     // the first named one and testing it afterwards. Since the shelved cases
                     // became glTF models, picking lands on a node the asset named itself
                     // ("case_closed"), which sits below the slot node carrying the album id
-                    // — so the old order found the model's own name, failed the test, and
+                    // � so the old order found the model's own name, failed the test, and
                     // silently dropped every tap on the wall.
                     val albumId = generateSequence(node) { it.parent }
                         .mapNotNull { it.name }
                         .firstOrNull { name -> layout.cases.any { it.albumId == name } }
                     if (albumId != null) {
                         // A tap on a case already breaking apart skips straight to the end
-                        // instead of opening it — the album's row is still in the database
+                        // instead of opening it � the album's row is still in the database
                         // for the whole discard window (see `discardCase`), so without this
                         // check the walk above would find it and open it mid-collapse.
                         val discarding = caseSlots.slots.any {
@@ -1192,12 +1192,12 @@ fun WallSceneScreen(
                 }
             },
             // Turning a shelved album uses the move-gesture trio rather than onScroll,
-            // because it wants touch slop first — a case should not spin on a stray tap.
+            // because it wants touch slop first � a case should not spin on a stray tap.
             // The disc is the opposite and is handled in onDown. Panning stays on onScroll,
             // which is already inert while a case is open, so the two never contend.
             onMoveBegin = { _, e, node ->
                 // Browsing: grabbing an album turns it in place. Resolved once, here, using
-                // the same walk the tap handler does — picking lands on a node the glTF
+                // the same walk the tap handler does � picking lands on a node the glTF
                 // asset named itself, below the slot node carrying the album id.
                 if (selectedAlbumId == null) {
                     val albumId = generateSequence(node) { it.parent }
@@ -1232,7 +1232,7 @@ fun WallSceneScreen(
                         scratch.lastAngle = angle
                         val degrees = Math.toDegrees(delta.toDouble()).toFloat()
 
-                        // The disc tracks the finger exactly â€” this is the whole illusion.
+                        // The disc tracks the finger exactly — this is the whole illusion.
                         sequence.spinAngle -= degrees
 
                         val before = scratch.cursor.trackIndex
@@ -1244,7 +1244,7 @@ fun WallSceneScreen(
                         if (scratch.cursor.trackIndex != before) {
                             // A track boundary went past under the finger. Heavier than the
                             // scrub texture and deliberately a different effect, so a skip
-                            // can be felt without looking — this is the "vibration on skip"
+                            // can be felt without looking � this is the "vibration on skip"
                             // testers asked for.
                             //
                             // Fired ahead of the tick and clearing its debt, so a boundary
@@ -1285,7 +1285,7 @@ fun WallSceneScreen(
             environmentLoader = environmentLoader,
             view = filamentView,
             // Replaces SceneView's default main and fill lights. Those are a neutral studio
-            // rig â€” exactly the "flatly-lit scene" DESIGN.md's Do-not list ends on.
+            // rig — exactly the "flatly-lit scene" DESIGN.md's Do-not list ends on.
             environment = environment,
             mainLightNode = null,
             cameraNode = cameraNode,
@@ -1296,15 +1296,15 @@ fun WallSceneScreen(
             // Releasing the platter, from the one place that reliably knows the finger is
             // gone: the raw touch stream, before any gesture detector has interpreted it.
             //
-            // `OnGestureListener` has no `onUp` — checked against the interface, it has
+            // `OnGestureListener` has no `onUp` � checked against the interface, it has
             // nineteen callbacks and not one of them is a plain release. That did not matter
             // while the grab began at `onMoveBegin`, because it then always ended at
             // `onMoveEnd`. Moving the grab to `onDown` breaks that pairing: press the disc,
-            // hold it still, and no move gesture ever begins, so none ever ends — the music
+            // hold it still, and no move gesture ever begins, so none ever ends � the music
             // would stop and never start again.
             //
             // `onSingleTapUp` does not cover it either. Once `onLongPress` has fired, which
-            // it does after half a second, the platform stops delivering it — and half a
+            // it does after half a second, the platform stops delivering it � and half a
             // second is well inside what "press and hold" means.
             //
             // Returns false always: this only observes. SceneView's own gesture handling
@@ -1316,7 +1316,7 @@ fun WallSceneScreen(
                         caseDrag.slot = null
                         endScratch()
 
-                        // THE settle — the only one. Both a slow drag and a fling end here.
+                        // THE settle � the only one. Both a slow drag and a fling end here.
                         //
                         // `settle.panned` gates it to gestures that actually browsed: a tap is
                         // not a browse, and without the gate every tap slid the wall, including
@@ -1347,7 +1347,7 @@ fun WallSceneScreen(
                                     // Both axes driven from ONE album, and the throw's own
                                     // velocity handed to the springs so the wall *carries*
                                     // into its landing rather than stopping dead at the
-                                    // release and then easing across — which is exactly what
+                                    // release and then easing across � which is exactly what
                                     // a fling that has lost its momentum feels like.
                                     //
                                     // This was dropped once, because a spring given velocity
@@ -1384,12 +1384,12 @@ fun WallSceneScreen(
                 sequence.clock += dt
 
                 // Walk the browse camera toward wherever the pinch left it. Every frame,
-                // whether or not anything is pinching — it is a no-op once it has arrived,
+                // whether or not anything is pinching � it is a no-op once it has arrived,
                 // and this is also what carries the camera home when a case opens.
                 zoom.advance(dt)
 
                 // Was the opening guess about this device optimistic? `dt` is clamped above
-                // at 1/24s, which is fine here — anything at the clamp is already far past
+                // at 1/24s, which is fine here � anything at the clamp is already far past
                 // the slow-frame threshold and counts the same either way.
                 //
                 // Writing Compose state here is safe: it schedules a recomposition rather
@@ -1406,11 +1406,11 @@ fun WallSceneScreen(
                     }
                 }
 
-                // The dust's whole animation, in one uniform write per frame â€” no CPU work
+                // The dust's whole animation, in one uniform write per frame — no CPU work
                 // per mote, which is what DESIGN.md asks for.
                 if (!reduceMotion) dustMaterial.setParameter("time", sequence.clock)
 
-                // Depth of field exists only while a case is open â€” on the flat wall it
+                // Depth of field exists only while a case is open — on the flat wall it
                 // erased the spines outright. One write per crossing, not per frame.
                 val wantsDof = frame.selected != null
                 if (wantsDof != sequence.dofEnabled) {
@@ -1449,7 +1449,7 @@ fun WallSceneScreen(
                         sequence.direction = 0
                         selectedAlbumId = null
                     }
-                    // One state write per crossing, not per frame â€” the panel then fades in
+                    // One state write per crossing, not per frame — the panel then fades in
                     // through an ordinary animation without the sequence recomposing anything.
                     val settled = sequence.progress > DECK_REVEAL_AT
                     if (settled != deckRevealed) deckRevealed = settled
@@ -1476,7 +1476,7 @@ fun WallSceneScreen(
                 // of spines. Driven here rather than from `bind` because it is per-frame:
                 // binding decides which album sits where, this decides how it is floating.
                 //
-                // Written straight to the nodes, never through Compose state — ENGINEERING.md
+                // Written straight to the nodes, never through Compose state � ENGINEERING.md
                 // rule 3. No allocation in this loop either; it runs for every visible slot.
                 // Walk the lamp along with the browse position. Panning is frozen while a
                 // case is open, so during the open sequence this holds the light still.
@@ -1497,19 +1497,19 @@ fun WallSceneScreen(
                         if (!slot.occupied) return@forEach
                         val root = slot.root ?: return@forEach
                         // The beam stands on the board and never turns, so it only needs
-                        // placing — at the foot of the bay, under wherever the case is
+                        // placing � at the foot of the bay, under wherever the case is
                         // hanging. CASE_H/2 down from the album's centre is the board top.
                         slot.beam?.position =
                             Position(slot.baseX, slot.baseY - CASE_H / 2f, slot.baseZ)
 
                         if (slot.discardClock != null) {
                             // Being removed. The shelved case stays hidden for the whole
-                            // sequence — the *held* case has taken over from this slot, the
-                            // same handover opening does — so this branch only keeps the slot
+                            // sequence � the *held* case has taken over from this slot, the
+                            // same handover opening does � so this branch only keeps the slot
                             // parked and lets DiscardScene drive everything visible.
                             root.isVisible = false
                             // The underlight stays lit and fades out over the sequence rather
-                            // than being cut on the first frame — see CaseDiscard.beamGlow.
+                            // than being cut on the first frame � see CaseDiscard.beamGlow.
                             slot.setBeamGlow(discardBeamGlow)
                             slot.beam?.isVisible = discardBeamGlow > 0.01f
                             return@forEach
@@ -1548,7 +1548,7 @@ fun WallSceneScreen(
                 if (discardNodes.isRunning) {
                     if (driveDiscard(discardNodes, actNodes, dt, panX.value, panY.value, reduceMotion, haptics)) {
                         // The slot is free the moment the case is gone. `driveDiscard` has
-                        // already put the held case back to a neutral transform — see its
+                        // already put the held case back to a neutral transform � see its
                         // tail for why leaving it rotated would show the next opened album
                         // mid-tumble.
                         caseSlots.slots.forEach { slot ->
@@ -1561,8 +1561,8 @@ fun WallSceneScreen(
 
                         // Settle onto whatever is left nearest the gap.
                         //
-                        // The wall deliberately does not move *during* a removal — nothing
-                        // should rearrange itself under someone watching it — but once the
+                        // The wall deliberately does not move *during* a removal � nothing
+                        // should rearrange itself under someone watching it � but once the
                         // record is gone, resting on an empty slot is its own kind of wrong.
                         // Eased on the magnet's own spring rather than snapped, so it reads
                         // as the shelf settling rather than the view being repositioned.
@@ -1588,7 +1588,7 @@ fun WallSceneScreen(
                         panY = panY.value,
                         // NOT the CAMERA_Z constant. openCase() starts zoomZ easing to
                         // CAMERA_Z the instant a tap lands, in lockstep with sequence.progress
-                        // (same DURATION_MS, both linear in time) — so reading it live here is
+                        // (same DURATION_MS, both linear in time) � so reading it live here is
                         // what makes a case opened from a zoomed-out wall arrive at the
                         // sequence's tuned framing smoothly. Hardcoding CAMERA_Z here would
                         // make the correction above dead code: the camera would jump to it the
@@ -1609,14 +1609,14 @@ fun WallSceneScreen(
                         disc.isVisible = t.discVisible
                         disc.position = Position(t.discX, t.discY, t.discZ)
                         disc.scale = Scale(t.discScale)
-                        // Free spin yields to the hand on the platter â€” the prototype's
+                        // Free spin yields to the hand on the platter — the prototype's
                         // `if (playing && !scratching)`. The finger's own rotation is
                         // already being added in onMove.
                         //
                         // Subtracted, so idle spin runs the same way round as a forward
                         // scrub. Dragging the disc clockwise moves the audio forward, and
                         // it would read as a fault if letting go then span it backwards.
-                        // DESIGN.md Â§4 also lists the idle spin under reduced motion.
+                        // DESIGN.md §4 also lists the idle spin under reduced motion.
                         if (frame.isPlaying && !scratch.active && !reduceMotion) {
                             sequence.spinAngle -= OpenSequence.SPIN_DEG_PER_S * dt * beats.spin
                         }
@@ -1626,7 +1626,7 @@ fun WallSceneScreen(
             }
         ) {
             // The shop lamp. A focused spot rather than a directional light, because
-            // DESIGN.md wants "one warm lamp over the racks, deep shadow everywhere else" â€”
+            // DESIGN.md wants "one warm lamp over the racks, deep shadow everywhere else" —
             // a directional light has no falloff and would light the whole wall evenly.
             // Wrapped in a bare Node so the frame driver has something to move: the lamp
             // rides with the browse position, and `LightNode` exposes no handle of its own
@@ -1680,7 +1680,7 @@ fun WallSceneScreen(
                 }
             )
             }
-            // The coloured bounce, low and left â€” DESIGN.md's "one coloured bounce light".
+            // The coloured bounce, low and left — DESIGN.md's "one coloured bounce light".
             // It does not cast shadows: a second shadow-casting light doubles the cost and
             // muddies the single-lamp story the key light is telling.
             LightNode(
@@ -1701,20 +1701,20 @@ fun WallSceneScreen(
             // Nothing loaded, no wall. This is what caused the brown flash on launch.
             //
             // `layout` arrives from the database, so for the first frames after the splash
-            // it is the placeholder — no rows, no cases — while this backing panel was drawn
+            // it is the placeholder � no rows, no cases � while this backing panel was drawn
             // regardless, at its default size, filling the frame. With nothing in front of it
             // to give the eye scale or contrast, a near-black wall under the room's ambient
             // reads as a flat lit brown field, which is exactly what it was.
             //
             // Gated on `loaded` rather than on having content, which is what it used to be.
             // That older test also caught the genuinely-empty library, so a new user's first
-            // screen had no wall either — see WallLayout.loaded.
+            // screen had no wall either � see WallLayout.loaded.
             if (layout.loaded) {
                 // Sized to what the CAMERA can reach, not to what the content occupies.
                 //
                 // It used to be the content's own extent, centred on the world origin, and
                 // that only worked because the camera used to tilt back toward the origin
-                // wherever it panned — the backing was always in the middle of the shot by
+                // wherever it panned � the backing was always in the middle of the shot by
                 // construction. Now that the lens looks straight ahead (see
                 // LOOK_STRAIGHT_AHEAD), panning to a low shelf walks the view clean off the
                 // bottom edge of the panel and the room behind the records goes black.
@@ -1728,7 +1728,7 @@ fun WallSceneScreen(
                 // The material has to be created in the same scope that rebuilds, because a
                 // CubeNode destroys the `MaterialInstance` it is handed. Remembered outside,
                 // it was destroyed the first time the size changed and every later wall got a
-                // dead one — the room went black after a deletion and stayed black.
+                // dead one � the room went black after a deletion and stayed black.
                 //
                 // Making the panel a fixed 24m avoided that and cost far more than it saved:
                 // this is a shadow receiver, and the room's shadow near/far hints are tuned to
@@ -1753,14 +1753,14 @@ fun WallSceneScreen(
                         materialInstance = backing,
                         apply = {
                             isTouchable = false
-                            // Takes shadows, casts none — there is nothing behind it.
+                            // Takes shadows, casts none � there is nothing behind it.
                             isShadowReceiver = true
                             isShadowCaster = false
                         }
                     )
                 }
             }
-            // Keyed by INDEX, not shelf id — the same discipline the case pool uses, and for
+            // Keyed by INDEX, not shelf id � the same discipline the case pool uses, and for
             // the same reason.
             //
             // On shelf id, every change to the shelf list rebuilds these nodes, and a
@@ -1776,7 +1776,7 @@ fun WallSceneScreen(
                 // Keyed on the width as well as the row, so the board and the material it
                 // owns are rebuilt together. A CubeNode destroys the instance handed to it,
                 // so one remembered further out dies with the first board that rebuilds and
-                // leaves every later board with a dead material — which is why the shelf
+                // leaves every later board with a dead material � which is why the shelf
                 // disappeared on import, and again on delete.
                 key(rowIndex, layout.wallWidth) {
                     val boardSurface = remember {
@@ -1811,7 +1811,7 @@ fun WallSceneScreen(
             //
             // Mounting a node per visible album and dropping it when it left the frustum
             // window destroyed its ImageNodes, and ImageNode.destroy() is broken on this
-            // SceneView version — the process aborts with "Invalid texture still bound to
+            // SceneView version � the process aborts with "Invalid texture still bound to
             // MaterialInstance". A hard vertical fling pulls whole rows out at once and
             // killed the app within a few swipes. See CaseSlots for the full story; do not
             // "simplify" this back into a keyed loop over visibleCases.
@@ -1822,7 +1822,7 @@ fun WallSceneScreen(
                 beamInstances = beamInstances
             )
             // The disc that breaks when an album is removed. Mounted always, hidden until
-            // it is needed — see DiscardScene.
+            // it is needed � see DiscardScene.
             DiscardSceneNodes(
                 nodes = discardNodes,
                 shardsInstance = shardsModel,
@@ -1830,7 +1830,7 @@ fun WallSceneScreen(
                 sampler = sampler
             )
             // Dust hangs in front of the wall, animated entirely on the GPU. Not touchable
-            // and casts nothing â€” it is glow, and a shadow-casting mote would be absurd.
+            // and casts nothing — it is glow, and a shadow-casting mote would be absurd.
             MeshNode(
                 primitiveType = RenderableManager.PrimitiveType.TRIANGLES,
                 vertexBuffer = dustGeometry.vertexBuffer,
@@ -1845,7 +1845,7 @@ fun WallSceneScreen(
                 }
             )
 
-            // Mounted once and hidden when idle, never torn down â€” see ActiveCaseNodes.
+            // Mounted once and hidden when idle, never torn down — see ActiveCaseNodes.
             ActiveCaseNodes(
                 nodes = actNodes,
                 trayModel = trayModel,
@@ -1858,7 +1858,7 @@ fun WallSceneScreen(
             // Sits low, under the empty board rather than over the middle of it, so the shelf
             // itself is what the eye lands on first. The room is the pitch; this is the
             // caption.
-            // TopCenter, matching how this is laid out — it pads down from the status bar and
+            // TopCenter, matching how this is laid out � it pads down from the status bar and
             // occupies the slot the browse label uses once there are records. Aligned to the
             // bottom it ran straight through the ADD / SHELVES / SETTINGS row.
             WaitingForRecords(
@@ -1867,7 +1867,7 @@ fun WallSceneScreen(
             )
         } else if (selectedAlbumId == null) {
             // While a case is open the disc occupies this band, and the album is already the
-            // whole subject â€” the browse label would only collide with it.
+            // whole subject — the browse label would only collide with it.
             FocusLabel(
                 case = focusCase,
                 modifier = Modifier.align(Alignment.TopCenter)
@@ -1885,7 +1885,7 @@ fun WallSceneScreen(
             )
         }
 
-        // The room is the home screen now, so back has nowhere to pop to â€” it closes an open
+        // The room is the home screen now, so back has nowhere to pop to — it closes an open
         // case, and is left alone while browsing so it exits the app normally.
         BackHandler(enabled = selectedAlbumId != null) { closeCase() }
 
@@ -2007,7 +2007,7 @@ private fun ShelfPlate(name: String, accentHue: Float) {
  * headline. Two lines are allowed so a long title reads in full instead of being cut.
  *
  * The scrim matters as much as the size. The focused case is centred by definition, so its
- * spine â€” the one piece of the room carrying its own vertical text â€” is always directly
+ * spine — the one piece of the room carrying its own vertical text — is always directly
  * behind this. Without something to sit on, the two sets of words interleave.
  */
 /**
@@ -2016,7 +2016,7 @@ private fun ShelfPlate(name: String, accentHue: Float) {
  * **The second line is the whole point of this dialog.** Jawon's albums are records *about*
  * files that belong to the user and live in the user's own folders, and no confirmation that
  * just says "are you sure?" tells them whether their music is about to be deleted. It is not,
- * and it never can be — Jawon holds a read-only grant on those files — so the dialog says so
+ * and it never can be � Jawon holds a read-only grant on those files � so the dialog says so
  * plainly rather than leaving the user to find out by checking afterwards.
  */
 @Composable
@@ -2031,7 +2031,7 @@ private fun RemoveAlbumDialog(
         text = {
             Text(
                 "It comes off the shelf, along with the artwork you gave it. " +
-                    "Your audio files stay exactly where they are — Jawon never deletes " +
+                    "Your audio files stay exactly where they are � Jawon never deletes " +
                     "your music."
             )
         },
@@ -2046,10 +2046,10 @@ private fun RemoveAlbumDialog(
 }
 
 /**
- * The first thing anyone sees, and per `PLAN.md` §4 the most important screen in the app: it
+ * The first thing anyone sees, and per `PLAN.md` �4 the most important screen in the app: it
  * "must read as 'your shelves, waiting' rather than 'broken app'".
  *
- * What used to be here was one line of centred text over black — and the room behind it was
+ * What used to be here was one line of centred text over black � and the room behind it was
  * genuinely empty, because the wall and its boards were suppressed whenever there were no
  * albums. So a new user's first impression of a product whose whole pitch is *the library is
  * a room* was a black screen. `WallLayout.waitingRow` supplies the lit, labelled board; this
