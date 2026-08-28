@@ -20,9 +20,9 @@ import io.github.sceneview.node.Node
  * a small, self-contained set of nodes and one per-frame function, so it can be read — and
  * changed — without holding the rest of the scene in your head.
  *
- * **The shards are the disc.** `disc_shards.glb` holds eight wedges that, at rest, sit
+ * **The shards are the disc.** `disc_shards.glb` holds 27 fragments that, at rest, sit
  * exactly where a whole disc would; [CaseDiscard.shardAt] returns zero offsets until the
- * crack, so the same eight nodes read as one disc sliding out and then as the pieces it comes
+ * impact, so the same nodes read as one disc falling and then as the pieces it comes
  * apart into. That is why there is no separate disc model here — a second one would need its
  * own `FilamentInstance`, and would have to be swapped for the shards on the exact frame of
  * the break.
@@ -35,8 +35,19 @@ class DiscardNodes {
     /** Parent of the shards; placed at the case being removed. */
     var group: Node? = null
 
-    /** The eight wedges, in the order `CaseDiscard.shardAt` indexes them. */
-    var shards: List<Node> = emptyList()
+    /**
+     * The fragments, each paired with what the geometry knows about it.
+     *
+     * Both facts come off the glTF node rather than being duplicated in Kotlin: the build
+     * script puts each shard's origin at its own centroid, so [Piece.restX]/[Piece.restY] is
+     * simply where the node already sits, and it encodes the piece's share of the disc's area
+     * in the node's name. Keeping the layout in one place is the point — a second copy of it
+     * here would drift the first time the fracture pattern changed.
+     */
+    var shards: List<Piece> = emptyList()
+
+    /** One fragment: its node, where it rested in the whole disc, and its relative mass. */
+    class Piece(val node: Node, val restX: Float, val restY: Float, val mass: Float)
 
     /** Which album is being removed, or null when nothing is. */
     var albumId: String? = null
@@ -80,17 +91,31 @@ fun SceneScope.DiscardSceneNodes(
             apply = {
                 isTouchable = false
                 // Broken plastic still catches the lamp, but it must not cast shadows onto
-                // the shelf it is falling past — eight tumbling shadow casters for half a
+                // the shelf it is falling past — 27 tumbling shadow casters for half a
                 // second is a lot of shadow-map churn for something nobody is looking at.
                 isShadowCaster = false
                 isShadowReceiver = false
 
-                // Address the wedges by the names the Blender script gave them. Sorted by
-                // that name so index 0 here is `shard_0` there, which is what makes
-                // CaseDiscard's per-index maths line up with the geometry.
-                nodes.shards = nodes
-                    .sortedShards(this)
-                    .onEach { it.isVisible = false }
+                // Read the fragments off the asset by the names the Blender script gave
+                // them: `shard_<index>_<per-mille area>`.
+                nodes.shards = this.nodes
+                    .mapNotNull { node -> node.name?.let { name -> node to name } }
+                    .filter { (_, name) -> name.startsWith(SHARD_PREFIX) }
+                    .mapNotNull { (node, name) ->
+                        val parts = name.removePrefix(SHARD_PREFIX).split('_')
+                        val index = parts.getOrNull(0)?.toIntOrNull() ?: return@mapNotNull null
+                        val perMille = parts.getOrNull(1)?.toIntOrNull() ?: return@mapNotNull null
+                        val rest = node.position
+                        node.isVisible = false
+                        index to DiscardNodes.Piece(
+                            node = node,
+                            restX = rest.x,
+                            restY = rest.y,
+                            mass = perMille / 999f
+                        )
+                    }
+                    .sortedBy { it.first }
+                    .map { it.second }
 
                 // The album's own artwork, continuous across the cracks, because the shards
                 // carry the disc's UV convention unchanged. Safe to reuse the active case's
@@ -114,12 +139,6 @@ fun SceneScope.DiscardSceneNodes(
         )
     }
 }
-
-/** The asset's wedge nodes, in `shard_0`…`shard_7` order. */
-private fun DiscardNodes.sortedShards(model: ModelNode): List<Node> =
-    model.nodes
-        .filter { it.name?.startsWith(SHARD_PREFIX) == true }
-        .sortedBy { it.name?.removePrefix(SHARD_PREFIX)?.toIntOrNull() ?: 0 }
 
 private const val SHARD_PREFIX = "shard_"
 
@@ -162,27 +181,40 @@ fun driveDiscard(
         // Tipped about X, so the case leans back and the disc slides out of its open edge
         // toward the viewer rather than sideways.
         root?.rotation = Rotation(frame.caseTipDeg, 0f, 0f)
-        root?.scale = Scale(frame.caseAlpha.coerceAtLeast(0.001f))
+        root?.scale = Scale(frame.caseScale.coerceAtLeast(0.001f))
 
         val group = nodes.group
         if (group != null) {
-            group.isVisible = frame.discY > 0.0005f
+            group.isVisible = frame.discVisible
             group.position = Position(
                 slot.baseX,
-                slot.baseY + frame.discY + frame.caseY,
+                slot.baseY + frame.discY,
                 slot.baseZ + frame.discZ
             )
+            // The whole disc tips as it falls, so it meets the shelf edge-on. After the
+            // impact the group stops turning and the fragments carry the motion.
+            group.rotation = Rotation(frame.discTiltDeg, 0f, 0f)
 
-            val since = CaseDiscard.secondsSinceCrack(t)
-            nodes.shards.forEachIndexed { index, node ->
-                val shard = CaseDiscard.shardAt(index, since)
-                node.isVisible = shard.alpha > 0.01f
-                node.position = Position(shard.x, shard.y, shard.z)
-                node.rotation = Rotation(shard.spinDeg * 0.4f, shard.spinDeg, 0f)
-                // Scale rather than opacity: the shard material is opaque, and making it
-                // blend would put eight depth-sorted transparent draws into the frame for
-                // a fade the room's own darkness already provides most of.
-                node.scale = Scale(shard.alpha)
+            val since = CaseDiscard.secondsSinceImpact(t)
+            nodes.shards.forEachIndexed { index, piece ->
+                val shard = CaseDiscard.shardAt(
+                    index = index,
+                    restX = piece.restX,
+                    restY = piece.restY,
+                    mass = piece.mass,
+                    seconds = since
+                )
+                piece.node.isVisible = shard.scale > 0.01f
+                // Offsets are added to where the piece already rests, so before the impact
+                // every fragment sits exactly where it did in the whole disc.
+                piece.node.position = Position(
+                    piece.restX + shard.offsetX,
+                    piece.restY + shard.offsetY,
+                    shard.offsetZ
+                )
+                // About its own centroid, because the build script put each origin there.
+                piece.node.rotation = Rotation(shard.spinX, shard.spinY, shard.spinZ)
+                piece.node.scale = Scale(shard.scale)
             }
         }
     }
@@ -195,7 +227,7 @@ fun driveDiscard(
     nodes.clock = null
     nodes.albumId = null
     nodes.group?.isVisible = false
-    nodes.shards.forEach { it.isVisible = false }
+    nodes.shards.forEach { it.node.isVisible = false }
     root?.scale = Scale(1f)
     root?.rotation = Rotation(0f, 0f, 0f)
     return true

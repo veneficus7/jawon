@@ -693,87 +693,115 @@ def build_disc():
 # Export
 # ---------------------------------------------------------------------------
 
-SHARD_COUNT = 8
+# Radial cuts around the disc, and the ring boundaries between them. Their product is
+# the piece count: 9 x 3 = 27 fragments of genuinely different sizes.
+SHARD_SPOKES = 9
+SHARD_RINGS = (0.0, 0.34, 0.68, 1.0)
 
 
 def build_disc_shards():
     """
-    The disc, cracked into wedges, for the deletion animation.
+    The disc, fractured, for the deletion animation.
 
-    One object per shard, because each has to move independently once the disc
-    breaks — the app parents them separately and drives each with its own
-    velocity and spin. A single mesh with disconnected islands would export as
-    one node and could only move as one piece.
+    The first version of this was eight even wedges and it read as a pie chart
+    coming apart, which is the single most common tell in a fake shatter: real
+    fracture produces pieces of *visibly different sizes*, and animation guidance
+    is blunt about identical timing across identical masses destroying the
+    illusion. So this cuts on two axes — nine jittered spokes crossed with three
+    jittered rings — for 27 fragments spanning roughly an order of magnitude in
+    area.
 
-    **UVs use exactly `build_disc`'s formula**, so an album's already-baked disc
-    texture lands on the pieces with the artwork continuous across the cracks.
-    That is the whole reason the shards are built here rather than faked by
-    scaling copies of the disc: the picture has to break along with the plastic.
+    **Each shard's origin is its own centroid, not the disc's centre.** That is
+    what lets the app spin a piece about its own centre of mass instead of
+    swinging it around the hub like a fairground ride, and it means the app can
+    read every piece's rest position straight off its glTF node rather than
+    duplicating this layout in Kotlin.
 
-    A real CD cracks radially out of the hub — the centre hole is the stress
-    concentrator — so the cuts run from the hole to the rim. They are *not*
-    evenly spaced and the cut lines are not perfectly straight: both are jittered
-    from a fixed seed, because eight identical wedges read as a pie chart rather
-    than as something broken. Fixed seed so the same album always breaks the same
-    way and the build is reproducible.
+    **The mass is encoded in the node name** — `shard_<index>_<per-mille area>`.
+    The app needs it because small fragments must fly fast and large ones slow
+    (impact studies put the largest, slowest pieces opposite the impact), and
+    computing area from geometry at runtime is work the exporter can do once.
+
+    UVs use `build_disc`'s formula, computed *before* the origin moves, so an
+    album's disc texture lands on the pieces with the artwork continuous across
+    every crack.
     """
     rng = random.Random(20260827)
-    objects = []
+    pieces = []
 
-    # Where each cut falls, as a fraction around the disc. Jittered, then sorted,
-    # so wedges come out visibly different sizes.
-    cuts = sorted(
-        (i + rng.uniform(-0.30, 0.30)) / SHARD_COUNT for i in range(SHARD_COUNT)
+    spokes = sorted(
+        (i + rng.uniform(-0.34, 0.34)) / SHARD_SPOKES for i in range(SHARD_SPOKES)
     )
 
-    for index in range(SHARD_COUNT):
-        a0 = cuts[index] * math.tau
-        a1 = (cuts[(index + 1) % SHARD_COUNT] + (1.0 if index == SHARD_COUNT - 1 else 0.0)) * math.tau
+    def crack(angle, radius_t):
+        """A cut line that wanders, so two neighbours share a jagged edge."""
+        return angle + math.sin(radius_t * 6.2 + angle * 4.1) * 0.022
 
-        obj = new_mesh_object(f"shard_{index}")
-        bm = bmesh.new()
+    for si in range(SHARD_SPOKES):
+        a0 = spokes[si] * math.tau
+        a1 = (spokes[(si + 1) % SHARD_SPOKES]
+              + (1.0 if si == SHARD_SPOKES - 1 else 0.0)) * math.tau
 
-        # Enough steps that the rim stays round; the disc is 120mm and these are
-        # seen close up as they tumble.
-        steps = max(4, int(round((a1 - a0) / math.tau * 96)))
+        # Ring boundaries jittered per spoke, so pieces do not line up in tidy
+        # concentric bands across the whole disc.
+        rings = [
+            r + (0.0 if r in (0.0, 1.0) else rng.uniform(-0.07, 0.07))
+            for r in SHARD_RINGS
+        ]
 
-        # A crack wanders. Offsetting each cut edge by a small angle that varies
-        # with radius gives the two shards either side of it matching jagged
-        # edges, because both are generated from the same wander function.
-        def wander(angle, t):
-            return angle + math.sin(t * 7.0 + angle * 3.0) * 0.018
+        for ri in range(len(rings) - 1):
+            r_in = DISC_HOLE_R + (DISC_R - DISC_HOLE_R) * rings[ri]
+            r_out = DISC_HOLE_R + (DISC_R - DISC_HOLE_R) * rings[ri + 1]
 
-        ring = []
-        for s in range(steps + 1):
-            t = s / steps
-            angle = a0 + (a1 - a0) * t
-            # Only the two boundary edges wander; the interior follows the circle
-            # so the rim and hole stay true.
-            if s == 0 or s == steps:
-                pass
-            outer_a = angle
-            inner_a = angle
-            if s == 0:
-                outer_a = wander(a0, 1.0)
-                inner_a = wander(a0, 0.0)
-            elif s == steps:
-                outer_a = wander(a1, 1.0)
-                inner_a = wander(a1, 0.0)
+            steps = max(3, int(round((a1 - a0) / math.tau * 72)))
+            bm = bmesh.new()
 
-            outer = bm.verts.new((DISC_R * math.cos(outer_a), 0.0, DISC_R * math.sin(outer_a)))
-            inner = bm.verts.new((
-                DISC_HOLE_R * math.cos(inner_a), 0.0, DISC_HOLE_R * math.sin(inner_a)
-            ))
-            ring.append((inner, outer))
+            ring_verts = []
+            for s in range(steps + 1):
+                t = s / steps
+                angle = a0 + (a1 - a0) * t
+                inner_a = angle
+                outer_a = angle
+                if s == 0:
+                    inner_a = crack(a0, rings[ri])
+                    outer_a = crack(a0, rings[ri + 1])
+                elif s == steps:
+                    inner_a = crack(a1, rings[ri])
+                    outer_a = crack(a1, rings[ri + 1])
+                ring_verts.append((
+                    bm.verts.new((r_in * math.cos(inner_a), 0.0, r_in * math.sin(inner_a))),
+                    bm.verts.new((r_out * math.cos(outer_a), 0.0, r_out * math.sin(outer_a))),
+                ))
 
-        for s in range(steps):
-            i0, o0 = ring[s]
-            i1, o1 = ring[s + 1]
-            bm.faces.new((i0, o0, o1, i1))
+            for s in range(steps):
+                i0, o0 = ring_verts[s]
+                i1, o1 = ring_verts[s + 1]
+                bm.faces.new((i0, o0, o1, i1))
 
-        bm.normal_update()
-        bm.to_mesh(obj.data)
-        bm.free()
+            bm.normal_update()
+
+            # Planar area, before thickness — this is what decides how fast the
+            # piece flies, so it is measured rather than guessed.
+            area = sum(f.calc_area() for f in bm.faces)
+
+            obj = new_mesh_object("shard_tmp")
+            bm.to_mesh(obj.data)
+            bm.free()
+            pieces.append((obj, area))
+
+    total = max(p[1] for p in pieces)
+    objects = []
+
+    for index, (obj, area) in enumerate(pieces):
+        mesh = obj.data
+        if not mesh.uv_layers:
+            mesh.uv_layers.new(name="UVMap")
+        uv = mesh.uv_layers.active.data
+        # Before origin_set, while local coordinates still equal disc coordinates.
+        for poly in mesh.polygons:
+            for li in poly.loop_indices:
+                v = mesh.vertices[mesh.loops[li].vertex_index].co
+                uv[li].uv = (v.x / (2.0 * DISC_R) + 0.5, v.z / (2.0 * DISC_R) + 0.5)
 
         solidify = obj.modifiers.new(name="Thickness", type="SOLIDIFY")
         solidify.thickness = DISC_T
@@ -781,15 +809,6 @@ def build_disc_shards():
         solidify.use_even_offset = True
 
         finish(obj, bevel_width=0.00012)
-
-        mesh = obj.data
-        if not mesh.uv_layers:
-            mesh.uv_layers.new(name="UVMap")
-        uv = mesh.uv_layers.active.data
-        for poly in mesh.polygons:
-            for li in poly.loop_indices:
-                v = mesh.vertices[mesh.loops[li].vertex_index].co
-                uv[li].uv = (v.x / (2.0 * DISC_R) + 0.5, v.z / (2.0 * DISC_R) + 0.5)
 
         mesh.materials.append(
             attach_placeholder_basecolor(
@@ -805,6 +824,16 @@ def build_disc_shards():
             )
         )
 
+        # Origin to the piece's own centre. Everything above is in disc space; from
+        # here the mesh is local and the object's transform carries where it sits.
+        bpy.context.view_layer.objects.active = obj
+        obj.select_set(True)
+        bpy.ops.object.origin_set(type="ORIGIN_GEOMETRY", center="MEDIAN")
+        obj.select_set(False)
+
+        per_mille = max(1, min(999, int(round(area / total * 999))))
+        obj.name = f"shard_{index:02d}_{per_mille:03d}"
+        obj.data.name = obj.name
         objects.append(obj)
 
     return objects
