@@ -262,7 +262,22 @@ fun driveDiscard(
         // stand in for an intact disc: its pieces are bevelled and their cut edges jittered
         // independently, so at zero offset there are still seams between them and the disc
         // reads as already broken before anything has hit it.
-        active.disc?.isVisible = frame.wholeDiscVisible
+        active.disc?.let { disc ->
+            disc.isVisible = frame.wholeDiscVisible
+            // POSITIONED, not just shown.
+            //
+            // The open sequence writes this every frame while a case is open; a removal
+            // never did, so the disc stayed wherever that sequence last parked it — out in
+            // front of the lens, or at the origin on a fresh launch. The case opened on an
+            // empty tray and the disc only appeared once the fragments took over at the
+            // strike, which is exactly what it looked like.
+            disc.position = Position(
+                frame.caseX,
+                frame.caseY,
+                frame.caseZ + WallDimens.TRAY_FRONT_Z + 0.0014f
+            )
+            disc.rotation = Rotation(frame.caseRotX, frame.caseRotY, frame.caseRotZ)
+        }
 
         val group = nodes.group
         if (group != null) {

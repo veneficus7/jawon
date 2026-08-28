@@ -1726,8 +1726,17 @@ fun WallSceneScreen(
             // destroying it, so the material outlives the churn.
             visibleRows.forEachIndexed { rowIndex, row ->
                 key(rowIndex) {
+                    // Fixed width, for the same reason the wall backing is: sized from the
+                    // layout, *any* library change alters it, and changing a CubeNode's size
+                    // rebuilds the node — which destroys the shared MaterialInstance and
+                    // leaves the next board with a dead one. Keying by index alone did not
+                    // fix that, because the size was still layout-derived: deleting an album
+                    // shortened the shelf and the board disappeared until relaunch.
+                    //
+                    // The boards run off into the fog either way, so their real extent was
+                    // never visible.
                     CubeNode(
-                        size = Size(layout.wallWidth, BOARD_H, BOARD_D),
+                        size = Size(WALL_BACKING_SPAN, BOARD_H, BOARD_D),
                         position = Position(0f, row.boardY, 0f),
                         materialInstance = boardMaterial,
                         apply = {
