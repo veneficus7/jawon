@@ -94,10 +94,12 @@ Honest list, in the order they matter:
 
    **Still unverified on anything but an S25 Ultra**, which is the point: the
    adaptation exists precisely because those devices cannot be tested here.
-2. **The first-run screen.** `PLAN.md` §4 calls the empty state "the most
-   important screen in the app" and asks for one labelled empty shelf, warm
-   lighting and a single obvious way to add the first album. What ships is one
-   line of centred text over a black void.
+2. ~~**The first-run screen.**~~ **Built.** `PLAN.md` §4 asks for one labelled
+   empty shelf, warm lighting and a single obvious way to add the first album;
+   that is what a new library now opens on. The fix underneath it was separating
+   "nothing loaded yet" from "nothing in the library" — one `WallLayout.loaded`
+   flag, previously conflated, which is why an empty library could never render
+   anything.
 3. **Effectively no tests.** One file, and it is the template's `assertEquals(4,
    2 + 2)`. `WallLayout.from`, `OpenSequence`, `ShelfHover` and `Scratch` are
    deliberately pure functions with no Android or Filament types in them — the
@@ -182,3 +184,20 @@ What this leaves genuinely unknown: whether `deleteAlbum` runs at all. The dialo
 appears and is correctly worded, but nothing past the confirm button has been
 observed working. It was not chased further because the only albums available to
 test on are real ones the owner would have to re-import.
+
+## 7. Where import stands
+
+Both of the things that made adding an album tedious are fixed, and neither has
+been exercised against a large library.
+
+- **Covers come from the files.** Embedded art is pulled out of the tracks' own
+  tags during the scan, so the Add Album screen opens with the cover already
+  chosen. Only the first five files are probed — art is a property of an album,
+  not a track.
+- **A folder of folders imports as many albums.** The scanner has always
+  recursed; grouping by containing folder is what stops that collapsing a whole
+  library into one enormous "album", which is what it used to do to anyone who
+  pointed Jawon at their `Music` directory.
+
+Untested at scale: a library of hundreds of albums, and any folder layout more
+exotic than one-album-per-folder.

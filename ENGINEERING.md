@@ -1,242 +1,116 @@
-# Jawon — Operating Brief
+# Jawon — operating brief
 
-Read this first, every session. Full product spec is in `PLAN.md`.
-Visual and interaction spec is `javon-shelf-prototype.html` — **open it and
-read the JS before implementing any 3D behaviour.** When a behaviour is
-ambiguous, the prototype is the source of truth, not your assumption.
-
----
-
-## Status
-
-**M0–M9 complete, each verified on-device on a Galaxy S25 Ultra.**
-Phase 1 gave a finished music player. Phase 2 has since replaced its 2D front
-end entirely: **the room is the app.** It is the start destination, it browses
-the wall, and it plays. The 2D Wall and 2D Deck are deleted — deliberately, per
-`PLAN.md` §2; they live on only in git history.
-
-Working today: the wall (shelf geometry, spine and cover art, label plates,
-pan/fling, content-derived bounds), the five-beat open/close sequence with
-interruption from any point, the in-room deck (transport, tracklist, seek,
-quality readout), and the now-playing case standing proud of its slot.
-
-**M8 is complete**: the disc is a platter you can scratch to seek (with
-haptics) and it shows the user's uploaded `discFaceUri` art.
-
-**Its iridescence was built and then removed** — the owner did not want a
-rainbow on the CD. `PLAN.md`'s technology table still lists an iridescent CD;
-that line is overruled. The disc is plain silvered plastic carrying its label.
-Do not add it back.
-
-**M9 · Atmosphere is complete.** Part 1 gave the room its light: a warm
-shadow-casting spot, an amber bounce, and image-based lighting built
-procedurally in `ui/wallscene/RoomLighting.kt` — no environment map is shipped
-or downloaded. Part 2 gave it air: fog, thresholded bloom, vignette,
-GPU-animated dust (`ui/wallscene/DustGeometry.kt` + `materials/dust.mat`), and
-`DESIGN.md`'s reduced-motion handling.
-
-**Depth of field runs only while a case is open.** `DESIGN.md` asks for shelf
-sections to the sides falling off, and a flat, square-on wall cannot deliver it
-— everything sits at nearly the same depth, and at this scale any blur erased
-the 10mm spines outright. Legibility of the wall wins. See `RoomAtmosphere.kt`.
-
-## M11 · Realism — in progress
-
-M9 lit the room but it does not look real, and the owner has called the graphics
-and animation "unrealistic and ugly". This is a four-pass rebuild, one pass per
-session per the working agreement below.
-
-**Pass 1 · Render pipeline — done, awaiting on-device sign-off.** Pure Kotlin
-across `RoomAtmosphere.kt`, `RoomLighting.kt` and the key light in
-`WallSceneScreen.kt`. Four things were wrong and none of them were geometry:
-
-- **No ambient occlusion at all** — nothing ever set `ambientOcclusionOptions`.
-  Its absence is most of why objects read as pasted on rather than resting on
-  anything. Now SAO at a 20mm radius, plus SSCT along the lamp's direction.
-- **Shadows on bare defaults** — no `ShadowOptions` anywhere. Now a 2048 map
-  with room-scaled depth hints and PCSS contact hardening.
-- **A 64px IBL cubemap**, so glossy surfaces reflected a blur. Now 256.
-- **Depth of field propped up by a `cocScale` of 2.4** against an aperture
-  stopped down to 3.5mm — which deepens the field and then smears everything
-  outside it 2.4× too far. That is what read as artificial. Now unity scale
-  against a 6mm aperture, at native resolution with a median filter, which is
-  what fixes blur bleeding over the top of the spinning disc.
-
-**Pass 4 · Motion and camera — done, awaiting on-device sign-off.** Taken out of
-order because Passes 2–3 are blocked on model assets and this needs none.
-`OpenSequence.kt` had exactly two curves, both cubic, and every beat decelerated
-onto its target and **stopped dead** — which nothing physical does. Now:
-
-- `easeOutBack` on pull, turn, open and lift, so each beat carries past its mark
-  and settles back. Overshoot is picked per beat from how far that beat actually
-  travels, not by eye — 2.7mm on the pull, 2.1° on the turn, 3.7° on the lid,
-  2.7mm on the disc. See the table in `easeOutBack`'s KDoc.
-- **Anticipation** on the pull: the case sinks 1.8mm back into its slot before
-  coming out, into ~6mm of clearance.
-- **The camera no longer shares curves with the objects.** It used to be driven
-  straight off the turn and lift beats; now that those overshoot, that would rock
-  the lens along with the case. It has its own jerk-free `smootherStep` channels
-  (`Beats.turnCamera` / `liftCamera`) — do not "simplify" those away.
-- Disc spin-up ramps on `smootherStep` rather than stepping its acceleration.
-
-**All easing stays a pure function of `t`.** That is load-bearing, not
-stylistic: closing runs `progress` backwards through the same curves, which is
-what makes interruption free and the "never two cases mid-animation" guarantee
-structural. A stateful spring would be more physical and would break both. The
-happy side effect is that overshoot reversed *is* anticipation, so the close
-reads correctly with no second set of curves.
-
-**Pass 2 · Case and disc models — done, awaiting on-device sign-off.** No model
-was bought or downloaded in the end. They are **generated by a committed Blender
-script**, `tools/models/build_models.py`, run headless — which is parametric and
-licence-free like the old procedural geometry, but gets real bevels, correct
-shading normals and glTF material extensions from a real modelling tool. Full
-procedure and the traps in **`docs/models.md`; read it before touching the
-models.**
-
-- `case_tray.glb` — moulded shell with wall thickness, a well, a spindle
-  rosette and hinge knuckles, replacing one `CubeNode`.
-- `case_lid.glb` — clear front with a rim and hinge tabs. **Its origin is the
-  hinge axis**, so `ActiveCase.kt` parents it at local zero and the pivot is
-  right by construction.
-- `disc.glb` — 1.2mm thick with a broken edge, 192 segments, replacing the flat
-  annulus whose every normal was `+Z`.
-- Clearcoat on all three via `KHR_materials_clearcoat` — the polished skin over
-  moulded plastic, and the lacquer over the disc's print. SceneView's stock
-  material has no parameter for it.
-
-Bevels are the point. Every edge used to be a perfect 90° corner, and a perfect
-corner catches no specular highlight.
-
-`DiscGeometry.kt` is deleted; the disc's radial UV convention is preserved by the
-model, so `DiscArt` did not change.
-
-**Pass 3 · The wall's cases — done, awaiting on-device sign-off.** `CaseSlots.kt`
-now draws `case_closed.glb` instead of a `CubeNode`, so the shelved case and the
-held one are finally the same object.
-
-- **A separate, simpler model.** A shut case shows none of the tray's interior,
-  and the wall draws up to ~470 at once — 768 triangles rather than 2884, in the
-  *shelved* frame so no rotation is needed.
-- **One asset, `MAX_CASE_SLOTS` instances**, allocated once at startup and never
-  re-created. The pool grows at runtime and re-keying anything on its size would
-  drop every slot composable and destroy its `ImageNode`s, so the count is fixed
-  up front and the pool is clamped to it. Measured free: ~934ms cold start at
-  512 instances against ~944ms at 8.
-- **The transparent clear-front panel per slot is gone.** Clearcoat on the model
-  is the plastic sheen it existed to provide, so hundreds of blended,
-  depth-sorted draws became none. The cover plate moved to sit `PLATE_LIFT`
-  proud, where it used to hide behind that panel.
-
-**Tapping the wall broke, and would have broken silently.** Picking now lands on
-a node the glTF asset named itself, below the slot node carrying the album id,
-and the handler took the *first* named ancestor and then tested it — so it found
-`case_closed`, failed the test, and dropped the tap. It now walks for the first
-ancestor whose name *is* an album. Any future scene node that carries a name
-needs to keep that property in mind.
-
-**Not stress-tested.** The test library has four albums, so the wall renders
-four cases. Browsing holds 125fps and the open state 124.6fps — level with the
-pre-pass-3 baseline, on a cooled device. The instanced path at a few hundred
-cases is unmeasured; that is M10's job, and it wants a real library.
-
-**Pass 3b · Shelf and room** — not started. The boards and back wall are still
-plain `CubeNode`s with no bevel and no texture.
-
-### Two bugs this pass created, both worth remembering
-
-**Async models broke two effects that had never had to be async-safe.** The
-active-case group used to exist from frame one, so `WallSceneScreen`'s visibility
-effect could hide it and its artwork effect could fill it. Loading models made
-the group appear several frames late, after both effects had already run against
-null handles and done nothing — so it arrived **visible**, parked at the wall's
-origin as a grey slab across the shelves. Fixed by mounting hidden and keying
-both effects on the model instances. Any new effect writing to those nodes needs
-the same key.
-
-**The thickness axis is negated on glTF export**, and getting it wrong renders
-without error. See `docs/models.md`.
-
-**Two locked decisions below are superseded by this work, on the owner's call:**
-geometry moves from procedural to imported glTF models (Pass 2), and the
-"one custom material" row no longer binds — though glTF's `KHR_materials_*`
-extensions mean no *new* hand-written `.mat` is expected either. See
-`docs/materials.md`.
-
-**M10 · Polish & release** (performance, GPU tiers, icon, onboarding) follows
-this, not the other way round — tiering a look that is still being rebuilt would
-be wasted work.
-
-### Measured, on a Galaxy S25 Ultra, with a case open
-
-Everything in pass 1 is essentially free **except screen-space reflections**,
-which are so expensive they are switched off. Frame pacing via
-`dumpsys SurfaceFlinger --timestats`:
-
-| configuration | fps |
-|---|---|
-| pre-M11 baseline | 124 |
-| SSR on, 0.6m reach, stride 2 | **17** |
-| SSR on, 0.25m reach, stride 8 | 86 |
-| SSR off — everything else on | **124** |
-
-Full-resolution DOF, full-resolution AO with SSCT, PCSS, a 2048 shadow map and
-the 256px IBL together cost nothing measurable. SSR alone was a 7x regression.
-
-**It looks innocent while browsing**, which is the trap: browsing holds 124fps
-either way, because SSR raymarches per glossy pixel and the wall has almost
-none. Open a case and the lid and disc fill the frame, so nearly every pixel
-traces. Measure the *open* state, not the wall.
-
-**Check the thermal state before believing any number.** After a long session of
-builds and test runs the S25 reaches `Thermal Status: 1` and starts discharging
-on USB, and the same build that measures 124fps cool measures 88-96fps hot. Pass
-3 was briefly recorded as a 22% regression on exactly that mistake; it is not one.
-`adb shell dumpsys thermalservice | grep "Thermal Status"` should read 0, and a
-couple of minutes with the app stopped is enough to get back there.
-
-`RoomAtmosphere.SSR_ENABLED` is false and the constants are kept beside it.
-Turning it back on is an M10 tier decision, not a default.
-
-Still never properly checked: **inter-case shadowing**, which wants a shelf with
-adjacent albums.
-
-Never assume a milestone is complete. If this status line looks stale or
-contradicts the code, ask — do not infer from the repo.
-
-### One hard-won constraint
-
-**Never destroy an `ImageNode`** on the SceneView version we are pinned to.
-`ImageNode.destroy()` enqueues its texture for destruction but hands
-`MaterialLoader.destroyMaterialInstance()` a wrapper re-fetched via
-`getMaterialInstanceAt(0)` — not the object the loader tracks — so the instance
-survives and Filament aborts the process on the next commit with *"Invalid
-texture still bound to MaterialInstance."* Hide nodes and swap `bitmap` in
-place instead.
-
-This predicted M6's culling as the place it would bite, and it did: a hard
-vertical fling pulled whole rows out of the frustum window, destroyed their art
-nodes and killed the app. **The wall therefore renders from a pool of case
-slots keyed by index, never by album id** (`ui/wallscene/CaseSlots.kt`), so no
-case node is ever destroyed. Do not turn that back into a keyed loop over the
-visible cases.
+Read this first, every session. It is deliberately short; detail lives in the
+documents listed at the bottom, which you read **when the task touches them**,
+not on principle.
 
 ---
 
 ## What Jawon is
 
 A local-first Android music player where the library is a **room**, not a list.
-The user browses a wall of shelves holding CD jewel cases, spines out, reading
-titles off the spines like book spines. Tapping one pulls the case from its slot,
-turns it to face the user, opens the lid, and lifts the disc out to spin up into
-playback. Turning the spinning disc scrubs the audio like a DJ platter.
+A wall of shelves holds CD jewel cases that levitate, turn, and glow in their own
+underlight. Tap one and it pulls out of its slot, turns to face you, opens, and
+lifts the disc out to spin up into playback. Turn the spinning disc to scrub.
 
-The library is **entirely user-supplied**. Nothing ships pre-loaded. Users add
-their own audio files, name their own shelves, and upload two images per album:
-the case cover and the disc face.
+The library is **entirely user-supplied** — nothing ships pre-loaded. The album is
+the atomic unit; features that only make sense for shuffling single tracks across a
+huge library do not belong.
 
-The album is the atomic unit. Features that only make sense for shuffling single
-tracks across a huge library do not belong.
+**The room is the app.** It is the start destination, it browses, and it plays.
+The old 2D Wall and Deck screens are deleted, on purpose. Add Album, Shelf Manager
+and Settings are still Compose and still current.
+
+---
+
+## Where the project is
+
+Phase 1 (a complete 2D music player) and Phase 2 (the room: M5–M9) are done.
+**M11 · Realism** is where the work has been since: making the room look and feel
+real rather than merely rendered.
+
+### Working, and checked on a device
+
+The wall and its browsing; the five-beat open/close sequence; the in-room deck;
+the disc, including scratch-to-seek, haptics and press-and-hold-to-pause; playback
+with a proper media notification; importing albums; removing them; the first-run
+screen; adaptive quality tiers.
+
+### Known incomplete
+
+| | |
+|---|---|
+| **Deletion animation** | Works, but reads as weak. The owner wants the disc visibly *breaking* and being thrown away, which needs fracture geometry and something to throw it into — a modelling job in `tools/models/build_models.py`, not tuning. Plan it before coding. |
+| **Quality tiers** | Written and adaptive, but only ever run on a Galaxy S25 Ultra. Three of five testers on S23-class hardware reported stutter; that is what the tiers exist for and none of it is confirmed. |
+| **Slot reuse after a delete** | The discard animation's one previous bug was leaving a pool slot at zero scale forever. Fixed in two places, but the reuse path itself is still unverified — provoking it means deleting a real album. |
+| **Play history** | `Album.playCount` is a dead column, written once as zero. Listening stats cannot be backfilled, so the history table wants to exist *before* launch even if the screens come later. |
+| **Tests** | One file, and it is the template's `assertEquals(4, 2 + 2)`. `WallLayout`, `OpenSequence`, `ShelfHover` and `Scratch` are deliberately pure and free to test. |
+| **Not started** | Colour schemes · crossfade · equaliser · stats screens |
+| **Needs a decision first** | Automatic cover-art fetching · lyrics · online collecting · vinyl/cassette/iPod modes. The first three give the app its first network permission, which changes the privacy policy and the Play data-safety form. The last is three more rooms before one is finished. |
+
+---
+
+## Traps
+
+**These cost real time to find. Read them before debugging anything similar.**
+
+### Filament and SceneView
+
+1. **Never destroy an `ImageNode`.** On the pinned SceneView version, `destroy()`
+   hands `MaterialLoader.destroyMaterialInstance()` a wrapper re-fetched via
+   `getMaterialInstanceAt(0)` rather than the tracked instance, so the instance
+   survives and Filament aborts the *process* on the next commit with *"Invalid
+   texture still bound to MaterialInstance."* Hide nodes and swap `bitmap` in
+   place. This is why the wall renders from an index-keyed pool
+   (`ui/wallscene/CaseSlots.kt`) and never a keyed loop over visible albums.
+
+2. **Filament ignores an unknown material parameter silently.** A typo is
+   indistinguishable from a value that had no effect, which cost three rounds on
+   the disc's washed-out label. Check against `Material.getParameters()` before
+   concluding a value is wrong. The disc's material is gltfio's `base_lit_opaque`.
+
+3. **On a non-metal, specular comes from `reflectance`, not `metallicFactor`.**
+   Zeroing metallic does not stop a surface bouncing the lamp.
+
+4. **SceneView's `CameraNode` re-aims itself at the world origin.** Panning away
+   from centre tilts the lens back toward it — measured at −8.28° — which shifts
+   the *entire view* vertically and makes every position-related bug look like a
+   layout bug. The rotation is written every frame; see `LOOK_STRAIGHT_AHEAD`.
+
+5. **Anything the frame driver writes to a pooled node, `bind()` must restore.**
+   `bind()` handles position, visibility and artwork. The discard animation wrote
+   *scale*, nothing put it back, and every album that later reused that slot
+   rendered invisible.
+
+6. **`OnGestureListener` has no `onUp`** — nineteen callbacks, not one a plain
+   release. Use `SceneView(onTouchEvent = …)` for that. And the ordering between
+   the gesture detector and the raw touch stream is **not guaranteed**, so never
+   let two handlers drive the same `Animatable`.
+
+7. **The glTF thickness axis is negated on export**, and getting it wrong renders
+   without error. See `docs/models.md`.
+
+### Measuring on device
+
+8. **Check the thermal state before believing any frame rate.**
+   `adb shell dumpsys thermalservice | grep "Thermal Status"` must read 0. The same
+   build measures 124fps cool and 88fps hot; a 22% "regression" was once recorded
+   on exactly this mistake.
+
+9. **Samsung's logcat is unusable for app logs** — telephony spam buries them.
+   Write to `context.filesDir` and read it back with
+   `adb shell run-as com.jawon.app cat files/<name>.log`.
+
+10. **`sqlite3` is not on the device.** Copy the database off instead:
+    `adb shell "run-as com.jawon.app cat databases/javon.db" > out.db`.
+
+11. **A case vanishing from the wall proves nothing.** The library spans several
+    shelves and the camera frames about one row, so "it disappeared" usually means
+    it scrolled. Verify against the database.
+
+12. **One log line beats three screenshots.** Screenshots are expensive and
+    ambiguous; `worldToScreenPoint` and a text log settle position questions
+    outright. Reach for instrumentation first, not last.
 
 ---
 
@@ -244,123 +118,65 @@ tracks across a huge library do not belong.
 
 | Decision | Value |
 |---|---|
-| minSdk | 29 (scoped storage settled; `BluetoothCodecStatus` needs 28+) |
+| minSdk | **29.** Where scoped storage settles into one code path. It is why a Galaxy Note 9 on Android 9 cannot install the app; lowering it means a second legacy storage branch, for a 2018 phone that would render this room at its lowest tier anyway. |
 | 3D renderer | Filament via **SceneView** (`io.github.sceneview:sceneview`) |
-| Geometry | ~~**Procedural** via SceneView primitives + custom buffers. No Blender, no downloaded models.~~ **Superseded by M11 Pass 2** — the case, disc and shelves move to imported glTF models, on the owner's call. The wall must use `AssetLoader.createInstancedAsset` so `CaseSlots.kt`'s index-keyed pool keeps its never-destroy guarantee. |
-| Shelf capacity | Unlimited, grows with content, bounded by content (see below) |
+| Geometry | **Imported glTF**, generated by the committed Blender script `tools/models/build_models.py`. The wall must use instancing so the index-keyed pool keeps its never-destroy guarantee. |
 | Album ↔ shelf | **One shelf per album.** A CD is physical; it cannot be in two places. |
 | Room style | **Midnight Shop only.** One room, done excellently. See `DESIGN.md`. |
+| Disc surface | **No rainbow.** Iridescence was built and removed on the owner's call. This rules out *iridescence* (diffraction) and **not** *anisotropy* (the colourless directional sweep a real CD makes), which is wanted. Only the label side is ever seen. |
 | Playback | Media3 / ExoPlayer + `MediaSessionService` |
-| Database | Room |
-| DI | Hilt |
-| Disc surface | **No rainbow.** Iridescence was built in M8 and removed on the owner's call. Do not reintroduce it. Note this rules out *iridescence* (diffraction, which throws colour) and **not** *anisotropy* (the colourless directional sweep a real CD's highlight makes) — the latter is wanted. Only the label side is ever seen. |
-| Custom materials | `materials/dust.mat` is the only hand-written one, compiled **by hand** with a version-matched `matc` — see `docs/materials.md`. From M11 Pass 2, model materials arrive via glTF `KHR_materials_*` extensions instead, so no new `.mat` is expected. |
-
-### Custom shaders (`.filamat`)
-
-One custom material is in the tree: `materials/dust.mat`, compiled to
-`assets/materials/dust.filamat`. It animates every dust mote in the vertex
-shader from a single `time` uniform, so the CPU does nothing per particle.
-Everything else uses SceneView's stock materials.
-
-Worth knowing if that changes: Filament's Gradle plugin is **not published to
-Maven Central or the Gradle Plugin Portal**, so nothing in the build can compile
-a `.mat`. Materials have to be compiled manually with a `matc` matching the
-`filament-android` SceneView pulls, and their output committed alongside the
-source. That is not a rule-4 violation — `matc` is a build-time tool run by hand,
-never a dependency. Full procedure and the shader traps already discovered are in
-`docs/materials.md`.
-
-### Shelf bounds ("defence against infinite scroll")
-The wall's scrollable extent is **derived from content**, never fixed or
-unbounded: `bounds = occupied slots + one empty slot of margin` in each
-direction. The user physically cannot pan past the last album. Adding albums
-grows the wall. Additionally, only case nodes within or near the camera frustum
-are instantiated — never emit nodes for the whole library.
+| Database · DI | Room · Hilt |
+| Custom materials | `materials/dust.mat` is the only hand-written one, compiled by hand with a version-matched `matc` — see `docs/materials.md`. Model materials arrive via glTF `KHR_materials_*`, so no new `.mat` is expected. |
+| Screen-space reflections | **Off.** Measured at a 7× cost with a case open (124fps → 17). Constants are kept beside the switch in `RoomAtmosphere`; turning them back on is a tier decision, not a default. |
+| Shelf bounds | Derived from content, never unbounded: occupied slots plus one empty slot of margin. The user physically cannot pan past the last album. |
 
 ---
 
 ## Architecture rules
 
-1. **Two layers, cleanly separated.** Compose owns all 2D UI. SceneView owns the
-   3D room. They communicate through shared ViewModel state — the 3D layer never
-   owns app state, and Compose never reaches into Filament directly.
-2. **Playback logic never lives in composables or in the scene.** A repository
-   owns the ExoPlayer instance. Everything else reads state and emits events.
-3. **High-frequency state** (playback position, disc spin angle, pan offset) must
-   not trigger Compose recomposition of anything but the smallest possible scope.
-   Prefer driving the scene directly over recomposing.
-4. **No new 3D or animation dependencies.** SceneView + Filament covers bloom,
-   DOF, SSAO, fog, vignette, colour grading, shadows and custom `.filamat`
-   materials. If something seems to need another library, raise it first.
-5. **Threading.** No file I/O, metadata parsing, or image decoding on the main
-   thread. Ever.
-6. Use SceneView's **Composable-as-texture** capability for in-world UI (shelf
-   label plates, liner notes on the case back) rather than baking text into
-   textures manually.
-
----
-
-## Milestones
-
-### Phase 1 — a complete music player, no 3D at all
-
-- **M0 · Skeleton** — project setup, modules, Hilt, Room, Compose nav shell.
-- **M1 · Import** — SAF folder picker, audio scan, `MediaMetadataRetriever`
-  tags, album grouping, per-track codec/rate/depth capture, cover upload
-  (case cover + disc face).
-- **M2 · Shelves** — create, rename, reorder, recolour, assign/move albums,
-  empty states.
-- **M3 · Playback** — ExoPlayer, `MediaSessionService`, notification, lock
-  screen, bluetooth buttons, audio focus, becoming-noisy, gapless, queue,
-  quality readout.
-- **M4 · 2D UI complete** — plain but properly designed Compose interface.
-  *Superseded by M7: the Wall and Deck screens are gone and the room does both.
-  Add Album, Shelf Manager and Settings are still Compose and still current.*
-
-> **CHECKPOINT.** At the end of M4 Jawon is a finished, shippable music player.
-> Do not begin Phase 2 until M4 genuinely works on-device. Everything after this
-> is the experience layer, and it is where the risk lives.
-
-### Phase 2 — the room
-
-- **M5 · SceneView bootstrap** — scene in Compose, engine lifecycle, one lit
-  jewel case built from primitives. Prove the pipeline end to end.
-- **M6 · The wall** — shelf geometry, many cases, user textures on spines and
-  case fronts, pan/fling browsing, label plates, content-derived bounds,
-  frustum-based instantiation.
-- **M7 · Open & close** — the five-beat sequence, forward and reverse,
-  interruptible at any point (see beats below).
-- **M8 · The disc** — iridescence material, spin bound to playback state,
-  scratch-to-seek with haptics.
-- **M9 · Atmosphere** — lights, shadows, IBL, bloom, DOF, fog, dust.
-- **M10 · Polish & release** — performance, GPU tiers, icon, onboarding.
-
-### The five beats (M7)
-Reference `javon-shelf-prototype.html` for exact timing fractions.
-
-1. **Pull** — case slides out of its slot toward the viewer
-2. **Turn** — rotates 90° from spine-on to cover-on
-3. **Open** — lid swings on its hinge
-4. **Lift** — disc rises out of the tray, case drifts back and down
-5. **Spin** — disc squares up, spins to playback speed, UI reveals
-
-Closing is the same sequence reversed, not a cut. It must be interruptible from
-any point and must never leave two cases mid-animation.
+1. **Two layers, cleanly separated.** Compose owns all 2D UI; SceneView owns the
+   3D room. They meet only through shared ViewModel state — the scene never owns
+   app state, and Compose never reaches into Filament.
+2. **Playback logic lives in neither composables nor the scene.** A repository owns
+   the ExoPlayer instance; everything else reads state and emits events.
+3. **High-frequency state** — playback position, spin angle, pan offset — must not
+   recompose anything but the smallest possible scope. Prefer driving the scene
+   directly.
+4. **No new 3D or animation dependencies.** SceneView and Filament cover bloom,
+   DOF, AO, fog, vignette, grading, shadows and custom materials. Raise it first if
+   something seems to need another library.
+5. **No file I/O, metadata parsing or image decoding on the main thread.** Ever.
+6. Use SceneView's **Composable-as-texture** for in-world UI (shelf label plates)
+   rather than baking text into bitmaps by hand.
 
 ---
 
 ## Working agreement
 
-- **One milestone per session.** Never bundle. Visual and interaction work has to
-  be felt on a device between changes, not reviewed as one large diff.
-- **Use Plan Mode** for anything touching the 3D scene, gesture handling, or
-  animation timing. Propose before writing.
-- **Read SceneView's source** for
-  API questions instead of guessing at signatures.
-- Values exported from the prototype are **starting points for tuning**, not
-  fixed requirements. Expect to iterate on-device.
-- After each milestone, stop for a build and a manual check before continuing.
-- Test target is a **Samsung Galaxy S25 Ultra** — flagship hardware. Do not treat
-  smooth performance there as proof it runs everywhere; note anything expensive
-  so M10 can add quality tiers.
+- **One thing at a time, checked on a device between changes.** This was ignored
+  once — nine commits, one check at the end — and the check found a bug the first
+  time the feature was actually exercised.
+- **Plan before coding** anything touching the 3D scene, gestures or animation
+  timing.
+- **Instrument before guessing.** See trap 12.
+- **Read SceneView's source** for API questions rather than guessing at signatures.
+- Values exported from `javon-shelf-prototype.html` are **starting points for
+  tuning**, not requirements.
+- Test target is a **Galaxy S25 Ultra** — flagship. Smooth there is not proof it
+  runs anywhere; note anything expensive so the tiers can use it.
+- Never assume a milestone is complete. If this file looks stale or contradicts
+  the code, **ask** — do not infer from the repo.
+
+---
+
+## Where the detail is
+
+| Read when | Document |
+|---|---|
+| Orienting in the code — what each file does | `docs/architecture.md` |
+| Touching the case, disc or beam models | `docs/models.md` |
+| Touching `dust.mat` or any shader | `docs/materials.md` |
+| Building, signing or shipping | `docs/release.md` |
+| Questions about the product's intent | `PLAN.md` |
+| Questions about how the room should look | `DESIGN.md` |
+| Exact animation timing and feel | `javon-shelf-prototype.html` — **open it and read the JS**; when a 3D behaviour is ambiguous, the prototype is the source of truth, not your assumption |

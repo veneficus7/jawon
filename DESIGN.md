@@ -1,4 +1,4 @@
-# CRATE — Visual Design Spec
+# Jawon — Visual Design Spec
 
 Binding design direction. Read before any UI, styling, lighting, or animation
 work. Where this conflicts with existing code, flag the conflict and propose a
@@ -15,16 +15,27 @@ A record shop after closing. One warm lamp over the racks, deep shadow
 everywhere else, dust hanging in the light. Warm, quiet, and slightly private —
 the feeling of being somewhere you're not strictly supposed to be after hours.
 
-Chosen over the warmer daylight alternative for three reasons: the disc's
-iridescence and the bloom read strongest against deep warm black; a dark room is
-the right one for headphone listening at night, which is when this app gets
-used; and it costs almost nothing on OLED.
+Chosen over the warmer daylight alternative for three reasons: the bloom and the
+underlights read strongest against deep warm black; a dark room is the right one
+for headphone listening at night, which is when this app gets used; and it costs
+almost nothing on OLED.
 
-**The single boldest element is the disc surface.** Every disc carries a real
-diffraction sweep — the rainbow you see tilting a CD under a lamp. That is where
-all the saturated colour in this app lives. Because the disc carries the colour,
-everything around it stays warm, dark, and disciplined. Do not add competing
-colour to the chrome.
+**Where the saturated colour lives: the underlights.** Every album levitates in
+its own pool of coloured light, taken from the cover's dominant hue unless the
+user picks one. That is the app's colour, and because the shelves carry it,
+everything else stays warm, dark and disciplined. Do not add competing colour to
+the chrome.
+
+> **The disc used to carry it, and no longer does.** This section originally made
+> a rainbow diffraction sweep the boldest element in the app. It was built in M8
+> and **removed on the owner's call** — see `ENGINEERING.md`'s locked decisions. Note
+> what that rules out and what it does not: *iridescence* (diffraction, which
+> throws colour) is out; *anisotropy* — the colourless directional sweep a real
+> CD's highlight makes — is still wanted. Only the label side is ever seen.
+>
+> The label is also deliberately close to matte. It is printed ink under lacquer,
+> and letting it behave like polished metal meant the room's lamp bleached the
+> artwork off it.
 
 ---
 
