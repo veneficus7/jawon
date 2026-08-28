@@ -181,16 +181,6 @@ private const val ZOOM_GAIN = 0.65f
 private const val ZOOM_EASE_RATE = 6f
 
 /**
- * How wide and tall the wall behind the shelves is, in metres.
- *
- * Fixed and generous rather than fitted to the library: at 150mm a slot and 205mm a row this
- * covers hundreds of albums in both directions, and a flat panel costs two triangles whatever
- * its size. Fitting it to the content is what recreated the node on every library change and
- * turned the room black — see the node itself.
- */
-private const val WALL_BACKING_SPAN = 24f
-
-/**
  * The camera's orientation: square on to the wall, always.
  *
  * **Written every frame because something else keeps changing it.** SceneView's camera node
@@ -677,16 +667,6 @@ fun WallSceneScreen(
         }
 
 
-        val wallMaterial = remember(materialLoader) {
-            materialLoader.createColorInstance(
-                ComposeColor(0xFF1A1410), metallic = 0f, roughness = 0.95f
-            )
-        }
-        val boardMaterial = remember(materialLoader) {
-            materialLoader.createColorInstance(
-                ComposeColor(0xFF2F2318), metallic = 0.04f, roughness = 0.82f
-            )
-        }
         // The case and disc, built by tools/models/build_models.py and loaded from assets.
         //
         // Three files rather than one, because ActiveCaseNodes already has the hierarchy
@@ -1108,9 +1088,19 @@ fun WallSceneScreen(
                     // Arms the magnet: this gesture is a browse, so its release should land
                     // on an album. See WallSettle.panned.
                     settle.panned = true
+                    // ONE coroutine, not two.
+                    //
+                    // This fires on every touch sample — 120 a second on this hardware — and
+                    // launching a coroutine per axis meant 240 of them a second just to drag
+                    // the wall, all of them resuming on the frame the finger is moving. Both
+                    // snaps happen in the same one now.
                     val scale = metresPerPx()
-                    scope.launch { panX.snapTo(panX.value + distance.x * scale) }
-                    scope.launch { panY.snapTo(panY.value - distance.y * scale) }
+                    val dx = distance.x * scale
+                    val dy = distance.y * scale
+                    scope.launch {
+                        panX.snapTo(panX.value + dx)
+                        panY.snapTo(panY.value - dy)
+                    }
                 }
             },
             // Pinch to walk the camera in and out of the room. Browsing only: once a case is
@@ -1354,17 +1344,32 @@ fun WallSceneScreen(
                                 } else panY.value
 
                                 layout.nearestCase(fromX, fromY)?.let { target ->
-                                    // Both axes driven from ONE album, and no initial velocity
-                                    // handed to the springs: with bounds set, a spring given a
-                                    // fling's velocity can reach a bound and terminate there
-                                    // instead of at the target, which leaves the wall parked
-                                    // somewhere no album is.
+                                    // Both axes driven from ONE album, and the throw's own
+                                    // velocity handed to the springs so the wall *carries*
+                                    // into its landing rather than stopping dead at the
+                                    // release and then easing across — which is exactly what
+                                    // a fling that has lost its momentum feels like.
                                     //
+                                    // This was dropped once, because a spring given velocity
+                                    // can reach a bound and terminate there instead of at its
+                                    // target, parking the wall where no album is. The bounds
+                                    // now stretch to include wherever the camera already is,
+                                    // so there is no longer a bound close enough to hit.
                                     launch {
-                                        panX.animateTo(target.x, SETTLE_SPRING)
+                                        panX.animateTo(
+                                            targetValue = target.x,
+                                            initialVelocity = if (flung) settle.flungVx else 0f,
+                                            animationSpec = SETTLE_SPRING
+                                        )
                                         haptics.tick()
                                     }
-                                    launch { panY.animateTo(target.y, SETTLE_SPRING) }
+                                    launch {
+                                        panY.animateTo(
+                                            targetValue = target.y,
+                                            initialVelocity = if (flung) settle.flungVy else 0f,
+                                            animationSpec = SETTLE_SPRING
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -1553,6 +1558,19 @@ fun WallSceneScreen(
                             }
                         }
                         discardingAlbumId = null
+
+                        // Settle onto whatever is left nearest the gap.
+                        //
+                        // The wall deliberately does not move *during* a removal — nothing
+                        // should rearrange itself under someone watching it — but once the
+                        // record is gone, resting on an empty slot is its own kind of wrong.
+                        // Eased on the magnet's own spring rather than snapped, so it reads
+                        // as the shelf settling rather than the view being repositioned.
+                        val target = layout.nearestCase(panX.value, panY.value)
+                        if (target != null) {
+                            scope.launch { panX.animateTo(target.x, SETTLE_SPRING) }
+                            scope.launch { panY.animateTo(target.y, SETTLE_SPRING) }
+                        }
                     }
                 }
 
@@ -1704,28 +1722,43 @@ fun WallSceneScreen(
                 // Spanning the full pan range plus a frustum in each direction covers every
                 // position the user can reach, at any zoom: halfW and halfH are computed at
                 // ZOOM_FAR, the furthest the camera is allowed to stand.
-                // FIXED size, deliberately not derived from the layout.
+                // Sized to what the camera can reach, and keyed on that size along with its
+                // own material.
                 //
-                // It used to be sized to the pan range, and that recreated the node every
-                // time the library changed — which destroys the `MaterialInstance` this node
-                // was handed, an instance the composable does not own. After deleting an
-                // album the whole room went black and stayed black.
+                // The material has to be created in the same scope that rebuilds, because a
+                // CubeNode destroys the `MaterialInstance` it is handed. Remembered outside,
+                // it was destroyed the first time the size changed and every later wall got a
+                // dead one — the room went black after a deletion and stayed black.
                 //
-                // A flat panel behind everything costs two triangles whatever its size, and
-                // the fog and vignette hide its edges, so there is nothing to buy by fitting
-                // it to the content. Big enough for a library far larger than anyone will
-                // have, and it never changes again.
-                CubeNode(
-                    size = Size(WALL_BACKING_SPAN, WALL_BACKING_SPAN, 0.01f),
-                    position = Position(0f, 0f, WALL_Z - 0.005f),
-                    materialInstance = wallMaterial,
-                    apply = {
-                        isTouchable = false
-                        // Takes shadows, casts none â€” there is nothing behind it.
-                        isShadowReceiver = true
-                        isShadowCaster = false
+                // Making the panel a fixed 24m avoided that and cost far more than it saved:
+                // this is a shadow receiver, and the room's shadow near/far hints are tuned to
+                // a scene 1.5m across. Browsing fell to 31fps.
+                key(layout.minPanX, layout.maxPanX, layout.minPanY, layout.maxPanY) {
+                    val backing = remember {
+                        materialLoader.createColorInstance(
+                            ComposeColor(0xFF1A1410), metallic = 0f, roughness = 0.95f
+                        )
                     }
-                )
+                    CubeNode(
+                        size = Size(
+                            (layout.maxPanX - layout.minPanX) + halfW * 2f,
+                            (layout.maxPanY - layout.minPanY) + halfH * 2f,
+                            0.01f
+                        ),
+                        position = Position(
+                            (layout.maxPanX + layout.minPanX) / 2f,
+                            (layout.maxPanY + layout.minPanY) / 2f,
+                            WALL_Z - 0.005f
+                        ),
+                        materialInstance = backing,
+                        apply = {
+                            isTouchable = false
+                            // Takes shadows, casts none — there is nothing behind it.
+                            isShadowReceiver = true
+                            isShadowCaster = false
+                        }
+                    )
+                }
             }
             // Keyed by INDEX, not shelf id — the same discipline the case pool uses, and for
             // the same reason.
@@ -1740,20 +1773,21 @@ fun WallSceneScreen(
             // By index, a row change re-points a node that already exists instead of
             // destroying it, so the material outlives the churn.
             visibleRows.forEachIndexed { rowIndex, row ->
-                key(rowIndex) {
-                    // Fixed width, for the same reason the wall backing is: sized from the
-                    // layout, *any* library change alters it, and changing a CubeNode's size
-                    // rebuilds the node — which destroys the shared MaterialInstance and
-                    // leaves the next board with a dead one. Keying by index alone did not
-                    // fix that, because the size was still layout-derived: deleting an album
-                    // shortened the shelf and the board disappeared until relaunch.
-                    //
-                    // The boards run off into the fog either way, so their real extent was
-                    // never visible.
+                // Keyed on the width as well as the row, so the board and the material it
+                // owns are rebuilt together. A CubeNode destroys the instance handed to it,
+                // so one remembered further out dies with the first board that rebuilds and
+                // leaves every later board with a dead material — which is why the shelf
+                // disappeared on import, and again on delete.
+                key(rowIndex, layout.wallWidth) {
+                    val boardSurface = remember {
+                        materialLoader.createColorInstance(
+                            ComposeColor(0xFF2F2318), metallic = 0.04f, roughness = 0.82f
+                        )
+                    }
                     CubeNode(
-                        size = Size(WALL_BACKING_SPAN, BOARD_H, BOARD_D),
+                        size = Size(layout.wallWidth, BOARD_H, BOARD_D),
                         position = Position(0f, row.boardY, 0f),
-                        materialInstance = boardMaterial,
+                        materialInstance = boardSurface,
                         apply = {
                             isTouchable = false
                             isShadowReceiver = true
