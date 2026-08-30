@@ -9,4 +9,9 @@ sealed class JawonDestination(val route: String) {
     data object AddAlbum : JawonDestination("add_album")
     data object ShelfManager : JawonDestination("shelf_manager")
     data object Settings : JawonDestination("settings")
+
+    /** Editing one album. Reached from the room's long-press and from the shelf list. */
+    data object EditAlbum : JawonDestination("edit_album/{albumId}") {
+        fun routeFor(albumId: String) = "edit_album/$albumId"
+    }
 }

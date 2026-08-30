@@ -2,7 +2,6 @@ package com.jawon.app.ui.shelfmanager
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.jawon.app.data.local.Album
 import com.jawon.app.data.local.AlbumDao
 import com.jawon.app.data.local.Shelf
 import com.jawon.app.data.local.ShelfDao
@@ -75,11 +74,4 @@ class ShelfManagerViewModel @Inject constructor(
         }
     }
 
-    fun onMoveAlbum(album: Album, targetShelfId: String) {
-        if (album.shelfId == targetShelfId) return
-        val targetSlotIndex = shelves.value.find { it.shelf.id == targetShelfId }?.albums?.size ?: 0
-        viewModelScope.launch {
-            albumDao.insert(album.copy(shelfId = targetShelfId, slotIndex = targetSlotIndex))
-        }
-    }
 }

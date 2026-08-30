@@ -33,8 +33,6 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LocalTextStyle
@@ -66,7 +64,6 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.jawon.app.data.local.Album
-import com.jawon.app.data.local.Shelf
 import com.jawon.app.data.local.ShelfWithAlbums
 import com.jawon.app.ui.theme.ArchivoFamily
 import com.jawon.app.ui.theme.CrateBlack
@@ -95,6 +92,7 @@ import com.jawon.app.ui.theme.LampAmber
 @Composable
 fun ShelfManagerScreen(
     onBack: () -> Unit,
+    onEditAlbum: (String) -> Unit,
     viewModel: ShelfManagerViewModel = hiltViewModel()
 ) {
     val shelves by viewModel.shelves.collectAsStateWithLifecycle()
@@ -142,8 +140,6 @@ fun ShelfManagerScreen(
                     val index = shelves.indexOfFirst { it.shelf.id == entry.shelf.id }
                     ShelfBoard(
                         entry = entry,
-                        otherShelves = shelves.map { it.shelf }
-                            .filter { it.id != entry.shelf.id },
                         isFirst = index == 0,
                         isLast = index == shelves.lastIndex,
                         expanded = openShelfId == entry.shelf.id,
@@ -157,7 +153,7 @@ fun ShelfManagerScreen(
                         onRecolour = viewModel::onRecolour,
                         onMoveUp = viewModel::onMoveUp,
                         onMoveDown = viewModel::onMoveDown,
-                        onMoveAlbum = viewModel::onMoveAlbum
+                        onEditAlbum = onEditAlbum
                     )
                 }
             }
@@ -220,7 +216,6 @@ private fun ScreenHeader(onBack: () -> Unit, onNew: () -> Unit, newIsOpen: Boole
 @Composable
 private fun ShelfBoard(
     entry: ShelfWithAlbums,
-    otherShelves: List<Shelf>,
     isFirst: Boolean,
     isLast: Boolean,
     expanded: Boolean,
@@ -229,7 +224,7 @@ private fun ShelfBoard(
     onRecolour: (String, Float) -> Unit,
     onMoveUp: (String) -> Unit,
     onMoveDown: (String) -> Unit,
-    onMoveAlbum: (Album, String) -> Unit
+    onEditAlbum: (String) -> Unit
 ) {
     val shelf = entry.shelf
     var hue by remember(shelf.id) { mutableFloatStateOf(shelf.accentHue) }
@@ -365,7 +360,7 @@ private fun ShelfBoard(
                 if (entry.albums.isNotEmpty()) {
                     FieldLabel("ON THIS SHELF")
                     entry.albums.forEach { album ->
-                        AlbumLine(album, otherShelves, onMoveAlbum)
+                        AlbumLine(album, onEditAlbum)
                     }
                 }
             }
@@ -526,73 +521,42 @@ private fun NewShelfField(onCreate: (String) -> Unit) {
 }
 
 /**
- * An album on a shelf. The whole row is the target — the old layout put a "Move" button on
- * every single one, which on a full shelf was a column of identical buttons doing the work a
- * tap on the title can do.
+ * An album on a shelf. The whole row opens it for editing.
+ *
+ * There used to be a "Move" button on every single row, opening a menu of other shelves —
+ * a column of identical buttons on a full shelf, for the one property of an album this
+ * screen could change. Which shelf a record lives on is now one field among the rest on the
+ * edit screen, so the row can just be a way in.
  */
 @Composable
-private fun AlbumLine(
-    album: Album,
-    otherShelves: List<Shelf>,
-    onMoveAlbum: (Album, String) -> Unit
-) {
-    var menuOpen by remember { mutableStateOf(false) }
-    Box {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clickable(enabled = otherShelves.isNotEmpty()) { menuOpen = true }
-                .padding(vertical = 9.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            Column(Modifier.weight(1f)) {
-                Text(
-                    album.title,
-                    fontFamily = ArchivoFamily,
-                    fontWeight = FontWeight.ExtraBold,
-                    fontSize = 14.sp,
-                    color = LabelCream,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Text(
-                    album.artist.uppercase(),
-                    style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = 10.sp),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-            // Says what tapping does, without being a button. Absent when there is nowhere
-            // to move to, because then the row does nothing and should not suggest it does.
-            if (otherShelves.isNotEmpty()) {
-                Text(
-                    "MOVE",
-                    style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = 10.sp)
-                )
-            }
+private fun AlbumLine(album: Album, onEdit: (String) -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onEdit(album.id) }
+            .padding(vertical = 9.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(
+                album.title,
+                fontFamily = ArchivoFamily,
+                fontWeight = FontWeight.ExtraBold,
+                fontSize = 14.sp,
+                color = LabelCream,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                album.artist.uppercase(),
+                style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = 10.sp),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
         }
-        DropdownMenu(
-            expanded = menuOpen,
-            onDismissRequest = { menuOpen = false },
-            containerColor = CrateBlack,
-            modifier = Modifier.border(1.dp, CrateEdge)
-        ) {
-            otherShelves.forEach { target ->
-                DropdownMenuItem(
-                    text = {
-                        Text(
-                            target.name.uppercase(),
-                            style = JawonTextStyle.mono.copy(color = LabelCream)
-                        )
-                    },
-                    onClick = {
-                        onMoveAlbum(album, target.id)
-                        menuOpen = false
-                    }
-                )
-            }
-        }
+        // Says what tapping does, without being a second target to aim at.
+        Text("EDIT", style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = 10.sp))
     }
 }
 

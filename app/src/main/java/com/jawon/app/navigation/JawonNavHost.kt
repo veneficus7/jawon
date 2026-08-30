@@ -2,10 +2,13 @@ package com.jawon.app.navigation
 
 import androidx.compose.runtime.Composable
 import androidx.navigation.NavHostController
+import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import androidx.navigation.navArgument
 import com.jawon.app.ui.addalbum.AddAlbumScreen
+import com.jawon.app.ui.editalbum.EditAlbumScreen
 import com.jawon.app.ui.settings.SettingsScreen
 import com.jawon.app.ui.shelfmanager.ShelfManagerScreen
 import com.jawon.app.ui.wallscene.WallSceneScreen
@@ -17,7 +20,10 @@ fun JawonNavHost(navController: NavHostController = rememberNavController()) {
             WallSceneScreen(
                 onAddAlbum = { navController.navigate(JawonDestination.AddAlbum.route) },
                 onOpenShelfManager = { navController.navigate(JawonDestination.ShelfManager.route) },
-                onOpenSettings = { navController.navigate(JawonDestination.Settings.route) }
+                onOpenSettings = { navController.navigate(JawonDestination.Settings.route) },
+                onEditAlbum = { albumId ->
+                    navController.navigate(JawonDestination.EditAlbum.routeFor(albumId))
+                }
             )
         }
         composable(JawonDestination.AddAlbum.route) {
@@ -27,7 +33,21 @@ fun JawonNavHost(navController: NavHostController = rememberNavController()) {
             )
         }
         composable(JawonDestination.ShelfManager.route) {
-            ShelfManagerScreen(onBack = { navController.popBackStack() })
+            ShelfManagerScreen(
+                onBack = { navController.popBackStack() },
+                onEditAlbum = { albumId ->
+                    navController.navigate(JawonDestination.EditAlbum.routeFor(albumId))
+                }
+            )
+        }
+        composable(
+            route = JawonDestination.EditAlbum.route,
+            arguments = listOf(navArgument("albumId") { type = NavType.StringType })
+        ) {
+            EditAlbumScreen(
+                onDone = { navController.popBackStack() },
+                onCancel = { navController.popBackStack() }
+            )
         }
         composable(JawonDestination.Settings.route) {
             SettingsScreen(onBack = { navController.popBackStack() })

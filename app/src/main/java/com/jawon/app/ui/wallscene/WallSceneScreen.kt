@@ -16,6 +16,7 @@ import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -493,6 +494,7 @@ fun WallSceneScreen(
     onAddAlbum: () -> Unit,
     onOpenShelfManager: () -> Unit,
     onOpenSettings: () -> Unit,
+    onEditAlbum: (String) -> Unit,
     viewModel: WallSceneViewModel = hiltViewModel()
 ) {
     val layout by viewModel.layout.collectAsStateWithLifecycle()
@@ -1899,7 +1901,11 @@ fun WallSceneScreen(
                     discardCase(case)
                     pendingDelete = null
                 },
-                onDismiss = { pendingDelete = null }
+                onDismiss = { pendingDelete = null },
+                onEdit = {
+                    pendingDelete = null
+                    onEditAlbum(case.albumId)
+                }
             )
         }
 
@@ -2057,7 +2063,8 @@ private fun ShelfPlate(name: String, accentHue: Float) {
 private fun RemoveAlbumDialog(
     case: CaseLayout,
     onConfirm: () -> Unit,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    onEdit: () -> Unit
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -2099,13 +2106,32 @@ private fun RemoveAlbumDialog(
             }
         },
         text = {
-            Text(
-                text = "It comes off the shelf, along with the artwork you gave it. " +
-                    "Your audio files stay exactly where they are — Jawon never deletes " +
-                    "your music.",
-                style = JawonTextStyle.mono.copy(color = LabelDim),
-                lineHeight = 19.sp
-            )
+            Column(verticalArrangement = Arrangement.spacedBy(18.dp)) {
+                Text(
+                    text = "It comes off the shelf, along with the artwork you gave it. " +
+                        "Your audio files stay exactly where they are — Jawon never deletes " +
+                        "your music.",
+                    style = JawonTextStyle.mono.copy(color = LabelDim),
+                    lineHeight = 19.sp
+                )
+                // The long press is where you already reach for an album, so the alternative
+                // to throwing it away belongs here: most of the time someone holding down on
+                // a record wants to fix its cover or its colour, not destroy it. Offered as
+                // a quiet line rather than a third button, so the dialog still reads as the
+                // one question it is asking.
+                Text(
+                    text = "EDIT THIS ALBUM INSTEAD →",
+                    fontFamily = JetBrainsMonoFamily,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 11.sp,
+                    letterSpacing = 1.6.sp,
+                    color = LampAmber,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable(onClick = onEdit)
+                        .padding(vertical = 4.dp)
+                )
+            }
         },
         confirmButton = {
             TextButton(onClick = onConfirm) {
