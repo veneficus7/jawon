@@ -1,12 +1,23 @@
 package com.jawon.app.ui.settings
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Button
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
@@ -14,37 +25,118 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.jawon.app.R
+import com.jawon.app.ui.theme.ArchivoFamily
+import com.jawon.app.ui.theme.CrateBlack
+import com.jawon.app.ui.theme.CrateEdge
 import com.jawon.app.ui.theme.JawonTextStyle
+import com.jawon.app.ui.theme.JetBrainsMonoFamily
+import com.jawon.app.ui.theme.LabelCream
+import com.jawon.app.ui.theme.LabelDim
+import com.jawon.app.ui.theme.LampAmber
 
 @Composable
 fun SettingsScreen(onBack: () -> Unit) {
     val context = LocalContext.current
+    // Read from the package rather than hardcoded, so it can only ever say what was actually
+    // installed. `versionName` is set in app/build.gradle.kts.
     val versionName = remember(context) {
         runCatching {
             context.packageManager.getPackageInfo(context.packageName, 0).versionName
         }.getOrNull().orEmpty()
     }
 
-    Scaffold { innerPadding ->
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(CrateBlack)
+            .statusBarsPadding()
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(start = 8.dp, end = 8.dp, top = 6.dp, bottom = 10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            IconButton(onClick = onBack) {
+                Icon(
+                    Icons.AutoMirrored.Filled.ArrowBack,
+                    contentDescription = "Back to the room",
+                    tint = LabelDim
+                )
+            }
+            Text(
+                text = "SETTINGS",
+                fontFamily = JetBrainsMonoFamily,
+                fontWeight = FontWeight.Bold,
+                fontSize = 12.sp,
+                letterSpacing = 3.sp,
+                color = LampAmber
+            )
+        }
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .height(1.dp)
+                .background(CrateEdge)
+        )
+
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(innerPadding)
-                .padding(24.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+                .verticalScroll(rememberScrollState())
+                .navigationBarsPadding()
+                .padding(horizontal = 24.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Text(stringResource(R.string.app_name), style = MaterialTheme.typography.displaySmall)
-            if (versionName.isNotEmpty()) {
-                Text("VERSION $versionName".uppercase(), style = JawonTextStyle.mono)
+            Column(
+                modifier = Modifier.padding(top = 64.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
+                Text(
+                    text = stringResource(R.string.app_name).uppercase(),
+                    fontFamily = ArchivoFamily,
+                    fontWeight = FontWeight.ExtraBold,
+                    fontSize = 44.sp,
+                    letterSpacing = 3.sp,
+                    color = LabelCream
+                )
+                if (versionName.isNotEmpty()) {
+                    // Boxed like a stamp on a sleeve rather than set as a line of body text —
+                    // on a beta build the version is the single most useful thing on this
+                    // screen, because it is what a tester quotes back with a bug report.
+                    Box(
+                        Modifier
+                            .background(LampAmber.copy(alpha = 0.10f))
+                            .padding(horizontal = 14.dp, vertical = 6.dp)
+                    ) {
+                        Text(
+                            text = "VERSION ${versionName.uppercase()}",
+                            style = JawonTextStyle.mono
+                        )
+                    }
+                }
             }
-            Text(
-                "Nothing to configure yet — playback and appearance settings land here as they're built.",
-                style = MaterialTheme.typography.bodyMedium
+
+            Box(
+                Modifier
+                    .padding(vertical = 40.dp)
+                    .width(60.dp)
+                    .height(1.dp)
+                    .background(CrateEdge)
             )
-            Button(onClick = onBack) { Text("Back") }
+
+            Text(
+                text = "Nothing to configure yet. Colour schemes, crossfade and the " +
+                    "equaliser land here as they are built.",
+                style = JawonTextStyle.mono.copy(color = LabelDim),
+                lineHeight = 19.sp,
+                modifier = Modifier.padding(bottom = 48.dp)
+            )
         }
     }
 }
