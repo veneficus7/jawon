@@ -32,7 +32,8 @@ class AddAlbumViewModel @Inject constructor(
             // nobody is going to fill in a form forty times.
                     found.size > 1 -> AddAlbumUiState.MultiPreview(
                         albums = found,
-                        selected = found.indices.toSet()
+                        selected = found.indices.toSet(),
+                        coversToLookUp = repository.coversToLookUp(found)
                     )
                     else -> singlePreview(found.first())
                 }
@@ -74,19 +75,17 @@ class AddAlbumViewModel @Inject constructor(
     fun onToggleAll() {
         val current = _uiState.value
         if (current !is AddAlbumUiState.MultiPreview) return
-        _uiState.value = current.copy(
-            selected = if (current.selected.size == current.albums.size) emptySet()
-            else current.albums.indices.toSet()
-        )
+        val selected = if (current.selected.size == current.albums.size) emptySet()
+        else current.albums.indices.toSet()
+        _uiState.value = current.copy(selected = selected, coversToLookUp = coverCount(current, selected))
     }
 
     fun onToggleAlbum(index: Int) {
         val current = _uiState.value
         if (current !is AddAlbumUiState.MultiPreview) return
-        _uiState.value = current.copy(
-            selected = if (index in current.selected) current.selected - index
-            else current.selected + index
-        )
+        val selected = if (index in current.selected) current.selected - index
+        else current.selected + index
+        _uiState.value = current.copy(selected = selected, coversToLookUp = coverCount(current, selected))
     }
 
     fun onImportSelected() {
@@ -102,6 +101,10 @@ class AddAlbumViewModel @Inject constructor(
             }
         }
     }
+
+    /** How many of the ticked albums would need their cover fetched. Zero when off. */
+    private fun coverCount(state: AddAlbumUiState.MultiPreview, selected: Set<Int>): Int =
+        repository.coversToLookUp(selected.mapNotNull { state.albums.getOrNull(it) })
 
     private fun singlePreview(preview: ImportPreview): AddAlbumUiState.Preview =
         AddAlbumUiState.Preview(

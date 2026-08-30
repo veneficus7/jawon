@@ -257,15 +257,34 @@ private fun MultiPreviewContent(
             }
         }
 
-        Button(
-            onClick = onImport,
-            enabled = state.selectedCount > 0,
-            modifier = Modifier.padding(24.dp)
+        Column(
+            modifier = Modifier.padding(24.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            Text(
-                if (state.selectedCount == 1) "Add 1 album"
-                else "Add ${state.selectedCount} albums"
-            )
+            // Said before it happens, not disclosed afterwards. This is the only thing the
+            // app sends anywhere, and the user is looking at the screen that will send it —
+            // so the count and what goes with it belong here, where there is still a choice.
+            // Absent entirely when there is nothing to look up, which is the usual case.
+            if (state.coversToLookUp > 0) {
+                Text(
+                    (if (state.coversToLookUp == 1) "1 of these has no artwork in its files. "
+                    else "${state.coversToLookUp} of these have no artwork in their files. ") +
+                        "Jawon will look " + (if (state.coversToLookUp == 1) "it" else "those") +
+                        " up online, sending just the album and artist name. " +
+                        "Turn this off in Settings.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Button(
+                onClick = onImport,
+                enabled = state.selectedCount > 0
+            ) {
+                Text(
+                    if (state.selectedCount == 1) "Add 1 album"
+                    else "Add ${state.selectedCount} albums"
+                )
+            }
         }
     }
 }

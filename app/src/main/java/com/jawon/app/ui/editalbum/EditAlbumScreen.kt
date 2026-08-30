@@ -144,6 +144,51 @@ fun EditAlbumScreen(
             }
 
             item {
+                // Under the pictures and above the lettering, because it depends on the
+                // lettering: the lookup uses whatever title and artist are typed below, so
+                // correcting a wrong tag and pressing this again is the intended loop.
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .border(1.dp, CrateEdge)
+                            .clickable(enabled = !state.findingCover) {
+                                viewModel.onFindCoverArt()
+                            }
+                            .padding(horizontal = 14.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        if (state.findingCover) {
+                            CircularProgressIndicator(
+                                color = LampAmber,
+                                strokeWidth = 2.dp,
+                                modifier = Modifier.size(14.dp)
+                            )
+                        }
+                        Text(
+                            text = if (state.findingCover) "LOOKING…" else "FIND COVER ART",
+                            fontFamily = JetBrainsMonoFamily,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 11.sp,
+                            letterSpacing = 1.6.sp,
+                            color = if (state.findingCover) LabelDim else LampAmber
+                        )
+                    }
+                    if (state.coverLookupFailed) {
+                        // Says which way it failed. "Nothing happened" would leave the user
+                        // pressing it again; this points at the fix, which is usually the tags.
+                        Text(
+                            "Nothing found — check the title and artist.",
+                            style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = 10.sp)
+                        )
+                    }
+                }
+            }
+
+            item {
                 Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
                     LabelledField("TITLE", state.title, viewModel::onTitleChanged)
                     LabelledField("ARTIST", state.artist, viewModel::onArtistChanged)

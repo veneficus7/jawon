@@ -5,6 +5,7 @@ import android.net.Uri
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.jawon.app.data.importer.CoverArtFetcher
 import com.jawon.app.data.importer.CoverImageStore
 import com.jawon.app.data.local.Album
 import com.jawon.app.data.local.AlbumDao
@@ -44,7 +45,11 @@ data class EditAlbumUiState(
     val shelfId: String = "",
     val shelves: List<Shelf> = emptyList(),
     val saving: Boolean = false,
-    val saved: Boolean = false
+    val saved: Boolean = false,
+    /** A cover lookup is in flight. */
+    val findingCover: Boolean = false,
+    /** Set when a lookup came back empty, so the button can say so instead of doing nothing. */
+    val coverLookupFailed: Boolean = false
 ) {
     val shelfName: String get() = shelves.firstOrNull { it.id == shelfId }?.name.orEmpty()
 }
@@ -67,6 +72,7 @@ class EditAlbumViewModel @Inject constructor(
     private val albumDao: AlbumDao,
     private val shelfDao: ShelfDao,
     private val coverStore: CoverImageStore,
+    private val coverArtFetcher: CoverArtFetcher,
     savedStateHandle: SavedStateHandle
 ) : ViewModel() {
 
@@ -122,6 +128,33 @@ class EditAlbumViewModel @Inject constructor(
     fun onDiscFacePicked(uri: Uri?) {
         if (uri == null) return
         _uiState.update { it.copy(pendingDiscFace = uri) }
+    }
+
+    /**
+     * Look this one album's cover up online, on request.
+     *
+     * The import does this automatically for albums with no artwork, but a lookup can come
+     * back empty — the tags may be wrong, or the record may simply not be in MusicBrainz. This
+     * is the retry: correct the title and artist above, then ask again. It uses whatever is
+     * currently typed in the form rather than what is saved, which is the whole point.
+     *
+     * Deliberately a button rather than something that happens on opening the screen. Editing
+     * an album should not make a network request on its own.
+     */
+    fun onFindCoverArt() {
+        val state = _uiState.value
+        if (state.findingCover) return
+        _uiState.update { it.copy(findingCover = true, coverLookupFailed = false) }
+        viewModelScope.launch {
+            val found = coverArtFetcher.fetch(context, state.title.trim(), state.artist.trim())
+            _uiState.update {
+                it.copy(
+                    findingCover = false,
+                    coverLookupFailed = found == null,
+                    pendingCaseCover = found ?: it.pendingCaseCover
+                )
+            }
+        }
     }
 
     fun onHueChanged(value: Float) = _uiState.update { it.copy(spineHue = value) }

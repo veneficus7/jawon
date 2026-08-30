@@ -26,7 +26,16 @@ sealed interface AddAlbumUiState {
      */
     data class MultiPreview(
         val albums: List<ImportPreview>,
-        val selected: Set<Int>
+        val selected: Set<Int>,
+        /**
+         * How many of the *ticked* albums have no artwork of their own and would have their
+         * cover looked up online.
+         *
+         * Shown on the screen before the import runs, so the app's only network call is
+         * something the user is told about while they can still change their mind — rather
+         * than something they find out about from the manifest.
+         */
+        val coversToLookUp: Int = 0
     ) : AddAlbumUiState {
         val selectedCount: Int get() = selected.size
     }

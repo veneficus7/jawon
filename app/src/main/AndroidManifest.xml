@@ -15,6 +15,15 @@
     <uses-permission android:name="android.permission.VIBRATE" />
 
     <!--
+        Cover art lookup, and nothing else. This is the app's only network use: an album
+        title and an artist name go out for records whose own files carry no artwork, and an
+        image comes back. No device id, no account, no library listing. It runs only when the
+        user leaves the switch in Settings on, and the import screen says so before it happens.
+        See data/importer/CoverArtFetcher.
+    -->
+    <uses-permission android:name="android.permission.INTERNET" />
+
+    <!--
         For finding the music already on the phone, so adding a library is not a matter of
         handing over one folder at a time. Read-only, and audio only: Jawon never asks for
         photos, video, or "all files".

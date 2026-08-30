@@ -7,6 +7,7 @@ import android.net.Uri
 import android.provider.MediaStore
 import androidx.documentfile.provider.DocumentFile
 import com.jawon.app.data.local.Album
+import com.jawon.app.data.prefs.AppPreferences
 import com.jawon.app.data.local.AlbumDao
 import com.jawon.app.data.local.Shelf
 import com.jawon.app.data.local.ShelfDao
@@ -39,7 +40,9 @@ class AlbumImportRepository @Inject constructor(
     @param:ApplicationContext private val context: Context,
     private val shelfDao: ShelfDao,
     private val albumDao: AlbumDao,
-    private val trackDao: TrackDao
+    private val trackDao: TrackDao,
+    private val coverArtFetcher: CoverArtFetcher,
+    private val preferences: AppPreferences
 ) {
     private val scanner = AudioScanner()
     private val metadataReader = TrackMetadataReader()
@@ -401,13 +404,33 @@ class AlbumImportRepository @Inject constructor(
                     title = preview.suggestedTitle,
                     artist = preview.suggestedArtist,
                     year = preview.suggestedYear,
-                    caseCoverUri = preview.embeddedCoverUri,
+                    // Only ever for an album whose own files carry no art, and only when the
+                    // user has left the lookup on. An album that brought its cover with it
+                    // never reaches the network — which, on a normally-tagged library, is
+                    // almost all of them.
+                    caseCoverUri = preview.embeddedCoverUri ?: lookedUpCover(preview),
                     discFaceUri = null,
                     spineHue = 0f
                 )
             }.onSuccess { imported++ }
         }
         imported
+    }
+
+    /**
+     * How many of these albums would need a cover looked up online.
+     *
+     * The import screen says this out loud before anything is sent, so the app's only network
+     * call is never a surprise — and when the answer is zero it says nothing at all, which on
+     * a well-tagged library is the usual case.
+     */
+    fun coversToLookUp(previews: List<ImportPreview>): Int =
+        if (!preferences.fetchCoverArt.value) 0
+        else previews.count { it.embeddedCoverUri == null }
+
+    private suspend fun lookedUpCover(preview: ImportPreview): Uri? {
+        if (!preferences.fetchCoverArt.value) return null
+        return coverArtFetcher.fetch(context, preview.suggestedTitle, preview.suggestedArtist)
     }
 
     private suspend fun ensureDefaultShelf(): String {

@@ -18,8 +18,11 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -28,6 +31,8 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.jawon.app.R
 import com.jawon.app.ui.theme.ArchivoFamily
 import com.jawon.app.ui.theme.CrateBlack
@@ -38,9 +43,57 @@ import com.jawon.app.ui.theme.LabelCream
 import com.jawon.app.ui.theme.LabelDim
 import com.jawon.app.ui.theme.LampAmber
 
+/** One switchable setting: what it is, what it actually does, and the switch. */
 @Composable
-fun SettingsScreen(onBack: () -> Unit) {
+private fun SettingRow(
+    title: String,
+    detail: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Text(
+                text = title,
+                fontFamily = JetBrainsMonoFamily,
+                fontWeight = FontWeight.Bold,
+                fontSize = 11.sp,
+                letterSpacing = 2.sp,
+                color = LabelCream
+            )
+            Text(
+                text = detail,
+                style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = 10.sp),
+                lineHeight = 16.sp
+            )
+        }
+        Switch(
+            checked = checked,
+            onCheckedChange = onCheckedChange,
+            colors = SwitchDefaults.colors(
+                checkedThumbColor = CrateBlack,
+                checkedTrackColor = LampAmber,
+                uncheckedThumbColor = LabelDim,
+                uncheckedTrackColor = CrateBlack,
+                uncheckedBorderColor = CrateEdge
+            )
+        )
+    }
+}
+
+@Composable
+fun SettingsScreen(
+    onBack: () -> Unit,
+    viewModel: SettingsViewModel = hiltViewModel()
+) {
     val context = LocalContext.current
+    val fetchCoverArt by viewModel.fetchCoverArt.collectAsStateWithLifecycle()
     // Read from the package rather than hardcoded, so it can only ever say what was actually
     // installed. `versionName` is set in app/build.gradle.kts.
     val versionName = remember(context) {
@@ -130,9 +183,29 @@ fun SettingsScreen(onBack: () -> Unit) {
                     .background(CrateEdge)
             )
 
+            SettingRow(
+                title = "LOOK UP COVER ART",
+                // States exactly what leaves the device. A privacy switch that says
+                // "improve your experience" is not a switch anyone can make a decision with.
+                detail = "When an album's own files carry no artwork, send its title and " +
+                    "artist to MusicBrainz to find a cover. Nothing else is sent — no " +
+                    "account, no device id, no list of what you own. This is the only " +
+                    "thing Jawon sends anywhere.",
+                checked = fetchCoverArt,
+                onCheckedChange = viewModel::onFetchCoverArtChanged
+            )
+
+            Box(
+                Modifier
+                    .padding(vertical = 32.dp)
+                    .width(60.dp)
+                    .height(1.dp)
+                    .background(CrateEdge)
+            )
+
             Text(
-                text = "Nothing to configure yet. Colour schemes, crossfade and the " +
-                    "equaliser land here as they are built.",
+                text = "Colour schemes, crossfade and the equaliser land here as they " +
+                    "are built.",
                 style = JawonTextStyle.mono.copy(color = LabelDim),
                 lineHeight = 19.sp,
                 modifier = Modifier.padding(bottom = 48.dp)
