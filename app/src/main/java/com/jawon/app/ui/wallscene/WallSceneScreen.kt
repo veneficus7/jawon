@@ -1509,6 +1509,11 @@ fun WallSceneScreen(
                     caseSlots.slots.forEach { slot ->
                         if (!slot.occupied) return@forEach
                         val root = slot.root ?: return@forEach
+                        // Slide toward where this case belongs. Almost always a no-op � the
+                        // two are equal unless a shelf has just repacked around a deletion
+                        // or the now-playing album changed, and `bind` snaps them together
+                        // whenever a pooled slot changes hands. See CaseSlot.targetX.
+                        slot.settleTowardTarget(dt)
                         // The beam stands on the board and never turns, so it only needs
                         // placing � at the foot of the bay, under wherever the case is
                         // hanging. CASE_H/2 down from the album's centre is the board top.

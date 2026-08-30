@@ -71,6 +71,44 @@ class CaseSlot {
     var baseY = 0f
     var baseZ = 0f
 
+    /**
+     * Where this case is heading, as opposed to where it is.
+     *
+     * Shelves pack, so removing an album moves every record after it one slot along. Writing
+     * that straight into [baseX] teleports them — the shelf heals in a single frame, which
+     * is the one thing about it that reads as a database update rather than as objects on a
+     * shelf. The frame driver eases [baseX] toward this instead.
+     *
+     * Only ever a *glide*: when a slot is handed a different album (browsing, pooling) it
+     * must appear where it belongs immediately, so [bind] snaps both together in that case.
+     * See [settleTowardTarget].
+     */
+    var targetX = 0f
+    var targetY = 0f
+    var targetZ = 0f
+
+    /**
+     * Ease this case toward where it belongs, frame-rate independently.
+     *
+     * The `1 - exp(-rate * dt)` form rather than a fixed fraction per frame, for the reason
+     * `WallZoom` uses it: a plain lerp converges at a speed that depends on how often it is
+     * called, and this app runs at both 60 and 120.
+     */
+    fun settleTowardTarget(dt: Float) {
+        if (dt <= 0f) return
+        val k = 1f - kotlin.math.exp(-REPACK_RATE * dt)
+        baseX += (targetX - baseX) * k
+        baseY += (targetY - baseY) * k
+        baseZ += (targetZ - baseZ) * k
+    }
+
+    /** Put this case where it belongs immediately, with no travel. */
+    fun snapToTarget() {
+        baseX = targetX
+        baseY = targetY
+        baseZ = targetZ
+    }
+
     /** True when this slot is showing an album, so the frame driver can skip parked ones. */
     var occupied = false
 
@@ -173,6 +211,17 @@ class CaseSlot {
     private companion object {
         const val EMISSIVE_PARAM = "emissiveFactor"
         const val BASE_COLOR_PARAM = "baseColorFactor"
+
+        /**
+         * How briskly a case closes the gap to its slot, per second, as an exponential rate.
+         *
+         * 7 puts a one-bay shift (150mm) at roughly 400ms of visible travel before it is
+         * inside a millimetre of home — long enough to read as the record being slid along
+         * the shelf rather than cutting, short enough that the wall does not feel loose
+         * under a pan. Deliberately unhurried: this plays right after the removal, and the
+         * shelf healing is the last beat of that, not a separate event.
+         */
+        const val REPACK_RATE = 7f
     }
 }
 
@@ -339,8 +388,38 @@ fun CaseSlots.bind(
     selectedAlbumId: String?,
     nowPlayingAlbumId: String?
 ) {
+    // Which slot each album should land on.
+    //
+    // **An album keeps the slot it is already on**, and only albums new to the wall take
+    // free ones. This used to be positional — `bindings[i]` went to `slots[i]` — which meant
+    // panning one bay along handed every slot a different album and re-uploaded every spine
+    // and cover on the wall, and deleting an album shuffled every survivor onto a new slot.
+    //
+    // Positional assignment is also what would defeat the repack glide: a case can only
+    // *travel* to its new place if it is still the same case, on the same slot, from one
+    // bind to the next. See [CaseSlot.targetX].
+    val slotOfAlbum = HashMap<String, Int>(slots.size)
+    slots.forEachIndexed { index, slot -> slot.body?.name?.let { slotOfAlbum[it] = index } }
+
+    val assigned = arrayOfNulls<Pair<CaseLayout, CaseArtwork?>>(slots.size)
+    val newcomers = ArrayList<Pair<CaseLayout, CaseArtwork?>>()
+    bindings.forEach { binding ->
+        val index = slotOfAlbum[binding.first.albumId]
+        if (index != null && assigned[index] == null) assigned[index] = binding
+        else newcomers += binding
+    }
+    var free = 0
+    newcomers.forEach { binding ->
+        while (free < assigned.size && assigned[free] != null) free++
+        // The pool can be smaller than the visible set for a frame or two while it grows.
+        // Dropping the overflow is what the positional version did too, just less visibly.
+        if (free >= assigned.size) return@forEach
+        assigned[free] = binding
+        free++
+    }
+
     slots.forEachIndexed { index, slot ->
-        val binding = bindings.getOrNull(index)
+        val binding = assigned[index]
         if (binding == null) {
             // Spare slot: parked, not removed.
             slot.root?.isVisible = false
@@ -370,11 +449,23 @@ fun CaseSlots.bind(
         // `bind` keeps being called on a slot that is mid-flight.
         if (slot.discardClock == null) slot.root?.scale = Scale(1f)
         artwork?.hue?.let { slot.setBeamHue(it) }
-        slot.baseX = case.x
-        slot.baseY = case.y
+        // Where this case belongs now — and whether it should *travel* there.
+        //
+        // Shelves pack, so deleting an album shifts everything after it one slot along and
+        // re-centres the whole row. Those cases should slide. But this same pool hands a
+        // slot to a different album constantly while browsing, and a recycled slot must
+        // appear where it belongs immediately — gliding there would send cases flying
+        // across the wall on every pan. The album id is what tells the two apart.
+        //
+        // `body.name` is the previous binding: `bind` sets it below, and parking a slot
+        // clears it to null, so a fresh or spare slot correctly reads as "not this album".
+        val sameAlbum = slot.body?.name == case.albumId
+        slot.targetX = case.x
+        slot.targetY = case.y
         // The playing album stands out of its slot, so browsing away still shows you
         // what is on (PLAN.md §9 #3).
-        slot.baseZ = if (case.albumId == nowPlayingAlbumId) PROUD_Z else 0f
+        slot.targetZ = if (case.albumId == nowPlayingAlbumId) PROUD_Z else 0f
+        if (!sameAlbum) slot.snapToTarget()
         // Stable per-album, so the same record always hangs the same way.
         slot.phase = albumPhase(case.albumId)
         // Hidden while its case is out in the room, so there are never two of the same album.

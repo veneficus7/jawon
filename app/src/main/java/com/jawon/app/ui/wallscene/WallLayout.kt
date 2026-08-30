@@ -124,7 +124,7 @@ data class RowLayout(
     val row: Int,
     val centerY: Float,
     val boardY: Float,
-    /** Where the label plate sits along the board — the start of the shelf's run. */
+    /** Where the label plate sits along the board — the centre of the shelf. */
     val plateX: Float
 )
 
@@ -206,11 +206,6 @@ data class WallLayout(
 
     companion object {
         /**
-         * One shelf = one row of the wall, ordered by `Shelf.order`; albums run along the
-         * row in `slotIndex` order (the DAO already sorts them, so the list index is used
-         * directly — that keeps a shelf packed even if stored slot indices have gaps).
-         */
-        /**
          * The shelf a brand-new library gets, so the room has something in it.
          *
          * `PLAN.md` §4: the empty state "must read as 'your shelves, waiting' rather than
@@ -230,9 +225,15 @@ data class WallLayout(
             row = 0,
             centerY = 0f,
             boardY = -WallDimens.CASE_H / 2f - WallDimens.BOARD_H / 2f,
-            plateX = -WallDimens.SLOT_PITCH / 2f + WallDimens.PLATE_W / 2f
+            plateX = 0f
         )
 
+        /**
+         * One shelf = one row of the wall, ordered by `Shelf.order`. Albums run along the
+         * row in `slotIndex` order, but their *positions* come from their index in the list
+         * rather than from the stored index — so a shelf is always packed and always centred
+         * on its own label, whatever the database happens to hold.
+         */
         fun from(shelves: List<ShelfWithAlbums>): WallLayout {
             // Loaded, and there is genuinely nothing — not the placeholder. One lit, labelled
             // board, and no cases.
@@ -246,14 +247,25 @@ data class WallLayout(
             }
 
             val rowCount = shelves.size
-            // Widest shelf by the slots it *occupies*, not by how many albums it holds — see
-            // the case loop below for why those differ.
-            val maxCols = shelves
-                .maxOf { shelf -> (shelf.albums.maxOfOrNull { it.slotIndex } ?: -1) + 1 }
-                .coerceAtLeast(1)
 
             fun rowCenterY(row: Int) = ((rowCount - 1) / 2f - row) * WallDimens.ROW_PITCH
-            fun colX(col: Int) = (col - (maxCols - 1) / 2f) * WallDimens.SLOT_PITCH
+
+            /**
+             * Where the `col`th album on a shelf of `count` sits.
+             *
+             * **Centred on its OWN shelf, and packed.** Two things were wrong here. It
+             * divided by the widest shelf's album count rather than this shelf's, so every
+             * shelf shorter than the longest one hung off to the left instead of sitting
+             * under its own label. And it was briefly keyed on stored slot indices, which
+             * left a hole where a removed album had been — the gap is not what the owner
+             * wants; records should close ranks.
+             *
+             * Packing does mean the neighbours move when one is removed. That is handled
+             * where it belongs, in the scene: `CaseSlots` eases each case to its new place
+             * rather than teleporting it, so the shelf visibly closes up.
+             */
+            fun colX(col: Int, count: Int) =
+                (col - (count - 1) / 2f) * WallDimens.SLOT_PITCH
 
             val rows = shelves.mapIndexed { row, shelf ->
                 RowLayout(
@@ -263,24 +275,20 @@ data class WallLayout(
                     row = row,
                     centerY = rowCenterY(row),
                     boardY = rowCenterY(row) - WallDimens.CASE_H / 2f - WallDimens.BOARD_H / 2f,
-                    // Like a record-shop divider: at the start of this shelf's run, or at the
-                    // wall's left edge when the shelf is still empty.
-                    plateX = colX(0) + WallDimens.PLATE_W / 2f - WallDimens.SLOT_PITCH / 2f
+                    // Dead centre of the shelf. The label is the tape stuck on the front of
+                    // the board and it marks the middle of the run, which is also what the
+                    // albums are centred on — so the shelf reads as one thing with its name
+                    // under it, rather than a name at one end and records somewhere else.
+                    plateX = 0f
                 )
             }
 
-            // Position comes from the album's OWN `slotIndex`, not its position in this list.
-            //
-            // It used to be the list index, which meant removing an album slid every album
-            // after it one slot to the left — the shelf closed the gap and a neighbour
-            // snapped into the deleted record's place. On a shelf you have just taken a
-            // record out of, the gap is the truthful thing to show, and it is also what stops
-            // the wall rearranging itself under someone who is looking at it.
-            //
-            // This reverses the older note about list indices keeping a shelf packed. That
-            // was written to tolerate gaps in stored indices; gaps are now the point.
+            // Packed by position in the list, which the DAO has already sorted by slotIndex.
+            // Removing an album therefore closes the gap; `CaseSlots` animates that rather
+            // than letting the neighbours jump.
             val cases = shelves.flatMapIndexed { row, shelf ->
-                shelf.albums.map { album ->
+                val count = shelf.albums.size
+                shelf.albums.mapIndexed { col, album ->
                     CaseLayout(
                         albumId = album.id,
                         title = album.title,
@@ -290,8 +298,8 @@ data class WallLayout(
                         coverPath = album.caseCoverUri,
                         discFacePath = album.discFaceUri,
                         row = row,
-                        col = album.slotIndex,
-                        x = colX(album.slotIndex),
+                        col = col,
+                        x = colX(col, count),
                         y = rowCenterY(row)
                     )
                 }
@@ -310,7 +318,8 @@ data class WallLayout(
             return WallLayout(
                 cases = cases,
                 rows = rows,
-                wallWidth = maxCols * WallDimens.SLOT_PITCH + WallDimens.WALL_MARGIN * 2f,
+                wallWidth = shelves.maxOf { it.albums.size }.coerceAtLeast(1) *
+                    WallDimens.SLOT_PITCH + WallDimens.WALL_MARGIN * 2f,
                 wallHeight = rowCount * WallDimens.ROW_PITCH + WallDimens.WALL_MARGIN * 2f,
                 minPanX = panXRange.first,
                 maxPanX = panXRange.second,
