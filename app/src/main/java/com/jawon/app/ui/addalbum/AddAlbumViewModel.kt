@@ -42,6 +42,44 @@ class AddAlbumViewModel @Inject constructor(
         }
     }
 
+    /**
+     * Find everything on the phone, rather than asking the user to point at folders.
+     *
+     * Always lands on the checklist, even for a single album found, because the user did not
+     * choose this album — the phone did — and the first thing they need is to see what was
+     * found and untick what they do not want. That is a different question from "here is the
+     * folder you picked, confirm its details".
+     *
+     * Nothing is ticked by default. A folder someone deliberately navigated to is a statement
+     * of intent; a whole-device scan is a proposal, and pre-ticking two hundred albums on
+     * someone's behalf makes the safe move the laborious one.
+     */
+    fun onScanDevice() {
+        _uiState.value = AddAlbumUiState.Scanning
+        viewModelScope.launch {
+            _uiState.value = try {
+                val found = repository.scanDevice()
+                if (found.isEmpty()) {
+                    AddAlbumUiState.Error("No new music found on this phone")
+                } else {
+                    AddAlbumUiState.MultiPreview(albums = found, selected = emptySet())
+                }
+            } catch (e: Exception) {
+                AddAlbumUiState.Error(e.message ?: "Couldn't read this phone's music")
+            }
+        }
+    }
+
+    /** Tick or untick everything at once — the only sane control for a list this long. */
+    fun onToggleAll() {
+        val current = _uiState.value
+        if (current !is AddAlbumUiState.MultiPreview) return
+        _uiState.value = current.copy(
+            selected = if (current.selected.size == current.albums.size) emptySet()
+            else current.albums.indices.toSet()
+        )
+    }
+
     fun onToggleAlbum(index: Int) {
         val current = _uiState.value
         if (current !is AddAlbumUiState.MultiPreview) return

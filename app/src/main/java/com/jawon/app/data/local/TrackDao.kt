@@ -22,6 +22,17 @@ interface TrackDao {
     @Query("SELECT title FROM Track WHERE albumId = :albumId ORDER BY trackNumber")
     suspend fun titlesForAlbum(albumId: String): List<String>
 
+    /**
+     * Every file already in the library, for the device scan to skip.
+     *
+     * Scanning the phone finds everything, including albums the user imported by hand last
+     * week. Offering those again as new is how a library ends up with each record twice, and
+     * the file URI is the only thing that identifies a track unambiguously — two rips of the
+     * same album share a title but not a path.
+     */
+    @Query("SELECT fileUri FROM Track")
+    suspend fun allFileUris(): List<String>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(track: Track)
 

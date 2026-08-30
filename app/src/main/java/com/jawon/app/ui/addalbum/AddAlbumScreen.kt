@@ -1,5 +1,10 @@
 package com.jawon.app.ui.addalbum
 
+
+import android.Manifest
+import android.content.Context
+import android.content.pm.PackageManager
+import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
@@ -12,6 +17,8 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
@@ -32,9 +39,11 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import coil3.compose.AsyncImage
 import com.jawon.app.data.importer.TrackMetadata
@@ -49,9 +58,18 @@ fun AddAlbumScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
 
+    val context = LocalContext.current
+
     val folderLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocumentTree()
     ) { uri -> uri?.let(viewModel::onFolderPicked) }
+
+    // Declining is not an error state: the folder picker still works without any permission,
+    // which is how the app has run until now, so a refusal just leaves the user on the screen
+    // with the other option in front of them.
+    val audioPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted -> if (granted) viewModel.onScanDevice() }
 
     LaunchedEffect(uiState) {
         val state = uiState
@@ -63,6 +81,12 @@ fun AddAlbumScreen(
             when (val state = uiState) {
                 is AddAlbumUiState.Idle -> IdleContent(
                     onChooseFolder = { folderLauncher.launch(null) },
+                    onScanDevice = {
+                        // Already granted, or on a build that needs no grant — go straight
+                        // to the scan rather than showing a dialog that answers itself.
+                        if (hasAudioPermission(context)) viewModel.onScanDevice()
+                        else audioPermissionLauncher.launch(audioPermission())
+                    },
                     onCancel = onCancel
                 )
                 is AddAlbumUiState.Scanning -> CenteredMessage("Scanning folder…")
@@ -79,6 +103,7 @@ fun AddAlbumScreen(
                 is AddAlbumUiState.MultiPreview -> MultiPreviewContent(
                     state = state,
                     onToggle = viewModel::onToggleAlbum,
+                    onToggleAll = viewModel::onToggleAll,
                     onImport = viewModel::onImportSelected
                 )
                 is AddAlbumUiState.DoneMany -> {
@@ -94,20 +119,57 @@ fun AddAlbumScreen(
     }
 }
 
+/**
+ * Which permission grants access to the user's audio, on this version of Android.
+ *
+ * The platform split one capability in two at API 33: before that the only way to read the
+ * user's music was the blanket storage permission. Both are declared in the manifest, scoped
+ * by SDK level, and this picks the one that is actually live.
+ */
+private fun audioPermission(): String =
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+        Manifest.permission.READ_MEDIA_AUDIO
+    } else {
+        Manifest.permission.READ_EXTERNAL_STORAGE
+    }
+
+private fun hasAudioPermission(context: Context): Boolean =
+    ContextCompat.checkSelfPermission(context, audioPermission()) ==
+        PackageManager.PERMISSION_GRANTED
+
 @Composable
-private fun IdleContent(onChooseFolder: () -> Unit, onCancel: () -> Unit) {
+private fun IdleContent(
+    onChooseFolder: () -> Unit,
+    onScanDevice: () -> Unit,
+    onCancel: () -> Unit
+) {
     Column(
         modifier = Modifier.fillMaxSize().padding(24.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Text("Add Album", style = MaterialTheme.typography.displaySmall)
-        // Says what actually happens now. It used to read "a folder containing one album's
-        // audio files", which was both a rule the user had to obey and a lie about the
-        // scanner — it always recursed, it just merged everything it found into one album.
-        Text("Pick a folder. One album, or a whole library — Jawon sorts it out.")
-        Button(onClick = onChooseFolder) { Text("Choose folder") }
-        Button(onClick = onCancel) { Text("Cancel") }
+
+        // Offered first, and the one with the primary button, because it is the answer for
+        // almost everyone: the music is already on the phone and Android already knows where.
+        // Picking folders asks the user a question about their filesystem.
+        Text("Let Jawon find the music already on this phone, and sort it into albums itself.")
+        Button(onClick = onScanDevice) { Text("Scan this phone") }
+
+        Spacer(Modifier.height(8.dp))
+
+        // Still here, and not a fallback for the stubborn. MediaStore only indexes what the
+        // media scanner has seen — anything on a cloud provider, a USB stick, or in a folder
+        // the scanner skips is reachable only this way.
+        Text(
+            "Or point at a folder — useful for music on a memory card or in cloud storage, " +
+                "which a scan cannot see.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        TextButton(onClick = onChooseFolder) { Text("Choose a folder instead") }
+
+        TextButton(onClick = onCancel) { Text("Cancel") }
     }
 }
 
@@ -135,6 +197,7 @@ private fun CenteredMessage(text: String) {
 private fun MultiPreviewContent(
     state: AddAlbumUiState.MultiPreview,
     onToggle: (Int) -> Unit,
+    onToggleAll: () -> Unit,
     onImport: () -> Unit
 ) {
     Column(modifier = Modifier.fillMaxSize()) {
@@ -147,10 +210,22 @@ private fun MultiPreviewContent(
                 style = MaterialTheme.typography.headlineSmall
             )
             Text(
-                "Grouped by folder. Untick anything you'd rather not add.",
+                "Tick what you want on your shelves.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
+            // A phone scan can return hundreds. Ticking them one at a time is not a
+            // reasonable thing to ask, and this is also the fastest route to "all of it",
+            // which is what someone setting the app up for the first time wants.
+            TextButton(
+                onClick = onToggleAll,
+                contentPadding = PaddingValues(vertical = 4.dp)
+            ) {
+                Text(
+                    if (state.selectedCount == state.albums.size) "Untick all"
+                    else "Tick all ${state.albums.size}"
+                )
+            }
         }
 
         LazyColumn(
@@ -171,7 +246,8 @@ private fun MultiPreviewContent(
                     Column(modifier = Modifier.weight(1f)) {
                         Text(album.suggestedTitle, style = MaterialTheme.typography.bodyLarge)
                         Text(
-                            "${album.suggestedArtist} · ${album.tracks.size} tracks" +
+                            "${album.suggestedArtist} · ${album.tracks.size} " +
+                                (if (album.tracks.size == 1) "track" else "tracks") +
                                 if (album.embeddedCoverUri != null) " · cover found" else "",
                             style = JawonTextStyle.mono,
                             color = MaterialTheme.colorScheme.onSurfaceVariant

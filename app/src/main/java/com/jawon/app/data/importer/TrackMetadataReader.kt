@@ -42,6 +42,34 @@ class TrackMetadataReader {
     }
 
     /**
+     * Fills in the codec details a [TrackMetadata] is missing — what the quality readout needs.
+     *
+     * The device scan gets its tags from MediaStore, which is an index and answers instantly
+     * for a whole library, but it does not record sample rate or bit depth. Reading those
+     * means opening the file, so the scan leaves them at zero and this fills them in later —
+     * at import, and only for the albums actually chosen. Someone scanning two thousand
+     * tracks and importing five should pay for five.
+     *
+     * Returns the metadata unchanged if it already has a sample rate, so the folder importer
+     * (which reads everything up front) passes through untouched, and so a track whose codec
+     * genuinely cannot be read is not retried forever.
+     */
+    suspend fun withTechnical(context: Context, metadata: TrackMetadata): TrackMetadata =
+        withContext(Dispatchers.IO) {
+            if (metadata.sampleRateHz > 0) return@withContext metadata
+            runCatching { readTechnical(context, metadata.fileUri) }.getOrNull()
+                ?.let {
+                    metadata.copy(
+                        mimeType = it.mimeType,
+                        sampleRateHz = it.sampleRateHz,
+                        bitDepth = it.bitDepth,
+                        bitrateBps = it.bitrateBps
+                    )
+                }
+                ?: metadata
+        }
+
+    /**
      * The album art embedded in a file's tags, or null if it has none.
      *
      * Most ripped or downloaded albums carry their cover inside every track, and Jawon was

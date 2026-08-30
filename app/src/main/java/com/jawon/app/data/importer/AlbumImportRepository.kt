@@ -1,8 +1,10 @@
 package com.jawon.app.data.importer
 
 import android.content.Context
+import android.content.ContentUris
 import android.content.Intent
 import android.net.Uri
+import android.provider.MediaStore
 import androidx.documentfile.provider.DocumentFile
 import com.jawon.app.data.local.Album
 import com.jawon.app.data.local.AlbumDao
@@ -23,6 +25,14 @@ private const val UNSORTED_SHELF_NAME = "Unsorted"
 
 /** How many files to check for embedded art before concluding the album has none. */
 private const val EMBEDDED_ART_PROBE_LIMIT = 5
+
+/**
+ * What MediaStore puts in the album and artist columns when a file has no tag for it.
+ *
+ * A literal, not a missing value — so a phone full of untagged files produces albums named
+ * "&lt;unknown&gt;" unless this is checked for.
+ */
+private const val MEDIASTORE_UNKNOWN = "<unknown>"
 
 @Singleton
 class AlbumImportRepository @Inject constructor(
@@ -69,6 +79,173 @@ class AlbumImportRepository @Inject constructor(
             .sortedBy { it.suggestedTitle.lowercase() }
     }
 
+    /**
+     * Finds every album on the phone, without the user pointing at anything.
+     *
+     * **This is the answer to the import being "time and effort".** The folder picker asks the
+     * user to know where their music lives and to hand over one directory at a time, which is
+     * a question about their filesystem rather than about their records. Android already keeps
+     * an index of every audio file on the device; this reads it.
+     *
+     * The folder picker stays, because MediaStore only indexes what the media scanner has
+     * seen — files in app-private directories, and anything on a provider like Drive or a USB
+     * stick, are reachable through SAF and invisible here.
+     *
+     * **Grouped by MediaStore's own album id, not by folder.** The folder importer groups by
+     * directory because that is all it has, and it is a good heuristic for a ripped
+     * collection. Here the platform has already done the grouping from the tags, and it is
+     * better: it copes with an album split across directories, and with a directory holding
+     * more than one album.
+     *
+     * **Deliberately cheap.** Only MediaStore columns are read — no file is opened. The tags,
+     * track numbers and durations are all in the index, which answers for a whole library in
+     * well under a second; sample rate and bit depth are not, so those are filled in at
+     * import time for the albums actually chosen. See [TrackMetadataReader.withTechnical].
+     */
+    suspend fun scanDevice(): List<ImportPreview> = withContext(Dispatchers.IO) {
+        val known = trackDao.allFileUris().toHashSet()
+
+        // Second, blunter filter for albums already on the shelves.
+        //
+        // **The file URI is not enough, and cannot be.** The same file has a different URI
+        // depending on how it was reached: the folder picker yields a SAF document URI under
+        // `com.android.externalstorage`, while this scan yields `content://media/external/…`.
+        // Nothing in either one exposes the other's identity, so an album imported by folder
+        // last week looks brand new to the scan — and offering someone a second copy of a
+        // record they already have is the one way an automatic scan can make a library worse.
+        //
+        // Matching on title and artist instead. It is a heuristic: two genuinely different
+        // records with the same name by the same artist would be collapsed. That is rare, and
+        // the folder picker is still there for it — whereas duplicates are what you get on
+        // every single scan after the first.
+        val alreadyShelved = albumDao.getAll().first()
+            .mapTo(HashSet()) { albumKey(it.title, it.artist) }
+
+        val projection = arrayOf(
+            MediaStore.Audio.Media._ID,
+            MediaStore.Audio.Media.DISPLAY_NAME,
+            MediaStore.Audio.Media.TITLE,
+            MediaStore.Audio.Media.ALBUM,
+            MediaStore.Audio.Media.ALBUM_ID,
+            MediaStore.Audio.Media.ARTIST,
+            MediaStore.Audio.Media.TRACK,
+            MediaStore.Audio.Media.YEAR,
+            MediaStore.Audio.Media.DURATION,
+            MediaStore.Audio.Media.MIME_TYPE
+        )
+
+        val grouped = LinkedHashMap<String, MutableList<TrackMetadata>>()
+        val albumNames = HashMap<String, Pair<String?, String?>>()
+
+        context.contentResolver.query(
+            MediaStore.Audio.Media.EXTERNAL_CONTENT_URI,
+            projection,
+            // Excludes ringtones, notifications and alarms, which are audio files on every
+            // phone and are not records.
+            "${MediaStore.Audio.Media.IS_MUSIC} != 0",
+            null,
+            "${MediaStore.Audio.Media.ALBUM_ID} ASC, ${MediaStore.Audio.Media.TRACK} ASC"
+        )?.use { cursor ->
+            val idCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media._ID)
+            val nameCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.DISPLAY_NAME)
+            val titleCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.TITLE)
+            val albumCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.ALBUM)
+            val albumIdCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.ALBUM_ID)
+            val artistCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.ARTIST)
+            val trackCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.TRACK)
+            val yearCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.YEAR)
+            val durationCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.DURATION)
+            val mimeCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.MIME_TYPE)
+
+            while (cursor.moveToNext()) {
+                val uri = ContentUris.withAppendedId(
+                    MediaStore.Audio.Media.EXTERNAL_CONTENT_URI,
+                    cursor.getLong(idCol)
+                )
+                if (uri.toString() in known) continue
+
+                val album = cursor.getStringOrNull(albumCol)
+                val artist = cursor.getStringOrNull(artistCol)
+                // Album id groups a real album correctly even when it spans folders. Falling
+                // back to the names keeps loose files together sensibly rather than making
+                // every one of them its own single-track "album".
+                val key = cursor.getLongOrNull(albumIdCol)?.toString()
+                    ?: "name:${album.orEmpty()}/${artist.orEmpty()}"
+
+                albumNames.putIfAbsent(key, album to artist)
+                grouped.getOrPut(key) { mutableListOf() }.add(
+                    TrackMetadata(
+                        fileUri = uri,
+                        displayName = cursor.getStringOrNull(nameCol).orEmpty(),
+                        title = cursor.getStringOrNull(titleCol)
+                            ?: cursor.getStringOrNull(nameCol)?.substringBeforeLast('.')
+                            ?: "Untitled",
+                        album = album,
+                        artist = artist,
+                        // MediaStore packs the disc into the thousands place — 1006 is disc 1
+                        // track 6. Taken raw, a two-disc set numbers its second half 1001,
+                        // 1002 and sorts fine but reads as nonsense on the case.
+                        trackNumber = cursor.getIntOrNull(trackCol)
+                            ?.let { if (it > 1000) it % 1000 else it }
+                            ?.takeIf { it > 0 },
+                        year = cursor.getIntOrNull(yearCol)?.takeIf { it > 0 },
+                        durationMs = cursor.getLongOrNull(durationCol) ?: 0L,
+                        mimeType = cursor.getStringOrNull(mimeCol) ?: "audio/unknown",
+                        // Not in the index. Filled in at import — see the KDoc above.
+                        sampleRateHz = 0,
+                        bitDepth = null,
+                        bitrateBps = 0
+                    )
+                )
+            }
+        }
+
+        grouped.entries.mapNotNull { (key, tracks) ->
+            val ordered = tracks.sortedWith(
+                compareBy({ it.trackNumber ?: Int.MAX_VALUE }, { it.displayName })
+            )
+            val (album, artist) = albumNames[key] ?: (null to null)
+            val title = album?.takeIf { it.isNotBlank() && it != MEDIASTORE_UNKNOWN }
+                ?: mostCommon(ordered.mapNotNull { it.album })
+                ?: "Untitled Album"
+            val artistName = artist?.takeIf { it.isNotBlank() && it != MEDIASTORE_UNKNOWN }
+                ?: "Unknown Artist"
+            if (albumKey(title, artistName) in alreadyShelved) return@mapNotNull null
+
+            ImportPreview(
+                // No picked tree here. Nothing reads this for a device scan — it exists for
+                // the SAF grant the folder path needs — so it points at the first track,
+                // which is at least true rather than a placeholder.
+                treeUri = ordered.first().fileUri,
+                tracks = ordered,
+                suggestedTitle = title,
+                suggestedArtist = artistName,
+                suggestedYear = mostCommon(ordered.mapNotNull { it.year }),
+                failedCount = 0,
+                embeddedCoverUri = extractEmbeddedCover(ordered.map { it.fileUri })
+            )
+        }.sortedBy { it.suggestedTitle.lowercase() }
+    }
+
+    /**
+     * A loose identity for an album, for spotting one the library already has.
+     *
+     * Case and punctuation are dropped because the same record is tagged half a dozen ways
+     * across rips — "Mr. Morale & The Big Steppers" against "Mr Morale and the Big Steppers"
+     * — and a duplicate check that only catches exact matches catches almost nothing.
+     */
+    private fun albumKey(title: String, artist: String): String =
+        (title + ' ' + artist).lowercase().filter { it.isLetterOrDigit() }
+
+    private fun android.database.Cursor.getStringOrNull(index: Int): String? =
+        if (isNull(index)) null else getString(index)
+
+    private fun android.database.Cursor.getLongOrNull(index: Int): Long? =
+        if (isNull(index)) null else getLong(index)
+
+    private fun android.database.Cursor.getIntOrNull(index: Int): Int? =
+        if (isNull(index)) null else getInt(index)
+
     private suspend fun buildPreview(
         treeUri: Uri,
         files: List<DocumentFile>,
@@ -100,7 +277,7 @@ class AlbumImportRepository @Inject constructor(
             suggestedArtist = mostCommon(ordered.mapNotNull { it.artist }) ?: "Unknown Artist",
             suggestedYear = mostCommon(ordered.mapNotNull { it.year }),
             failedCount = failedCount,
-            embeddedCoverUri = extractEmbeddedCover(files)
+            embeddedCoverUri = extractEmbeddedCover(files.map { it.uri })
         )
     }
 
@@ -117,9 +294,9 @@ class AlbumImportRepository @Inject constructor(
      * at scan time there is no album yet — the user is still looking at the preview and may
      * back out. `commit` copies whatever cover survives that screen into private storage.
      */
-    private suspend fun extractEmbeddedCover(files: List<DocumentFile>): Uri? {
-        for (file in files.take(EMBEDDED_ART_PROBE_LIMIT)) {
-            val bytes = metadataReader.embeddedPicture(context, file.uri) ?: continue
+    private suspend fun extractEmbeddedCover(uris: List<Uri>): Uri? {
+        for (uri in uris.take(EMBEDDED_ART_PROBE_LIMIT)) {
+            val bytes = metadataReader.embeddedPicture(context, uri) ?: continue
             return withContext(Dispatchers.IO) {
                 runCatching {
                     val dir = File(context.cacheDir, "import").apply { mkdirs() }
@@ -180,7 +357,10 @@ class AlbumImportRepository @Inject constructor(
             )
         )
 
-        preview.tracks.forEachIndexed { index, track ->
+        preview.tracks.forEachIndexed { index, scanned ->
+            // Opens the file only when the scan could not supply the codec details — which
+            // is the device-scan path, and only for the albums actually being imported.
+            val track = metadataReader.withTechnical(context, scanned)
             trackDao.insert(
                 Track(
                     id = UUID.randomUUID().toString(),
