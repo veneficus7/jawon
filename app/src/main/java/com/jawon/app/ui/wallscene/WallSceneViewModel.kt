@@ -138,13 +138,35 @@ class WallSceneViewModel @Inject constructor(
         deleteAlbum(albumId)
     }
 
-    /** Called when the open sequence lands — the disc is up and spinning. */
+    /**
+     * Called when the open sequence lands — the disc is up and spinning.
+     *
+     * Picks up where the record was left. A CD player that forgets its place is one nobody
+     * trusts, and this room is pretending to be a physical object: take a record off, put it
+     * back on, and it should be where you left it.
+     *
+     * The saved position is dropped when it lands in the last few seconds of the final track,
+     * because "resuming" an album you finished means starting it again, not hearing its last
+     * breath and stopping.
+     */
     fun playAlbum(albumId: String) {
         viewModelScope.launch {
             val tracks = trackDao.getForAlbum(albumId).first()
             if (tracks.isEmpty()) return@launch
             _nowPlayingAlbumId.value = albumId
-            playbackRepository.playAlbum(tracks)
+
+            val album = albumDao.findById(albumId)
+            val index = album?.lastTrackIndex?.coerceIn(0, tracks.lastIndex) ?: 0
+            val position = album?.lastPositionMs ?: 0L
+            val finished = index == tracks.lastIndex &&
+                position > 0L &&
+                position >= tracks[index].durationMs - FINISHED_TAIL_MS
+
+            if (finished) {
+                playbackRepository.playAlbum(tracks)
+            } else {
+                playbackRepository.playAlbum(tracks, startIndex = index, startPositionMs = position)
+            }
         }
     }
 
@@ -178,4 +200,9 @@ class WallSceneViewModel @Inject constructor(
      */
     fun onScrub(trackIndex: Int, positionMs: Long) =
         viewModelScope.launch { playbackRepository.seekTo(trackIndex, positionMs) }
+
+    private companion object {
+        /** Within this of the end of the last track, the album counts as finished. */
+        const val FINISHED_TAIL_MS = 5_000L
+    }
 }

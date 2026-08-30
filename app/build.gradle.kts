@@ -42,6 +42,14 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    // Room writes each schema version here as JSON, and the directory is committed. It is
+    // what a hand-written migration gets checked against — the database is built with no
+    // destructive fallback, so a migration that disagrees with the entities throws on first
+    // open rather than silently dropping someone's library. See data/local/Migrations.kt.
+    ksp {
+        arg("room.schemaLocation", "$projectDir/schemas")
+    }
+
     signingConfigs {
         if (hasSigningKey) {
             create("release") {
