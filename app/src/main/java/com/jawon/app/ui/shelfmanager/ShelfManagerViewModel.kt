@@ -53,6 +53,39 @@ class ShelfManagerViewModel @Inject constructor(
         viewModelScope.launch { shelfDao.insert(shelf.copy(accentHue = hue)) }
     }
 
+    /**
+     * Removes a shelf. The albums on it are **kept**, and land on another shelf.
+     *
+     * Deleting a shelf is a statement about how the library is organised, not about which
+     * records are in it — nobody reaching for "remove this shelf" means "and destroy the
+     * fourteen albums filed under it". So the records move to whichever shelf comes next,
+     * which is the same thing that happens to books when a shelf comes off the wall.
+     *
+     * The last shelf cannot go: every album has to be somewhere, and a library with records
+     * and no shelves has nowhere to put them. The UI hides the control rather than letting
+     * this fail silently.
+     */
+    fun onDeleteShelf(shelfId: String) {
+        val all = shelves.value
+        if (all.size <= 1) return
+        val doomed = all.firstOrNull { it.shelf.id == shelfId } ?: return
+        // Prefer the shelf above, so albums drift up the wall rather than to an arbitrary
+        // one; falling back to the shelf below covers deleting the topmost.
+        val index = all.indexOf(doomed)
+        val destination = (all.getOrNull(index - 1) ?: all.getOrNull(index + 1))?.shelf ?: return
+
+        viewModelScope.launch {
+            var slot = destination.let { dest ->
+                all.first { it.shelf.id == dest.id }.albums.size
+            }
+            doomed.albums.forEach { album ->
+                albumDao.insert(album.copy(shelfId = destination.id, slotIndex = slot))
+                slot++
+            }
+            shelfDao.delete(doomed.shelf)
+        }
+    }
+
     fun onMoveUp(shelfId: String) = swapWithNeighbor(shelfId, offset = -1)
 
     fun onMoveDown(shelfId: String) = swapWithNeighbor(shelfId, offset = 1)

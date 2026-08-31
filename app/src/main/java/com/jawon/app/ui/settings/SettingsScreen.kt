@@ -51,6 +51,7 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.jawon.app.R
 import com.jawon.app.data.playback.EqBand
+import com.jawon.app.ui.common.EqualizerPanel
 import com.jawon.app.data.update.AvailableUpdate
 import com.jawon.app.data.update.UpdateState
 import com.jawon.app.playback.Crossfade
@@ -333,7 +334,6 @@ private fun EqualizerSection(
     onPreset: (Int) -> Unit,
     onReset: () -> Unit
 ) {
-    var presetsOpen by remember { mutableStateOf(false) }
 
     Column(
         modifier = Modifier.fillMaxWidth(),
@@ -359,91 +359,17 @@ private fun EqualizerSection(
         )
 
         if (available && enabled && bands.isNotEmpty()) {
-            val (minMb, maxMb) = rangeMb
-
-            if (presets.isNotEmpty()) {
-                Box {
-                    Row(
-                        modifier = Modifier
-                            .border(1.dp, CrateEdge)
-                            .clickable { presetsOpen = true }
-                            .padding(horizontal = 14.dp, vertical = 9.dp),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Text(
-                            "PRESETS",
-                            style = JawonTextStyle.mono.copy(fontSize = 10.sp)
-                        )
-                    }
-                    DropdownMenu(
-                        expanded = presetsOpen,
-                        onDismissRequest = { presetsOpen = false },
-                        containerColor = CrateBlack,
-                        modifier = Modifier.border(1.dp, CrateEdge)
-                    ) {
-                        presets.forEachIndexed { index, name ->
-                            DropdownMenuItem(
-                                text = {
-                                    Text(
-                                        name.uppercase(),
-                                        style = JawonTextStyle.mono.copy(color = LabelCream)
-                                    )
-                                },
-                                onClick = {
-                                    onPreset(index)
-                                    presetsOpen = false
-                                }
-                            )
-                        }
-                    }
-                }
-            }
-
-            bands.forEach { band ->
-                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Text(
-                            text = formatHz(band.centerHz),
-                            style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = 10.sp)
-                        )
-                        // Signed, and in whole dB. Millibels are the platform's unit, not a
-                        // unit anyone reading a slider thinks in.
-                        Text(
-                            text = "%+.1f dB".format(band.levelMb / 100f),
-                            style = JawonTextStyle.mono.copy(fontSize = 10.sp)
-                        )
-                    }
-                    Slider(
-                        value = band.levelMb.toFloat(),
-                        onValueChange = { onBandChange(band.index, it.toInt()) },
-                        valueRange = minMb.toFloat()..maxMb.toFloat(),
-                        colors = SliderDefaults.colors(
-                            thumbColor = LampAmber,
-                            activeTrackColor = LampAmber.copy(alpha = 0.7f),
-                            inactiveTrackColor = CrateEdge
-                        )
-                    )
-                }
-            }
-
-            Row(
-                modifier = Modifier
-                    .border(1.dp, CrateEdge)
-                    .clickable(onClick = onReset)
-                    .padding(horizontal = 14.dp, vertical = 9.dp)
-            ) {
-                Text("FLAT", style = JawonTextStyle.mono.copy(fontSize = 10.sp))
-            }
+            EqualizerPanel(
+                bands = bands,
+                rangeMb = rangeMb,
+                presets = presets,
+                onBandChange = onBandChange,
+                onPreset = onPreset,
+                onReset = onReset
+            )
         }
     }
 }
-
-/** 1000 Hz reads worse than 1 kHz on a control this small. */
-private fun formatHz(hz: Int): String =
-    if (hz >= 1000) "${(hz / 100) / 10f} kHz".replace(".0 ", " ") else "$hz Hz"
 
 /** One switchable setting: what it is, what it actually does, and the switch. */
 @Composable
@@ -506,6 +432,7 @@ fun SettingsScreen(
     val eqPresets by viewModel.eqPresets.collectAsStateWithLifecycle()
     val crossfadeMs by viewModel.crossfadeMs.collectAsStateWithLifecycle()
     val updateState by viewModel.updateState.collectAsStateWithLifecycle()
+    val casesTurn by viewModel.casesTurn.collectAsStateWithLifecycle()
     // Not remembered: the user can leave to grant the permission and come straight back,
     // and a cached "no" would leave them looking at a button that says to do what they just did.
     val canInstall = viewModel.canRequestInstall()
@@ -609,6 +536,16 @@ fun SettingsScreen(
             SchemePicker(
                 current = roomScheme,
                 onPick = viewModel::onRoomSchemeChanged
+            )
+
+            Box(Modifier.height(28.dp))
+
+            SettingRow(
+                title = "CASES TURN",
+                detail = "Shelved cases rotate slowly to show their covers, then their " +
+                    "spines. Off holds them square on. They still float either way.",
+                checked = casesTurn,
+                onCheckedChange = viewModel::onCasesTurnChanged
             )
 
             SectionHeader("SOUND")

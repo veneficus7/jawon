@@ -41,8 +41,11 @@ fun qualityReadoutSource(track: Track): String {
  */
 fun qualityReadoutOutput(track: Track, routeLabel: String, outputSampleRateHz: Int): String {
     val losslessTag = if (track.mimeType in LOSSLESS_MIME_TYPES) "LOSSLESS" else "LOSSY"
+    // Zero means the rate could not be established — over Bluetooth it genuinely cannot be,
+    // since A2DP re-encodes to the codec's own rate. Printing nothing beats printing a guess.
     val resampled = outputSampleRateHz > 0 && outputSampleRateHz != track.sampleRateHz
     val outputPart =
         if (resampled) " → OUTPUT ${"%.0f".format(outputSampleRateHz / 1000f)} kHz" else ""
-    return "$losslessTag · $routeLabel$outputPart"
+    val route = if (routeLabel.isBlank()) "" else " · $routeLabel"
+    return "$losslessTag$route$outputPart"
 }

@@ -9,8 +9,11 @@ import com.jawon.app.data.local.ShelfWithAlbums
 import com.jawon.app.data.local.Track
 import com.jawon.app.data.local.TrackDao
 import com.jawon.app.data.playback.AudioRouteReader
+import com.jawon.app.data.playback.EqBand
+import com.jawon.app.data.playback.EqualizerController
 import com.jawon.app.data.playback.PlaybackRepository
 import com.jawon.app.data.prefs.AppPreferences
+import com.jawon.app.ui.common.qualityReadoutSource
 import com.jawon.app.ui.theme.RoomScheme
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
@@ -52,14 +55,17 @@ class WallSceneViewModel @Inject constructor(
     private val trackDao: TrackDao,
     private val playbackRepository: PlaybackRepository,
     private val coverStore: CoverImageStore,
+    private val equalizer: EqualizerController,
     preferences: AppPreferences,
-    audioRouteReader: AudioRouteReader
+    private val audioRouteReader: AudioRouteReader
 ) : ViewModel() {
 
-    private val route = audioRouteReader.currentRoute()
 
     /** What colour the room is lit in. The scene reads this and writes it onto the lights. */
     val roomScheme: StateFlow<RoomScheme> = preferences.roomScheme
+
+    /** Whether shelved cases turn. The frame driver reads this and stops writing rotation. */
+    val casesTurn: StateFlow<Boolean> = preferences.casesTurn
 
     val layout: StateFlow<WallLayout> =
         combine(shelfDao.getAll(), albumDao.getAll()) { shelves, albums ->
@@ -82,6 +88,10 @@ class WallSceneViewModel @Inject constructor(
             if (albumId == null) flowOf(emptyList()) else trackDao.getForAlbum(albumId)
         }
         .combine(playbackRepository.playback) { tracks, playback ->
+            // Read per emission rather than once at construction. The old code took a single
+            // reading when the ViewModel was built, so plugging in headphones after opening
+            // the app left the readout insisting on SPEAKER for the rest of the session.
+            val route = audioRouteReader.currentRoute()
             DeckState(
                 tracks = tracks,
                 currentTrackIndex = playback.currentIndex,
@@ -190,7 +200,18 @@ class WallSceneViewModel @Inject constructor(
      * Track titles for one album, for printing on its case back. One shot, off the main
      * thread — the wall bakes each back once and keeps the bitmap.
      */
-    suspend fun trackTitles(albumId: String): List<String> = trackDao.titlesForAlbum(albumId)
+    suspend fun backInlay(albumId: String): CaseArt.BackInlay {
+        val tracks = trackDao.getForAlbum(albumId).first()
+        return CaseArt.BackInlay(
+            titles = tracks.map { it.title },
+            totalMs = tracks.sumOf { it.durationMs },
+            // From the first track: an album is one recording in practice, and printing a
+            // different format per track would be describing the files rather than the record.
+            formatLabel = tracks.firstOrNull()
+                ?.takeIf { it.sampleRateHz > 0 }
+                ?.let { qualityReadoutSource(it) }
+        )
+    }
 
     /** Explicit rather than a toggle — see `PlaybackRepository.setPlaying`. */
     fun setPlaying(playing: Boolean) =
@@ -206,6 +227,22 @@ class WallSceneViewModel @Inject constructor(
      */
     fun onScrub(trackIndex: Int, positionMs: Long) =
         viewModelScope.launch { playbackRepository.seekTo(trackIndex, positionMs) }
+
+    // ---- Equaliser, from inside the deck ------------------------------------------
+    //
+    // An equaliser you can only reach by closing the record you are listening to is one you
+    // cannot actually use: it is adjusted by ear, and the ear needs the music playing.
+
+    val eqAvailable: StateFlow<Boolean> = equalizer.available
+    val eqEnabled: StateFlow<Boolean> = equalizer.enabled
+    val eqBands: StateFlow<List<EqBand>> = equalizer.bands
+    val eqRangeMb: StateFlow<Pair<Int, Int>> = equalizer.rangeMb
+    val eqPresets: StateFlow<List<String>> = equalizer.presets
+
+    fun onEqEnabledChanged(on: Boolean) = equalizer.setEnabled(on)
+    fun onEqBandChanged(index: Int, levelMb: Int) = equalizer.setBand(index, levelMb)
+    fun onEqPreset(index: Int) = equalizer.usePreset(index)
+    fun onEqReset() = equalizer.reset()
 
     private companion object {
         /** Within this of the end of the last track, the album counts as finished. */

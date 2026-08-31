@@ -140,6 +140,31 @@ object CaseArt {
     const val BACK_H = 291
 
     /**
+     * What the back of a case has to print, beyond the album's own name.
+     *
+     * Gathered in one object rather than passed as four arguments because the inlay is one
+     * printed thing, and because the list of what belongs on it has already grown once.
+     */
+    data class BackInlay(
+        val titles: List<String>,
+        /** Sum of every track, for the runtime line. Zero when durations are unknown. */
+        val totalMs: Long = 0L,
+        /** e.g. `FLAC 16-BIT / 44.1 kHz`. Null when the tracks have no readable codec. */
+        val formatLabel: String? = null
+    )
+
+    /** `58:21`, or `1:04:07` past the hour. Null when nothing is known. */
+    private fun formatRuntime(totalMs: Long): String? {
+        if (totalMs <= 0L) return null
+        val totalSeconds = totalMs / 1000
+        val hours = totalSeconds / 3600
+        val minutes = (totalSeconds % 3600) / 60
+        val seconds = totalSeconds % 60
+        return if (hours > 0) "%d:%02d:%02d".format(hours, minutes, seconds)
+        else "%d:%02d".format(minutes, seconds)
+    }
+
+    /**
      * The printed back of the case — **generated, never uploaded.**
      *
      * The wall used to show only spines, so the back never faced anyone. Now that each album
@@ -153,8 +178,8 @@ object CaseArt {
      * means every back is different, every back matches its cover, and the user does nothing.
      *
      * What makes it read as a CD back rather than a coloured rectangle is the furniture: a
-     * printed panel inset from the edges, a rule under the title, and a barcode block bottom
-     * right. The barcode is the strongest signal of the three and costs a dozen lines.
+     * printed panel inset from the edges, a rule under the title, and the fine print bottom
+     * right — the runtime and the format, where a real case carries its barcode.
      *
      * The tracklist is printed down the panel in mono, numbered, exactly as a real back
      * inlay sets it — DESIGN.md §3 makes mono "non-negotiable" for track numbers and
@@ -166,7 +191,7 @@ object CaseArt {
         title: String,
         artist: String,
         hue: Float,
-        trackTitles: List<String>,
+        inlay: BackInlay,
         fonts: Fonts
     ): Bitmap {
         val bitmap = Bitmap.createBitmap(BACK_W, BACK_H, Bitmap.Config.ARGB_8888)
@@ -240,11 +265,11 @@ object CaseArt {
         val titleColumn = textLeft + w * 0.075f
         val titleRoom = w - titleColumn - textLeft
 
-        trackTitles.forEachIndexed { index, track ->
+        inlay.titles.forEachIndexed { index, track ->
             if (y > listBottom) return@forEachIndexed
             // One line reserved to say how many did not fit — a back inlay that silently
             // stops halfway reads as a rendering bug rather than a long album.
-            val remaining = trackTitles.size - index
+            val remaining = inlay.titles.size - index
             if (y + lineH > listBottom && remaining > 1) {
                 canvas.drawText("+$remaining MORE", numColumn, y, numPaint)
                 y += lineH
@@ -262,29 +287,41 @@ object CaseArt {
             y += lineH
         }
 
-        // Barcode, bottom right. Bar widths come from the album id, so a given album always
-        // prints the same code — it is nonsense, but it is *consistently* nonsense, and a
-        // barcode that reshuffled every time the art was rebaked would read as noise.
-        val codeRight = w - textLeft
-        val codeBottom = h - textLeft
-        val codeH = h * 0.085f
-        val codeW = w * 0.42f
-        paint.color = LABEL_CREAM
-        canvas.drawRect(codeRight - codeW, codeBottom - codeH, codeRight, codeBottom, paint)
-
-        paint.color = Color.BLACK
-        var seed = albumId.fold(7) { acc, c -> acc * 31 + c.code }
-        var x = codeRight - codeW + w * 0.012f
-        val quietRight = codeRight - w * 0.012f
-        while (x < quietRight) {
-            seed = seed * 1103515245 + 12345
-            val bar = ((seed ushr 16) and 0x3) + 1
-            val barW = bar * w * 0.004f
-            if (x + barW > quietRight) break
-            canvas.drawRect(x, codeBottom - codeH + w * 0.012f, x + barW, codeBottom - w * 0.02f, paint)
-            seed = seed * 1103515245 + 12345
-            x += barW + (((seed ushr 16) and 0x3) + 1) * w * 0.004f
+        // The fine print, bottom right, where a real inlay carries its barcode.
+        //
+        // **This used to be a barcode, and the barcode was nonsense.** Bar widths were
+        // generated from the album id — consistent nonsense rather than random nonsense, but
+        // still a block of ink that looked like information and was not. On a shelf of your
+        // own records the one thing you cannot see at a glance is how long an album runs and
+        // what it actually is, so that is what the space says now.
+        //
+        // Set as printed matter rather than as UI: small, mono, right-aligned, the way a
+        // catalogue number and a runtime sit on the back of a real case.
+        val printPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            typeface = fonts.mono
+            color = LABEL_DIM
+            textSize = h * 0.036f
+            textAlign = Paint.Align.RIGHT
         }
+        val printRight = w - textLeft
+        var printY = h - textLeft
+
+        // Bottom line first, working up: the format is the least important of the three and
+        // the one most likely to be missing.
+        inlay.formatLabel?.let {
+            canvas.drawText(it.uppercase(), printRight, printY, printPaint)
+            printY -= printPaint.textSize * 1.45f
+        }
+
+        printPaint.color = LABEL_CREAM
+        val runtime = formatRuntime(inlay.totalMs)
+        val count = inlay.titles.size
+        canvas.drawText(
+            "$count ${if (count == 1) "TRACK" else "TRACKS"}${runtime?.let { "  ·  $it" } ?: ""}",
+            printRight,
+            printY,
+            printPaint
+        )
 
         return bitmap
     }

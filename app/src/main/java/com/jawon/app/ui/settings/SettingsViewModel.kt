@@ -30,6 +30,10 @@ class SettingsViewModel @Inject constructor(
 
     fun onRoomSchemeChanged(scheme: RoomScheme) = preferences.setRoomScheme(scheme)
 
+    val casesTurn: StateFlow<Boolean> = preferences.casesTurn
+
+    fun onCasesTurnChanged(on: Boolean) = preferences.setCasesTurn(on)
+
     // ---- Equaliser -----------------------------------------------------------------
     //
     // Read straight off the controller rather than mirrored into this ViewModel: the bands

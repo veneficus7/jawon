@@ -32,7 +32,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LocalTextStyle
@@ -55,6 +57,7 @@ import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -142,6 +145,7 @@ fun ShelfManagerScreen(
                         entry = entry,
                         isFirst = index == 0,
                         isLast = index == shelves.lastIndex,
+                        canDelete = shelves.size > 1,
                         expanded = openShelfId == entry.shelf.id,
                         // One at a time. Two open boards is most of a screen of controls,
                         // which is the clutter this layout exists to get rid of.
@@ -153,7 +157,8 @@ fun ShelfManagerScreen(
                         onRecolour = viewModel::onRecolour,
                         onMoveUp = viewModel::onMoveUp,
                         onMoveDown = viewModel::onMoveDown,
-                        onEditAlbum = onEditAlbum
+                        onEditAlbum = onEditAlbum,
+                        onDelete = viewModel::onDeleteShelf
                     )
                 }
             }
@@ -218,16 +223,31 @@ private fun ShelfBoard(
     entry: ShelfWithAlbums,
     isFirst: Boolean,
     isLast: Boolean,
+    canDelete: Boolean,
     expanded: Boolean,
     onToggle: () -> Unit,
     onRename: (String, String) -> Unit,
     onRecolour: (String, Float) -> Unit,
     onMoveUp: (String) -> Unit,
     onMoveDown: (String) -> Unit,
-    onEditAlbum: (String) -> Unit
+    onEditAlbum: (String) -> Unit,
+    onDelete: (String) -> Unit
 ) {
     val shelf = entry.shelf
     var hue by remember(shelf.id) { mutableFloatStateOf(shelf.accentHue) }
+    var confirmingDelete by remember(shelf.id) { mutableStateOf(false) }
+
+    if (confirmingDelete) {
+        RemoveShelfDialog(
+            name = shelf.name,
+            albumCount = entry.albums.size,
+            onConfirm = {
+                confirmingDelete = false
+                onDelete(shelf.id)
+            },
+            onDismiss = { confirmingDelete = false }
+        )
+    }
     val accent = Color.hsv(hue * 360f, 0.62f, 0.85f)
     val chevron by animateFloatAsState(
         targetValue = if (expanded) 180f else 0f,
@@ -361,6 +381,35 @@ private fun ShelfBoard(
                     FieldLabel("ON THIS SHELF")
                     entry.albums.forEach { album ->
                         AlbumLine(album, onEditAlbum)
+                    }
+                }
+
+                // Hidden on the last shelf rather than shown and refused. Every album has to
+                // live somewhere, so a library cannot get to zero shelves — and a control
+                // that is present but always fails is worse than one that is not there.
+                if (canDelete) {
+                    Row(
+                        modifier = Modifier
+                            .padding(top = 4.dp)
+                            .border(1.dp, CrateEdge)
+                            .clickable { confirmingDelete = true }
+                            .padding(horizontal = 14.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Icon(
+                            Icons.Default.Delete,
+                            contentDescription = null,
+                            tint = LabelDim,
+                            modifier = Modifier.size(15.dp)
+                        )
+                        Text(
+                            "REMOVE SHELF",
+                            fontFamily = JetBrainsMonoFamily,
+                            fontSize = 11.sp,
+                            letterSpacing = 1.4.sp,
+                            color = LabelDim
+                        )
                     }
                 }
             }
@@ -585,6 +634,87 @@ private fun MoveButton(
             color = tint
         )
     }
+}
+
+/**
+ * Confirms taking a shelf off the wall.
+ *
+ * **What it says about the albums is the point.** "Delete shelf" reads like it takes the
+ * records with it, and it does not — so the dialog leads with where they go instead of asking
+ * a bare "are you sure?". Same reasoning as the album removal dialog, which had to say out
+ * loud that it never touches the user's audio files.
+ */
+@Composable
+private fun RemoveShelfDialog(
+    name: String,
+    albumCount: Int,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        shape = RectangleShape,
+        containerColor = CrateBlack,
+        tonalElevation = 0.dp,
+        modifier = Modifier.border(1.dp, CrateEdge),
+        title = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(
+                    text = "REMOVE SHELF",
+                    fontFamily = JetBrainsMonoFamily,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 11.sp,
+                    letterSpacing = 2.2.sp,
+                    color = LampAmber
+                )
+                Text(
+                    text = name,
+                    fontFamily = ArchivoFamily,
+                    fontWeight = FontWeight.ExtraBold,
+                    fontSize = 22.sp,
+                    lineHeight = 25.sp,
+                    color = LabelCream,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        },
+        text = {
+            Text(
+                text = when (albumCount) {
+                    0 -> "The shelf comes off the wall. It is empty, so nothing moves."
+                    1 -> "The album on it moves to the next shelf. Nothing is deleted."
+                    else -> "The $albumCount albums on it move to the next shelf. " +
+                        "Nothing is deleted."
+                },
+                style = JawonTextStyle.mono.copy(color = LabelDim),
+                lineHeight = 19.sp
+            )
+        },
+        confirmButton = {
+            TextButton(onClick = onConfirm) {
+                Text(
+                    "REMOVE",
+                    fontFamily = JetBrainsMonoFamily,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 13.sp,
+                    letterSpacing = 1.6.sp,
+                    color = LampAmber
+                )
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(
+                    "KEEP IT",
+                    fontFamily = JetBrainsMonoFamily,
+                    fontSize = 13.sp,
+                    letterSpacing = 1.6.sp,
+                    color = LabelDim
+                )
+            }
+        }
+    )
 }
 
 /** The small amber caption that names a control. */

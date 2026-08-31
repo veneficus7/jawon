@@ -548,6 +548,12 @@ fun WallSceneScreen(
 ) {
     val layout by viewModel.layout.collectAsStateWithLifecycle()
     val roomScheme by viewModel.roomScheme.collectAsStateWithLifecycle()
+    val casesTurn by viewModel.casesTurn.collectAsStateWithLifecycle()
+    val eqAvailable by viewModel.eqAvailable.collectAsStateWithLifecycle()
+    val eqEnabled by viewModel.eqEnabled.collectAsStateWithLifecycle()
+    val eqBands by viewModel.eqBands.collectAsStateWithLifecycle()
+    val eqRangeMb by viewModel.eqRangeMb.collectAsStateWithLifecycle()
+    val eqPresets by viewModel.eqPresets.collectAsStateWithLifecycle()
     val deck by viewModel.deck.collectAsStateWithLifecycle()
     val nowPlayingAlbumId by viewModel.nowPlayingAlbumId.collectAsStateWithLifecycle()
     val isPlaying = deck.isPlaying
@@ -717,6 +723,12 @@ fun WallSceneScreen(
 
         /** The album a long press has proposed removing, until it is confirmed or dismissed. */
         var pendingDelete by remember { mutableStateOf<CaseLayout?>(null) }
+
+        // Which half of the deck is showing. Held here rather than inside DeckOverlay because
+        // the panel's height depends on it. Reset when the deck closes, so opening the next
+        // record lands on its tracklist rather than on the equaliser.
+        var showEqualiser by remember { mutableStateOf(false) }
+        LaunchedEffect(selectedAlbumId) { if (selectedAlbumId == null) showEqualiser = false }
         // Goes to the vibrator directly rather than through the view's haptic feedback �
         // see RoomHaptics for why the disc had no vibration at all before this.
         val haptics = remember(context) { RoomHaptics(context) }
@@ -799,7 +811,7 @@ fun WallSceneScreen(
 
         val fonts = remember(context) { CaseArt.Fonts(context) }
         val artCache = remember(fonts) {
-            CaseArtCache(fonts, trackTitles = { viewModel.trackTitles(it) })
+            CaseArtCache(fonts, backInlay = { viewModel.backInlay(it) })
         }
 
         // Push the open album's art onto the permanently-mounted active case, and hide the
@@ -1613,9 +1625,14 @@ fun WallSceneScreen(
                                 slot.spinVelocity *= ShelfHover.SPIN_RETAIN_PER_S.pow(dt)
                                 if (abs(slot.spinVelocity) < 1f) slot.spinVelocity = 0f
                             }
+                            // With turning off, a case still bobs and leans — that is the
+                            // room breathing. What stops is the slow rotation, which is the
+                            // part that catches the eye from across the screen. Cases hold
+                            // the angle they present their cover at, plus any hand-flick.
                             root.rotation = Rotation(
                                 ShelfHover.tilt(t, slot.phase),
-                                ShelfHover.turn(t, slot.phase) + slot.manualTurn,
+                                (if (casesTurn) ShelfHover.turn(t, slot.phase)
+                                else ShelfHover.RESTING_TURN) + slot.manualTurn,
                                 0f
                             )
                         }
@@ -2049,9 +2066,23 @@ fun WallSceneScreen(
                 onSeek = viewModel::onSeek,
                 onSelectTrack = viewModel::onSelectTrack,
                 scrubReadout = scrubReadout,
+                eqAvailable = eqAvailable,
+                eqEnabled = eqEnabled,
+                eqBands = eqBands,
+                eqRangeMb = eqRangeMb,
+                eqPresets = eqPresets,
+                onEqEnabledChange = viewModel::onEqEnabledChanged,
+                onEqBandChange = viewModel::onEqBandChanged,
+                onEqPreset = viewModel::onEqPreset,
+                onEqReset = viewModel::onEqReset,
+                showEqualiser = showEqualiser,
+                onShowEqualiser = { showEqualiser = it },
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
-                    .fillMaxHeight(0.52f)
+                    // Taller with the equaliser open: five band sliders do not fit in the
+                    // half-screen the tracklist is comfortable in, and shrinking them to fit
+                    // would make the one control here that needs precision the fiddliest.
+                    .fillMaxHeight(if (showEqualiser) 0.70f else 0.52f)
                     .graphicsLayer {
                         alpha = deckAlpha
                         // Rises the last few millimetres into place as it fades up. A panel

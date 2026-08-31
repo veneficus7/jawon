@@ -347,6 +347,15 @@ object ShelfHover {
         (-90f + t * TURN_DEG_PER_S + phase * 360f) % 360f
 
     /**
+     * Where a case sits when turning is switched off: square on, cover facing you.
+     *
+     * The same -90 [turn] starts from, and for the same reason — rotating -90 about Y maps
+     * the case's +X face onto +Z. Without the phase term every case lands on the same angle,
+     * which is the point: a still wall should look filed, not frozen mid-sweep.
+     */
+    const val RESTING_TURN = -90f
+
+    /**
      * How fast a hand-flicked case sheds its spin, as a fraction retained per second.
      *
      * Not friction in the physical sense — there is nothing for a levitating case to rub

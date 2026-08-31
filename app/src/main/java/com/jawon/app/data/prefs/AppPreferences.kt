@@ -109,7 +109,26 @@ class AppPreferences @Inject constructor(@param:ApplicationContext context: Cont
         _crossfadeMs.value = ms
     }
 
+    private val _casesTurn = MutableStateFlow(prefs.getBoolean(KEY_CASES_TURN, true))
+
+    /**
+     * Whether shelved cases slowly turn to present themselves.
+     *
+     * On by default — it is most of what makes the wall feel like a room rather than a grid,
+     * and `ShelfHover` exists to do it. Off for anyone who finds constant motion in their
+     * peripheral vision distracting rather than alive, which is a real thing to find and not
+     * something to argue with. The gentle bob and tilt stay either way; it is the *turning*
+     * that draws the eye.
+     */
+    val casesTurn: StateFlow<Boolean> = _casesTurn.asStateFlow()
+
+    fun setCasesTurn(on: Boolean) {
+        prefs.edit { putBoolean(KEY_CASES_TURN, on) }
+        _casesTurn.value = on
+    }
+
     private companion object {
+        const val KEY_CASES_TURN = "cases_turn"
         const val KEY_CROSSFADE_MS = "crossfade_ms"
         const val KEY_FETCH_COVER_ART = "fetch_cover_art"
         const val KEY_ROOM_SCHEME = "room_scheme"

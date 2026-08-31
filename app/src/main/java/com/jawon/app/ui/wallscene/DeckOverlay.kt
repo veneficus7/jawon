@@ -1,17 +1,22 @@
 package com.jawon.app.ui.wallscene
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Pause
@@ -35,16 +40,21 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.jawon.app.data.local.Track
+import com.jawon.app.data.playback.EqBand
+import com.jawon.app.ui.common.EqualizerPanel
 import com.jawon.app.ui.common.formatDuration
 import com.jawon.app.ui.common.qualityReadoutOutput
 import com.jawon.app.ui.common.qualityReadoutSource
 import com.jawon.app.ui.theme.CrateEdge
 import com.jawon.app.ui.theme.JawonTextStyle
 import com.jawon.app.ui.theme.LabelDim
+import com.jawon.app.ui.theme.JetBrainsMonoFamily
 import com.jawon.app.ui.theme.LampAmber
 import kotlinx.coroutines.flow.StateFlow
 import androidx.compose.ui.graphics.Color as ComposeColor
@@ -75,8 +85,20 @@ fun DeckOverlay(
     onSeek: (Long) -> Unit,
     onSelectTrack: (Int) -> Unit,
     scrubReadout: State<ScrubReadout?>,
+    eqAvailable: Boolean,
+    eqEnabled: Boolean,
+    eqBands: List<EqBand>,
+    eqRangeMb: Pair<Int, Int>,
+    eqPresets: List<String>,
+    onEqEnabledChange: (Boolean) -> Unit,
+    onEqBandChange: (Int, Int) -> Unit,
+    onEqPreset: (Int) -> Unit,
+    onEqReset: () -> Unit,
+    showEqualiser: Boolean,
+    onShowEqualiser: (Boolean) -> Unit,
     modifier: Modifier = Modifier
 ) {
+
     Column(
         modifier = modifier
             .fillMaxWidth()
@@ -91,16 +113,22 @@ fun DeckOverlay(
             // underneath the system navigation bar.
             .navigationBarsPadding()
             .padding(horizontal = 24.dp)
-            .padding(top = 22.dp, bottom = 8.dp),
+            .padding(top = 16.dp, bottom = 8.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Text(
-            text = title,
-            style = MaterialTheme.typography.displaySmall,
-            textAlign = TextAlign.Center,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
+        // Dropped while the equaliser is up. The panel has to grow to fit five band sliders,
+        // and a display-size title is both the largest thing here and the least useful when
+        // what you are doing is listening — the artist and the format readout stay, because
+        // those are what you check against while adjusting.
+        if (!showEqualiser) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.displaySmall,
+                textAlign = TextAlign.Center,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
         Text(
             text = artist.uppercase(),
             style = JawonTextStyle.mono,
@@ -111,20 +139,85 @@ fun DeckOverlay(
         // recompose these two lines and nothing else (ENGINEERING.md rule 3).
         ScrubOrQuality(scrubReadout = scrubReadout, deck = deck)
 
-        // The tracklist takes the slack, so the controls below it stay pinned to the bottom
-        // of the panel — the reachable part of a phone this tall.
-        LazyColumn(
+        // Two views of the same slot: the tracklist, or the equaliser.
+        //
+        // The equaliser lives here as well as in Settings because reaching it there means
+        // closing the record first — and an equaliser is adjusted *by ear*, which needs the
+        // music still playing. A mode switch rather than a floating sheet: the panel is
+        // already an overlay on a 3D scene, and stacking another one over it costs more than
+        // swapping what this one shows.
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .weight(1f)
-                .padding(top = 12.dp)
+                .padding(top = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(18.dp)
         ) {
-            itemsIndexed(deck.tracks) { index, track ->
-                TrackRow(
-                    track = track,
-                    isCurrent = index == deck.currentTrackIndex,
-                    onClick = { onSelectTrack(index) }
-                )
+            DeckTab("TRACKS", selected = !showEqualiser) { onShowEqualiser(false) }
+            if (eqAvailable) {
+                DeckTab("SOUND", selected = showEqualiser) { onShowEqualiser(true) }
+            }
+        }
+
+        // The tracklist takes the slack, so the controls below it stay pinned to the bottom
+        // of the panel — the reachable part of a phone this tall.
+        if (showEqualiser) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+                    .verticalScroll(rememberScrollState())
+                    .padding(top = 10.dp)
+            ) {
+                if (eqEnabled) {
+                    EqualizerPanel(
+                        bands = eqBands,
+                        rangeMb = eqRangeMb,
+                        presets = eqPresets,
+                        onBandChange = onEqBandChange,
+                        onPreset = onEqPreset,
+                        onReset = onEqReset,
+                        compact = true
+                    )
+                } else {
+                    // Off is a real state, and the switch belongs to the same control the
+                    // settings screen owns — so this turns it on rather than pretending the
+                    // equaliser is broken.
+                    Text(
+                        text = "The equaliser is off.",
+                        style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = 11.sp),
+                        modifier = Modifier.padding(vertical = 8.dp)
+                    )
+                    Row(
+                        modifier = Modifier
+                            .border(1.dp, CrateEdge)
+                            .clickable { onEqEnabledChange(true) }
+                            .padding(horizontal = 14.dp, vertical = 8.dp)
+                    ) {
+                        Text(
+                            "TURN IT ON",
+                            fontFamily = JetBrainsMonoFamily,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 11.sp,
+                            letterSpacing = 1.4.sp,
+                            color = LampAmber
+                        )
+                    }
+                }
+            }
+        } else {
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+                    .padding(top = 12.dp)
+            ) {
+                itemsIndexed(deck.tracks) { index, track ->
+                    TrackRow(
+                        track = track,
+                        isCurrent = index == deck.currentTrackIndex,
+                        onClick = { onSelectTrack(index) }
+                    )
+                }
             }
         }
 
@@ -305,6 +398,36 @@ private fun TrackRow(track: Track, isCurrent: Boolean, onClick: () -> Unit) {
         Text(
             text = formatDuration(track.durationMs),
             style = JawonTextStyle.mono.copy(color = LabelDim)
+        )
+    }
+}
+
+/**
+ * One of the deck's two views, named. Underlined when it is the one showing.
+ *
+ * Not a Material tab: those bring an indicator animation and a ripple that belong to a
+ * different app. Two words and a rule is the whole control.
+ */
+@Composable
+private fun DeckTab(label: String, selected: Boolean, onClick: () -> Unit) {
+    Column(
+        modifier = Modifier.clickable(onClick = onClick),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Text(
+            text = label,
+            fontFamily = JetBrainsMonoFamily,
+            fontWeight = FontWeight.Bold,
+            fontSize = 10.sp,
+            letterSpacing = 2.sp,
+            color = if (selected) LampAmber else LabelDim,
+            modifier = Modifier.padding(bottom = 5.dp)
+        )
+        Box(
+            Modifier
+                .width(26.dp)
+                .height(1.dp)
+                .background(if (selected) LampAmber else ComposeColor.Transparent)
         )
     }
 }
