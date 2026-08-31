@@ -12,6 +12,7 @@ import androidx.media3.session.MediaSessionService
 import com.jawon.app.MainActivity
 import com.jawon.app.R
 import com.jawon.app.data.playback.EqualizerController
+import com.jawon.app.data.prefs.AppPreferences
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
 
@@ -32,6 +33,11 @@ class PlaybackService : MediaSessionService() {
      */
     @Inject
     lateinit var equalizer: EqualizerController
+
+    @Inject
+    lateinit var preferences: AppPreferences
+
+    private var crossfadeEngine: CrossfadeEngine? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -55,12 +61,23 @@ class PlaybackService : MediaSessionService() {
         //
         // So: try now in case an id already exists, and listen for the real one. The listener
         // is also what covers the session changing later, which the platform is allowed to do.
+        val crossfade = CrossfadeEngine(this, player, preferences)
+        crossfadeEngine = crossfade
+
         player.addListener(object : Player.Listener {
             override fun onAudioSessionIdChanged(audioSessionId: Int) {
                 equalizer.attach(audioSessionId)
             }
+
+            // Handed straight over: only the engine knows which seeks are its own.
+            override fun onPositionDiscontinuity(
+                oldPosition: Player.PositionInfo,
+                newPosition: Player.PositionInfo,
+                reason: Int
+            ) = crossfade.onDiscontinuity(reason)
         })
         equalizer.attach(player.audioSessionId)
+        crossfade.start()
 
         // Jawon's own mark in the status bar and on the lock screen, in place of Media3's
         // stock music note — which is why the notification read as anonymous next to other
@@ -103,6 +120,8 @@ class PlaybackService : MediaSessionService() {
     override fun onDestroy() {
         // Before the player goes: the effect is attached to that player's session, and one
         // left behind holds an audio effect slot the next player may need.
+        crossfadeEngine?.release()
+        crossfadeEngine = null
         equalizer.release()
         mediaSession?.run {
             player.release()

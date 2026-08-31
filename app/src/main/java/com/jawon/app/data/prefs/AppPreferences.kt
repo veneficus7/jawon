@@ -92,7 +92,25 @@ class AppPreferences @Inject constructor(@param:ApplicationContext context: Cont
             ?.mapNotNull { it.trim().toIntOrNull() }
             .orEmpty()
 
+    private val _crossfadeMs = MutableStateFlow(prefs.getInt(KEY_CROSSFADE_MS, 0))
+
+    /**
+     * How long one track overlaps the next, in milliseconds. `0` is off.
+     *
+     * Off by default, and not only out of caution. An album is the atomic unit here, and
+     * plenty of records are sequenced to run straight from one track into the next — a
+     * crossfade applied to those actively destroys something the artist did on purpose. It is
+     * a thing to reach for, not a thing to have on.
+     */
+    val crossfadeMs: StateFlow<Int> = _crossfadeMs.asStateFlow()
+
+    fun setCrossfadeMs(ms: Int) {
+        prefs.edit { putInt(KEY_CROSSFADE_MS, ms) }
+        _crossfadeMs.value = ms
+    }
+
     private companion object {
+        const val KEY_CROSSFADE_MS = "crossfade_ms"
         const val KEY_FETCH_COVER_ART = "fetch_cover_art"
         const val KEY_ROOM_SCHEME = "room_scheme"
         const val KEY_EQ_ENABLED = "equalizer_enabled"

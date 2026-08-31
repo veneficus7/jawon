@@ -46,6 +46,7 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.jawon.app.R
 import com.jawon.app.data.playback.EqBand
+import com.jawon.app.playback.Crossfade
 import com.jawon.app.ui.theme.ArchivoFamily
 import com.jawon.app.ui.theme.CrateBlack
 import com.jawon.app.ui.theme.CrateEdge
@@ -330,6 +331,7 @@ fun SettingsScreen(
     val eqBands by viewModel.eqBands.collectAsStateWithLifecycle()
     val eqRangeMb by viewModel.eqRangeMb.collectAsStateWithLifecycle()
     val eqPresets by viewModel.eqPresets.collectAsStateWithLifecycle()
+    val crossfadeMs by viewModel.crossfadeMs.collectAsStateWithLifecycle()
     // Read from the package rather than hardcoded, so it can only ever say what was actually
     // installed. `versionName` is set in app/build.gradle.kts.
     val versionName = remember(context) {
@@ -472,8 +474,60 @@ fun SettingsScreen(
                     .background(CrateEdge)
             )
 
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                        text = "CROSSFADE",
+                        fontFamily = JetBrainsMonoFamily,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 11.sp,
+                        letterSpacing = 2.sp,
+                        color = LabelCream
+                    )
+                    Text(
+                        text = if (crossfadeMs < Crossfade.MIN_MS) "OFF"
+                        else "%.1f s".format(crossfadeMs / 1000f),
+                        style = JawonTextStyle.mono.copy(fontSize = 10.sp)
+                    )
+                }
+                Text(
+                    // Says what it does to an album, because that is the part worth knowing.
+                    text = "Overlaps the end of one track with the start of the next. Off by " +
+                        "default: plenty of records run straight from one track into the " +
+                        "next on purpose, and a crossfade undoes that.",
+                    style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = 10.sp),
+                    lineHeight = 16.sp
+                )
+                Slider(
+                    value = crossfadeMs.toFloat(),
+                    onValueChange = { viewModel.onCrossfadeChanged(it.toInt()) },
+                    // From zero, so "off" is on the same control rather than a separate
+                    // switch — the slider's left end already means what a switch would say.
+                    valueRange = 0f..Crossfade.MAX_MS.toFloat(),
+                    colors = SliderDefaults.colors(
+                        thumbColor = LampAmber,
+                        activeTrackColor = LampAmber.copy(alpha = 0.7f),
+                        inactiveTrackColor = CrateEdge
+                    )
+                )
+            }
+
+            Box(
+                Modifier
+                    .padding(vertical = 32.dp)
+                    .width(60.dp)
+                    .height(1.dp)
+                    .background(CrateEdge)
+            )
+
             Text(
-                text = "Crossfade lands here as it is built.",
+                text = "More to come as it is built.",
                 style = JawonTextStyle.mono.copy(color = LabelDim),
                 lineHeight = 19.sp,
                 modifier = Modifier.padding(bottom = 48.dp)

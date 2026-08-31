@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import com.jawon.app.data.playback.EqBand
 import com.jawon.app.data.playback.EqualizerController
 import com.jawon.app.data.prefs.AppPreferences
+import com.jawon.app.playback.Crossfade
 import com.jawon.app.ui.theme.RoomScheme
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.StateFlow
@@ -39,4 +40,10 @@ class SettingsViewModel @Inject constructor(
     fun onEqBandChanged(index: Int, levelMb: Int) = equalizer.setBand(index, levelMb)
     fun onEqPreset(index: Int) = equalizer.usePreset(index)
     fun onEqReset() = equalizer.reset()
+
+    val crossfadeMs: StateFlow<Int> = preferences.crossfadeMs
+
+    /** Snapped to whole tenths of a second, since the readout is shown to one decimal. */
+    fun onCrossfadeChanged(ms: Int) =
+        preferences.setCrossfadeMs(if (ms < Crossfade.MIN_MS) 0 else (ms / 100) * 100)
 }
