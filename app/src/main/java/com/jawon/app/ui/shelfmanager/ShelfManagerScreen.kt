@@ -31,6 +31,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.KeyboardArrowUp
@@ -96,6 +97,7 @@ import com.jawon.app.ui.theme.LampAmber
 fun ShelfManagerScreen(
     onBack: () -> Unit,
     onEditAlbum: (String) -> Unit,
+    onOpenListening: () -> Unit,
     viewModel: ShelfManagerViewModel = hiltViewModel()
 ) {
     val shelves by viewModel.shelves.collectAsStateWithLifecycle()
@@ -111,6 +113,7 @@ fun ShelfManagerScreen(
         ScreenHeader(
             onBack = onBack,
             onNew = { creating = !creating },
+            onOpenListening = onOpenListening,
             newIsOpen = creating
         )
 
@@ -174,7 +177,12 @@ fun ShelfManagerScreen(
  * back gesture already worked, so this just makes it visible.
  */
 @Composable
-private fun ScreenHeader(onBack: () -> Unit, onNew: () -> Unit, newIsOpen: Boolean) {
+private fun ScreenHeader(
+    onBack: () -> Unit,
+    onNew: () -> Unit,
+    onOpenListening: () -> Unit,
+    newIsOpen: Boolean
+) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -197,6 +205,16 @@ private fun ScreenHeader(onBack: () -> Unit, onNew: () -> Unit, newIsOpen: Boole
             color = LampAmber,
             modifier = Modifier.weight(1f)
         )
+        // The listening record. It sits here rather than in the room's chrome because that is
+        // three even thirds by an explicit decision in WallSceneScreen, and because what you
+        // have played is a fact about the collection, which is what this screen is.
+        IconButton(onClick = onOpenListening) {
+            Icon(
+                Icons.Default.BarChart,
+                contentDescription = "What you have listened to",
+                tint = LabelDim
+            )
+        }
         IconButton(onClick = onNew) {
             Icon(
                 Icons.Default.Add,

@@ -9,6 +9,7 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.jawon.app.ui.addalbum.AddAlbumScreen
 import com.jawon.app.ui.editalbum.EditAlbumScreen
+import com.jawon.app.ui.listening.ListeningScreen
 import com.jawon.app.ui.settings.SettingsScreen
 import com.jawon.app.ui.shelfmanager.ShelfManagerScreen
 import com.jawon.app.ui.wallscene.WallSceneScreen
@@ -36,6 +37,15 @@ fun JawonNavHost(navController: NavHostController = rememberNavController()) {
             ShelfManagerScreen(
                 onBack = { navController.popBackStack() },
                 onEditAlbum = { albumId ->
+                    navController.navigate(JawonDestination.EditAlbum.routeFor(albumId))
+                },
+                onOpenListening = { navController.navigate(JawonDestination.Listening.route) }
+            )
+        }
+        composable(JawonDestination.Listening.route) {
+            ListeningScreen(
+                onBack = { navController.popBackStack() },
+                onOpenAlbum = { albumId ->
                     navController.navigate(JawonDestination.EditAlbum.routeFor(albumId))
                 }
             )
