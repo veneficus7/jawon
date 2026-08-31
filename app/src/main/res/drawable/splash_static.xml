@@ -1,14 +1,34 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-    The pre-first-frame window background for API 29-30, which have no SplashScreen API.
+    The pre-first-frame window background for API 28-30, which have no SplashScreen API.
 
-    A layer-list rather than a plain colour so those two versions still get the mark rather
-    than a black rectangle: crateBlack ground, disc centred and held to a fixed size so it
-    matches the scale the platform splash uses on 31+.
+    A layer-list rather than a plain colour so those versions still get the mark rather than a
+    black rectangle: crateBlack ground, disc centred and held to a fixed size so it matches the
+    scale the platform splash uses on 31+.
+
+    **Do not wrap the disc in `<bitmap>`.** It was written that way and it crashed the app on
+    launch — every device below API 31, every release from 0.2 to 0.4.1 — with
+
+        XmlPullParserException: <bitmap> requires a valid 'src' attribute
+
+    `<bitmap>` decodes a raster; `ic_splash_disc` is a VectorDrawable, and handing one to
+    `android:src` is not a fallback that degrades, it is an inflation failure. It surfaces as
+    `Resources$NotFoundException` on `windowBackground`, which the framework resolves inside
+    `PhoneWindow.generateLayout` before `onCreate` returns, so the process dies before a single
+    line of this app's code runs.
+
+    Nothing caught it because `values-v31/themes.xml` overrides `windowBackground` with the real
+    SplashScreen API, so API 31+ never inflates this file — and every device it had been run on
+    was API 31+. Found on an API 28 emulator.
+
+    A layer-list `<item>` takes a vector directly and has carried `android:width`/`android:height`
+    since API 23, which is below the floor, so the size is set here rather than by wrapping.
 -->
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
     <item android:drawable="@color/crate_black" />
-    <item android:gravity="center">
-        <bitmap android:src="@drawable/ic_splash_disc" android:gravity="center" />
-    </item>
+    <item
+        android:drawable="@drawable/ic_splash_disc"
+        android:gravity="center"
+        android:width="160dp"
+        android:height="160dp" />
 </layer-list>
