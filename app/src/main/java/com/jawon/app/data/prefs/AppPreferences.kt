@@ -2,6 +2,7 @@ package com.jawon.app.data.prefs
 
 import android.content.Context
 import androidx.core.content.edit
+import com.jawon.app.ui.theme.RoomScheme
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -45,7 +46,21 @@ class AppPreferences @Inject constructor(@param:ApplicationContext context: Cont
         _fetchCoverArt.value = enabled
     }
 
+    private val _roomScheme =
+        MutableStateFlow(RoomScheme.fromName(prefs.getString(KEY_ROOM_SCHEME, null)))
+
+    /** What colour the room is lit in. See [RoomScheme]. */
+    val roomScheme: StateFlow<RoomScheme> = _roomScheme.asStateFlow()
+
+    fun setRoomScheme(scheme: RoomScheme) {
+        // Stored by name, not by ordinal: reordering the enum would otherwise silently move
+        // everyone to a different scheme.
+        prefs.edit { putString(KEY_ROOM_SCHEME, scheme.name) }
+        _roomScheme.value = scheme
+    }
+
     private companion object {
         const val KEY_FETCH_COVER_ART = "fetch_cover_art"
+        const val KEY_ROOM_SCHEME = "room_scheme"
     }
 }

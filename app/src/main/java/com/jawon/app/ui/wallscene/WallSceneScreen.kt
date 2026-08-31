@@ -73,6 +73,7 @@ import com.jawon.app.ui.theme.JawonTextStyle
 import com.jawon.app.ui.theme.JetBrainsMonoFamily
 import com.jawon.app.ui.theme.LabelDim
 import com.jawon.app.ui.theme.LampAmber
+import com.jawon.app.ui.theme.RoomScheme
 import com.jawon.app.ui.wallscene.WallDimens.BOARD_D
 import com.jawon.app.ui.wallscene.WallDimens.BOARD_H
 import com.jawon.app.ui.wallscene.WallDimens.CAMERA_Z
@@ -109,6 +110,8 @@ import io.github.sceneview.rememberModelLoader
 import io.github.sceneview.rememberOnGestureListener
 import io.github.sceneview.rememberView
 import io.github.sceneview.rememberViewNodeManager
+import dev.romainguy.kotlin.math.Float4
+import io.github.sceneview.node.LightNode
 import io.github.sceneview.node.Node as SceneNode
 import io.github.sceneview.safeDestroyGeometry
 import kotlinx.coroutines.Dispatchers
@@ -387,8 +390,54 @@ private class CaseDrag {
 }
 
 private class RoomNodes {
+    /**
+     * The *carriers* the lights hang from, which is what the frame driver walks along with
+     * the browse position. Not the lights themselves — see [keyBulb].
+     */
     var keyLight: SceneNode? = null
     var rimLight: SceneNode? = null
+
+    /**
+     * The actual `LightNode`s, found beneath the carriers above.
+     *
+     * They cannot simply be captured where they are built: `LightNode`'s `apply` block runs
+     * against a `LightManager.Builder`, not against the node. And the carrier is a plain
+     * `Node`, so casting *it* to `LightNode` yields null — which is exactly how the first
+     * version of this failed. The preference saved, the swatch highlighted, and the room
+     * stayed the colour it was, with nothing anywhere to say why.
+     */
+    private var keyBulb: LightNode? = null
+    private var rimBulb: LightNode? = null
+
+    private fun bulbUnder(carrier: SceneNode?): LightNode? =
+        carrier?.childNodes?.firstNotNullOfOrNull { it as? LightNode }
+
+    /** The scheme these lights are currently showing, so the write is skipped when unchanged. */
+    private var appliedScheme: RoomScheme? = null
+
+    /**
+     * Writes a colour scheme onto the lights that already exist.
+     *
+     * The lamp and the rim are the two things in the room that carry its colour and can be
+     * changed without rebuilding anything — see [RoomScheme] for what has to wait for a
+     * relaunch and why.
+     *
+     * Each `LightNode` holds one Filament light entity; `LightManager` addresses it by
+     * instance, so setting the colour is a field write on geometry that never moves.
+     */
+    fun applyScheme(scheme: RoomScheme) {
+        if (appliedScheme == scheme) return
+        // Resolved once and cached. Nothing to write to yet means the lights are still being
+        // built — the frame driver can run before the first composition of the scene lands —
+        // so this returns without marking the scheme applied, and the next frame tries again.
+        val key = keyBulb ?: bulbUnder(keyLight)?.also { keyBulb = it } ?: return
+        val rim = rimBulb ?: bulbUnder(rimLight)?.also { rimBulb = it } ?: return
+        // The fourth component is unused for a light's colour; SceneView's setter simply
+        // takes a Float4 because the rest of its maths does.
+        key.color = Float4(scheme.key[0], scheme.key[1], scheme.key[2], 1f)
+        rim.color = Float4(scheme.rim[0], scheme.rim[1], scheme.rim[2], 1f)
+        appliedScheme = scheme
+    }
 }
 
 /**
@@ -498,6 +547,7 @@ fun WallSceneScreen(
     viewModel: WallSceneViewModel = hiltViewModel()
 ) {
     val layout by viewModel.layout.collectAsStateWithLifecycle()
+    val roomScheme by viewModel.roomScheme.collectAsStateWithLifecycle()
     val deck by viewModel.deck.collectAsStateWithLifecycle()
     val nowPlayingAlbumId by viewModel.nowPlayingAlbumId.collectAsStateWithLifecycle()
     val isPlaying = deck.isPlaying
@@ -606,7 +656,7 @@ fun WallSceneScreen(
         // The room's image-based lighting, generated rather than loaded — see RoomLighting.
         // Filament's own prefilter turns the procedural cubemap into a roughness mip chain.
         val environment = remember(engine, environmentLoader) {
-            RoomLighting.createEnvironment(engine, initialTier.cubemapPx) { cubemap ->
+            RoomLighting.createEnvironment(engine, initialTier.cubemapPx, roomScheme) { cubemap ->
                 environmentLoader.iblPrefilter.specularFilter(cubemap)
             }
         }
@@ -1498,6 +1548,16 @@ fun WallSceneScreen(
                 // The group's offset IS the pan; the lamp keeps its own offset inside it.
                 roomNodes.keyLight?.position = Position(panX.value, panY.value, 0f)
 
+                // Recolour the bulbs in place rather than rebuilding the lights.
+                //
+                // Rebuilding would mean destroying and recreating scene nodes, and this is
+                // the file where node lifetimes have already cost three separate bugs — and
+                // trap 1 makes any wholesale scene rebuild a process abort, not a glitch.
+                // Writing the colour onto lights that already exist has none of that risk.
+                // Cheap enough to do unconditionally: it is two float triples a frame, and
+                // Filament only uploads when the value actually changes.
+                roomNodes.applyScheme(roomScheme)
+
                 // This loop ALWAYS runs, and only the motion is conditional. `bind` no longer
                 // writes root.position at all, so skipping it entirely under reduced motion
                 // would leave every case stacked at the wall's origin.
@@ -1703,6 +1763,12 @@ fun WallSceneScreen(
             // The coloured bounce, low and left — DESIGN.md's "one coloured bounce light".
             // It does not cast shadows: a second shadow-casting light doubles the cost and
             // muddies the single-lamp story the key light is telling.
+            //
+            // Wrapped in a carrier `Node` purely so the colour scheme can find it. A
+            // LightNode's `apply` runs against a LightManager.Builder, so the node itself is
+            // not reachable where it is declared; the carrier gives `RoomNodes` a handle to
+            // walk down from. The key light already had one, for the pan.
+            Node(apply = { roomNodes.rimLight = this }) {
             LightNode(
                 type = LightManager.Type.POINT,
                 position = RoomLighting.RIM_POSITION,
@@ -1717,6 +1783,7 @@ fun WallSceneScreen(
                     castShadows(false)
                 }
             )
+            }
 
             // Nothing loaded, no wall. This is what caused the brown flash on launch.
             //
@@ -1753,10 +1820,14 @@ fun WallSceneScreen(
                 // Making the panel a fixed 24m avoided that and cost far more than it saved:
                 // this is a shadow receiver, and the room's shadow near/far hints are tuned to
                 // a scene 1.5m across. Browsing fell to 31fps.
-                key(layout.minPanX, layout.maxPanX, layout.minPanY, layout.maxPanY) {
-                    val backing = remember {
+                key(layout.minPanX, layout.maxPanX, layout.minPanY, layout.maxPanY, roomScheme) {
+                    // The scheme joins the key rather than being read inside `remember`, so
+                    // changing it rebuilds the panel and its material together — the same
+                    // discipline the size already follows, and for the same reason: a
+                    // CubeNode destroys the instance it is handed.
+                    val backing = remember(roomScheme) {
                         materialLoader.createColorInstance(
-                            ComposeColor(0xFF1A1410), metallic = 0f, roughness = 0.95f
+                            roomScheme.wall, metallic = 0f, roughness = 0.95f
                         )
                     }
                     CubeNode(
@@ -1798,10 +1869,10 @@ fun WallSceneScreen(
                 // so one remembered further out dies with the first board that rebuilds and
                 // leaves every later board with a dead material � which is why the shelf
                 // disappeared on import, and again on delete.
-                key(rowIndex, layout.wallWidth) {
-                    val boardSurface = remember {
+                key(rowIndex, layout.wallWidth, roomScheme) {
+                    val boardSurface = remember(roomScheme) {
                         materialLoader.createColorInstance(
-                            ComposeColor(0xFF2F2318), metallic = 0.04f, roughness = 0.82f
+                            roomScheme.board, metallic = 0.04f, roughness = 0.82f
                         )
                     }
                     CubeNode(

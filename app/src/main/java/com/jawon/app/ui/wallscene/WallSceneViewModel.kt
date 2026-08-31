@@ -10,6 +10,8 @@ import com.jawon.app.data.local.Track
 import com.jawon.app.data.local.TrackDao
 import com.jawon.app.data.playback.AudioRouteReader
 import com.jawon.app.data.playback.PlaybackRepository
+import com.jawon.app.data.prefs.AppPreferences
+import com.jawon.app.ui.theme.RoomScheme
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -50,10 +52,14 @@ class WallSceneViewModel @Inject constructor(
     private val trackDao: TrackDao,
     private val playbackRepository: PlaybackRepository,
     private val coverStore: CoverImageStore,
+    preferences: AppPreferences,
     audioRouteReader: AudioRouteReader
 ) : ViewModel() {
 
     private val route = audioRouteReader.currentRoute()
+
+    /** What colour the room is lit in. The scene reads this and writes it onto the lights. */
+    val roomScheme: StateFlow<RoomScheme> = preferences.roomScheme
 
     val layout: StateFlow<WallLayout> =
         combine(shelfDao.getAll(), albumDao.getAll()) { shelves, albums ->

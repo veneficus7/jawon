@@ -1,5 +1,6 @@
 package com.jawon.app.ui.wallscene
 
+import com.jawon.app.ui.theme.RoomScheme
 import com.google.android.filament.Engine
 import com.google.android.filament.IndirectLight
 import com.google.android.filament.Texture
@@ -161,13 +162,20 @@ object RoomLighting {
     fun createEnvironment(
         engine: Engine,
         cubemapPx: Int,
+        /**
+         * The room's colour. Read here rather than from this object's constants because the
+         * cubemap and the spherical harmonics are baked once, before the first frame — so
+         * the scheme has to be known at build time. That is also why a scheme change reaches
+         * the ambient only on the next launch: see [com.jawon.app.ui.theme.RoomScheme].
+         */
+        scheme: RoomScheme,
         prefilter: (Texture) -> Texture
     ): Environment {
-        val cubemap = buildRoomCubemap(engine, cubemapPx)
+        val cubemap = buildRoomCubemap(engine, cubemapPx, scheme)
         val reflections = prefilter(cubemap)
         val indirectLight = IndirectLight.Builder()
             .reflections(reflections)
-            .irradiance(SH_BANDS, ambientSphericalHarmonics())
+            .irradiance(SH_BANDS, ambientSphericalHarmonics(scheme))
             .intensity(AMBIENT_INTENSITY)
             .build(engine)
         return Environment(indirectLight = indirectLight, skybox = null)
@@ -251,11 +259,11 @@ object RoomLighting {
      * The sign convention on the vertical term is worth checking on device rather than
      * trusting; if the room looks lit from the floor, flip it.
      */
-    private fun ambientSphericalHarmonics(): FloatArray {
+    private fun ambientSphericalHarmonics(scheme: RoomScheme): FloatArray {
         val sh = FloatArray(SH_BANDS * SH_BANDS * 3)
         for (c in 0..2) {
-            sh[c] = AMBIENT_COLOR[c]
-            sh[3 + c] = AMBIENT_COLOR[c] * 0.35f
+            sh[c] = scheme.ambient[c]
+            sh[3 + c] = scheme.ambient[c] * 0.35f
         }
         return sh
     }
@@ -268,7 +276,7 @@ object RoomLighting {
      * function of how far up that direction points — which is the whole of the shop's
      * lighting story, and enough for a reflection to read as a room rather than a colour.
      */
-    private fun buildRoomCubemap(engine: Engine, size: Int): Texture {
+    private fun buildRoomCubemap(engine: Engine, size: Int, scheme: RoomScheme): Texture {
         // RGBA float. IBL wants HDR — Filament's specular prefilter rejects an LDR
         // single-level cubemap outright, and the lamp needs headroom above 1.0 anyway if it
         // is going to read as a light source rather than as a pale patch.
@@ -278,8 +286,8 @@ object RoomLighting {
         val floats = buffer.asFloatBuffer()
 
         // Hoisted: these are six multiplications, not 393k of them.
-        val void = FloatArray(3) { VOID_COLOR[it] * VOID_LEVEL }
-        val lamp = FloatArray(3) { KEY_COLOR[it] * LAMP_LEVEL }
+        val void = FloatArray(3) { scheme.void[it] * VOID_LEVEL }
+        val lamp = FloatArray(3) { scheme.key[it] * LAMP_LEVEL }
         // Reused across every texel. `faceDirection` used to return a fresh array per
         // texel, which was survivable at 64px and is 393k throwaway allocations at 256.
         val dir = FloatArray(3)
@@ -330,8 +338,8 @@ object RoomLighting {
                         val ambientTerm = void[c] + (lamp[c] - void[c]) * t
                         floats.put(
                             ambientTerm +
-                                KEY_COLOR[c] * LAMP_HOT_LEVEL * lampHit +
-                                RIM_COLOR[c] * FILL_HOT_LEVEL * fillHit
+                                scheme.key[c] * LAMP_HOT_LEVEL * lampHit +
+                                scheme.rim[c] * FILL_HOT_LEVEL * fillHit
                         )
                     }
                     floats.put(1f)
