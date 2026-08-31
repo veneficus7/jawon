@@ -341,10 +341,41 @@ before.
 | Quality readout | `RAW 16-BIT / 22.0 KHZ` — correct for the source |
 | Memory | native heap 102MB, Dalvik 12MB, **zero low-memory kills** |
 
-**What this still does not tell you is speed.** The emulator draws on the host GPU —
-here an RTX 5060 — so any frame rate it reports is fiction for a Mali-G52. LOW tier
-is now known to *work*; whether it is *smooth* on 2018–2020 hardware is still
-untested, and is still the open question the tiers exist for.
+### The Android 10 emulator, same day
+
+`system-images;android-29;default;x86_64`, same 3584MB and 1080×2340, `hw.lcd.density=400`
+— a Redmi 9 profile. Same `GLESDynamicVersion` requirement.
+
+Worth running **as well as** API 28, not instead of it, for one reason: API 29 is where
+scoped storage begins, which is the one platform change that could plausibly break the
+MediaStore scan. It does not — the scan, the import and playback all work — but that was
+worth knowing rather than assuming.
+
+The published 0.4.1 was installed here first, deliberately, and **crashed identically**:
+same `XmlPullParserException`, same line 12. The blast-radius claim above is therefore
+measured on two API levels, not extrapolated from one.
+
+| check | result |
+|---|---|
+| 0.4.1 (published) | **crashed on launch, identically to API 28** |
+| 0.4.2 | clean |
+| MediaStore scan under scoped storage | works — album found, 8 tracks |
+| Import | landed on the shelf |
+| Wall, open sequence, disc | all correct |
+| Playback + auto-advance to track 2 | `state=3`, speed 1.0 |
+| Equaliser | 5 bands read off the device, presets, gains applied, no `audiofx` errors |
+| Quality readout | `RAW 16-BIT / 44.1 KHZ · LOSSLESS · SPEAKER` |
+| Memory | native 126MB, Dalvik 9MB, zero low-memory kills |
+
+Note the output rate differs between the two AVDs (48 kHz on API 28, 44 kHz on API 29).
+That is the emulator's audio config, not a bug — the readout is reporting what the device
+actually gives it, which is the whole point of that line.
+
+**What none of this tells you is speed.** The emulator draws on the host GPU — here an
+RTX 5060 — so any frame rate it reports is fiction for a Mali-G52 or a Mali-G72. LOW tier
+is now known to *work*, on two API levels, end to end; whether it is *smooth* on 2018–2020
+hardware is still untested, and is still the open question the tiers exist for. Only a real
+Redmi 9 or S9 answers it.
 
 ## 7. On-device verification log
 
