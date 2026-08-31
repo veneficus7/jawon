@@ -30,9 +30,11 @@ class SettingsViewModel @Inject constructor(
 
     fun onRoomSchemeChanged(scheme: RoomScheme) = preferences.setRoomScheme(scheme)
 
-    val casesTurn: StateFlow<Boolean> = preferences.casesTurn
+    val caseSpin: StateFlow<Float> = preferences.caseSpin
 
-    fun onCasesTurnChanged(on: Boolean) = preferences.setCasesTurn(on)
+    /** Snapped to twentieths, so the readout lands on round numbers and zero is reachable. */
+    fun onCaseSpinChanged(fraction: Float) =
+        preferences.setCaseSpin((Math.round(fraction * 20f) / 20f))
 
     // ---- Equaliser -----------------------------------------------------------------
     //

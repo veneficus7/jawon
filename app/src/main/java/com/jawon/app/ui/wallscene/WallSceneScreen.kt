@@ -548,7 +548,7 @@ fun WallSceneScreen(
 ) {
     val layout by viewModel.layout.collectAsStateWithLifecycle()
     val roomScheme by viewModel.roomScheme.collectAsStateWithLifecycle()
-    val casesTurn by viewModel.casesTurn.collectAsStateWithLifecycle()
+    val caseSpin by viewModel.caseSpin.collectAsStateWithLifecycle()
     val eqAvailable by viewModel.eqAvailable.collectAsStateWithLifecycle()
     val eqEnabled by viewModel.eqEnabled.collectAsStateWithLifecycle()
     val eqBands by viewModel.eqBands.collectAsStateWithLifecycle()
@@ -1625,14 +1625,13 @@ fun WallSceneScreen(
                                 slot.spinVelocity *= ShelfHover.SPIN_RETAIN_PER_S.pow(dt)
                                 if (abs(slot.spinVelocity) < 1f) slot.spinVelocity = 0f
                             }
-                            // With turning off, a case still bobs and leans — that is the
-                            // room breathing. What stops is the slow rotation, which is the
-                            // part that catches the eye from across the screen. Cases hold
-                            // the angle they present their cover at, plus any hand-flick.
+                            // At any spin setting a case still bobs and leans — that is the
+                            // room breathing. What the slider scales is the slow rotation,
+                            // which is the part that catches the eye from across the screen;
+                            // at zero they hold square on, plus any hand-flick.
                             root.rotation = Rotation(
                                 ShelfHover.tilt(t, slot.phase),
-                                (if (casesTurn) ShelfHover.turn(t, slot.phase)
-                                else ShelfHover.RESTING_TURN) + slot.manualTurn,
+                                ShelfHover.turn(t, slot.phase, caseSpin) + slot.manualTurn,
                                 0f
                             )
                         }

@@ -432,7 +432,7 @@ fun SettingsScreen(
     val eqPresets by viewModel.eqPresets.collectAsStateWithLifecycle()
     val crossfadeMs by viewModel.crossfadeMs.collectAsStateWithLifecycle()
     val updateState by viewModel.updateState.collectAsStateWithLifecycle()
-    val casesTurn by viewModel.casesTurn.collectAsStateWithLifecycle()
+    val caseSpin by viewModel.caseSpin.collectAsStateWithLifecycle()
     // Not remembered: the user can leave to grant the permission and come straight back,
     // and a cached "no" would leave them looking at a button that says to do what they just did.
     val canInstall = viewModel.canRequestInstall()
@@ -540,13 +540,49 @@ fun SettingsScreen(
 
             Box(Modifier.height(28.dp))
 
-            SettingRow(
-                title = "CASES TURN",
-                detail = "Shelved cases rotate slowly to show their covers, then their " +
-                    "spines. Off holds them square on. They still float either way.",
-                checked = casesTurn,
-                onCheckedChange = viewModel::onCasesTurnChanged
-            )
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                        text = "CASES TURN",
+                        fontFamily = JetBrainsMonoFamily,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 11.sp,
+                        letterSpacing = 2.sp,
+                        color = LabelCream
+                    )
+                    Text(
+                        text = when {
+                            caseSpin <= 0f -> "OFF"
+                            caseSpin >= 1f -> "FULL"
+                            else -> "%.0f%%".format(caseSpin * 100f)
+                        },
+                        style = JawonTextStyle.mono.copy(fontSize = 10.sp)
+                    )
+                }
+                Text(
+                    text = "Shelved cases rotate slowly to show their covers, then their " +
+                        "spines. Full speed is what the room was tuned at; nothing stops " +
+                        "them holding square on. They float either way.",
+                    style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = 10.sp),
+                    lineHeight = 16.sp
+                )
+                Slider(
+                    value = caseSpin,
+                    onValueChange = viewModel::onCaseSpinChanged,
+                    valueRange = 0f..1f,
+                    colors = SliderDefaults.colors(
+                        thumbColor = LampAmber,
+                        activeTrackColor = LampAmber.copy(alpha = 0.7f),
+                        inactiveTrackColor = CrateEdge
+                    )
+                )
+            }
 
             SectionHeader("SOUND")
 

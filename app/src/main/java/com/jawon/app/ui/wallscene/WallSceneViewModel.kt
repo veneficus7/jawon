@@ -64,8 +64,8 @@ class WallSceneViewModel @Inject constructor(
     /** What colour the room is lit in. The scene reads this and writes it onto the lights. */
     val roomScheme: StateFlow<RoomScheme> = preferences.roomScheme
 
-    /** Whether shelved cases turn. The frame driver reads this and stops writing rotation. */
-    val casesTurn: StateFlow<Boolean> = preferences.casesTurn
+    /** How fast shelved cases turn, 0..1. The frame driver scales the rotation by it. */
+    val caseSpin: StateFlow<Float> = preferences.caseSpin
 
     val layout: StateFlow<WallLayout> =
         combine(shelfDao.getAll(), albumDao.getAll()) { shelves, albums ->

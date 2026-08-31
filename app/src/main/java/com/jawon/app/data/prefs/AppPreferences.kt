@@ -109,26 +109,30 @@ class AppPreferences @Inject constructor(@param:ApplicationContext context: Cont
         _crossfadeMs.value = ms
     }
 
-    private val _casesTurn = MutableStateFlow(prefs.getBoolean(KEY_CASES_TURN, true))
+    private val _caseSpin = MutableStateFlow(prefs.getFloat(KEY_CASE_SPIN, 1f))
 
     /**
-     * Whether shelved cases slowly turn to present themselves.
+     * How fast shelved cases turn to present themselves, as a fraction of full speed.
      *
-     * On by default — it is most of what makes the wall feel like a room rather than a grid,
-     * and `ShelfHover` exists to do it. Off for anyone who finds constant motion in their
-     * peripheral vision distracting rather than alive, which is a real thing to find and not
-     * something to argue with. The gentle bob and tilt stay either way; it is the *turning*
-     * that draws the eye.
+     * `1f` is the speed the room was designed and tuned at, and the default — it is most of
+     * what makes the wall feel like a room rather than a grid. `0f` stops them dead, square
+     * on and cover forward, for anyone who finds constant motion at the edge of vision
+     * distracting rather than alive. That is a real thing to find and not something to argue
+     * with, and the values between let it be slowed rather than only switched off.
+     *
+     * The gentle bob and lean stay at every setting including zero: that is the room
+     * breathing, and it is the *turning* that catches the eye from across the screen.
      */
-    val casesTurn: StateFlow<Boolean> = _casesTurn.asStateFlow()
+    val caseSpin: StateFlow<Float> = _caseSpin.asStateFlow()
 
-    fun setCasesTurn(on: Boolean) {
-        prefs.edit { putBoolean(KEY_CASES_TURN, on) }
-        _casesTurn.value = on
+    fun setCaseSpin(fraction: Float) {
+        val clamped = fraction.coerceIn(0f, 1f)
+        prefs.edit { putFloat(KEY_CASE_SPIN, clamped) }
+        _caseSpin.value = clamped
     }
 
     private companion object {
-        const val KEY_CASES_TURN = "cases_turn"
+        const val KEY_CASE_SPIN = "case_spin"
         const val KEY_CROSSFADE_MS = "crossfade_ms"
         const val KEY_FETCH_COVER_ART = "fetch_cover_art"
         const val KEY_ROOM_SCHEME = "room_scheme"

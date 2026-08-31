@@ -343,15 +343,25 @@ object ShelfHover {
      * Starts at -90 so a case with zero phase presents its cover, not its spine: rotating
      * -90 about Y maps the case's +X face (the cover) onto +Z, toward the camera.
      */
-    fun turn(t: Float, phase: Float): Float =
-        (-90f + t * TURN_DEG_PER_S + phase * 360f) % 360f
+    /**
+     * @param speed fraction of full speed, `0f`..`1f`. See `AppPreferences.caseSpin`.
+     *
+     * At zero this returns [RESTING_TURN] rather than freezing each case at whatever angle
+     * its phase puts it at — a stopped wall should look filed, not caught mid-sweep.
+     *
+     * Changing speed does move every case instantly, because the angle is derived from the
+     * clock rather than accumulated. That is invisible in practice: the only control for it
+     * is in Settings, which is a full screen, so the wall is never on screen while it changes.
+     */
+    fun turn(t: Float, phase: Float, speed: Float): Float =
+        if (speed <= 0f) RESTING_TURN
+        else (-90f + t * TURN_DEG_PER_S * speed + phase * 360f) % 360f
 
     /**
-     * Where a case sits when turning is switched off: square on, cover facing you.
+     * Where a case sits when turning is stopped: square on, cover facing you.
      *
      * The same -90 [turn] starts from, and for the same reason — rotating -90 about Y maps
-     * the case's +X face onto +Z. Without the phase term every case lands on the same angle,
-     * which is the point: a still wall should look filed, not frozen mid-sweep.
+     * the case's +X face onto +Z. Without the phase term every case lands on the same angle.
      */
     const val RESTING_TURN = -90f
 
