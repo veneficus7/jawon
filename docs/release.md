@@ -141,8 +141,15 @@ apksigner verify --print-certs app/build/outputs/apk/release/app-release.apk
 
 3. Run it on a device. R8 can break Filament by name at runtime, and a green
    build says nothing about it (§3).
-4. Copy the APK into the releases repo as `jawon-<versionName>.apk`, and write
-   `latest.json` beside it:
+4. Attach the APK to a GitHub release — **never commit it.** A 37MB binary in the
+   tree is 37MB in every clone forever, and git cannot forget it without
+   rewriting history. `*.apk` is gitignored in the releases repo for that reason.
+
+```bash
+gh release create v0.4 jawon-0.4-beta.apk --title "Jawon 0.4 beta" --notes "…"
+```
+
+5. Then write `latest.json` — after the release exists, so the asset URL is real:
 
 ```json
 {
@@ -158,8 +165,28 @@ apksigner verify --print-certs app/build/outputs/apk/release/app-release.apk
    nothing else, so getting it wrong either hides the release or offers it
    forever.
 
-5. Push, and attach the APK to a GitHub release on that tag. `latest.json` is
-   read from the default branch, not from the release, so it has to be committed.
+6. Push. `latest.json` is read from the default branch, not from the release, so
+   unlike the APK it does have to be committed.
+
+### It will not appear for about five minutes
+
+`raw.githubusercontent.com` serves through a CDN with `Cache-Control: max-age=300`,
+and it honours neither a cache-busting query string nor a `no-cache` request
+header — both were tried. Edges also expire independently, so one device can see
+the new manifest while another still sees the old one.
+
+**This is not a bug and there is nothing to fix.** Nobody checks for an update in
+the five minutes after a release they have not been told about yet. It is
+recorded because the symptom — publishing a release and having the app insist it
+is up to date — looks exactly like a broken comparison, and cost a round of
+debugging here before the cause was measured.
+
+The GitHub API returns the file uncached, and is how to confirm a push actually
+landed:
+
+```bash
+gh api repos/veneficus7/javon-releases/contents/latest.json --jq '.content' | base64 -d
+```
 
 ### What testers see
 
