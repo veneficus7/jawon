@@ -461,6 +461,87 @@ object CaseArt {
         return bitmap
     }
 
+    /**
+     * The album's cover with the case's wear on the plastic over it.
+     *
+     * **Wear has to be here and not only on the spine.** A shelved case rests at
+     * [CaseSlots.RESTING_TURN], which is −90° — cover toward the camera — so the spine is
+     * edge-on for a fraction of each turn and, once someone sets the turn speed to zero, is
+     * never presented at all. Patina drawn only on the spine is a feature most users would
+     * never see.
+     *
+     * It is also the more honest place. A jewel case is clear polystyrene over printed card:
+     * what actually marks with handling is the lid, and the artwork underneath stays pristine.
+     * So this scratches the *plastic* — fine bright hairlines catching the lamp, a haze that
+     * lifts the blacks, and worn corners — rather than damaging the picture.
+     *
+     * Returns a new bitmap; the decoded cover is left untouched because the deck shows the
+     * same album at full size and a case being worn should not scratch the sleeve on screen.
+     */
+    fun wearCover(cover: Bitmap, albumId: String, wear: Float): Bitmap {
+        if (wear <= 0f) return cover
+        val worn = cover.copy(Bitmap.Config.ARGB_8888, true) ?: return cover
+        val canvas = Canvas(worn)
+        val w = worn.width.toFloat()
+        val h = worn.height.toFloat()
+
+        // Offset seed from the spine's, or a case wears in exactly the same pattern on both
+        // faces and the repetition reads as a texture rather than as handling.
+        val random = Random(albumId.hashCode() * 31 + 7)
+
+        // Scuff haze. Polystyrene clouds before it scratches, and it is what stops a worn
+        // cover reading as a clean cover with lines drawn on it.
+        val haze = Paint()
+        haze.color = Color.argb((wear * 20f).toInt(), 236, 228, 210)
+        canvas.drawRect(0f, 0f, w, h, haze)
+
+        // Hairlines. Bright rather than dark: a scratch in clear plastic scatters the lamp
+        // back at you, which is why real scratches show up white against dark artwork.
+        //
+        // **Short and faint on purpose.** The first pass ran them to 42% of the cover width at
+        // up to 70 alpha, which at full wear buried the artwork and read as damage rather than
+        // as handling — PLAN.md asks for this to be "quietly wonderful", and a record you have
+        // loved for forty hours should look loved, not broken. Real scuffing from sliding a
+        // case in and out is a scatter of short marks, not long slashes.
+        val line = Paint(Paint.ANTI_ALIAS_FLAG)
+        line.strokeCap = Paint.Cap.ROUND
+        repeat((wear * 20f).toInt()) {
+            val x = random.nextFloat() * w
+            val y = random.nextFloat() * h
+            // Loosely aligned, the way wear from sliding in and out of a slot actually lands,
+            // rather than uniformly random in angle.
+            val angle = (-28f + random.nextFloat() * 56f) * (Math.PI / 180f).toFloat()
+            val len = w * (0.025f + random.nextFloat() * 0.13f)
+            line.strokeWidth = 0.6f + random.nextFloat() * 0.6f
+            line.color = Color.argb(
+                (10f + random.nextFloat() * 26f * wear).toInt(), 255, 252, 244
+            )
+            canvas.drawLine(
+                x, y,
+                x + len * kotlin.math.cos(angle.toDouble()).toFloat(),
+                y + len * kotlin.math.sin(angle.toDouble()).toFloat(),
+                line
+            )
+        }
+
+        // Corners. They take every knock, and on a real case they go cloudy first.
+        val corner = Paint(Paint.ANTI_ALIAS_FLAG)
+        val reach = w * 0.24f
+        for (cx in listOf(0f, w)) {
+            for (cy in listOf(0f, h)) {
+                corner.shader = android.graphics.RadialGradient(
+                    cx, cy, reach,
+                    Color.argb((wear * 30f).toInt(), 244, 236, 220),
+                    Color.TRANSPARENT,
+                    android.graphics.Shader.TileMode.CLAMP
+                )
+                canvas.drawCircle(cx, cy, reach, corner)
+            }
+        }
+
+        return worn
+    }
+
     /** Bytes a cached entry costs, for the cache's capacity policy. */
     fun byteCount(vararg bitmaps: Bitmap?): Int =
         bitmaps.filterNotNull().sumOf { max(it.byteCount, 0) }

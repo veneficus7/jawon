@@ -80,7 +80,9 @@ class CaseArtCache(
                 spine = CaseArt.bakeSpine(
                     case.albumId, case.title, case.artist, hue, fonts, case.wear
                 ),
-                cover = cover,
+                // Worn on the lid rather than on the picture — see [CaseArt.wearCover] for
+                // why the cover and not just the spine carries this.
+                cover = cover?.let { CaseArt.wearCover(it, case.albumId, case.wear) },
                 back = CaseArt.bakeBack(
                     case.albumId, case.title, case.artist, hue, inlay, fonts
                 ),
