@@ -1,5 +1,7 @@
 package com.jawon.app.ui.wallscene
 
+import kotlin.math.PI
+import kotlin.math.cos
 import kotlin.math.exp
 import kotlin.math.hypot
 import kotlin.math.sin
@@ -115,8 +117,33 @@ object CaseDiscard {
      */
     private const val SPREAD = 0.0038f
 
-    /** How quickly the pieces stop moving. High: this settles, it does not fly. */
-    private const val DRAG = 7.5f
+    /**
+     * How quickly the pieces stop moving. High: this settles, it does not fly.
+     *
+     * Raised from 7.5. The distance was never the problem — [SPREAD] is deliberately a few
+     * millimetres — but at 7.5 the pieces took about a fifth of a second to reach it, which is
+     * a *drift* apart. A break is violent and then over: the fragments should arrive almost
+     * at once and then stop dead, which is what a short time constant gives.
+     */
+    private const val DRAG = 13.5f
+
+    /**
+     * How long the pieces stay exactly where they broke, in seconds after the strike.
+     *
+     * **This is the frame that was missing.** The whole disc was swapped for the fragment set
+     * on the impact frame and the fragments began travelling on that same frame, at their
+     * fastest — so the disc went from intact to coming apart with nothing in between, and the
+     * eye never got to see it *cracked*. Real glass fails in that order: the cracks arrive
+     * first, the piece holds itself together for a moment, and then it lets go.
+     *
+     * Short in sequence terms, but [timeScaleAt] is running at a third of speed here, so it
+     * lands as roughly 130ms on screen — enough to register the cracks, not enough to feel
+     * like a pause.
+     */
+    const val CRACK_HOLD_S = 0.045f
+
+    /** The crack hold, for tests and for anything that needs to know when pieces move. */
+    val impactHoldSeconds: Float get() = CRACK_HOLD_S
 
     /** Degrees a fragment tips where it lies. Small: they are settling in a tray, not tumbling. */
     private const val SHARD_TILT_DEG = 11f
@@ -213,6 +240,43 @@ object CaseDiscard {
     /** How hard the case shakes at the very peak of the build-up, in degrees. */
     private const val SHIVER_DEG = 1.15f
 
+    /**
+     * The case's kick when the disc is struck, in degrees.
+     *
+     * **Nothing used to happen to the case at the strike.** The shiver stopped dead on the
+     * impact frame and the rotation carried on through its curves as though the disc had come
+     * apart on its own — so the break had a flash and a shatter, but no *force*. Whatever
+     * struck the disc had to strike the case holding it.
+     *
+     * A struck object rings: it jumps hardest on the first swing and settles quickly. This is
+     * a decaying oscillation rather than a shake, so it reads as a single blow being absorbed
+     * rather than as more of the shiver that preceded it — the two must not look alike or the
+     * strike is just the moment the wobble got bigger.
+     */
+    private const val RECOIL_DEG = 5.4f
+
+    /** How fast the ring dies away, per second. Quick: this is a hit, not a vibration. */
+    private const val RECOIL_DECAY = 11f
+
+    /** Ring frequency, in Hz. */
+    private const val RECOIL_HZ = 13f
+
+    /** How far the case is driven back by the blow, in metres. */
+    private const val RECOIL_Z = 0.011f
+
+    /**
+     * The ring after the blow, `1` at the strike and decaying to nothing.
+     *
+     * Separate from [shiver] and deliberately a different shape: the shiver grows into the
+     * strike and this falls out of it, so the two never overlap and the impact is the hinge
+     * between them.
+     */
+    private fun recoil(sinceImpact: Float): Float {
+        if (sinceImpact <= 0f) return 0f
+        return exp(-RECOIL_DECAY * sinceImpact) *
+            cos(sinceImpact * RECOIL_HZ * 2f * PI.toFloat())
+    }
+
     /** How brightly the disc glows just before the strike, as a fraction of the flash. */
     private const val BUILD_GLOW = 0.26f
 
@@ -246,19 +310,29 @@ object CaseDiscard {
         val drop = 0.5f * GRAVITY * fallSeconds * fallSeconds * 9f
 
         val sinceImpact = secondsSinceImpact(clamped)
+        val ring = recoil(sinceImpact)
 
         return Frame(
             // Carried from its slot to in front of the lens as it rises. This is what puts
             // the removal on screen at all — see the parameter docs.
             caseX = slotX + (panX - slotX) * rise,
             caseY = slotY + (panY + RISE_Y - slotY) * rise - drop,
-            caseZ = RISE_Z * rise,
+            // Driven back by the blow, on top of the rise. The push decays with the ring, so
+            // the case is knocked toward the viewer and recovers rather than staying there.
+            caseZ = RISE_Z * rise + RECOIL_Z * ring,
             // Tips forward only as it falls, so the fall reads as losing its footing rather
             // than as being pushed — plus the shiver of the build-up, which grows as the
-            // strike approaches and stops dead on it.
-            caseRotX = FALL_TUMBLE_DEG * smootherStep(fall) + shiver(clamped, 13.7f),
-            caseRotY = TURN_FROM_DEG * (1f - turn) + shiver(clamped, 17.3f),
-            caseRotZ = 0.5f * FALL_TUMBLE_DEG * smootherStep(fall) + shiver(clamped, 11.1f),
+            // strike approaches and stops dead on it, and the ring of the blow after it.
+            //
+            // Unequal weights across the three axes: a blow that rocked all three the same
+            // amount would read as a zoom rather than as an impact with a direction, and the
+            // strike lands off-centre (IMPACT_X/Y) so it ought to twist as well as tip.
+            caseRotX = FALL_TUMBLE_DEG * smootherStep(fall) + shiver(clamped, 13.7f) +
+                RECOIL_DEG * ring,
+            caseRotY = TURN_FROM_DEG * (1f - turn) + shiver(clamped, 17.3f) +
+                RECOIL_DEG * 0.45f * ring,
+            caseRotZ = 0.5f * FALL_TUMBLE_DEG * smootherStep(fall) + shiver(clamped, 11.1f) +
+                RECOIL_DEG * 0.7f * ring,
             // Opens, then shuts over the pieces. One channel minus the other, so the two
             // overlap naturally instead of needing a state machine.
             hingeRotY = -HINGE_DEG * (open - close).coerceAtLeast(0f),
@@ -359,9 +433,11 @@ object CaseDiscard {
         val jitter = 0.66f + 0.5f * sin(index * 2.399f)
 
         val reach = SPREAD * (0.35f + proximity) * byMass * jitter
-        // Full speed on the first frame, flattening after — the shape a settling break has,
-        // and the opposite of easing outward.
-        val travel = reach * (1f - exp(-DRAG * s))
+        // Held at zero for [CRACK_HOLD_S] — the disc is cracked but has not let go yet — then
+        // full speed on the first moving frame, flattening after. That is the shape a break
+        // has, and the opposite of easing outward.
+        val moving = (s - CRACK_HOLD_S).coerceAtLeast(0f)
+        val travel = reach * (1f - exp(-DRAG * moving))
 
         // Each piece hangs on its own once it has broken — drifting, turning a little,
         // never settling. It is what keeps the shattered disc *alive* in the frame instead
