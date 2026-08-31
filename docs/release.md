@@ -52,7 +52,7 @@ testing the minified build on a device.
 
 ## 3. What the release build does differently
 
-- **R8 with resource shrinking.** 103MB debug → 37MB release APK.
+- **R8 with resource shrinking.** 104MB debug → 37MB release APK (0.3 beta).
 - **Signed** with your upload key when `keystore.properties` exists. Without it,
   the build falls back to the *debug* key so the minified build can still be
   installed and tested. Play rejects debug-signed uploads, so this cannot ship by
@@ -187,15 +187,40 @@ Honest list, in the order they matter:
    "nothing loaded yet" from "nothing in the library" — one `WallLayout.loaded`
    flag, previously conflated, which is why an empty library could never render
    anything.
-3. **Effectively no tests.** One file, and it is the template's `assertEquals(4,
-   2 + 2)`. `WallLayout.from`, `OpenSequence`, `ShelfHover` and `Scratch` are
-   deliberately pure functions with no Android or Filament types in them — the
-   shelf-bounds maths, the animation curves and the scrub cursor — and they are
-   free to test.
+3. **Almost no tests.** `playback/CrossfadeTest` is real — eleven cases on the
+   fade curve and its timing, written because that feature can otherwise only be
+   judged by ear — but it is the only one. `WallLayout.from`, `OpenSequence`,
+   `ShelfHover` and `Scratch` are still untested, and are deliberately pure
+   functions with no Android or Filament types in them: the shelf-bounds maths,
+   the animation curves and the scrub cursor. They are free to test and nobody
+   has.
 4. **Play listing assets**: a 512×512 icon, a feature graphic, screenshots, and a
-   privacy policy. Jawon collects nothing and has no network access, which makes
-   the policy short but not optional.
-5. **`versionCode` is still 1.** Bump it on every upload; Play refuses a repeat.
+   privacy policy.
+
+   **The policy is no longer the short one.** Until 0.2 this said Jawon "collects
+   nothing and has no network access", and writing a policy from that sentence
+   today would be writing a false one. Since then the app has gained `INTERNET`,
+   and two things leave the device:
+
+   - **Cover art lookup.** An album title and artist go to MusicBrainz, and an
+     image comes back from the Cover Art Archive — only for albums whose own
+     files carry no artwork, and only while the Settings switch is on. No id, no
+     account, no listing of the library. See `data/importer/CoverArtFetcher.kt`.
+   - **The update check.** A request to `raw.githubusercontent.com` for a version
+     manifest, and a download from GitHub if the user asks for one. No data of
+     the user's is sent. See `data/update/UpdateChecker.kt`.
+
+   Both are user-initiated or switchable, neither is analytics, and nothing is
+   collected or retained by Jawon. But the **Play data-safety form has to say so**
+   rather than claiming no network use, and the policy has to describe both.
+
+   Also declare, or remove, `REQUEST_INSTALL_PACKAGES` — Play restricts it to
+   apps whose core purpose is installing others, which Jawon's is not. §4 says to
+   drop the whole self-update mechanism for a Play build.
+5. **Permissions to account for on the form**, all added since 0.2:
+   `READ_MEDIA_AUDIO` / `READ_EXTERNAL_STORAGE` (the device scan),
+   `MODIFY_AUDIO_SETTINGS` (the equaliser), `INTERNET`, and
+   `REQUEST_INSTALL_PACKAGES`.
 
 ## 6. Devices it has actually run on
 
@@ -205,25 +230,29 @@ Five, all Samsung, all recent:
 |---|---|
 | Galaxy S23 ×2, S23 Ultra | runs; reported "not that smooth" |
 | Galaxy S25 Ultra ×2 | runs; every number in `ENGINEERING.md` comes from these |
-| Galaxy Note 9 | **would not install** |
+| Galaxy Note 9 | **would not install at minSdk 29.** Fixed in 0.2 beta; still not run. |
 
 ### The Note 9 did not crash — it was refused
 
 "There was a problem parsing the package" is the installer declining the APK
-before any of this code runs. The cause is `minSdkVersion 29`: the Note 9's last
-Android update is 10, which *is* API 29, so it installs only if that update was
-taken. On Android 9 it cannot.
+before any of this code runs. The cause was `minSdkVersion 29`: the Note 9's last
+Android update is 10, which *is* API 29, so it installed only if that update had
+been taken. On Android 9 it could not.
 
 Signing is not the cause — the APK carries v2/v3 signatures and that device
 supports both.
 
-**Lowering the floor is a real decision, not a one-line fix.** minSdk 29 is a
-locked decision in `ENGINEERING.md` because it is where scoped storage settles: at 28
-the import path needs a second, legacy branch. And the device it would buy is a
-2018 phone that would have to render this room — the tier system would put it at
-LOW and it would still likely disappoint. Worth doing if Play Console later shows
-a real population there; not worth doing for one tester who can take an OS
-update instead.
+**This section used to argue against lowering the floor, and the argument was
+wrong.** It said minSdk 29 was where scoped storage settles and that going to 28
+meant a second legacy storage branch in the import path. That is true of many
+apps and was never true of this one: every file Jawon touches arrives as a
+content URI through SAF or MediaStore, never as a filesystem path, so there was
+no legacy branch to write. Lowering it was one line, and it is now **28**.
+
+What that does *not* buy is confidence. The app installs on Android 9 and builds
+for it; **nobody has run the room on Android 9 hardware.** A 2018 phone rendering
+this room would land at the LOW tier and may still disappoint — that remains
+untested rather than decided.
 
 ## 7. On-device verification log
 
@@ -250,14 +279,13 @@ and then closed itself about two seconds later, with no second input. It did not
 reproduce on the next three attempts and playback was running normally
 afterwards. Not chased down; noted here so it is not forgotten if it resurfaces.
 
-### Correction: album deletion is NOT verified
+### The lesson that produced this section still stands
 
-An earlier pass through this read as a successful deletion — a case confirmed via
-the Remove dialog and then absent from the wall. Reading the database afterwards
-shows all four albums still present, so **the case was not deleted, it had simply
-scrolled out of frame** when the wall panned to another shelf. The library spans
-four shelves and the camera frames roughly one row, so "the case is gone" is not
-evidence of anything on its own.
+An early pass read as a successful deletion — a case confirmed via the Remove
+dialog and then absent from the wall — and the database afterwards showed every
+album still present. **The case had not been deleted, it had scrolled out of
+frame.** The library spans several shelves and the camera frames roughly one row,
+so "the case is gone" is not evidence of anything on its own.
 
 Verify against the database, not the wall:
 
@@ -265,26 +293,51 @@ Verify against the database, not the wall:
 adb shell "run-as com.jawon.app cat databases/javon.db" > out.db
 ```
 
-(`sqlite3` is not on the device; copy the file off and read it locally.)
+(`sqlite3` is not on the device; copy the file off and read it locally. Note the
+`-wal` file alongside it holds recent writes — the main file alone can be stale.)
 
-What this leaves genuinely unknown: whether `deleteAlbum` runs at all. The dialog
-appears and is correctly worded, but nothing past the confirm button has been
-observed working. It was not chased further because the only albums available to
-test on are real ones the owner would have to re-import.
+Deletion itself **is** verified now, repeatedly and destructively: the discard
+animation, the row and its tracks going, the cover files being unlinked, and the
+shelf packing back up around the gap with the neighbours sliding over. `run-as`
+only works on a debuggable build, so a release APK cannot be inspected this way.
+
+### Verified since, on the same device
+
+| check | result |
+|---|---|
+| Room migration 1→2 against a real library | applied, collection intact |
+| Resume | album force-stopped mid-track reopened at 0:58; a fresh process cannot have kept playing |
+| Play history | `files/history.log` recorded 11639ms for the track actually heard |
+| Device scan | 22 albums found, 15 after dedupe against the existing library |
+| Import from scan | landed on the shelf and played with a real `MP3 44.1 KHZ` readout |
+| Cover art lookup | correct sleeves fetched for two albums, checked by eye against the artwork |
+| Editing an album | underlight and the baked back inlay both changed on the wall with no restart, and reverted |
+| Colour schemes | all three, each after a relaunch, artwork still legible |
+| Equaliser | five bands read off the device, presets, FLAT, settings persisted |
+| Crossfade | confirmed by ear by the owner |
 
 ## 8. Where import stands
 
-Both of the things that made adding an album tedious are fixed, and neither has
-been exercised against a large library.
+Nothing about adding an album now requires knowing where files live.
 
+- **Scanning the phone is the default route.** MediaStore is read directly and
+  grouped into albums by its own album id, so nothing has to be pointed at. No
+  file is opened during the scan — tags, track numbers and durations are all in
+  the index — and sample rate and bit depth are filled in at import, only for the
+  albums actually chosen.
+- **The folder picker remains, and is not a fallback for the stubborn.**
+  MediaStore only indexes what the media scanner has seen, so music on a cloud
+  provider or a memory card is reachable only through SAF.
 - **Covers come from the files.** Embedded art is pulled out of the tracks' own
-  tags during the scan, so the Add Album screen opens with the cover already
-  chosen. Only the first five files are probed — art is a property of an album,
-  not a track.
-- **A folder of folders imports as many albums.** The scanner has always
-  recursed; grouping by containing folder is what stops that collapsing a whole
-  library into one enormous "album", which is what it used to do to anyone who
-  pointed Jawon at their `Music` directory.
+  tags, so the import opens with the cover already chosen. Only the first five
+  files are probed — art is a property of an album, not a track.
+- **What has no cover is looked up**, if the Settings switch is on. See §5 for
+  what that means for the privacy policy.
+- **Duplicates are filtered twice.** File URIs catch what the scan already
+  imported; title and artist catch albums added by folder, because the same file
+  has a different URI depending on which route reached it.
+- **Anything the tags got wrong is fixable afterwards** on the Edit Album screen,
+  which is why the batch import asks nothing.
 
-Untested at scale: a library of hundreds of albums, and any folder layout more
-exotic than one-album-per-folder.
+Untested at scale: a library of hundreds of albums. The largest real test was 22
+albums found and 15 offered.
