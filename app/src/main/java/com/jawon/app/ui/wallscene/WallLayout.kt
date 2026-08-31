@@ -2,6 +2,7 @@ package com.jawon.app.ui.wallscene
 
 import com.jawon.app.data.local.ShelfWithAlbums
 import kotlin.math.abs
+import kotlin.math.roundToInt
 
 /**
  * Wall geometry, in metres — Filament's unit. These are the prototype's exported
@@ -180,6 +181,39 @@ data class WallLayout(
     val isWaiting: Boolean get() = loaded && cases.isEmpty()
 
     /**
+     * Every case in the order it hangs — top row first, left to right within a row.
+     *
+     * This is the order a thumb travels in, which is what the crate flip scrubs along.
+     */
+    val casesInWallOrder: List<CaseLayout>
+        get() = cases.sortedWith(compareBy({ it.row }, { it.col }))
+
+    /**
+     * The album a crate flip lands on, from how far down the rail the thumb is.
+     *
+     * **Wall order, not alphabetical order, and that is the whole design.** `PLAN.md` §9 #7
+     * describes this as flipping a crate with your thumb and snapping to alphabet dividers,
+     * which quietly assumes the wall is filed A–Z. It is not: albums sit in `slotIndex` order
+     * within a shelf and shelves in their own order, which is import order until someone
+     * rearranges them. A rail sorted A–Z over a wall that is not would send the wall lurching
+     * backwards and forwards as the thumb moved steadily down — the one thing a scrubber must
+     * never do.
+     *
+     * So the rail is a position along the wall and the letters are what you *find* there, the
+     * way the dividers in a real crate describe the crate rather than reordering it. If the
+     * collection happens to be filed alphabetically the rail reads A–Z on its own, and if it
+     * is filed by mood or by year it still tracks the thumb honestly.
+     */
+    fun caseAtFraction(fraction: Float): CaseLayout? {
+        val ordered = casesInWallOrder
+        if (ordered.isEmpty()) return null
+        val index = (fraction.coerceIn(0f, 1f) * (ordered.size - 1))
+            .roundToInt()
+            .coerceIn(0, ordered.lastIndex)
+        return ordered[index]
+    }
+
+    /**
      * The album nearest a point on the wall — what the magnet centres on.
      *
      * Browsing settles *onto* a record rather than wherever friction ran out. The wall is a
@@ -343,6 +377,26 @@ data class WallLayout(
                 loaded = true
             )
         }
+
+        /**
+         * The letter a title files under: `A`..`Z`, or `#` for anything else.
+         *
+         * Leading articles are skipped, because a crate divider that files half a collection
+         * under T is no use to anybody.
+         */
+        fun initialOf(title: String): Char {
+            val trimmed = title.trim()
+            val withoutArticle = ARTICLES.firstOrNull { article ->
+                trimmed.length > article.length &&
+                    trimmed.regionMatches(0, article, 0, article.length, ignoreCase = true)
+            }?.let { trimmed.substring(it.length).trim() } ?: trimmed
+
+            val first = withoutArticle.firstOrNull() ?: return '#'
+            val upper = first.uppercaseChar()
+            return if (upper in 'A'..'Z') upper else '#'
+        }
+
+        private val ARTICLES = listOf("The ", "A ", "An ")
 
         /**
          * Last resort when an album has neither a stored `spineHue` (M1 only ever writes

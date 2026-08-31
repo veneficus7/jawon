@@ -5,6 +5,17 @@ import android.provider.Settings
 import android.util.Log
 import android.view.MotionEvent
 import androidx.activity.compose.BackHandler
+import android.view.HapticFeedbackConstants
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.Spring
@@ -71,6 +82,7 @@ import com.jawon.app.ui.theme.CrateBlack
 import com.jawon.app.ui.theme.CrateEdge
 import com.jawon.app.ui.theme.JawonTextStyle
 import com.jawon.app.ui.theme.JetBrainsMonoFamily
+import com.jawon.app.ui.theme.LabelCream
 import com.jawon.app.ui.theme.LabelDim
 import com.jawon.app.ui.theme.LampAmber
 import com.jawon.app.ui.theme.RoomScheme
@@ -138,6 +150,19 @@ private const val FLING_FRICTION = 2f
 private val SETTLE_SPRING = spring<Float>(
     dampingRatio = Spring.DampingRatioNoBouncy,
     stiffness = Spring.StiffnessLow
+)
+
+/**
+ * The crate flip's chase, stiffer than [SETTLE_SPRING].
+ *
+ * A settle is the end of a gesture and can afford to be unhurried. The flip is *during* one —
+ * the thumb is still moving and the wall has to stay under it — so at StiffnessLow the wall
+ * lags far enough behind the rail that the letter under your thumb and the record on screen
+ * are different albums.
+ */
+private val FLIP_SPRING = spring<Float>(
+    dampingRatio = Spring.DampingRatioNoBouncy,
+    stiffness = Spring.StiffnessMedium
 )
 
 /**
@@ -2000,6 +2025,26 @@ fun WallSceneScreen(
         // case, and is left alone while browsing so it exits the app normally.
         BackHandler(enabled = selectedAlbumId != null) { closeCase() }
 
+        // The crate flip, only while browsing and only on a library big enough to need it.
+        //
+        // `animateTo` on the same `Animatable`s the magnet uses, which is what keeps this safe:
+        // starting one cancels whatever settle was in flight rather than fighting it, so the
+        // two can never both be driving the wall (ENGINEERING.md trap 6).
+        if (selectedAlbumId == null) {
+            CrateFlip(
+                layout = layout,
+                onScrub = { target ->
+                    scope.launch {
+                        launch { panX.animateTo(target.x, animationSpec = FLIP_SPRING) }
+                        launch { panY.animateTo(target.y, animationSpec = FLIP_SPRING) }
+                    }
+                },
+                modifier = Modifier
+                    .align(Alignment.CenterEnd)
+                    .padding(end = 4.dp, top = 96.dp, bottom = 128.dp)
+            )
+        }
+
         // Chrome, only while browsing: with a case open the deck owns the screen.
         if (selectedAlbumId == null) {
             // Centred along the bottom: the top belongs to the focus label (a long title ran
@@ -2094,6 +2139,143 @@ fun WallSceneScreen(
 }
 
 /** One room-chrome action: a real 48dp target with a quiet mono label under it. */
+/**
+ * The crate flip — a thumb rail down the right edge that runs the wall past you.
+ *
+ * `PLAN.md` §9 #7. Panning covers about one album per swipe, and the camera frames roughly
+ * one row, so crossing a real collection is dozens of gestures; this crosses it in one.
+ *
+ * **It is a rail down the wall, not an A–Z index**, and `WallLayout.caseAtFraction` explains
+ * why at length: the wall is filed in slot order, not alphabetically, so a sorted index would
+ * throw the wall backwards and forwards under a thumb moving steadily down. The letters here
+ * describe what is at each position, the way the dividers in a real crate describe the crate
+ * rather than reordering it.
+ *
+ * Its own `pointerInput`, deliberately. `ENGINEERING.md` trap 6 is that the gesture detector and
+ * the raw touch stream have no guaranteed ordering and must never drive the same `Animatable`;
+ * this sits in front of the `SceneView` as a Compose overlay, so the scene never sees these
+ * events at all and there is nothing to race.
+ */
+@Composable
+private fun CrateFlip(
+    layout: WallLayout,
+    onScrub: (CaseLayout) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val ordered = layout.casesInWallOrder
+    // Pointless on a library you can already cross in a couple of swipes, and it would sit
+    // over the room for no reason.
+    if (ordered.size < FLIP_MIN_ALBUMS) return
+
+    val haptics = LocalView.current
+    var dragging by remember { mutableStateOf(false) }
+    var fraction by remember { mutableFloatStateOf(0f) }
+    var railHeight by remember { mutableFloatStateOf(1f) }
+    var lastLanded by remember { mutableStateOf<String?>(null) }
+
+    fun scrubTo(y: Float) {
+        fraction = (y / railHeight).coerceIn(0f, 1f)
+        layout.caseAtFraction(fraction)?.let { landed ->
+            if (landed.albumId != lastLanded) {
+                lastLanded = landed.albumId
+                // One tick per record passed, so the rail feels like cards going by under a
+                // thumb rather than a slider.
+                haptics.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+                onScrub(landed)
+            }
+        }
+    }
+
+    Row(
+        // Two thirds of the height rather than all of it. At full height the marks spread so
+        // far apart they stopped reading as a rail and became loose letters scattered down
+        // the room, straight across the artwork — and the thumb travel to cross the library
+        // was the whole screen.
+        modifier = modifier.fillMaxHeight(0.66f),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        // The letter you are on, held out where a thumb is not covering it.
+        AnimatedVisibility(
+            visible = dragging,
+            enter = fadeIn(tween(90)),
+            exit = fadeOut(tween(160))
+        ) {
+            val landed = layout.caseAtFraction(fraction)
+            Box(
+                Modifier
+                    .padding(end = 10.dp)
+                    .background(ComposeColor(0xE81C1712), RoundedCornerShape(3.dp))
+                    .padding(horizontal = 16.dp, vertical = 10.dp)
+            ) {
+                Text(
+                    text = landed?.title?.let { WallLayout.initialOf(it).toString() } ?: "",
+                    fontFamily = ArchivoFamily,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 34.sp,
+                    color = LampAmber
+                )
+            }
+        }
+
+        Column(
+            modifier = Modifier
+                .width(28.dp)
+                .fillMaxHeight()
+                // Its own ground, for the same reason the bottom chrome has one: bare on the
+                // room, the marks landed on whatever shelf plank happened to be behind them.
+                .background(
+                    Brush.horizontalGradient(
+                        0f to ComposeColor.Transparent,
+                        1f to ComposeColor(0x66120F0C)
+                    ),
+                    RoundedCornerShape(topStart = 14.dp, bottomStart = 14.dp)
+                )
+                .onSizeChanged { railHeight = it.height.toFloat().coerceAtLeast(1f) }
+                .pointerInput(ordered.size) {
+                    detectVerticalDragGestures(
+                        onDragStart = { offset ->
+                            dragging = true
+                            lastLanded = null
+                            scrubTo(offset.y)
+                        },
+                        onDragEnd = { dragging = false },
+                        onDragCancel = { dragging = false }
+                    ) { change, _ ->
+                        scrubTo(change.position.y)
+                    }
+                },
+            verticalArrangement = Arrangement.SpaceEvenly,
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            // Evenly sampled positions along the wall, labelled with what is there. A repeat
+            // of the letter above becomes a dot, so a run of one artist reads as a run rather
+            // than as a stutter of identical letters.
+            val marks = FLIP_MARKS.coerceAtMost(ordered.size)
+            var previous = ' '
+            for (i in 0 until marks) {
+                val at = if (marks == 1) 0f else i / (marks - 1f)
+                val letter = layout.caseAtFraction(at)?.title
+                    ?.let { WallLayout.initialOf(it) } ?: '#'
+                val repeated = letter == previous
+                previous = letter
+                Text(
+                    text = if (repeated) "·" else letter.toString(),
+                    fontFamily = JetBrainsMonoFamily,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = if (repeated) 9.sp else 10.sp,
+                    color = if (dragging) LabelCream else LabelDim.copy(alpha = 0.62f)
+                )
+            }
+        }
+    }
+}
+
+/** Below this the wall is a couple of swipes wide and the rail is clutter. */
+private const val FLIP_MIN_ALBUMS = 12
+
+/** Letters down the rail. Enough to read as a crate divider set, few enough to stay legible. */
+private const val FLIP_MARKS = 15
+
 @Composable
 private fun ChromeAction(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
