@@ -1,19 +1,25 @@
 package com.jawon.app.ui.settings
 
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
 import com.jawon.app.data.playback.EqBand
 import com.jawon.app.data.playback.EqualizerController
 import com.jawon.app.data.prefs.AppPreferences
+import com.jawon.app.data.update.AvailableUpdate
+import com.jawon.app.data.update.UpdateChecker
+import com.jawon.app.data.update.UpdateState
 import com.jawon.app.playback.Crossfade
 import com.jawon.app.ui.theme.RoomScheme
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 @HiltViewModel
 class SettingsViewModel @Inject constructor(
     private val preferences: AppPreferences,
-    private val equalizer: EqualizerController
+    private val equalizer: EqualizerController,
+    private val updateChecker: UpdateChecker
 ) : ViewModel() {
 
     val fetchCoverArt: StateFlow<Boolean> = preferences.fetchCoverArt
@@ -46,4 +52,16 @@ class SettingsViewModel @Inject constructor(
     /** Snapped to whole tenths of a second, since the readout is shown to one decimal. */
     fun onCrossfadeChanged(ms: Int) =
         preferences.setCrossfadeMs(if (ms < Crossfade.MIN_MS) 0 else (ms / 100) * 100)
+
+    // ---- Updates -------------------------------------------------------------------
+
+    val updateState: StateFlow<UpdateState> = updateChecker.state
+
+    /** Re-read on every recomposition of the screen: the user may grant it and come back. */
+    fun canRequestInstall(): Boolean = updateChecker.canRequestInstall()
+
+    fun onCheckForUpdates() = viewModelScope.launch { updateChecker.check() }
+
+    fun onDownloadUpdate(update: AvailableUpdate) =
+        viewModelScope.launch { updateChecker.download(update) }
 }

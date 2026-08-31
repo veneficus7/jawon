@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<paths>
+    <!--
+        Only the directory downloaded updates land in, and nothing else.
+
+        A FileProvider grants read access to whatever it exposes, so the paths here are the
+        exact surface another app can be handed. The system installer needs to read one APK;
+        it has no business being able to reach the user's covers, their database, or their
+        listening history, all of which live elsewhere under filesDir.
+    -->
+    <cache-path name="updates" path="updates/" />
+</paths>

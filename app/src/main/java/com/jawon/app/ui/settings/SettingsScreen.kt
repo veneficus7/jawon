@@ -1,5 +1,9 @@
 package com.jawon.app.ui.settings
 
+import android.content.Context
+import android.content.Intent
+import android.net.Uri
+import android.provider.Settings
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -42,10 +46,13 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.FileProvider
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.jawon.app.R
 import com.jawon.app.data.playback.EqBand
+import com.jawon.app.data.update.AvailableUpdate
+import com.jawon.app.data.update.UpdateState
 import com.jawon.app.playback.Crossfade
 import com.jawon.app.ui.theme.ArchivoFamily
 import com.jawon.app.ui.theme.CrateBlack
@@ -56,6 +63,144 @@ import com.jawon.app.ui.theme.LabelCream
 import com.jawon.app.ui.theme.LabelDim
 import com.jawon.app.ui.theme.LampAmber
 import com.jawon.app.ui.theme.RoomScheme
+
+/**
+ * Hands the downloaded APK to the platform's installer.
+ *
+ * `ACTION_VIEW` on a content URI with the APK mime type, plus a read grant for whoever picks
+ * it up — the installer is a different process and cannot open this app's cache directly.
+ * The prompt the user then sees is the system's own; nothing here can install anything
+ * quietly, by design and by the platform's rules.
+ */
+private fun installUpdate(context: Context, apk: java.io.File) {
+    val uri = FileProvider.getUriForFile(context, "${context.packageName}.updates", apk)
+    val intent = Intent(Intent.ACTION_VIEW).apply {
+        setDataAndType(uri, "application/vnd.android.package-archive")
+        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    }
+    runCatching { context.startActivity(intent) }
+}
+
+/** The "install unknown apps" switch for this app, which lives in system settings. */
+private fun openInstallPermission(context: Context) {
+    val intent = Intent(
+        Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+        Uri.parse("package:${context.packageName}")
+    ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    runCatching { context.startActivity(intent) }
+}
+
+/**
+ * Whether there is a newer Jawon, and the way to get it.
+ *
+ * Sits directly under the version stamp because that is the question it answers. Nothing here
+ * happens on its own: the check is a button, the download is a button, and the install is the
+ * platform's own prompt. An app that silently reaches out and replaces itself is not something
+ * to build without being asked to, even when it is allowed to.
+ */
+@Composable
+private fun UpdateSection(
+    state: UpdateState,
+    canInstall: Boolean,
+    onCheck: () -> Unit,
+    onDownload: (AvailableUpdate) -> Unit,
+    onInstall: (java.io.File) -> Unit,
+    onAllowInstalls: () -> Unit
+) {
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        when (state) {
+            is UpdateState.Idle, is UpdateState.UpToDate, is UpdateState.Failed -> {
+                TextChip(text = "CHECK FOR UPDATES", onClick = onCheck)
+                val note = when (state) {
+                    is UpdateState.UpToDate -> "This is the newest version."
+                    is UpdateState.Failed -> state.reason
+                    else -> null
+                }
+                note?.let {
+                    Text(
+                        it,
+                        style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = 10.sp),
+                        textAlign = TextAlign.Center
+                    )
+                }
+            }
+
+            is UpdateState.Checking -> Text(
+                "CHECKING…",
+                style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = 10.sp)
+            )
+
+            is UpdateState.Available -> {
+                Text(
+                    "VERSION ${state.update.versionName.uppercase()} IS AVAILABLE",
+                    style = JawonTextStyle.mono.copy(fontSize = 10.sp),
+                    textAlign = TextAlign.Center
+                )
+                if (state.update.notes.isNotBlank()) {
+                    Text(
+                        state.update.notes,
+                        style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = 10.sp),
+                        lineHeight = 16.sp,
+                        textAlign = TextAlign.Center
+                    )
+                }
+                if (canInstall) {
+                    TextChip(text = "DOWNLOAD", onClick = { onDownload(state.update) })
+                } else {
+                    // Android will not let an app install another without this, and the
+                    // switch is in system settings rather than anywhere Jawon can reach.
+                    // Saying so beats a download that ends in a refusal.
+                    Text(
+                        "Android needs your permission for Jawon to install its own " +
+                            "updates. This is the only thing it is used for.",
+                        style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = 10.sp),
+                        lineHeight = 16.sp,
+                        textAlign = TextAlign.Center
+                    )
+                    TextChip(text = "ALLOW, THEN COME BACK", onClick = onAllowInstalls)
+                }
+            }
+
+            is UpdateState.Downloading -> Text(
+                "DOWNLOADING ${(state.fraction * 100).toInt()}%",
+                style = JawonTextStyle.mono.copy(fontSize = 10.sp)
+            )
+
+            is UpdateState.Ready -> {
+                Text(
+                    "READY TO INSTALL",
+                    style = JawonTextStyle.mono.copy(fontSize = 10.sp)
+                )
+                TextChip(text = "INSTALL", onClick = { onInstall(state.apk) })
+            }
+        }
+    }
+}
+
+/** A bordered mono label that acts as a button. The house's only button shape. */
+@Composable
+private fun TextChip(text: String, onClick: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .border(1.dp, CrateEdge)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 9.dp)
+    ) {
+        Text(
+            text,
+            fontFamily = JetBrainsMonoFamily,
+            fontWeight = FontWeight.Bold,
+            fontSize = 11.sp,
+            letterSpacing = 1.6.sp,
+            color = LampAmber
+        )
+    }
+}
 
 /**
  * The room's colour, as three swatches rather than three names in a list.
@@ -332,6 +477,10 @@ fun SettingsScreen(
     val eqRangeMb by viewModel.eqRangeMb.collectAsStateWithLifecycle()
     val eqPresets by viewModel.eqPresets.collectAsStateWithLifecycle()
     val crossfadeMs by viewModel.crossfadeMs.collectAsStateWithLifecycle()
+    val updateState by viewModel.updateState.collectAsStateWithLifecycle()
+    // Not remembered: the user can leave to grant the permission and come straight back,
+    // and a cached "no" would leave them looking at a button that says to do what they just did.
+    val canInstall = viewModel.canRequestInstall()
     // Read from the package rather than hardcoded, so it can only ever say what was actually
     // installed. `versionName` is set in app/build.gradle.kts.
     val versionName = remember(context) {
@@ -415,7 +564,24 @@ fun SettingsScreen(
 
             Box(
                 Modifier
-                    .padding(vertical = 40.dp)
+                    .padding(vertical = 28.dp)
+                    .width(60.dp)
+                    .height(1.dp)
+                    .background(CrateEdge)
+            )
+
+            UpdateSection(
+                state = updateState,
+                canInstall = canInstall,
+                onCheck = viewModel::onCheckForUpdates,
+                onDownload = viewModel::onDownloadUpdate,
+                onInstall = { apk -> installUpdate(context, apk) },
+                onAllowInstalls = { openInstallPermission(context) }
+            )
+
+            Box(
+                Modifier
+                    .padding(vertical = 28.dp)
                     .width(60.dp)
                     .height(1.dp)
                     .background(CrateEdge)

@@ -30,6 +30,22 @@
     <uses-permission android:name="android.permission.INTERNET" />
 
     <!--
+        So Jawon can offer its own updates, instead of the owner sending an APK to everyone
+        by hand every time something changes.
+
+        This never installs anything silently, and cannot: the platform always shows its own
+        install prompt, and the user has to have granted this app "install unknown apps"
+        first. The real protection is the signing key — Android refuses an update signed with
+        a different key than the installed app, so a tampered download can only fail, never
+        replace Jawon with something else.
+
+        **This has to be removed before any Play release.** Play restricts
+        REQUEST_INSTALL_PACKAGES to apps whose core purpose is installing others, and Jawon's
+        is not; on Play, Play does the updating and this is redundant anyway.
+    -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+
+    <!--
         For finding the music already on the phone, so adding a library is not a matter of
         handing over one folder at a time. Read-only, and audio only: Jawon never asks for
         photos, video, or "all files".
@@ -74,6 +90,23 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!--
+            Hands a downloaded update to the system installer.
+
+            An installer runs in another process and cannot read this app's private files, so
+            the APK has to be passed as a content URI it is granted access to. Scoped to the
+            updates cache directory alone — see res/xml/file_paths.xml.
+        -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.updates"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
 
         <service
             android:name=".playback.PlaybackService"
