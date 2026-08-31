@@ -114,7 +114,13 @@ data class CaseLayout(
     val row: Int,
     val col: Int,
     val x: Float,
-    val y: Float
+    val y: Float,
+    /**
+     * How played-in this case looks, `0f`..`1f`, from [Patina.forListening]. Baked into the
+     * spine rather than applied as a material property, because wear is dirt and abrasion in
+     * particular *places* — it is not a uniform darkening.
+     */
+    val wear: Float = 0f
 )
 
 data class RowLayout(
@@ -234,7 +240,15 @@ data class WallLayout(
          * rather than from the stored index — so a shelf is always packed and always centred
          * on its own label, whatever the database happens to hold.
          */
-        fun from(shelves: List<ShelfWithAlbums>): WallLayout {
+        fun from(
+            shelves: List<ShelfWithAlbums>,
+            /**
+             * Per-album wear from [Patina.byAlbum]. Passed in rather than read here so this
+             * stays a pure function of its arguments — an album absent from the map has
+             * never been played and gets a clean case.
+             */
+            wearByAlbum: Map<String, Float> = emptyMap()
+        ): WallLayout {
             // Loaded, and there is genuinely nothing — not the placeholder. One lit, labelled
             // board, and no cases.
             if (shelves.isEmpty()) {
@@ -300,7 +314,8 @@ data class WallLayout(
                         row = row,
                         col = col,
                         x = colX(col, count),
-                        y = rowCenterY(row)
+                        y = rowCenterY(row),
+                        wear = wearByAlbum[album.id] ?: 0f
                     )
                 }
             }

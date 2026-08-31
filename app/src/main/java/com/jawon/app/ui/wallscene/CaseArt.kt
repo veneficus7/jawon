@@ -331,7 +331,13 @@ object CaseArt {
         title: String,
         artist: String,
         hue: Float,
-        fonts: Fonts
+        fonts: Fonts,
+        /**
+         * How played-in this case looks, `0f`..`1f` — see [Patina]. Drawn rather than
+         * shaded: real shelf wear lands in particular places (the edge a thumb hooks, the
+         * corners that rub the board) and a uniform darkening reads as a lighting bug.
+         */
+        wear: Float = 0f
     ): Bitmap {
         val bitmap = Bitmap.createBitmap(SPINE_W, SPINE_H, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)
@@ -388,14 +394,62 @@ object CaseArt {
         )
         canvas.restore()
 
-        // Wear. Seeded per album so a re-bake looks identical rather than shimmering.
+        // ---- Wear -------------------------------------------------------------------
+        //
+        // Seeded per album so a re-bake looks identical rather than shimmering, and so a case
+        // that crosses a `Patina` bucket ages *further* rather than rearranging its dirt.
+        //
+        // The base grain was here before and was the same on every case, which made it
+        // texture rather than history. It stays as the floor — a pressed CD is not optically
+        // clean even new — and everything below it is earned.
         val random = Random(albumId.hashCode())
         val speck = Paint()
-        repeat(180) {
-            speck.color = Color.argb((random.nextFloat() * 23).toInt(), 0, 0, 0)
+        repeat(180 + (wear * 340f).toInt()) {
+            speck.color = Color.argb(
+                (random.nextFloat() * (23f + wear * 34f)).toInt(), 0, 0, 0
+            )
             val x = random.nextFloat() * w
             val y = random.nextFloat() * h
             canvas.drawRect(x, y, x + 2f, y + 2f, speck)
+        }
+
+        if (wear > 0f) {
+            // The pull edge. A case comes off a shelf by hooking the outer edge of the spine,
+            // so that strip loses its print first and goes pale where the ink has gone rather
+            // than dark. This is the single most recognisable thing about a shelf-worn case.
+            val scuff = Paint(Paint.ANTI_ALIAS_FLAG)
+            val pullBand = w * 0.16f
+            repeat((wear * 26f).toInt()) {
+                val y = random.nextFloat() * h
+                val len = h * (0.008f + random.nextFloat() * 0.05f)
+                scuff.color = Color.argb(
+                    (16f + random.nextFloat() * 40f * wear).toInt(), 246, 238, 222
+                )
+                canvas.drawRect(
+                    random.nextFloat() * pullBand, y,
+                    random.nextFloat() * pullBand + w * 0.05f, y + len,
+                    scuff
+                )
+            }
+
+            // Shelf rub. The ends carry the case's weight against the board and against its
+            // neighbours, so the corners lighten before the middle of the spine does.
+            val rub = Paint(Paint.ANTI_ALIAS_FLAG)
+            rub.color = Color.argb((wear * 46f).toInt(), 248, 240, 226)
+            val rubDepth = h * 0.022f
+            canvas.drawRect(0f, 0f, w, rubDepth, rub)
+            canvas.drawRect(0f, h - rubDepth, w, h, rub)
+
+            // The printed bands go first, because they are ink on a laminate rather than part
+            // of the stock. Knocking them back is what stops a worn case reading as a clean
+            // case with dirt thrown at it.
+            val fade = Paint()
+            fade.color = Color.argb(
+                (wear * 58f).toInt(),
+                Color.red(LABEL_CREAM), Color.green(LABEL_CREAM), Color.blue(LABEL_CREAM)
+            )
+            canvas.drawRect(0f, h * BAR_TOP, w, h * (BAR_TOP + BAR_THICKNESS), fade)
+            canvas.drawRect(0f, h * BAR_BOTTOM, w, h * (BAR_BOTTOM + BAR_THICKNESS), fade)
         }
 
         // Edge highlight and shadow — what actually reads as thickness on a packed shelf.

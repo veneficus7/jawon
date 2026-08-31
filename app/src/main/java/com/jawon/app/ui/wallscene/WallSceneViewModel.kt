@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.jawon.app.data.importer.CoverImageStore
 import com.jawon.app.data.local.AlbumDao
+import com.jawon.app.data.local.PlayEventDao
 import com.jawon.app.data.local.ShelfDao
 import com.jawon.app.data.local.ShelfWithAlbums
 import com.jawon.app.data.local.Track
@@ -53,6 +54,7 @@ class WallSceneViewModel @Inject constructor(
     shelfDao: ShelfDao,
     private val albumDao: AlbumDao,
     private val trackDao: TrackDao,
+    playEventDao: PlayEventDao,
     private val playbackRepository: PlaybackRepository,
     private val coverStore: CoverImageStore,
     private val equalizer: EqualizerController,
@@ -67,11 +69,25 @@ class WallSceneViewModel @Inject constructor(
     /** How fast shelved cases turn, 0..1. The frame driver scales the rotation by it. */
     val caseSpin: StateFlow<Float> = preferences.caseSpin
 
+    /**
+     * The wall, including how played-in each case looks.
+     *
+     * `albumTotals()` re-emits on every write to `PlayEvent`, which is often while music is
+     * running. That is safe here only because [Patina] quantises wear to eight steps: between
+     * steps every `CaseLayout` compares equal, the whole `WallLayout` therefore compares
+     * equal, and `stateIn`'s `StateFlow` conflates the emission away without the scene ever
+     * being told. Take the quantisation out and this becomes a bitmap re-bake per play tick.
+     */
     val layout: StateFlow<WallLayout> =
-        combine(shelfDao.getAll(), albumDao.getAll()) { shelves, albums ->
+        combine(
+            shelfDao.getAll(),
+            albumDao.getAll(),
+            playEventDao.albumTotals()
+        ) { shelves, albums, totals ->
             val albumsByShelf = albums.groupBy { it.shelfId }
             WallLayout.from(
-                shelves.map { shelf -> ShelfWithAlbums(shelf, albumsByShelf[shelf.id].orEmpty()) }
+                shelves.map { shelf -> ShelfWithAlbums(shelf, albumsByShelf[shelf.id].orEmpty()) },
+                Patina.byAlbum(totals)
             )
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), WallLayout())
 
