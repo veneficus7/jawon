@@ -59,8 +59,43 @@ class AppPreferences @Inject constructor(@param:ApplicationContext context: Cont
         _roomScheme.value = scheme
     }
 
+    private val _equalizerEnabled =
+        MutableStateFlow(prefs.getBoolean(KEY_EQ_ENABLED, false))
+
+    /** Off by default: an equaliser nobody asked for should not colour the sound. */
+    val equalizerEnabled: StateFlow<Boolean> = _equalizerEnabled.asStateFlow()
+
+    fun setEqualizerEnabled(enabled: Boolean) {
+        prefs.edit { putBoolean(KEY_EQ_ENABLED, enabled) }
+        _equalizerEnabled.value = enabled
+    }
+
+    private val _equalizerBands = MutableStateFlow(readBands())
+
+    /**
+     * Band gains in millibels, in band order.
+     *
+     * Stored as text rather than as a set of numbered keys because the band *count* is the
+     * device's to decide — a phone with five bands and one with ten both round-trip through
+     * one string, and a list that changes length does not leave stale keys behind.
+     */
+    val equalizerBands: StateFlow<List<Int>> = _equalizerBands.asStateFlow()
+
+    fun setEqualizerBands(levels: List<Int>) {
+        prefs.edit { putString(KEY_EQ_BANDS, levels.joinToString(",")) }
+        _equalizerBands.value = levels
+    }
+
+    private fun readBands(): List<Int> =
+        prefs.getString(KEY_EQ_BANDS, null)
+            ?.split(',')
+            ?.mapNotNull { it.trim().toIntOrNull() }
+            .orEmpty()
+
     private companion object {
         const val KEY_FETCH_COVER_ART = "fetch_cover_art"
         const val KEY_ROOM_SCHEME = "room_scheme"
+        const val KEY_EQ_ENABLED = "equalizer_enabled"
+        const val KEY_EQ_BANDS = "equalizer_bands"
     }
 }

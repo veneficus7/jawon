@@ -4,21 +4,34 @@ import android.app.PendingIntent
 import android.content.Intent
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
+import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.session.DefaultMediaNotificationProvider
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
 import com.jawon.app.MainActivity
 import com.jawon.app.R
+import com.jawon.app.data.playback.EqualizerController
+import dagger.hilt.android.AndroidEntryPoint
+import javax.inject.Inject
 
 /**
  * Owns the real ExoPlayer + MediaSession — this is the only place they're
  * constructed. Everything else in the app talks to playback through
  * data/playback/PlaybackRepository.kt's MediaController, never directly.
  */
+@AndroidEntryPoint
 class PlaybackService : MediaSessionService() {
 
     private var mediaSession: MediaSession? = null
+
+    /**
+     * The equaliser is attached to the player's audio session, and this service is the only
+     * place that session exists. The controller itself is app-scoped: the user's settings
+     * outlive any one player, and the effect has to be recreated with each new one.
+     */
+    @Inject
+    lateinit var equalizer: EqualizerController
 
     override fun onCreate() {
         super.onCreate()
@@ -32,6 +45,22 @@ class PlaybackService : MediaSessionService() {
             )
             .setHandleAudioBecomingNoisy(true)
             .build()
+
+        // The audio session is not ready when the player is.
+        //
+        // `audioSessionId` reads 0 straight after `build()` — ExoPlayer does not acquire one
+        // until it initialises its audio sink, which happens on the first prepare. Attaching
+        // here alone meant the equaliser never attached at all, and the settings screen said
+        // the phone did not support one, which was simply untrue.
+        //
+        // So: try now in case an id already exists, and listen for the real one. The listener
+        // is also what covers the session changing later, which the platform is allowed to do.
+        player.addListener(object : Player.Listener {
+            override fun onAudioSessionIdChanged(audioSessionId: Int) {
+                equalizer.attach(audioSessionId)
+            }
+        })
+        equalizer.attach(player.audioSessionId)
 
         // Jawon's own mark in the status bar and on the lock screen, in place of Media3's
         // stock music note — which is why the notification read as anonymous next to other
@@ -72,6 +101,9 @@ class PlaybackService : MediaSessionService() {
     }
 
     override fun onDestroy() {
+        // Before the player goes: the effect is attached to that player's session, and one
+        // left behind holds an audio effect slot the next player may need.
+        equalizer.release()
         mediaSession?.run {
             player.release()
             release()

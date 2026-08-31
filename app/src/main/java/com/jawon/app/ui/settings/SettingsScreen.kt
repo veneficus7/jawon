@@ -18,14 +18,20 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
@@ -39,6 +45,7 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.jawon.app.R
+import com.jawon.app.data.playback.EqBand
 import com.jawon.app.ui.theme.ArchivoFamily
 import com.jawon.app.ui.theme.CrateBlack
 import com.jawon.app.ui.theme.CrateEdge
@@ -132,13 +139,146 @@ private fun SchemePicker(current: RoomScheme, onPick: (RoomScheme) -> Unit) {
     }
 }
 
+/**
+ * The equaliser: a switch, the platform's own presets, and one slider per band.
+ *
+ * **Everything about its shape comes from the device.** How many bands there are, where they
+ * sit and how far they swing are decided by the platform's effect implementation — five bands
+ * is usual and not guaranteed — so this draws whatever it is told about rather than assuming.
+ * On a device with no working equaliser it says so plainly instead of showing dead controls.
+ */
+@Composable
+private fun EqualizerSection(
+    available: Boolean,
+    enabled: Boolean,
+    bands: List<EqBand>,
+    rangeMb: Pair<Int, Int>,
+    presets: List<String>,
+    onEnabledChange: (Boolean) -> Unit,
+    onBandChange: (Int, Int) -> Unit,
+    onPreset: (Int) -> Unit,
+    onReset: () -> Unit
+) {
+    var presetsOpen by remember { mutableStateOf(false) }
+
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(14.dp)
+    ) {
+        SettingRow(
+            title = "EQUALISER",
+            // Three states, not two. "Unavailable" and "nothing has played yet" look the
+            // same from here and mean opposite things — the first version said the phone had
+            // no equaliser to anyone who opened Settings before playing anything, which was
+            // both wrong and unfixable-looking.
+            detail = when {
+                available ->
+                    "Shapes the sound coming out. Off leaves the audio exactly as it was " +
+                        "recorded."
+                else ->
+                    "Play something first — the equaliser attaches to the audio and there " +
+                        "is nothing to attach to yet."
+            },
+            checked = enabled && available,
+            onCheckedChange = onEnabledChange,
+            enabled = available
+        )
+
+        if (available && enabled && bands.isNotEmpty()) {
+            val (minMb, maxMb) = rangeMb
+
+            if (presets.isNotEmpty()) {
+                Box {
+                    Row(
+                        modifier = Modifier
+                            .border(1.dp, CrateEdge)
+                            .clickable { presetsOpen = true }
+                            .padding(horizontal = 14.dp, vertical = 9.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text(
+                            "PRESETS",
+                            style = JawonTextStyle.mono.copy(fontSize = 10.sp)
+                        )
+                    }
+                    DropdownMenu(
+                        expanded = presetsOpen,
+                        onDismissRequest = { presetsOpen = false },
+                        containerColor = CrateBlack,
+                        modifier = Modifier.border(1.dp, CrateEdge)
+                    ) {
+                        presets.forEachIndexed { index, name ->
+                            DropdownMenuItem(
+                                text = {
+                                    Text(
+                                        name.uppercase(),
+                                        style = JawonTextStyle.mono.copy(color = LabelCream)
+                                    )
+                                },
+                                onClick = {
+                                    onPreset(index)
+                                    presetsOpen = false
+                                }
+                            )
+                        }
+                    }
+                }
+            }
+
+            bands.forEach { band ->
+                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(
+                            text = formatHz(band.centerHz),
+                            style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = 10.sp)
+                        )
+                        // Signed, and in whole dB. Millibels are the platform's unit, not a
+                        // unit anyone reading a slider thinks in.
+                        Text(
+                            text = "%+.1f dB".format(band.levelMb / 100f),
+                            style = JawonTextStyle.mono.copy(fontSize = 10.sp)
+                        )
+                    }
+                    Slider(
+                        value = band.levelMb.toFloat(),
+                        onValueChange = { onBandChange(band.index, it.toInt()) },
+                        valueRange = minMb.toFloat()..maxMb.toFloat(),
+                        colors = SliderDefaults.colors(
+                            thumbColor = LampAmber,
+                            activeTrackColor = LampAmber.copy(alpha = 0.7f),
+                            inactiveTrackColor = CrateEdge
+                        )
+                    )
+                }
+            }
+
+            Row(
+                modifier = Modifier
+                    .border(1.dp, CrateEdge)
+                    .clickable(onClick = onReset)
+                    .padding(horizontal = 14.dp, vertical = 9.dp)
+            ) {
+                Text("FLAT", style = JawonTextStyle.mono.copy(fontSize = 10.sp))
+            }
+        }
+    }
+}
+
+/** 1000 Hz reads worse than 1 kHz on a control this small. */
+private fun formatHz(hz: Int): String =
+    if (hz >= 1000) "${(hz / 100) / 10f} kHz".replace(".0 ", " ") else "$hz Hz"
+
 /** One switchable setting: what it is, what it actually does, and the switch. */
 @Composable
 private fun SettingRow(
     title: String,
     detail: String,
     checked: Boolean,
-    onCheckedChange: (Boolean) -> Unit
+    onCheckedChange: (Boolean) -> Unit,
+    enabled: Boolean = true
 ) {
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -165,6 +305,7 @@ private fun SettingRow(
         Switch(
             checked = checked,
             onCheckedChange = onCheckedChange,
+            enabled = enabled,
             colors = SwitchDefaults.colors(
                 checkedThumbColor = CrateBlack,
                 checkedTrackColor = LampAmber,
@@ -184,6 +325,11 @@ fun SettingsScreen(
     val context = LocalContext.current
     val fetchCoverArt by viewModel.fetchCoverArt.collectAsStateWithLifecycle()
     val roomScheme by viewModel.roomScheme.collectAsStateWithLifecycle()
+    val eqAvailable by viewModel.eqAvailable.collectAsStateWithLifecycle()
+    val eqEnabled by viewModel.eqEnabled.collectAsStateWithLifecycle()
+    val eqBands by viewModel.eqBands.collectAsStateWithLifecycle()
+    val eqRangeMb by viewModel.eqRangeMb.collectAsStateWithLifecycle()
+    val eqPresets by viewModel.eqPresets.collectAsStateWithLifecycle()
     // Read from the package rather than hardcoded, so it can only ever say what was actually
     // installed. `versionName` is set in app/build.gradle.kts.
     val versionName = remember(context) {
@@ -306,8 +452,28 @@ fun SettingsScreen(
                     .background(CrateEdge)
             )
 
+            EqualizerSection(
+                available = eqAvailable,
+                enabled = eqEnabled,
+                bands = eqBands,
+                rangeMb = eqRangeMb,
+                presets = eqPresets,
+                onEnabledChange = viewModel::onEqEnabledChanged,
+                onBandChange = viewModel::onEqBandChanged,
+                onPreset = viewModel::onEqPreset,
+                onReset = viewModel::onEqReset
+            )
+
+            Box(
+                Modifier
+                    .padding(vertical = 32.dp)
+                    .width(60.dp)
+                    .height(1.dp)
+                    .background(CrateEdge)
+            )
+
             Text(
-                text = "Crossfade and the equaliser land here as they are built.",
+                text = "Crossfade lands here as it is built.",
                 style = JawonTextStyle.mono.copy(color = LabelDim),
                 lineHeight = 19.sp,
                 modifier = Modifier.padding(bottom = 48.dp)

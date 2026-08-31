@@ -12,6 +12,12 @@
         feedback" system setting, which is off on many phones, and testers reported the disc
         had no vibration at all because of it.
     -->
+    <!--
+        For the equaliser. A normal permission — granted at install with no prompt — needed
+        to attach an AudioEffect to the app's own playback session.
+    -->
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+
     <uses-permission android:name="android.permission.VIBRATE" />
 
     <!--
