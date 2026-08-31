@@ -2268,7 +2268,11 @@ private fun WaitingForRecords(onAddAlbum: () -> Unit, modifier: Modifier = Modif
             // Says what to bring and what happens to it. "Add an album" alone does not
             // explain that Jawon wants a folder of the user's own files, which is the one
             // thing a new user has to understand before anything else works.
-            text = "Point Jawon at a folder of your music and it takes a place on the shelf.",
+            // Describes the route people actually take now. It used to say "point Jawon at a
+            // folder of your music", which was written before the device scan existed and
+            // sent every new user down the slower of the two paths on their first screen.
+            text = "Jawon can find the music already on this phone and sort it into albums, " +
+                "or you can point it at a folder.",
             style = JawonTextStyle.mono.copy(color = LabelDim),
             textAlign = TextAlign.Center,
             lineHeight = 19.sp

@@ -128,6 +128,17 @@ apksigner verify --print-certs app/build/outputs/apk/release/app-release.apk
    If the certificate says `CN=Android Debug`, `keystore.properties` is missing
    and the build fell back — stop and fix that before going further.
 
+   The real one, from 0.3 beta onward, is:
+
+   ```
+   CN=Bakhodirjon Murodillaev, OU=Jawon, O=Veneficus, L=Suwon, ST=Gyeonggi-do, C=KR
+   SHA-256: 8c74a0400a79122041876e47c0bf98912ff257a084c656b20a6bb23a8f9f8766
+   ```
+
+   That digest is recorded here so a future build can be checked against it
+   rather than against memory. **If it ever differs, stop** — a different key
+   means every existing install has reached the end of its update path.
+
 3. Run it on a device. R8 can break Filament by name at runtime, and a green
    build says nothing about it (§3).
 4. Copy the APK into the releases repo as `jawon-<versionName>.apk`, and write
