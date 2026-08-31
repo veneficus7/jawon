@@ -7,15 +7,25 @@ as Jawon; whoever loses it cannot. It is **not** in this repository and must not
 be: `keystore.properties`, `*.jks` and `*.keystore` are gitignored, and a signing
 key that reaches a repository has to be replaced.
 
-Run this yourself, once, somewhere outside the repo:
+Run this yourself, once, somewhere outside the repo.
 
-```bash
-keytool -genkeypair -v -keystore javon-upload.jks -keyalg RSA -keysize 4096 -validity 10000 -alias javon
+**`keytool` is not on the PATH on this machine.** There is no system JDK — the
+one Java installation is the runtime bundled with Android Studio, which is also
+why every Gradle command here needs `JAVA_HOME` pointed at it. Call `keytool` by
+its full path:
+
+```powershell
+& "C:\Program Files\Android\Android Studio\jbr\bin\keytool.exe" -genkeypair -v -keystore "C:\Users\loh\AndroidStudioProjects\javon-upload.jks" -keyalg RSA -keysize 4096 -validity 10000 -alias javon
 ```
 
-It will ask for a password and for your name and organisation. Keep the file and
-the password somewhere you will still have them in five years — a password
-manager, not this machine's disk alone.
+It will prompt for a keystore password, then your name and organisation, then a
+key password (pressing Enter reuses the keystore one, which is fine). **Run it in
+a terminal you are typing in** — it reads the password from the console, so it
+cannot be run from a script.
+
+Keep the file and the password somewhere you will still have them in five years —
+a password manager, not this machine's disk alone. Everything the app can ever be
+updated to depends on this one file; see §4.
 
 Then create `keystore.properties` at the repository root:
 
