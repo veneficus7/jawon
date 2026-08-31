@@ -8,8 +8,9 @@
 
     So the silhouette says the same thing structurally instead: a broken ring — a disc with
     a gap where the light crosses it — and the hole knocked out by an even-odd fill. The
-    weight difference between the thick sweep and the thin tracks survives tinting because
-    it is shape, not value.
+    weight difference between the thick sweep and the disc body survives tinting because it
+    is shape, not value — and the sweep got heavier here too, for the same reason the colour
+    mark did: it is the one gesture, so it should carry.
 -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
@@ -21,15 +22,15 @@
     <!-- The disc as a ring, centre hole knocked out. -->
     <path
         android:fillType="evenOdd"
-        android:pathData="M54,54 m-28,0 a28,28 0 1,0 56,0 a28,28 0 1,0 -56,0 M54,54 m-11,0 a11,11 0 1,0 22,0 a11,11 0 1,0 -22,0"
+        android:pathData="M54,54 m-29,0 a29,29 0 1,0 58,0 a29,29 0 1,0 -58,0 M54,54 m-11.5,0 a11.5,11.5 0 1,0 23,0 a11.5,11.5 0 1,0 -23,0"
         android:fillColor="#FFFFFF"
-        android:fillAlpha="0.42" />
+        android:fillAlpha="0.34" />
 
     <!-- The light sweep, at full weight so it reads as the mark's one gesture. -->
     <path
-        android:pathData="M59.7,32.8 A22,22 0 0,1 73.9,63.3"
+        android:pathData="M63.2,31.6 A24,24 0 0,1 77.4,64.8"
         android:strokeColor="#FFFFFF"
-        android:strokeWidth="6"
+        android:strokeWidth="9"
         android:strokeLineCap="round" />
 
     <!-- Centre hole, punched back out of the ring above. -->

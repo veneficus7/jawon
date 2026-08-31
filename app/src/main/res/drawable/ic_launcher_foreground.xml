@@ -1,22 +1,40 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-    Launcher foreground: a disc, lit.
+    Launcher foreground: a disc, hard-lit.
 
     The first attempt drew a disc emerging from a case edge — literal, and it read as any
-    media player with a rectangle bolted on. This is the other thing a CD actually is: a
-    surface of microscopic tracks that throws a hard streak of light when a lamp crosses it.
-    Concentric rings and one hot amber sweep, which is exactly what the room does to the
-    disc on screen.
+    media player with a rectangle bolted on. The second was this disc, but softly lit: a
+    cream face, four barely-there groove rings and a translucent amber sweep. Faithful to the
+    room and **weak at icon size**, where the grooves vanished entirely and the whole mark
+    collapsed into a pale beige circle with a smudge on it.
 
-    It also earns the animation. The rings and the sweep are separate named groups, so
-    `ic_splash_disc_animated.xml` spins them up and walks the highlight round without
-    redrawing any of this — the launcher icon and the splash are the same artwork.
+    This is the same object with the contrast turned up until it survives 48px.
+
+    What changed, and why:
+
+    - **The face is split, not shaded.** A near-white lit side falls to a deep brown shadow
+      side over a short distance rather than a long soft ramp. A gradient that spends its
+      whole length in mid-tones has no contrast anywhere; one that spends most of its length
+      at the two ends has contrast everywhere it matters.
+    - **The sweep is opaque and twice as thick.** It was 5.5 wide at 92% alpha over a pale
+      face, which is a highlight *on* cream — barely a value change. Now it is solid amber at
+      full strength across the dark half, where it actually separates.
+    - **The grooves are gone.** Four rings at 0.7 wide and 22–45% alpha are invisible below
+      about 96px and are mud above it. The disc reads as a disc from its shape, its hub and
+      its sweep; it never needed texture to do that.
+    - **The hole is bigger and pure black.** The strongest small-scale cue that this is a
+      disc rather than a coin or a button, so it gets the hardest edge in the mark.
+
+    It still earns the animation: the sweep is a named group, so `ic_splash_disc_animated.xml`
+    walks the highlight round without redrawing any of this — the launcher icon and the splash
+    remain the same object.
 
     Geometry: 108 canvas, adaptive mask keeps only the centre ~72, and launchers may crop to
-    a circle inside that. Everything sits within r=28 of centre (54,54), so no mask clips it.
+    a circle inside that. Everything sits within r=29 of centre (54,54), so no mask clips it.
 
-    Palette is DESIGN.md's — labelCream, lampAmber, crateBlack, oxideTeal for the cool
-    counter-sweep so the mark is not monochrome amber.
+    Palette stays DESIGN.md's — labelCream pushed to its brightest, lampAmber at full
+    saturation, crateBlack for the hole, oxideTeal for the cool counter-sweep so the mark is
+    not monochrome amber.
 -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:aapt="http://schemas.android.com/aapt"
@@ -25,64 +43,58 @@
     android:viewportWidth="108"
     android:viewportHeight="108">
 
-    <!-- The disc face. Slightly off-axis gradient so it reads as a lit surface, not a coin. -->
-    <path android:pathData="M54,54 m-28,0 a28,28 0 1,0 56,0 a28,28 0 1,0 -56,0">
+    <!--
+        The disc face. The stops are bunched at the ends on purpose: 0 to 0.30 holds near
+        white, 0.62 to 1 holds the deep shadow, and the whole transition happens across the
+        middle third. That is what makes it read as a hard-lit object rather than a gradient.
+    -->
+    <path android:pathData="M54,54 m-29,0 a29,29 0 1,0 58,0 a29,29 0 1,0 -58,0">
         <aapt:attr name="android:fillColor">
             <gradient
                 android:type="linear"
-                android:startX="30"
-                android:startY="28"
-                android:endX="80"
-                android:endY="82">
-                <item android:offset="0.0" android:color="#FFF6E8" />
-                <item android:offset="0.38" android:color="#E8DAC1" />
-                <item android:offset="0.72" android:color="#B7A88F" />
-                <item android:offset="1.0" android:color="#D8C9AE" />
+                android:startX="32"
+                android:startY="29"
+                android:endX="79"
+                android:endY="80">
+                <item android:offset="0.0" android:color="#FFFBF2" />
+                <item android:offset="0.30" android:color="#F3E7CE" />
+                <item android:offset="0.52" android:color="#8A7A61" />
+                <item android:offset="0.62" android:color="#4A3E30" />
+                <item android:offset="1.0" android:color="#2A2119" />
             </gradient>
         </aapt:attr>
     </path>
 
-    <!-- Data tracks. Thin, low-contrast, closely spaced — texture rather than pattern. -->
-    <group android:name="tracks">
-        <path
-            android:pathData="M54,54 m-24.5,0 a24.5,24.5 0 1,0 49,0 a24.5,24.5 0 1,0 -49,0"
-            android:strokeColor="#8C7F6A" android:strokeWidth="0.7" android:strokeAlpha="0.45" />
-        <path
-            android:pathData="M54,54 m-21,0 a21,21 0 1,0 42,0 a21,21 0 1,0 -42,0"
-            android:strokeColor="#8C7F6A" android:strokeWidth="0.7" android:strokeAlpha="0.35" />
-        <path
-            android:pathData="M54,54 m-17.5,0 a17.5,17.5 0 1,0 35,0 a17.5,17.5 0 1,0 -35,0"
-            android:strokeColor="#8C7F6A" android:strokeWidth="0.7" android:strokeAlpha="0.28" />
-        <path
-            android:pathData="M54,54 m-14,0 a14,14 0 1,0 28,0 a14,14 0 1,0 -28,0"
-            android:strokeColor="#8C7F6A" android:strokeWidth="0.7" android:strokeAlpha="0.22" />
-    </group>
+    <!--
+        The lamp's streak, and a cool counter-sweep opposite it.
 
-    <!-- The lamp's streak, and a cooler counter-sweep opposite it so the disc reads as
-         sitting in a room with more than one source rather than under a spotlight. -->
+        Both sit on the dark half where they carry maximum separation. The amber is solid —
+        an alpha'd highlight over a pale face was the single biggest reason the old mark went
+        flat at small sizes.
+    -->
     <group android:name="sweep">
         <path
-            android:pathData="M59.7,32.8 A22,22 0 0,1 73.9,63.3"
-            android:strokeColor="#F0A93C"
-            android:strokeWidth="5.5"
-            android:strokeAlpha="0.92"
+            android:pathData="M63.2,31.6 A24,24 0 0,1 77.4,64.8"
+            android:strokeColor="#FFB43C"
+            android:strokeWidth="9"
             android:strokeLineCap="round" />
         <path
-            android:pathData="M44.7,73.9 A22,22 0 0,1 32.1,55.9"
-            android:strokeColor="#2F7D71"
-            android:strokeWidth="3.5"
-            android:strokeAlpha="0.55"
+            android:pathData="M43.4,76.6 A24,24 0 0,1 30.4,56.2"
+            android:strokeColor="#3FA396"
+            android:strokeWidth="5"
+            android:strokeAlpha="0.9"
             android:strokeLineCap="round" />
     </group>
 
-    <!-- Hub: the clear stacking ring, then the centre hole. -->
+    <!-- Hub: the clear stacking ring, then the hole. A hard rim so it cuts at any size. -->
     <path
-        android:pathData="M54,54 m-10.5,0 a10.5,10.5 0 1,0 21,0 a10.5,10.5 0 1,0 -21,0"
-        android:fillColor="#F3E9D6" />
+        android:pathData="M54,54 m-11.5,0 a11.5,11.5 0 1,0 23,0 a11.5,11.5 0 1,0 -23,0"
+        android:fillColor="#FFF8EA" />
     <path
-        android:pathData="M54,54 m-10.5,0 a10.5,10.5 0 1,0 21,0 a10.5,10.5 0 1,0 -21,0"
-        android:strokeColor="#9C8E77" android:strokeWidth="0.8" android:strokeAlpha="0.6" />
+        android:pathData="M54,54 m-11.5,0 a11.5,11.5 0 1,0 23,0 a11.5,11.5 0 1,0 -23,0"
+        android:strokeColor="#241C15"
+        android:strokeWidth="1.2" />
     <path
-        android:pathData="M54,54 m-5.5,0 a5.5,5.5 0 1,0 11,0 a5.5,5.5 0 1,0 -11,0"
-        android:fillColor="#17120F" />
+        android:pathData="M54,54 m-6.5,0 a6.5,6.5 0 1,0 13,0 a6.5,6.5 0 1,0 -13,0"
+        android:fillColor="#0B0907" />
 </vector>
