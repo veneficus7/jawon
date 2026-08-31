@@ -278,7 +278,7 @@ Five, all Samsung, all recent:
 |---|---|
 | Galaxy S23 ×2, S23 Ultra | runs; reported "not that smooth" |
 | Galaxy S25 Ultra ×2 | runs; every number in `ENGINEERING.md` comes from these |
-| Galaxy Note 9 | **would not install at minSdk 29.** Fixed in 0.2 beta; still not run. |
+| Galaxy Note 9 | **would not install at minSdk 29.** Fixed in 0.2 beta; still not run — and until 0.4.2 it would have crashed on launch if it had been. |
 
 ### The Note 9 did not crash — it was refused
 
@@ -297,10 +297,54 @@ apps and was never true of this one: every file Jawon touches arrives as a
 content URI through SAF or MediaStore, never as a filesystem path, so there was
 no legacy branch to write. Lowering it was one line, and it is now **28**.
 
-What that does *not* buy is confidence. The app installs on Android 9 and builds
-for it; **nobody has run the room on Android 9 hardware.** A 2018 phone rendering
-this room would land at the LOW tier and may still disappoint — that remains
-untested rather than decided.
+What that does *not* buy is confidence. It bought an install that crashed.
+
+**Every release from 0.2 to 0.4.1 died on launch on any device below API 31**, and
+the floor was never exercised until 0.4.2. `drawable/splash_static.xml` wrapped a
+VectorDrawable in `<bitmap android:src>`, which is an inflation failure rather than
+a degradation; it is `android:windowBackground` in `values/themes.xml`, so the
+framework resolved it inside `PhoneWindow.generateLayout` and the process died
+before any of this app's code ran. `values-v31/themes.xml` overrides
+`windowBackground` with the real SplashScreen API, so API 31+ never inflates the
+file — and every device this had ever been run on was API 31+. The Note 9 tester
+was handed an app that installed and then instantly closed.
+
+The lesson is not about splash screens. It is that **a version-qualified resource
+directory is an untested code path by construction**, and this project had a
+`values-v31` with nothing below it ever run.
+
+### The Android 9 emulator, 2026-08-31
+
+Now part of the routine, because it costs a few minutes and it caught the above.
+
+AVD: `system-images;android-28;default;x86_64`, `hw.ramSize=3584` so `MemTotal`
+reports 3.36GB and `QualityTier.detect` takes its `totalGb < 4.0` branch to **LOW** —
+the same branch a real 4GB Redmi 9 or Galaxy S9 takes, both of which report ~3.7GB.
+1080×2340. **`GLESDynamicVersion` must be on** (`~/.android/advancedFeatures.ini`
+or `-feature GLESDynamicVersion`) or the guest hands Filament an OpenGL ES 2.0
+context and it aborts the process on `Texture format 46 not supported` at feature
+level 0. That abort is an emulator artifact — every device at this API floor is
+GLES 3.0+ — but it is indistinguishable from a real failure if you have not seen it
+before.
+
+| check | result |
+|---|---|
+| Install on API 28 | yes |
+| Launch | **crashed before the fix; clean after** |
+| Filament init | GLES 3.1, feature level 1, no R8 name breakage |
+| First-run screen | renders, room lit behind it |
+| Device scan | 1 album, 8 tracks found |
+| Import, incl. the cover-art disclosure | album landed on the shelf |
+| Wall | case levitating and turning, underlight pooling, dust |
+| Open sequence | full five beats, disc lifted and spinning |
+| Playback | `PlaybackState state=3`, speed 1.0 |
+| Quality readout | `RAW 16-BIT / 22.0 KHZ` — correct for the source |
+| Memory | native heap 102MB, Dalvik 12MB, **zero low-memory kills** |
+
+**What this still does not tell you is speed.** The emulator draws on the host GPU —
+here an RTX 5060 — so any frame rate it reports is fiction for a Mali-G52. LOW tier
+is now known to *work*; whether it is *smooth* on 2018–2020 hardware is still
+untested, and is still the open question the tiers exist for.
 
 ## 7. On-device verification log
 
