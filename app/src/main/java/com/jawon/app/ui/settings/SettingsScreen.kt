@@ -65,6 +65,40 @@ import com.jawon.app.ui.theme.LampAmber
 import com.jawon.app.ui.theme.RoomScheme
 
 /**
+ * Names a group of settings, with a rule running out to the right of the label.
+ *
+ * This screen grew a section at a time and ended up a flat list of unrelated controls
+ * separated by seven identical centred dividers — which marked *that something changed*
+ * without ever saying *what*. A named rule is the same amount of ink doing a useful job, and
+ * it is the shape a printed form uses for the same reason.
+ */
+@Composable
+private fun SectionHeader(label: String) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 36.dp, bottom = 16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Text(
+            text = label,
+            fontFamily = JetBrainsMonoFamily,
+            fontWeight = FontWeight.Bold,
+            fontSize = 10.sp,
+            letterSpacing = 3.sp,
+            color = LampAmber
+        )
+        Box(
+            Modifier
+                .weight(1f)
+                .height(1.dp)
+                .background(CrateEdge)
+        )
+    }
+}
+
+/**
  * Hands the downloaded APK to the platform's installer.
  *
  * `ACTION_VIEW` on a content URI with the APK mime type, plus a read grant for whoever picks
@@ -216,14 +250,8 @@ private fun SchemePicker(current: RoomScheme, onPick: (RoomScheme) -> Unit) {
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        Text(
-            text = "ROOM COLOUR",
-            fontFamily = JetBrainsMonoFamily,
-            fontWeight = FontWeight.Bold,
-            fontSize = 11.sp,
-            letterSpacing = 2.sp,
-            color = LabelCream
-        )
+        // No label of its own: the section rule above already says THE ROOM, and this is the
+        // only thing under it. Two headings stacked is how the old flat list read.
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             RoomScheme.entries.forEach { scheme ->
                 val selected = scheme == current
@@ -529,11 +557,14 @@ fun SettingsScreen(
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
                 .navigationBarsPadding()
-                .padding(horizontal = 24.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
+                .padding(horizontal = 24.dp)
         ) {
+            // The title card. The one part that stays centred, because it is a masthead
+            // rather than a setting — everything below it is a control and reads left.
             Column(
-                modifier = Modifier.padding(top = 64.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 40.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(14.dp)
             ) {
@@ -562,13 +593,7 @@ fun SettingsScreen(
                 }
             }
 
-            Box(
-                Modifier
-                    .padding(vertical = 28.dp)
-                    .width(60.dp)
-                    .height(1.dp)
-                    .background(CrateEdge)
-            )
+            SectionHeader("THIS BUILD")
 
             UpdateSection(
                 state = updateState,
@@ -579,46 +604,14 @@ fun SettingsScreen(
                 onAllowInstalls = { openInstallPermission(context) }
             )
 
-            Box(
-                Modifier
-                    .padding(vertical = 28.dp)
-                    .width(60.dp)
-                    .height(1.dp)
-                    .background(CrateEdge)
-            )
+            SectionHeader("THE ROOM")
 
             SchemePicker(
                 current = roomScheme,
                 onPick = viewModel::onRoomSchemeChanged
             )
 
-            Box(
-                Modifier
-                    .padding(vertical = 32.dp)
-                    .width(60.dp)
-                    .height(1.dp)
-                    .background(CrateEdge)
-            )
-
-            SettingRow(
-                title = "LOOK UP COVER ART",
-                // States exactly what leaves the device. A privacy switch that says
-                // "improve your experience" is not a switch anyone can make a decision with.
-                detail = "When an album's own files carry no artwork, send its title and " +
-                    "artist to MusicBrainz to find a cover. Nothing else is sent — no " +
-                    "account, no device id, no list of what you own. This is the only " +
-                    "thing Jawon sends anywhere.",
-                checked = fetchCoverArt,
-                onCheckedChange = viewModel::onFetchCoverArtChanged
-            )
-
-            Box(
-                Modifier
-                    .padding(vertical = 32.dp)
-                    .width(60.dp)
-                    .height(1.dp)
-                    .background(CrateEdge)
-            )
+            SectionHeader("SOUND")
 
             EqualizerSection(
                 available = eqAvailable,
@@ -632,16 +625,10 @@ fun SettingsScreen(
                 onReset = viewModel::onEqReset
             )
 
-            Box(
-                Modifier
-                    .padding(vertical = 32.dp)
-                    .width(60.dp)
-                    .height(1.dp)
-                    .background(CrateEdge)
-            )
-
             Column(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 26.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 Row(
@@ -684,19 +671,24 @@ fun SettingsScreen(
                 )
             }
 
-            Box(
-                Modifier
-                    .padding(vertical = 32.dp)
-                    .width(60.dp)
-                    .height(1.dp)
-                    .background(CrateEdge)
+            SectionHeader("YOUR LIBRARY")
+
+            SettingRow(
+                title = "LOOK UP COVER ART",
+                // States exactly what leaves the device. A privacy switch that says
+                // "improve your experience" is not a switch anyone can make a decision with.
+                detail = "When an album's own files carry no artwork, send its title and " +
+                    "artist to MusicBrainz to find a cover. Nothing else is sent — no " +
+                    "account, no device id, no list of what you own. This is the only " +
+                    "thing Jawon sends anywhere.",
+                checked = fetchCoverArt,
+                onCheckedChange = viewModel::onFetchCoverArtChanged
             )
 
             Text(
-                text = "More to come as it is built.",
-                style = JawonTextStyle.mono.copy(color = LabelDim),
-                lineHeight = 19.sp,
-                modifier = Modifier.padding(bottom = 48.dp)
+                text = "Everything Jawon knows lives on this phone.",
+                style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = 10.sp),
+                modifier = Modifier.padding(top = 48.dp, bottom = 48.dp)
             )
         }
     }
