@@ -65,6 +65,7 @@ import com.jawon.app.ui.common.formatDuration
 import com.jawon.app.ui.common.qualityReadoutOutput
 import com.jawon.app.ui.common.qualityReadoutSource
 import com.jawon.app.playback.DjFilter
+import com.jawon.app.playback.Echo
 import com.jawon.app.playback.SleepTimer
 import com.jawon.app.ui.theme.CrateEdge
 import com.jawon.app.ui.theme.CrateRaised
@@ -107,6 +108,13 @@ fun DeckOverlay(
     /** The filter knob, −1 low-pass … 0 off … +1 high-pass. See [com.jawon.app.playback.DjFilter]. */
     filterPosition: StateFlow<Float>,
     onFilterChange: (Float) -> Unit,
+    /** The echo. Mix rests at zero: an effect you throw in starts out of the way. */
+    echoTime: StateFlow<Float>,
+    echoFeedback: StateFlow<Float>,
+    echoMix: StateFlow<Float>,
+    onEchoTime: (Float) -> Unit,
+    onEchoFeedback: (Float) -> Unit,
+    onEchoMix: (Float) -> Unit,
     onPlayPause: () -> Unit,
     onNext: () -> Unit,
     onPrevious: () -> Unit,
@@ -215,6 +223,15 @@ fun DeckOverlay(
                 // own filter rather than the platform's — it runs inside the player's pipeline
                 // and works whether or not the phone offers a system equaliser at all.
                 FilterStrip(positionFlow = filterPosition, onChange = onFilterChange)
+
+                EchoModule(
+                    timeFlow = echoTime,
+                    feedbackFlow = echoFeedback,
+                    mixFlow = echoMix,
+                    onTime = onEchoTime,
+                    onFeedback = onEchoFeedback,
+                    onMix = onEchoMix
+                )
 
                 if (eqEnabled) {
                     EqualizerPanel(
@@ -768,4 +785,104 @@ private fun filterReadout(position: Float): String {
     val hz = DjFilter.cutoffHz(position)
     val label = if (hz >= 1000f) "${(hz / 100f).roundToInt() / 10f}k" else "${hz.roundToInt()}"
     return if (mode == DjFilter.Mode.LOW_PASS) "LP $label" else "HP $label"
+}
+
+/**
+ * The echo, as three labelled slots in one module.
+ *
+ * MIX rests at zero and is the one you actually perform with — the gesture is throwing it in for
+ * a bar and pulling it back out, which is why it sits last and reads as the loudest control here.
+ * TIME and FEED are set once and left.
+ */
+@Composable
+private fun EchoModule(
+    timeFlow: StateFlow<Float>,
+    feedbackFlow: StateFlow<Float>,
+    mixFlow: StateFlow<Float>,
+    onTime: (Float) -> Unit,
+    onFeedback: (Float) -> Unit,
+    onMix: (Float) -> Unit
+) {
+    val time by timeFlow.collectAsState()
+    val feedback by feedbackFlow.collectAsState()
+    val mix by mixFlow.collectAsState()
+
+    Column(modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text("ECHO", style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = 10.sp))
+            Text(
+                // A value you can read aloud, not a nameless slider.
+                text = if (mix <= 0.001f) "OFF" else "${Echo.timeMsFor(time).roundToInt()} MS",
+                style = JawonTextStyle.mono.copy(
+                    color = if (mix <= 0.001f) LabelDim else LampAmber,
+                    fontSize = 10.sp
+                )
+            )
+        }
+        RackSlider("TIME", time, onTime)
+        RackSlider("FEED", feedback, onFeedback)
+        RackSlider("MIX", mix, onMix, emphasised = true)
+    }
+}
+
+/** One 0..1 control: a name, a travel and a fill. The rack's unit of measurement. */
+@Composable
+private fun RackSlider(
+    label: String,
+    value: Float,
+    onChange: (Float) -> Unit,
+    emphasised: Boolean = false
+) {
+    var width by remember { mutableFloatStateOf(1f) }
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = label,
+            style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = 9.sp),
+            modifier = Modifier.width(44.dp)
+        )
+        Box(
+            modifier = Modifier
+                .weight(1f)
+                .height(if (emphasised) 26.dp else 20.dp)
+                .onSizeChanged { width = it.width.toFloat().coerceAtLeast(1f) }
+                .pointerInput(Unit) {
+                    detectHorizontalDragGestures(
+                        onDragStart = { onChange((it.x / width).coerceIn(0f, 1f)) }
+                    ) { change, _ -> onChange((change.position.x / width).coerceIn(0f, 1f)) }
+                }
+        ) {
+            Box(
+                Modifier
+                    .align(Alignment.CenterStart)
+                    .fillMaxWidth()
+                    .height(1.dp)
+                    .background(CrateEdge)
+            )
+            if (value > 0.001f) {
+                Box(
+                    Modifier
+                        .align(Alignment.CenterStart)
+                        .fillMaxWidth(value.coerceIn(0f, 1f))
+                        .height(if (emphasised) 8.dp else 5.dp)
+                        .background(if (emphasised) LampAmber else LabelDim)
+                )
+            }
+            Box(
+                Modifier
+                    .align(BiasAlignment(horizontalBias = value.coerceIn(0f, 1f) * 2f - 1f, verticalBias = 0f))
+                    .width(10.dp)
+                    .height(if (emphasised) 22.dp else 16.dp)
+                    .background(
+                        if (emphasised && value > 0.001f) LampAmber else LabelDim,
+                        RoundedCornerShape(2.dp)
+                    )
+            )
+        }
+    }
 }

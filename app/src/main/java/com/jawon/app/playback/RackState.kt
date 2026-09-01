@@ -38,8 +38,59 @@ class RackState @Inject constructor() {
         _filter.value = clamped
     }
 
+    // ---- the echo. See [Echo] ---------------------------------------------------------
+    //
+    // Three knobs, each 0..1, because that is what a delay you *play* needs: how long the
+    // repeat is, how many there are, and how much of it you hear. Mix rests at zero — an
+    // effect you throw in has to start out of the way.
+
+    private val _echoTime = MutableStateFlow(DEFAULT_ECHO_TIME)
+    val echoTime: StateFlow<Float> = _echoTime.asStateFlow()
+
+    private val _echoFeedback = MutableStateFlow(DEFAULT_ECHO_FEEDBACK)
+    val echoFeedback: StateFlow<Float> = _echoFeedback.asStateFlow()
+
+    private val _echoMix = MutableStateFlow(0f)
+    val echoMix: StateFlow<Float> = _echoMix.asStateFlow()
+
+    @Volatile
+    var echoTimePosition: Float = DEFAULT_ECHO_TIME
+        private set
+
+    @Volatile
+    var echoFeedbackPosition: Float = DEFAULT_ECHO_FEEDBACK
+        private set
+
+    @Volatile
+    var echoMixPosition: Float = 0f
+        private set
+
+    fun setEchoTime(position: Float) {
+        val clamped = position.coerceIn(0f, 1f)
+        echoTimePosition = clamped
+        _echoTime.value = clamped
+    }
+
+    fun setEchoFeedback(position: Float) {
+        val clamped = position.coerceIn(0f, 1f)
+        echoFeedbackPosition = clamped
+        _echoFeedback.value = clamped
+    }
+
+    fun setEchoMix(position: Float) {
+        val clamped = position.coerceIn(0f, 1f)
+        echoMixPosition = clamped
+        _echoMix.value = clamped
+    }
+
     companion object {
         /** Off. A filter knob rests in the middle, unlike a fader, which rests open. */
         const val CENTRE = 0f
+
+        /** About a third of a second — a slap that lands musically under most records. */
+        const val DEFAULT_ECHO_TIME = 0.55f
+
+        /** Enough repeats to hear a tail, well short of the ceiling. */
+        const val DEFAULT_ECHO_FEEDBACK = 0.45f
     }
 }

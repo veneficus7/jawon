@@ -81,7 +81,9 @@ class PlaybackService : MediaSessionService() {
             ) = DefaultAudioSink.Builder(context)
                 .setEnableFloatOutput(enableFloatOutput)
                 .setEnableAudioTrackPlaybackParams(enableAudioTrackPlaybackParams)
-                .setAudioProcessors(arrayOf(FilterAudioProcessor(rack)))
+                // Filter first, so the echo's repeats inherit whatever the filter was doing when
+                // they were made — see EchoAudioProcessor.
+                .setAudioProcessors(arrayOf(FilterAudioProcessor(rack), EchoAudioProcessor(rack)))
                 .build()
         }
 

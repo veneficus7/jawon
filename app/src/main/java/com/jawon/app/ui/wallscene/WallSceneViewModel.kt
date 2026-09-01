@@ -159,6 +159,15 @@ class WallSceneViewModel @Inject constructor(
 
     fun onFilterChange(position: Float) = rack.setFilter(position)
 
+    /** The echo's three knobs. See [com.jawon.app.playback.Echo]. */
+    val echoTime: StateFlow<Float> = rack.echoTime
+    val echoFeedback: StateFlow<Float> = rack.echoFeedback
+    val echoMix: StateFlow<Float> = rack.echoMix
+
+    fun onEchoTimeChange(position: Float) = rack.setEchoTime(position)
+    fun onEchoFeedbackChange(position: Float) = rack.setEchoFeedback(position)
+    fun onEchoMixChange(position: Float) = rack.setEchoMix(position)
+
     /** Read only by the progress bar, so the 2Hz tick can't recompose the tracklist. */
     val positionMs: StateFlow<Long> = playbackRepository.positionMs
 
