@@ -46,7 +46,7 @@ object ScratchTone {
      * Fast enough to still feel like your hand, slow enough that a single stray event cannot
      * be heard as a tick.
      */
-    const val RATE_SMOOTHING_PER_S = 26f
+    const val RATE_SMOOTHING_PER_S = 38f
 
     /**
      * Rate below which the disc counts as stopped and the output is silenced.
@@ -59,8 +59,21 @@ object ScratchTone {
      */
     const val SILENCE_BELOW = 0.02f
 
-    /** Nothing sensible comes of reading a record at thirty times speed. */
-    const val MAX_RATE = 4.5f
+    /**
+     * The fastest a record may be read, and the reason the first attempt sounded like a
+     * cartoon.
+     *
+     * A turntable's pitch follows its speed — that is not a side effect, it is the whole
+     * instrument, and the technique is literally "one hand controlling the pitch and speed of
+     * the turntable, the other controlling volume". Taking pitch out to stop the squeaking
+     * threw away the thing that makes a scratch a scratch.
+     *
+     * What was actually wrong was the ceiling. 4.5x is more than two octaves up, and nothing
+     * a hand does on a real platter goes there — the mass of the record will not allow it. At
+     * 2.4x the top of the range is about where a hard forward shove lands, so a fast movement
+     * reads as aggressive rather than as a chipmunk.
+     */
+    const val MAX_RATE = 2.4f
 
     /**
      * Ease the current rate toward [target] over [dt] seconds.
@@ -98,56 +111,86 @@ object ScratchTone {
         return (a + (b - a) * frac).toInt().coerceIn(-32768, 32767).toShort()
     }
 
-    // ---- Grains, which are what keep the pitch where it belongs ----------------------
+    // ---- The needle. What turns a pitch-shifted seek into a scratch ------------------
+    //
+    // Playing the audio back at a signed rate gets the pitch right and still sounds thin and
+    // digital, because a real turntable is not a resampler. Three things happen between the
+    // groove and the speaker, and every one of them is speed-dependent:
+    //
+    //   1. The louder-when-faster of a stylus tracking a groove past itself more quickly.
+    //   2. The high end falling away as the stylus loses its grip at speed.
+    //   3. Saturation, from the cartridge and the phono stage, which is where the grit is.
+    //
+    // Those are what the ear reads as "vinyl" rather than "sample playback", and together they
+    // are the hard, dirty quality the effect was missing.
 
     /**
-     * How long one grain of audio is, in milliseconds.
+     * Output gain for a record moving at [rate].
      *
-     * **Reading the record faster does not have to mean reading it higher.** Stepping a cursor
-     * through samples at 2x is what a turntable does and it doubles the pitch — everybody
-     * sounding like a chipmunk, which is exactly the complaint. So the audio is not read at
-     * the scrub rate at all. It is read at *normal* rate, in short grains, from a playhead that
-     * moves at the scrub rate: speed becomes how fast you travel through the record, and pitch
-     * stays where the record put it.
-     *
-     * The length is the whole compromise. Too short and the grains are heard as a buzz at their
-     * own repetition rate; too long and the sound lags behind the finger and smears. Around
-     * fifty milliseconds is long enough to carry a pitch and short enough to still feel
-     * attached to a hand.
+     * A stylus dragged faster past a groove generates more signal, which is why a shove is
+     * louder than a nudge on a real deck and why a scratch has a natural accent on the fast
+     * part of the movement. Deliberately gentle and capped: this is a tilt, not a compressor,
+     * and a scratch that doubles in level is a scratch that hurts on headphones.
      */
-    const val GRAIN_MS = 52f
-
-    /**
-     * How many frames one grain is at [sampleRate] — **always even, and that is not tidiness.**
-     *
-     * Grains overlap by exactly half, so the second half of each one is carried into the next
-     * pass and must fit the buffer the first half writes into. An odd length makes those two
-     * halves different sizes: 52ms at 44.1kHz is 2293 frames, which halves to 1146 and leaves
-     * 1147 over. The tail then runs two samples past the end of its array.
-     *
-     * That is not a glitch, it is an `ArrayIndexOutOfBoundsException` on the audio thread,
-     * which took the whole app down the first time someone spun the disc. Rounding to even
-     * here — once, where the number is decided — is what makes the two halves equal by
-     * construction rather than by luck of the sample rate.
-     */
-    fun grainFramesFor(sampleRate: Int): Int {
-        val raw = (GRAIN_MS / 1000f * sampleRate).toInt().coerceAtLeast(64)
-        return if (raw % 2 == 0) raw else raw + 1
+    fun gainFor(rate: Float): Float {
+        val speed = abs(rate)
+        return (0.82f + 0.30f * speed).coerceAtMost(1.35f)
     }
 
     /**
-     * The window applied across a grain, `0` at each edge and `1` in the middle.
+     * How hard the signal is driven into the saturator at [rate].
      *
-     * Raised cosine, overlapped by exactly half, which is the pair of properties that make
-     * this work: two adjacent windows sum to one everywhere, so the overlap adds back to unit
-     * gain instead of pumping. Without a window the joins are step discontinuities — a click
-     * per grain, twenty times a second.
+     * **This is where the dirt is.** A cartridge and a phono stage are not clean, and they are
+     * least clean when the stylus is being thrown about. Drive rising with speed means a slow
+     * drag stays close to the record and a hard shove tears — which is the difference between
+     * a scrub and a scratch, and it is what "distorted, hard" describes.
      */
-    fun grainWindow(index: Int, length: Int): Float {
-        if (length <= 1) return 1f
-        val phase = index.toFloat() / (length - 1).toFloat()
-        return 0.5f * (1f - kotlin.math.cos(TWO_PI * phase))
+    fun driveFor(rate: Float): Float {
+        val speed = abs(rate)
+        return 1.0f + 2.6f * speed
     }
+
+    /**
+     * Soft clip, normalised so quiet passages are not also turned down.
+     *
+     * A rational approximation of `tanh` rather than the real thing: this runs on every sample
+     * on the audio thread, tens of thousands of times a second, and the difference is inaudible
+     * where a stall is not. Odd-symmetric, so it adds the odd harmonics that read as warmth and
+     * grit rather than the even ones that read as broken.
+     */
+    fun saturate(sample: Float, drive: Float): Float {
+        val x = sample * drive
+        val shaped = x / (1f + abs(x))
+        // Divided by what the shaper does to full scale, so raising drive adds harmonics
+        // instead of simply making everything quieter.
+        val ceiling = drive / (1f + drive)
+        val normalised = if (ceiling > 1e-4f) shaped / ceiling else shaped
+        // Clamped, because the normalisation above is calibrated for a signal inside full
+        // scale and will push past 1 for anything louder. Sample data can arrive hotter than
+        // that — a mastered-loud track through the gain tilt is enough — and letting it out
+        // would wrap in the conversion to 16-bit, which is a click rather than warmth. The
+        // whole point of a soft clipper is that nothing leaves it hard.
+        return normalised.coerceIn(-1f, 1f)
+    }
+
+    /**
+     * One-pole low-pass coefficient for a record moving at [rate].
+     *
+     * The top end goes first when a stylus is moved quickly — it cannot follow the groove wall
+     * accurately any more. Modelling that is what stops a fast scratch sounding like a sped-up
+     * tape and starts it sounding like a needle being dragged: dull, thick and physical.
+     *
+     * Returns the smoothing weight for `y += a * (x - y)`; 1 is wide open.
+     */
+    fun toneCoeffFor(rate: Float, sampleRate: Int): Float {
+        if (sampleRate <= 0) return 1f
+        val speed = abs(rate)
+        // Wide open at rest, closing toward a few kHz as the record is thrown about.
+        val cutoffHz = (16_000f - 5_200f * speed).coerceIn(1_800f, 20_000f)
+        val x = TWO_PI * cutoffHz / sampleRate
+        return (x / (x + 1f)).coerceIn(0.01f, 1f)
+    }
+
 
     private const val TWO_PI = 6.2831855f
 }

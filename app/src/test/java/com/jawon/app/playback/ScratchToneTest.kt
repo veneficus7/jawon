@@ -143,86 +143,6 @@ class ScratchToneTest {
         assertEquals(0, ScratchTone.sampleAt(ShortArray(0), 0.0).toInt())
     }
 
-    // ---- grains, which are what hold the pitch ----------------------------------------
-
-    @Test
-    fun `a grain is always an even number of frames`() {
-        // The crash this prevents: grains overlap by exactly half, so an odd length leaves the
-        // two halves different sizes and the tail runs off the end of its array — an
-        // ArrayIndexOutOfBounds on the audio thread, which took the whole app down the first
-        // time anyone spun the disc. 52ms at 44.1kHz is 2293 frames, which is where it bit.
-        for (rate in listOf(8_000, 11_025, 16_000, 22_050, 32_000, 44_100, 48_000, 88_200, 96_000)) {
-            val frames = ScratchTone.grainFramesFor(rate)
-            assertEquals("odd grain at ${rate}Hz", 0, frames % 2)
-        }
-    }
-
-    @Test
-    fun `the two halves of a grain are exactly equal`() {
-        // Stated directly, because this is the property the overlap buffer depends on.
-        for (rate in listOf(44_100, 48_000, 22_050)) {
-            val frames = ScratchTone.grainFramesFor(rate)
-            val hop = frames / 2
-            assertEquals("halves differ at ${rate}Hz", frames, hop * 2)
-        }
-    }
-
-    @Test
-    fun `a grain is never degenerately short even at a silly sample rate`() {
-        assertTrue(ScratchTone.grainFramesFor(1) >= 64)
-        assertTrue(ScratchTone.grainFramesFor(0) >= 64)
-    }
-
-    @Test
-    fun `grain length tracks the sample rate`() {
-        assertTrue(ScratchTone.grainFramesFor(48_000) > ScratchTone.grainFramesFor(22_050))
-    }
-
-    @Test
-    fun `a grain window opens and closes at zero`() {
-        // A step at either edge is a click, once per grain, twenty times a second.
-        assertEquals(0f, ScratchTone.grainWindow(0, 100), 1e-5f)
-        assertEquals(0f, ScratchTone.grainWindow(99, 100), 1e-5f)
-    }
-
-    @Test
-    fun `a grain window is fully open in the middle`() {
-        assertEquals(1f, ScratchTone.grainWindow(50, 101), 1e-4f)
-    }
-
-    @Test
-    fun `two half-overlapped windows sum to one`() {
-        // The property the whole scheme rests on: without it the overlap pumps in and out
-        // instead of adding back to unit gain.
-        val n = 128
-        val hop = n / 2
-        for (i in 0 until hop) {
-            val here = ScratchTone.grainWindow(i + hop, n)
-            val next = ScratchTone.grainWindow(i, n)
-            assertEquals("overlap does not sum to one at $i", 1f, here + next, 0.02f)
-        }
-    }
-
-    @Test
-    fun `a window is never negative and never exceeds one`() {
-        for (i in 0 until 200) {
-            val v = ScratchTone.grainWindow(i, 200)
-            assertTrue("window out of range at $i: $v", v in -1e-5f..1.0001f)
-        }
-    }
-
-    @Test
-    fun `a degenerate grain length does not divide by zero`() {
-        assertEquals(1f, ScratchTone.grainWindow(0, 1), 1e-5f)
-        assertEquals(1f, ScratchTone.grainWindow(0, 0), 1e-5f)
-    }
-
-    @Test
-    fun `a grain is long enough to carry a pitch and short enough to follow a hand`() {
-        // Too short and the grains are audible as a buzz at their own rate; too long and the
-        // sound smears behind the finger.
-        assertTrue(ScratchTone.GRAIN_MS in 25f..90f)
-    }
 
     @Test
     fun `interpolation never wraps past the sixteen bit range`() {
@@ -231,5 +151,98 @@ class ScratchToneTest {
             val v = ScratchTone.sampleAt(extremes, i / 20.0)
             assertTrue("sample $v out of range", abs(v.toInt()) <= 32768)
         }
+    }
+
+    // ---- the needle ---------------------------------------------------------------------
+
+    @Test
+    fun `a record moving faster is louder`() {
+        // A stylus dragged faster past a groove generates more signal. It is why a shove
+        // accents and a nudge does not.
+        assertTrue(ScratchTone.gainFor(1.5f) > ScratchTone.gainFor(0.3f))
+        assertEquals(ScratchTone.gainFor(1.2f), ScratchTone.gainFor(-1.2f), 1e-6f)
+    }
+
+    @Test
+    fun `the level tilt is a tilt, not a compressor`() {
+        // A scratch that doubles in level is a scratch that hurts on headphones.
+        for (rate in listOf(0f, 0.5f, 1f, ScratchTone.MAX_RATE)) {
+            val g = ScratchTone.gainFor(rate)
+            assertTrue("gain $g out of hand at rate $rate", g in 0.5f..1.4f)
+        }
+    }
+
+    @Test
+    fun `drive rises with speed, so a shove tears and a drag does not`() {
+        assertTrue(ScratchTone.driveFor(2f) > ScratchTone.driveFor(0.2f))
+        assertEquals(ScratchTone.driveFor(1f), ScratchTone.driveFor(-1f), 1e-6f)
+    }
+
+    @Test
+    fun `saturation never exceeds full scale`() {
+        // Clipping past 1.0 is a wrap, which is a click rather than warmth.
+        for (drive in listOf(1f, 3f, 8f)) {
+            for (x in -30..30) {
+                val v = ScratchTone.saturate(x / 10f, drive)
+                assertTrue("saturate($x/10, $drive) = $v escaped", abs(v) <= 1.05f)
+            }
+        }
+    }
+
+    @Test
+    fun `saturation is odd symmetric`() {
+        // Odd harmonics read as warmth; even ones read as broken.
+        for (x in listOf(0.1f, 0.4f, 0.9f)) {
+            assertEquals(
+                -ScratchTone.saturate(x, 3f),
+                ScratchTone.saturate(-x, 3f),
+                1e-5f
+            )
+        }
+    }
+
+    @Test
+    fun `saturation leaves silence silent`() {
+        assertEquals(0f, ScratchTone.saturate(0f, 4f), 1e-6f)
+    }
+
+    @Test
+    fun `more drive means more compression of the loud parts`() {
+        // The definition of soft clipping: the top of the signal moves less than the bottom.
+        val quietLow = ScratchTone.saturate(0.2f, 1f)
+        val quietHigh = ScratchTone.saturate(0.2f, 6f)
+        assertTrue("driving harder should lift quiet parts", quietHigh > quietLow)
+    }
+
+    @Test
+    fun `the top end falls away as the record is thrown about`() {
+        // A stylus cannot follow the groove wall at speed. This is what stops a fast scratch
+        // sounding like a sped-up tape.
+        val still = ScratchTone.toneCoeffFor(0.1f, 44_100)
+        val fast = ScratchTone.toneCoeffFor(2.2f, 44_100)
+        assertTrue("filter did not close at speed", fast < still)
+    }
+
+    @Test
+    fun `the tone filter stays a valid one-pole coefficient`() {
+        for (rate in listOf(-3f, -1f, 0f, 1f, 3f)) {
+            for (sr in listOf(22_050, 44_100, 48_000)) {
+                val a = ScratchTone.toneCoeffFor(rate, sr)
+                assertTrue("coefficient $a unstable at rate $rate, ${sr}Hz", a in 0f..1f)
+            }
+        }
+    }
+
+    @Test
+    fun `a nonsense sample rate does not produce an unstable filter`() {
+        assertEquals(1f, ScratchTone.toneCoeffFor(1f, 0), 1e-6f)
+        assertTrue(ScratchTone.toneCoeffFor(1f, -44_100) in 0f..1f)
+    }
+
+    @Test
+    fun `the ceiling is a scratch, not a cartoon`() {
+        // Above about two and a half times, a hand on a real platter cannot go and the sound
+        // stops reading as a record.
+        assertTrue(ScratchTone.MAX_RATE in 1.5f..3f)
     }
 }

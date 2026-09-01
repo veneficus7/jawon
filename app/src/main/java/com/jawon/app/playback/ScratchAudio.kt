@@ -233,53 +233,58 @@ class ScratchAudio @Inject constructor() {
      * moves is where the next grain is *taken from*. Speed is travel through the record, pitch
      * is whatever the record was recorded at.
      */
+    /**
+     * A stylus in a groove being dragged about by hand.
+     *
+     * The samples are read at the scrub rate, so the pitch follows the speed — which is not an
+     * artefact to be engineered away but the instrument itself. A turntablist has one hand on
+     * the pitch and one on the volume; taking the pitch out leaves a scrub, not a scratch.
+     *
+     * Then the needle: louder with speed, duller with speed, and driven into a soft clip that
+     * bites harder the faster it goes. Those three are what the ear hears as vinyl rather than
+     * as a sample being resampled, and together they are the "hard, distorted" part.
+     */
     private fun writeLoop(out: AudioTrack, chunkSamples: Int) {
-        val grainFrames = ScratchTone.grainFramesFor(sampleRate)
-        val hopFrames = grainFrames / 2
-        val hopSamples = hopFrames * channels
-        val buffer = ShortArray(hopSamples)
-        // Carries the second half of each grain into the next pass, where it is added to the
-        // first half of the following one. This is the overlap.
-        var tail = FloatArray(hopSamples)
-        val hopSeconds = hopFrames.toFloat() / sampleRate
+        val buffer = ShortArray(chunkSamples.coerceAtLeast(256))
+        val chunkSeconds = (buffer.size / channels).toFloat() / sampleRate
+        // One-pole state per channel, kept across chunks or the filter restarts every buffer
+        // and ticks at the chunk rate.
+        val toneState = FloatArray(channels)
 
         while (running) {
-            currentRate = ScratchTone.approach(currentRate, targetRate, hopSeconds)
+            currentRate = ScratchTone.approach(currentRate, targetRate, chunkSeconds)
             val rate = currentRate
 
             if (!ScratchTone.audible(rate)) {
-                // Held still: silence, not a buzz. See ScratchTone.SILENCE_BELOW. The tail is
-                // cleared too, or the last grain would ring on under a motionless finger.
+                // Held still: silence, not a buzz. Reading at a near-zero rate repeats the
+                // same handful of samples, which is a tone, not quiet. See SILENCE_BELOW.
                 java.util.Arrays.fill(buffer, 0)
-                java.util.Arrays.fill(tail, 0f)
+                java.util.Arrays.fill(toneState, 0f)
             } else {
-                val nextTail = FloatArray(hopSamples)
-                // Where this grain is taken from. The cursor is in samples, and grains are
-                // read forward from it whichever way the finger is travelling — a grain
-                // played backwards is not lower, it is reversed, which sounds like a fault
-                // rather than like scratching.
-                val grainStart = cursor
+                val step = rate.toDouble()
+                val gain = ScratchTone.gainFor(rate)
+                val drive = ScratchTone.driveFor(rate)
+                val toneCoeff = ScratchTone.toneCoeffFor(rate, sampleRate)
+
                 var i = 0
-                while (i < grainFrames * channels) {
-                    val amp = ScratchTone.grainWindow(i / channels, grainFrames)
+                while (i < buffer.size) {
+                    // Channels advance together, so the interpolation cannot read one side a
+                    // fraction ahead of the other and tear the stereo image.
+                    val frameBase = cursor
                     var c = 0
-                    while (c < channels) {
-                        val s = ScratchTone.sampleAt(pcm, grainStart + i + c) * amp
-                        if (i + c < hopSamples) {
-                            // First half: add to the previous grain's tail.
-                            buffer[i + c] = (tail[i + c] + s)
-                                .toInt().coerceIn(-32768, 32767).toShort()
-                        } else {
-                            nextTail[i + c - hopSamples] = s
-                        }
+                    while (c < channels && i < buffer.size) {
+                        val raw = ScratchTone.sampleAt(pcm, frameBase + c) / 32768f
+                        // Dulled, then driven, then levelled. Filtering before saturation and
+                        // not after: a needle loses the top end on the way *in*, and clipping
+                        // a dull signal is warm where dulling a clipped one is muffled.
+                        toneState[c] += toneCoeff * (raw - toneState[c])
+                        val shaped = ScratchTone.saturate(toneState[c], drive) * gain
+                        buffer[i] = (shaped * 32767f).toInt().coerceIn(-32768, 32767).toShort()
+                        i++
                         c++
                     }
-                    i += channels
+                    cursor += step * channels
                 }
-                tail = nextTail
-                // And the playhead travels at the scrub rate — this, and only this, is where
-                // speed lives.
-                cursor += rate.toDouble() * hopSamples
             }
 
             val written = runCatching { out.write(buffer, 0, buffer.size) }.getOrDefault(-1)
