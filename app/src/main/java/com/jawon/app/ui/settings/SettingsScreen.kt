@@ -57,6 +57,7 @@ import com.jawon.app.ui.common.EqualizerPanel
 import com.jawon.app.data.update.AvailableUpdate
 import com.jawon.app.data.update.UpdateState
 import com.jawon.app.playback.Crossfade
+import com.jawon.app.playback.ReplayGain
 import com.jawon.app.ui.theme.ArchivoFamily
 import com.jawon.app.ui.theme.CrateBlack
 import com.jawon.app.ui.theme.CrateEdge
@@ -325,6 +326,67 @@ private fun SchemePicker(current: RoomScheme, onPick: (RoomScheme) -> Unit) {
  * On a device with no working equaliser it says so plainly instead of showing dead controls.
  */
 /**
+ * Which ReplayGain tags to level by.
+ *
+ * Three states on one row rather than a switch plus a sub-option, because the middle choice
+ * is the default and burying it under a toggle would make the app's own answer the hidden one.
+ */
+@Composable
+private fun ReplayGainSection(
+    mode: ReplayGain.Mode,
+    onPick: (ReplayGain.Mode) -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 26.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Text(
+            text = "VOLUME LEVELLING",
+            fontFamily = JetBrainsMonoFamily,
+            fontWeight = FontWeight.Bold,
+            fontSize = 11.sp,
+            letterSpacing = 2.sp,
+            color = LabelCream
+        )
+        Text(
+            text = "Uses the ReplayGain tags already in your files, if they have them, so a " +
+                "quiet old master and a loud remaster sit at the same level. By album keeps " +
+                "the loud and quiet moments the record was sequenced with; by track flattens " +
+                "them so every song is equally loud.",
+            style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = 10.sp),
+            lineHeight = 16.sp
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            ReplayGain.Mode.entries.forEach { option ->
+                val label = when (option) {
+                    ReplayGain.Mode.OFF -> "OFF"
+                    ReplayGain.Mode.ALBUM -> "BY ALBUM"
+                    ReplayGain.Mode.TRACK -> "BY TRACK"
+                }
+                val selected = option == mode
+                Box(
+                    modifier = Modifier
+                        .border(1.dp, if (selected) LampAmber else CrateEdge)
+                        .clickable { onPick(option) }
+                        .padding(horizontal = 14.dp, vertical = 9.dp)
+                ) {
+                    Text(
+                        text = label,
+                        fontFamily = JetBrainsMonoFamily,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 10.sp,
+                        letterSpacing = 1.4.sp,
+                        color = if (selected) LampAmber else LabelDim
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
  * Writing the collection out to a file, and reading it back.
  *
  * The copy is careful about one thing in particular. What this saves is the *curation* — the
@@ -525,6 +587,7 @@ fun SettingsScreen(
     val crossfadeMs by viewModel.crossfadeMs.collectAsStateWithLifecycle()
     val updateState by viewModel.updateState.collectAsStateWithLifecycle()
     val caseSpin by viewModel.caseSpin.collectAsStateWithLifecycle()
+    val replayGainMode by viewModel.replayGainMode.collectAsStateWithLifecycle()
     val backupBusy by viewModel.backupBusy.collectAsStateWithLifecycle()
     val backupMessage by viewModel.backupMessage.collectAsStateWithLifecycle()
 
@@ -748,6 +811,11 @@ fun SettingsScreen(
                     )
                 )
             }
+
+            ReplayGainSection(
+                mode = ReplayGain.Mode.fromName(replayGainMode),
+                onPick = viewModel::onReplayGainModeChanged
+            )
 
             SectionHeader("YOUR LIBRARY")
 

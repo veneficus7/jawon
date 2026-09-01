@@ -38,6 +38,7 @@ class PlaybackService : MediaSessionService() {
     lateinit var preferences: AppPreferences
 
     private var crossfadeEngine: CrossfadeEngine? = null
+    private var replayGainReader: ReplayGainReader? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -61,8 +62,17 @@ class PlaybackService : MediaSessionService() {
         //
         // So: try now in case an id already exists, and listen for the real one. The listener
         // is also what covers the session changing later, which the platform is allowed to do.
-        val crossfade = CrossfadeEngine(this, player, preferences)
+
+        // One owner for the main player's volume. The crossfade envelope and ReplayGain's
+        // levelling both want that field, and written independently they overwrite each
+        // other — see PlayerVolume.
+        val volume = PlayerVolume(player)
+        val crossfade = CrossfadeEngine(this, player, preferences, volume)
         crossfadeEngine = crossfade
+
+        val replayGain = ReplayGainReader(volume, preferences)
+        replayGainReader = replayGain
+        player.addListener(replayGain)
 
         player.addListener(object : Player.Listener {
             override fun onAudioSessionIdChanged(audioSessionId: Int) {

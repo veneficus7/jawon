@@ -109,6 +109,22 @@ class AppPreferences @Inject constructor(@param:ApplicationContext context: Cont
         _crossfadeMs.value = ms
     }
 
+    /**
+     * Which ReplayGain tags to level by, as a [com.jawon.app.playback.ReplayGain.Mode] name.
+     *
+     * Defaults to album gain rather than off. Levelling is what the tags were written for,
+     * and a collection that has them is a collection whose owner already decided they wanted
+     * it — see the Mode docs for why album and not track.
+     */
+    private val _replayGainMode =
+        MutableStateFlow(prefs.getString(KEY_REPLAY_GAIN, null) ?: "ALBUM")
+    val replayGainMode: StateFlow<String> = _replayGainMode.asStateFlow()
+
+    fun setReplayGainMode(name: String) {
+        prefs.edit { putString(KEY_REPLAY_GAIN, name) }
+        _replayGainMode.value = name
+    }
+
     private val _caseSpin = MutableStateFlow(prefs.getFloat(KEY_CASE_SPIN, 1f))
 
     /**
@@ -138,5 +154,6 @@ class AppPreferences @Inject constructor(@param:ApplicationContext context: Cont
         const val KEY_ROOM_SCHEME = "room_scheme"
         const val KEY_EQ_ENABLED = "equalizer_enabled"
         const val KEY_EQ_BANDS = "equalizer_bands"
+        const val KEY_REPLAY_GAIN = "replay_gain_mode"
     }
 }

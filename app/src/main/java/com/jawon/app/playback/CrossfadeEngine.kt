@@ -37,7 +37,13 @@ import com.jawon.app.data.prefs.AppPreferences
 class CrossfadeEngine(
     private val context: Context,
     private val main: ExoPlayer,
-    private val preferences: AppPreferences
+    private val preferences: AppPreferences,
+    /**
+     * The main player's volume, shared with ReplayGain. The fade sets its own factor here
+     * rather than writing `main.volume`, so levelling survives a fade and a fade lands on top
+     * of the level the record asked for — see [PlayerVolume].
+     */
+    private val mainVolume: PlayerVolume
 ) {
 
     private val handler = Handler(Looper.getMainLooper())
@@ -111,7 +117,7 @@ class CrossfadeEngine(
         running?.tail?.let { runCatching { it.stop() } }
         running = null
         armedForIndex = NO_INDEX
-        runCatching { main.volume = 1f }
+        mainVolume.clearFade()
     }
 
     private fun step() {
@@ -186,7 +192,7 @@ class CrossfadeEngine(
             player.volume = 1f
             player.play()
             // ...and the main player jumps to the next one, silent, to come up under it.
-            main.volume = 0f
+            mainVolume.setFade(0f)
             ignoreOneSeek = true
             main.seekTo(index + 1, 0L)
         }.onFailure {
@@ -209,13 +215,13 @@ class CrossfadeEngine(
 
         runCatching {
             active.tail.volume = Crossfade.gainOut(progress)
-            main.volume = Crossfade.gainIn(progress)
+            mainVolume.setFade(Crossfade.gainIn(progress))
         }
 
         if (progress >= 1f) {
             runCatching {
                 active.tail.stop()
-                main.volume = 1f
+                mainVolume.clearFade()
             }
             running = null
         }

@@ -77,6 +77,13 @@ class SettingsViewModel @Inject constructor(
     fun onDownloadUpdate(update: AvailableUpdate) =
         viewModelScope.launch { updateChecker.download(update) }
 
+    // ---- Volume levelling ----------------------------------------------------------
+
+    val replayGainMode: StateFlow<String> = preferences.replayGainMode
+
+    fun onReplayGainModeChanged(mode: com.jawon.app.playback.ReplayGain.Mode) =
+        preferences.setReplayGainMode(mode.name)
+
     // ---- Backup --------------------------------------------------------------------
 
     /**
