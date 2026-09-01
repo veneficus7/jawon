@@ -48,6 +48,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.BiasAlignment
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.text.font.FontWeight
@@ -61,6 +64,7 @@ import com.jawon.app.ui.common.EqualizerPanel
 import com.jawon.app.ui.common.formatDuration
 import com.jawon.app.ui.common.qualityReadoutOutput
 import com.jawon.app.ui.common.qualityReadoutSource
+import com.jawon.app.playback.DjFilter
 import com.jawon.app.playback.SleepTimer
 import com.jawon.app.ui.theme.CrateEdge
 import com.jawon.app.ui.theme.CrateRaised
@@ -70,6 +74,8 @@ import com.jawon.app.ui.theme.LabelDim
 import com.jawon.app.ui.theme.JetBrainsMonoFamily
 import com.jawon.app.ui.theme.LampAmber
 import kotlinx.coroutines.flow.StateFlow
+import kotlin.math.abs
+import kotlin.math.roundToInt
 import androidx.compose.ui.graphics.Color as ComposeColor
 
 /**
@@ -98,6 +104,9 @@ fun DeckOverlay(
     onSleepModeChange: (SleepTimer.Mode) -> Unit,
     /** The crossfader, 0 shut and 1 open — the other hand. See [com.jawon.app.playback.Crossfader]. */
     onFaderChange: (Float) -> Unit,
+    /** The filter knob, −1 low-pass … 0 off … +1 high-pass. See [com.jawon.app.playback.DjFilter]. */
+    filterPosition: StateFlow<Float>,
+    onFilterChange: (Float) -> Unit,
     onPlayPause: () -> Unit,
     onNext: () -> Unit,
     onPrevious: () -> Unit,
@@ -202,6 +211,11 @@ fun DeckOverlay(
                     .verticalScroll(rememberScrollState())
                     .padding(top = 10.dp)
             ) {
+                // Above the equaliser, and outside its on/off switch, because this is Jawon's
+                // own filter rather than the platform's — it runs inside the player's pipeline
+                // and works whether or not the phone offers a system equaliser at all.
+                FilterStrip(positionFlow = filterPosition, onChange = onFilterChange)
+
                 if (eqEnabled) {
                     EqualizerPanel(
                         bands = eqBands,
@@ -620,4 +634,138 @@ private fun FaderStrip(onChange: (Float) -> Unit) {
                 )
         )
     }
+}
+
+/**
+ * The filter knob, as a strip with a centre detent.
+ *
+ * **Why a strip and not a rotary.** A knob is the right *object* — this is one control covering
+ * two filters, which is what a mixer spends a knob on — but a rotary on a touchscreen is turned
+ * by dragging in an arc your finger cannot see, and the finger covers the very thing it is
+ * setting. A strip is the same single control with a travel a thumb can actually follow.
+ *
+ * Unlike [FaderStrip] this does **not** spring back. A cut is a gesture you hold; a filter is a
+ * state you leave a track in and walk away from.
+ */
+@Composable
+private fun FilterStrip(positionFlow: StateFlow<Float>, onChange: (Float) -> Unit) {
+    val position by positionFlow.collectAsState()
+    var width by remember { mutableFloatStateOf(1f) }
+    val haptics = LocalHapticFeedback.current
+
+    // Whether the last thing the finger did was sit in the dead zone. Kept so the detent ticks
+    // once on the way in rather than buzzing continuously while the knob is parked at centre.
+    var wasCentred by remember { mutableStateOf(true) }
+
+    fun set(x: Float) {
+        // −1 at the far left, +1 at the far right, 0 in the middle.
+        val raw = ((x / width) * 2f - 1f).coerceIn(-1f, 1f)
+        val centred = abs(raw) <= DjFilter.DEAD_ZONE
+        if (centred && !wasCentred) {
+            // The click you feel on a real mixer as the knob drops into the middle. This is the
+            // difference between a control that is off and one you can *tell* is off without
+            // looking, which is the whole reason detents exist.
+            haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+        }
+        wasCentred = centred
+        // Snapped, so the drawn knob agrees with the filter. The DSP already treats anything
+        // inside the dead zone as bypassed; letting the marker sit visibly off-centre while the
+        // sound is untouched would be the fader's mistake again.
+        onChange(if (centred) 0f else raw)
+    }
+
+    Column(modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text("FILTER", style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = 10.sp))
+            Text(
+                text = filterReadout(position),
+                style = JawonTextStyle.mono.copy(
+                    color = if (DjFilter.modeFor(position) == DjFilter.Mode.OFF) LabelDim else LampAmber,
+                    fontSize = 10.sp
+                )
+            )
+        }
+
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 6.dp)
+                .height(34.dp)
+                .onSizeChanged { width = it.width.toFloat().coerceAtLeast(1f) }
+                .pointerInput(Unit) {
+                    detectHorizontalDragGestures(
+                        onDragStart = { set(it.x) }
+                    ) { change, _ -> set(change.position.x) }
+                }
+        ) {
+            // The travel.
+            Box(
+                Modifier
+                    .align(Alignment.Center)
+                    .fillMaxWidth()
+                    .height(1.dp)
+                    .background(CrateEdge)
+            )
+            // The detent, drawn taller than the rest so the middle is findable by eye as well
+            // as by feel.
+            Box(
+                Modifier
+                    .align(Alignment.Center)
+                    .width(1.dp)
+                    .height(12.dp)
+                    .background(LabelDim)
+            )
+            // How far from centre the filter is, drawn from the middle *outward* so the direction
+            // reads at a glance: left is low-pass, right is high-pass.
+            //
+            // Two halves rather than one box with a computed alignment. The single-box version
+            // put the fill on the opposite side from the handle — aligning a half-width box to
+            // the end anchors it in the *right* half, then fills within that, which draws a
+            // left-hand sweep on the right of the screen.
+            Row(Modifier.fillMaxWidth().align(Alignment.Center)) {
+                Box(Modifier.weight(1f), contentAlignment = Alignment.CenterEnd) {
+                    if (position < -DjFilter.DEAD_ZONE) {
+                        Box(
+                            Modifier
+                                .fillMaxWidth(abs(position).coerceIn(0f, 1f))
+                                .height(8.dp)
+                                .background(LampAmber)
+                        )
+                    }
+                }
+                Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
+                    if (position > DjFilter.DEAD_ZONE) {
+                        Box(
+                            Modifier
+                                .fillMaxWidth(position.coerceIn(0f, 1f))
+                                .height(8.dp)
+                                .background(LampAmber)
+                        )
+                    }
+                }
+            }
+            Box(
+                Modifier
+                    .align(BiasAlignment(horizontalBias = position.coerceIn(-1f, 1f), verticalBias = 0f))
+                    .width(14.dp)
+                    .height(30.dp)
+                    .background(
+                        if (DjFilter.modeFor(position) == DjFilter.Mode.OFF) LabelDim else LampAmber,
+                        RoundedCornerShape(2.dp)
+                    )
+            )
+        }
+    }
+}
+
+/** `OFF`, `LP 4.2k` or `HP 320` — a value you can read aloud, not a nameless slider. */
+private fun filterReadout(position: Float): String {
+    val mode = DjFilter.modeFor(position)
+    if (mode == DjFilter.Mode.OFF) return "OFF"
+    val hz = DjFilter.cutoffHz(position)
+    val label = if (hz >= 1000f) "${(hz / 100f).roundToInt() / 10f}k" else "${hz.roundToInt()}"
+    return if (mode == DjFilter.Mode.LOW_PASS) "LP $label" else "HP $label"
 }

@@ -71,7 +71,9 @@ class WallSceneViewModel @Inject constructor(
     /** Makes the sound while a hand is on the disc. See [com.jawon.app.playback.ScratchAudio]. */
     val scratchAudio: com.jawon.app.playback.ScratchAudio,
     /** The crossfader, shared with the service so it cuts normal playback too. */
-    private val fader: com.jawon.app.playback.FaderState
+    private val fader: com.jawon.app.playback.FaderState,
+    /** The effects rack, shared with the service that runs it. See [com.jawon.app.playback.RackState]. */
+    private val rack: com.jawon.app.playback.RackState
 ) : ViewModel() {
 
 
@@ -146,6 +148,16 @@ class WallSceneViewModel @Inject constructor(
 
     /** Where the crossfader is, 0 shut and 1 open. Reaches the player and the scratch engine. */
     fun onFaderChange(position: Float) = fader.set(position)
+
+    /**
+     * The filter knob: −1 low-pass closed … 0 off … +1 high-pass closed.
+     *
+     * Unlike the fader this does not spring back — a filter is a state you leave a track in
+     * while it plays, not a gesture you hold. See [com.jawon.app.playback.DjFilter].
+     */
+    val filterPosition: StateFlow<Float> = rack.filter
+
+    fun onFilterChange(position: Float) = rack.setFilter(position)
 
     /** Read only by the progress bar, so the 2Hz tick can't recompose the tracklist. */
     val positionMs: StateFlow<Long> = playbackRepository.positionMs

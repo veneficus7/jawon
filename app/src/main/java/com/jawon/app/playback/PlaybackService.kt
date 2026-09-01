@@ -5,7 +5,9 @@ import android.content.Intent
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.Player
+import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.audio.DefaultAudioSink
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.session.DefaultMediaNotificationProvider
 import androidx.media3.session.MediaSession
@@ -49,6 +51,13 @@ class PlaybackService : MediaSessionService() {
     @Inject
     lateinit var fader: FaderState
 
+    /**
+     * The effects rack's controls. App-scoped like the fader, and for the same reason — the knob
+     * outlives the screen that drew it. See [RackState].
+     */
+    @Inject
+    lateinit var rack: RackState
+
     private var crossfadeEngine: CrossfadeEngine? = null
     private var replayGainReader: ReplayGainReader? = null
 
@@ -59,7 +68,24 @@ class PlaybackService : MediaSessionService() {
 
     override fun onCreate() {
         super.onCreate()
-        val player = ExoPlayer.Builder(this)
+        // Jawon's own effects go here, between the decoder and the sink.
+        //
+        // The platform's effects (equaliser, reverb, compressor) attach to the audio *session* and
+        // need none of this. A filter is not among them, so anything the app invents has to live
+        // inside the player's own pipeline — and this is the seam the rest of the rack will use.
+        val renderersFactory = object : DefaultRenderersFactory(this) {
+            override fun buildAudioSink(
+                context: android.content.Context,
+                enableFloatOutput: Boolean,
+                enableAudioTrackPlaybackParams: Boolean
+            ) = DefaultAudioSink.Builder(context)
+                .setEnableFloatOutput(enableFloatOutput)
+                .setEnableAudioTrackPlaybackParams(enableAudioTrackPlaybackParams)
+                .setAudioProcessors(arrayOf(FilterAudioProcessor(rack)))
+                .build()
+        }
+
+        val player = ExoPlayer.Builder(this, renderersFactory)
             .setAudioAttributes(
                 AudioAttributes.Builder()
                     .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC)

@@ -2223,6 +2223,8 @@ fun WallSceneScreen(
                 title = openCase?.title.orEmpty(),
                 artist = openCase?.artist.orEmpty(),
                 onFaderChange = viewModel::onFaderChange,
+                filterPosition = viewModel.filterPosition,
+                onFilterChange = viewModel::onFilterChange,
                 sleepMode = sleepMode,
                 sleepRemainingMs = sleepRemainingMs,
                 onSleepModeChange = viewModel::onSleepModeChange,
