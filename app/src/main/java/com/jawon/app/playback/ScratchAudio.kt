@@ -71,6 +71,10 @@ class ScratchAudio @Inject constructor() {
     @Volatile private var targetRate = 0f
     private var currentRate = 0f
 
+    /** The crossfader, 0 shut and 1 open. Written by the fader strip, read by the writer. */
+    @Volatile private var faderPosition = Crossfader.RESTING
+    private var currentCut = Crossfader.RESTING
+
     @Volatile private var running = false
     private var writer: Thread? = null
     private var prepareJob: Job? = null
@@ -128,6 +132,11 @@ class ScratchAudio @Inject constructor() {
     /** The disc's angular velocity, in radians per second. Called from the frame loop. */
     fun setAngularVelocity(radiansPerSecond: Float) {
         targetRate = ScratchTone.rateFor(radiansPerSecond)
+    }
+
+    /** Where the crossfader is, 0..1. Called from the fader strip while a finger drags it. */
+    fun setFader(position: Float) {
+        faderPosition = position
     }
 
     /**
@@ -255,6 +264,10 @@ class ScratchAudio @Inject constructor() {
             currentRate = ScratchTone.approach(currentRate, targetRate, chunkSeconds)
             val rate = currentRate
 
+            currentCut = Crossfader.approach(
+                currentCut, Crossfader.gainFor(faderPosition), chunkSeconds
+            )
+
             if (!ScratchTone.audible(rate)) {
                 // Held still: silence, not a buzz. Reading at a near-zero rate repeats the
                 // same handful of samples, which is a tone, not quiet. See SILENCE_BELOW.
@@ -262,6 +275,12 @@ class ScratchAudio @Inject constructor() {
                 java.util.Arrays.fill(toneState, 0f)
             } else {
                 val step = rate.toDouble()
+                val cut = currentCut
+                // **The record keeps moving under a shut fader.** That is not an edge case, it
+                // is the entire technique: a chirp closes the fader as the record turns around
+                // and opens it on the way back, so the sound that returns is a different part
+                // of the groove. Skipping the cursor advance while muted would make every cut
+                // a pause instead, and every one of these techniques impossible.
                 val gain = ScratchTone.gainFor(rate)
                 val drive = ScratchTone.driveFor(rate)
                 val toneCoeff = ScratchTone.toneCoeffFor(rate, sampleRate)
@@ -278,7 +297,7 @@ class ScratchAudio @Inject constructor() {
                         // not after: a needle loses the top end on the way *in*, and clipping
                         // a dull signal is warm where dulling a clipped one is muffled.
                         toneState[c] += toneCoeff * (raw - toneState[c])
-                        val shaped = ScratchTone.saturate(toneState[c], drive) * gain
+                        val shaped = ScratchTone.saturate(toneState[c], drive) * gain * cut
                         buffer[i] = (shaped * 32767f).toInt().coerceIn(-32768, 32767).toShort()
                         i++
                         c++

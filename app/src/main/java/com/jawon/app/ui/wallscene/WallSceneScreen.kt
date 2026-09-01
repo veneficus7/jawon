@@ -2212,6 +2212,7 @@ fun WallSceneScreen(
             DeckOverlay(
                 title = openCase?.title.orEmpty(),
                 artist = openCase?.artist.orEmpty(),
+                onFaderChange = { scratchAudio.setFader(it) },
                 sleepMode = sleepMode,
                 sleepRemainingMs = sleepRemainingMs,
                 onSleepModeChange = viewModel::onSleepModeChange,

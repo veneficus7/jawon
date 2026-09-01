@@ -1,5 +1,12 @@
 package com.jawon.app.ui.wallscene
 
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.foundation.layout.offset
+import com.jawon.app.playback.Crossfader
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -89,6 +96,8 @@ fun DeckOverlay(
     sleepMode: SleepTimer.Mode,
     sleepRemainingMs: Long?,
     onSleepModeChange: (SleepTimer.Mode) -> Unit,
+    /** The crossfader, 0 shut and 1 open — the other hand. See [com.jawon.app.playback.Crossfader]. */
+    onFaderChange: (Float) -> Unit,
     onPlayPause: () -> Unit,
     onNext: () -> Unit,
     onPrevious: () -> Unit,
@@ -179,6 +188,8 @@ fun DeckOverlay(
                 onPick = onSleepModeChange
             )
         }
+
+        FaderStrip(onChange = onFaderChange)
 
         // The tracklist takes the slack, so the controls below it stay pinned to the bottom
         // of the panel — the reachable part of a phone this tall.
@@ -535,4 +546,73 @@ private fun SleepOption(label: String, selected: Boolean, onClick: () -> Unit) {
         },
         onClick = onClick
     )
+}
+
+/**
+ * The crossfader — the other hand.
+ *
+ * A scratch is two hands: one moves the record and supplies the pitch, one cuts the sound in
+ * and out and supplies the rhythm. Every named technique is a pattern of cuts over a movement,
+ * so without this the disc can only smear. It sits directly under the transport, within reach
+ * of a thumb while the other hand is on the disc — which is the only arrangement that lets
+ * anyone actually do the two things at once on a phone.
+ *
+ * **It springs open when released**, like a fader hand coming off. Left where it was last put,
+ * a shut fader would silence the next record someone played with no visible reason why, and
+ * that is a support question rather than an instrument.
+ */
+@Composable
+private fun FaderStrip(onChange: (Float) -> Unit) {
+    var position by remember { mutableFloatStateOf(Crossfader.RESTING) }
+    var width by remember { mutableFloatStateOf(1f) }
+
+    fun set(value: Float) {
+        position = value.coerceIn(0f, 1f)
+        onChange(position)
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 10.dp, bottom = 2.dp)
+            .height(34.dp)
+            .onSizeChanged { width = it.width.toFloat().coerceAtLeast(1f) }
+            .pointerInput(Unit) {
+                detectHorizontalDragGestures(
+                    onDragStart = { set(it.x / width) },
+                    onDragEnd = { set(Crossfader.RESTING) },
+                    onDragCancel = { set(Crossfader.RESTING) }
+                ) { change, _ -> set(change.position.x / width) }
+            }
+    ) {
+        // The travel.
+        Box(
+            Modifier
+                .align(Alignment.Center)
+                .fillMaxWidth()
+                .height(3.dp)
+                .background(CrateEdge)
+        )
+        // Where it cuts, marked. A scratch fader opens within a few millimetres of the closed
+        // edge, and knowing where that is by eye is most of learning to use one.
+        Box(
+            Modifier
+                .align(Alignment.CenterStart)
+                .fillMaxWidth(Crossfader.OPEN_ABOVE)
+                .height(3.dp)
+                .background(LampAmber.copy(alpha = 0.30f))
+        )
+
+        val open = Crossfader.gainFor(position)
+        Box(
+            Modifier
+                .align(Alignment.CenterStart)
+                .offset { IntOffset((position * width * 0.94f).toInt(), 0) }
+                .size(width = 22.dp, height = 30.dp)
+                .background(
+                    if (open > 0.5f) LampAmber else LabelDim,
+                    RoundedCornerShape(2.dp)
+                )
+        )
+    }
 }
