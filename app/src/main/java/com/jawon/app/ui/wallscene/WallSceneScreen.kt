@@ -2250,7 +2250,14 @@ fun WallSceneScreen(
                     // Taller with the equaliser open: five band sliders do not fit in the
                     // half-screen the tracklist is comfortable in, and shrinking them to fit
                     // would make the one control here that needs precision the fiddliest.
-                    .fillMaxHeight(if (showEqualiser) 0.70f else 0.52f)
+                    //
+                    // The resting height went 0.52 → 0.575 when the fader arrived. Everything
+                    // in this panel is pinned except the tracklist, which takes the slack —
+                    // so a new 46dp control does not cost the panel height, it costs the
+                    // *tracklist* a row, and at 0.52 there was only about one row of slack to
+                    // take. The list was left showing a single row clipped through the middle.
+                    // This hands back what the fader took, and no more.
+                    .fillMaxHeight(if (showEqualiser) 0.70f else 0.575f)
                     .graphicsLayer {
                         alpha = deckAlpha
                         // Rises the last few millimetres into place as it fades up. A panel
