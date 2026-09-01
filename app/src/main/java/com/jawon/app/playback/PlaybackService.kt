@@ -17,8 +17,6 @@ import com.jawon.app.R
 import com.jawon.app.data.playback.EqualizerController
 import com.jawon.app.data.prefs.AppPreferences
 import dagger.hilt.android.AndroidEntryPoint
-import kotlinx.coroutines.cancel
-import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 /**
@@ -44,27 +42,14 @@ class PlaybackService : MediaSessionService() {
     lateinit var preferences: AppPreferences
 
     /**
-     * The crossfader. Applied to the *player* as well as to the scratch engine, because a
-     * transform is exactly the case where the record runs normally under one hand while the
-     * other cuts — see [FaderState].
-     */
-    @Inject
-    lateinit var fader: FaderState
-
-    /**
-     * The effects rack's controls. App-scoped like the fader, and for the same reason — the knob
-     * outlives the screen that drew it. See [RackState].
+     * The effects rack's controls. App-scoped because a knob outlives the screen that drew it:
+     * closing a case must not silently undo a filter sweep. See [RackState].
      */
     @Inject
     lateinit var rack: RackState
 
     private var crossfadeEngine: CrossfadeEngine? = null
     private var replayGainReader: ReplayGainReader? = null
-
-    /** Lives as long as the service; the fader subscription is the only thing on it. */
-    private val serviceScope = kotlinx.coroutines.CoroutineScope(
-        kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.Main.immediate
-    )
 
     override fun onCreate() {
         super.onCreate()
@@ -126,10 +111,6 @@ class PlaybackService : MediaSessionService() {
         replayGainReader = replayGain
         player.addListener(replayGain)
 
-        serviceScope.launch {
-            fader.position.collect { volume.setCut(Crossfader.gainFor(it)) }
-        }
-
         player.addListener(object : Player.Listener {
             override fun onAudioSessionIdChanged(audioSessionId: Int) {
                 equalizer.attach(audioSessionId)
@@ -186,7 +167,6 @@ class PlaybackService : MediaSessionService() {
     override fun onDestroy() {
         // Before the player goes: the effect is attached to that player's session, and one
         // left behind holds an audio effect slot the next player may need.
-        serviceScope.cancel()
         crossfadeEngine?.release()
         crossfadeEngine = null
         equalizer.release()

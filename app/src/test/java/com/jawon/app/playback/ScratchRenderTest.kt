@@ -39,37 +39,12 @@ class ScratchRenderTest {
 
         val wav = readWav(source) ?: return
 
-        val plain = renderScratch(wav, withFader = false)
+        val plain = renderScratch(wav)
         File(outDir, "scratch-demo.wav").let {
             writeWav(it, plain, wav.sampleRate, wav.channels)
             println("JAWON-SCRATCH wrote ${it.absolutePath} (${it.length() / 1024} KB)")
         }
 
-        // The same movement with the other hand on the fader. Worth rendering as a pair:
-        // the difference between them is the entire argument for having a crossfader, and
-        // it is far easier to hear than to describe.
-        val cut = renderScratch(wav, withFader = true)
-        File(outDir, "scratch-demo-fader.wav").let {
-            writeWav(it, cut, wav.sampleRate, wav.channels)
-            println("JAWON-SCRATCH wrote ${it.absolutePath} (${it.length() / 1024} KB)")
-        }
-    }
-
-    /**
-     * The fader hand: a transform through the slow drags, then a chirp on each turnaround.
-     *
-     * Returns fader position, 0 shut and 1 open — the same units the strip on the deck hands
-     * to the audio engine, so this is the real curve rather than a mute.
-     */
-    private fun faderAt(seconds: Float): Float = when {
-        seconds < 0.8f -> 1f
-        // Transform: taps open against a moving record.
-        seconds < 2.6f -> if ((seconds * 7f).toInt() % 2 == 0) 1f else 0f
-        // Chirps: shut through each turnaround, open across the middle of the movement.
-        seconds < 4.4f -> if (abs(sin((seconds - 2.6f) * 9.0f)) > 0.45f) 1f else 0f
-        seconds < 5.0f -> 1f
-        // Crab: fast clicks over the closing flurry.
-        else -> if ((seconds * 19f).toInt() % 2 == 0) 1f else 0f
     }
 
     // ---- the hand -------------------------------------------------------------------
@@ -98,7 +73,7 @@ class ScratchRenderTest {
         }
     }
 
-    private fun renderScratch(wav: Wav, withFader: Boolean = false): ShortArray {
+    private fun renderScratch(wav: Wav): ShortArray {
         val seconds = 6.5f
         val frames = (seconds * wav.sampleRate).toInt()
         val out = ShortArray(frames * wav.channels)
@@ -108,7 +83,6 @@ class ScratchRenderTest {
         var cursor = (wav.sampleRate * wav.channels * 0.5).toDouble()
         var rate = 0f
         val dt = 1f / wav.sampleRate
-        var cut = Crossfader.RESTING
 
         var i = 0
         while (i < out.size) {
@@ -125,14 +99,12 @@ class ScratchRenderTest {
             val gain = ScratchTone.gainFor(rate)
             val drive = ScratchTone.driveFor(rate)
             val coeff = ScratchTone.toneCoeffFor(rate, wav.sampleRate)
-            val target = if (withFader) Crossfader.gainFor(faderAt(t)) else 1f
-            cut = Crossfader.approach(cut, target, dt)
 
             var c = 0
             while (c < wav.channels && i < out.size) {
                 val raw = ScratchTone.sampleAt(wav.samples, cursor + c) / 32768f
                 toneState[c] += coeff * (raw - toneState[c])
-                val shaped = ScratchTone.saturate(toneState[c], drive) * gain * cut
+                val shaped = ScratchTone.saturate(toneState[c], drive) * gain
                 out[i] = (shaped * 32767f).toInt().coerceIn(-32768, 32767).toShort()
                 i++
                 c++

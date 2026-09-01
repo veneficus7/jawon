@@ -2241,7 +2241,6 @@ fun WallSceneScreen(
             DeckOverlay(
                 title = openCase?.title.orEmpty(),
                 artist = openCase?.artist.orEmpty(),
-                onFaderChange = viewModel::onFaderChange,
                 filterPosition = viewModel.filterPosition,
                 onFilterChange = viewModel::onFilterChange,
                 drivePosition = viewModel.drivePosition,
