@@ -75,12 +75,19 @@ object CaseDiscard {
     private const val SHATTER_FROM = 0.56f
     private const val SHATTER_TO = 0.76f
 
-    // Close and fall now overlap almost entirely: the lid is coming down *as* the case
-    // drops away, rather than shutting first and then being released. Two things happening
-    // at once is what the whole sequence is built on.
-    private const val CLOSE_FROM = 0.60f
-    private const val CLOSE_TO = 0.84f
-    private const val FALL_FROM = 0.64f
+    // Close and fall overlap almost entirely: the lid comes down *as* the case drops away,
+    // rather than shutting first and then being released. Two things at once is what the
+    // whole sequence is built on.
+    //
+    // **But the lid used to start shutting 0.04 after the strike, and that was why the break
+    // read as weak.** The shatter runs to [SHATTER_TO] at 0.76, so almost all of it happened
+    // behind a closing lid: about 0.22 seconds of unobstructed broken disc, most of the
+    // separation hidden. No amount of tuning the shatter itself fixes a shatter nobody sees.
+    // The lid now waits until the pieces have actually come apart, which is three and a half
+    // times longer with the disc in view, and the fall follows it as before.
+    private const val CLOSE_FROM = 0.70f
+    private const val CLOSE_TO = 0.90f
+    private const val FALL_FROM = 0.74f
     private const val FALL_TO = 1.00f
 
     // ---- Motion, in metres and degrees ------------------------------------------------
@@ -111,11 +118,17 @@ object CaseDiscard {
      *
      * **A few millimetres, and that is deliberate.** The disc has broken *where it lies* —
      * it is still in the tray and the lid is about to close over it. What sells the break is
-     * the cracks opening and the pieces sitting at slightly different angles so the light
-     * catches each one differently, not distance travelled. At 13.5mm it read as the disc
-     * coming apart and drifting; the pieces are supposed to stay put.
+     * the cracks opening and the pieces sitting at different angles so the light catches each
+     * one differently, not distance travelled. At 13.5mm it read as the disc coming apart and
+     * drifting; the pieces are supposed to stay put.
+     *
+     * Nudged from 3.8mm once the lid stopped shutting over the break — with the shatter
+     * actually in view there is room for the cracks to open a little wider before the pieces
+     * start looking like debris rather than a broken disc. The tray is the hard limit: a CD is
+     * 120mm across in a 125mm case, so there is about 2.5mm of margin before a fragment would
+     * be outside the case that is about to close on it.
      */
-    private const val SPREAD = 0.0038f
+    private const val SPREAD = 0.0052f
 
     /**
      * How quickly the pieces stop moving. High: this settles, it does not fly.
@@ -145,8 +158,17 @@ object CaseDiscard {
     /** The crack hold, for tests and for anything that needs to know when pieces move. */
     val impactHoldSeconds: Float get() = CRACK_HOLD_S
 
-    /** Degrees a fragment tips where it lies. Small: they are settling in a tray, not tumbling. */
-    private const val SHARD_TILT_DEG = 11f
+    /**
+     * Degrees a fragment tips where it lies. They are settling in a tray, not tumbling — but
+     * this is the single biggest thing that reads as *broken*.
+     *
+     * Raised from 11°, which after mass and travel scaling came out around 7° of actual tilt:
+     * far too flat to catch the lamp differently piece by piece, so the shattered disc read as
+     * a cracked decal rather than as separate fragments lying at their own angles. That is the
+     * effect the [SPREAD] doc says the whole break depends on, and it was the part turned down
+     * furthest. It costs nothing — a fragment tipping in place stays in the tray.
+     */
+    private const val SHARD_TILT_DEG = 30f
 
     /** How far a suspended fragment drifts from where it broke, in metres. Sub-millimetre. */
     private const val HOVER_MM = 0.00085f
@@ -253,7 +275,7 @@ object CaseDiscard {
      * rather than as more of the shiver that preceded it — the two must not look alike or the
      * strike is just the moment the wobble got bigger.
      */
-    private const val RECOIL_DEG = 5.4f
+    private const val RECOIL_DEG = 11f
 
     /** How fast the ring dies away, per second. Quick: this is a hit, not a vibration. */
     private const val RECOIL_DECAY = 11f
@@ -262,7 +284,7 @@ object CaseDiscard {
     private const val RECOIL_HZ = 13f
 
     /** How far the case is driven back by the blow, in metres. */
-    private const val RECOIL_Z = 0.011f
+    private const val RECOIL_Z = 0.021f
 
     /**
      * The ring after the blow, `1` at the strike and decaying to nothing.
@@ -389,7 +411,7 @@ object CaseDiscard {
     private const val SLOW_HALF_WIDTH = 0.14f
 
     /** How slowly time runs at the strike itself. */
-    private const val SLOW_SCALE = 0.34f
+    private const val SLOW_SCALE = 0.24f
 
     /** Seconds since the disc was struck, at sequence time [t]. */
     fun secondsSinceImpact(t: Float): Float =
@@ -460,7 +482,7 @@ object CaseDiscard {
             offsetY = dy * travel + hy * hover,
             // Lifted a little out of the disc's plane, so the cracks catch the light and the
             // pieces do not read as a flat decal. Alternating, so the surface breaks up.
-            offsetZ = travel * 0.42f * sin(index * 1.117f) + hz * hover,
+            offsetZ = travel * 0.78f * sin(index * 1.117f) + hz * hover,
             tiltX = SHARD_TILT_DEG * travel / SPREAD * sin(index * 0.913f) * byMass * 0.4f +
                 sin(s * 0.8f + index) * HOVER_TILT_DEG * hover,
             tiltY = SHARD_TILT_DEG * travel / SPREAD * sin(index * 1.771f) * byMass * 0.4f +
