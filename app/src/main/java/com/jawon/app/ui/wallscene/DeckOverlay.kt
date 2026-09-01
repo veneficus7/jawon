@@ -73,6 +73,7 @@ import com.jawon.app.playback.DjFilter
 import com.jawon.app.playback.Drive
 import com.jawon.app.playback.Echo
 import com.jawon.app.playback.SleepTimer
+import com.jawon.app.playback.Varispeed
 import com.jawon.app.ui.theme.CrateEdge
 import com.jawon.app.ui.theme.CrateRaised
 import com.jawon.app.ui.theme.LabelCream
@@ -112,6 +113,11 @@ fun DeckOverlay(
     /** The filter knob, −1 low-pass … 0 off … +1 high-pass. See [com.jawon.app.playback.DjFilter]. */
     filterPosition: StateFlow<Float>,
     onFilterChange: (Float) -> Unit,
+    /** Tempo and key, each −1 … 0 … +1 and independent. See [com.jawon.app.playback.Varispeed]. */
+    speedPosition: StateFlow<Float>,
+    pitchPosition: StateFlow<Float>,
+    onSpeedChange: (Float) -> Unit,
+    onPitchChange: (Float) -> Unit,
     /** Saturation, 0 clean … 1 broken. See [com.jawon.app.playback.Drive]. */
     drivePosition: StateFlow<Float>,
     onDriveChange: (Float) -> Unit,
@@ -353,6 +359,15 @@ fun DeckOverlay(
                 // own filter rather than the platform's — it runs inside the player's pipeline
                 // and works whether or not the phone offers a system equaliser at all.
                 FilterStrip(positionFlow = filterPosition, onChange = onFilterChange)
+
+                // Above the dirt, because these two are the ones people set deliberately and
+                // then leave; the filter and the drive are swept while listening.
+                VarispeedModule(
+                    speedFlow = speedPosition,
+                    pitchFlow = pitchPosition,
+                    onSpeed = onSpeedChange,
+                    onPitch = onPitchChange
+                )
 
                 DriveModule(positionFlow = drivePosition, onChange = onDriveChange)
 
@@ -1005,3 +1020,136 @@ private const val COMPACT_BELOW = 0.44f
 private const val PAGE_TRACKS = 0
 private const val PAGE_SOUND = 1
 private const val PAGE_COUNT = 2
+
+/**
+ * Tempo and key, as a pair of centre-detented strips.
+ *
+ * They sit together because their whole point is being apart: a record deck has one control
+ * here, and seeing two is the fastest way to understand that this is not that. Big numeric
+ * readouts because these are the two values people actually aim at rather than sweep.
+ */
+@Composable
+private fun VarispeedModule(
+    speedFlow: StateFlow<Float>,
+    pitchFlow: StateFlow<Float>,
+    onSpeed: (Float) -> Unit,
+    onPitch: (Float) -> Unit
+) {
+    val speed by speedFlow.collectAsState()
+    val pitch by pitchFlow.collectAsState()
+
+    Column(modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text("SPEED", style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = 10.sp))
+            Text(
+                text = if (Varispeed.isNeutral(speed)) "NORMAL"
+                else "%.2f".format(Varispeed.speedFor(speed)) + "\u00D7",
+                style = JawonTextStyle.mono.copy(
+                    color = if (Varispeed.isNeutral(speed)) LabelDim else LampAmber,
+                    fontSize = 10.sp
+                )
+            )
+        }
+        CentredStrip(speed, onSpeed)
+
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text("PITCH", style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = 10.sp))
+            Text(
+                text = if (Varispeed.isNeutral(pitch)) "NORMAL"
+                else "%+.1f ST".format(Varispeed.semitonesFor(pitch)),
+                style = JawonTextStyle.mono.copy(
+                    color = if (Varispeed.isNeutral(pitch)) LabelDim else LampAmber,
+                    fontSize = 10.sp
+                )
+            )
+        }
+        CentredStrip(pitch, onPitch)
+    }
+}
+
+/**
+ * A −1…0…+1 strip with a detent in the middle.
+ *
+ * Shared by speed and pitch, and shaped like [FilterStrip] on purpose: three controls that all
+ * rest at centre should be operated the same way, and a user who learns one has learned them.
+ */
+@Composable
+private fun CentredStrip(position: Float, onChange: (Float) -> Unit) {
+    var width by remember { mutableFloatStateOf(1f) }
+    val haptics = LocalHapticFeedback.current
+    var wasCentred by remember { mutableStateOf(true) }
+
+    fun set(x: Float) {
+        val raw = ((x / width) * 2f - 1f).coerceIn(-1f, 1f)
+        val centred = Varispeed.isNeutral(raw)
+        if (centred && !wasCentred) haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+        wasCentred = centred
+        onChange(if (centred) 0f else raw)
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 4.dp)
+            .height(28.dp)
+            .onSizeChanged { width = it.width.toFloat().coerceAtLeast(1f) }
+            .pointerInput(Unit) {
+                detectHorizontalDragGestures(
+                    onDragStart = { set(it.x) }
+                ) { change, _ -> set(change.position.x) }
+            }
+    ) {
+        Box(
+            Modifier
+                .align(Alignment.Center)
+                .fillMaxWidth()
+                .height(1.dp)
+                .background(CrateEdge)
+        )
+        Box(
+            Modifier
+                .align(Alignment.Center)
+                .width(1.dp)
+                .height(10.dp)
+                .background(LabelDim)
+        )
+        Row(Modifier.fillMaxWidth().align(Alignment.Center)) {
+            Box(Modifier.weight(1f), contentAlignment = Alignment.CenterEnd) {
+                if (position < -Varispeed.DEAD_ZONE) {
+                    Box(
+                        Modifier
+                            .fillMaxWidth(abs(position).coerceIn(0f, 1f))
+                            .height(6.dp)
+                            .background(LampAmber)
+                    )
+                }
+            }
+            Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
+                if (position > Varispeed.DEAD_ZONE) {
+                    Box(
+                        Modifier
+                            .fillMaxWidth(position.coerceIn(0f, 1f))
+                            .height(6.dp)
+                            .background(LampAmber)
+                    )
+                }
+            }
+        }
+        Box(
+            Modifier
+                .align(BiasAlignment(horizontalBias = position.coerceIn(-1f, 1f), verticalBias = 0f))
+                .width(12.dp)
+                .height(24.dp)
+                .background(
+                    if (Varispeed.isNeutral(position)) LabelDim else LampAmber,
+                    RoundedCornerShape(2.dp)
+                )
+        )
+    }
+}

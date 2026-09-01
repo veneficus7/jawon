@@ -3,7 +3,9 @@ package com.jawon.app.data.playback
 import android.content.ComponentName
 import android.content.Context
 import androidx.media3.common.MediaItem
+import androidx.media3.common.PlaybackParameters
 import com.jawon.app.playback.SleepTimer
+import com.jawon.app.playback.Varispeed
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.Player
 import androidx.media3.session.MediaController
@@ -310,6 +312,25 @@ class PlaybackRepository @Inject constructor(
     suspend fun playPause() {
         val controller = ensureController()
         if (controller.isPlaying) controller.pause() else controller.play()
+    }
+
+    /**
+     * Tempo and key, set independently.
+     *
+     * The player's own, not an [androidx.media3.common.audio.AudioProcessor]: Media3 time-
+     * stretches with Sonic, which is a better time-stretcher than anything worth hand-writing
+     * here, and it is the one part of the rack the platform already does properly.
+     *
+     * Both values pass through `Varispeed.safe` on the way out. Media3 refuses a non-positive
+     * rate by *throwing*, and this call crosses into the service that is playing the music —
+     * an exception here is not a wrong sound, it is the music stopping.
+     */
+    suspend fun setSpeedAndPitch(speed: Float, pitch: Float) {
+        val controller = ensureController()
+        runCatching {
+            controller.playbackParameters =
+                PlaybackParameters(Varispeed.safe(speed), Varispeed.safe(pitch))
+        }
     }
 
     /**

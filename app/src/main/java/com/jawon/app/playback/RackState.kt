@@ -38,6 +38,26 @@ class RackState @Inject constructor() {
         _filter.value = clamped
     }
 
+    // ---- tempo and key. See [Varispeed] -----------------------------------------------
+    //
+    // No `@Volatile` twin for these two. Everything else in this class is read by the audio
+    // thread every buffer; these are handed to the player once when they change, so a flow is
+    // the whole story.
+
+    private val _speed = MutableStateFlow(CENTRE)
+    val speed: StateFlow<Float> = _speed.asStateFlow()
+
+    private val _pitch = MutableStateFlow(CENTRE)
+    val pitch: StateFlow<Float> = _pitch.asStateFlow()
+
+    fun setSpeed(position: Float) {
+        _speed.value = position.coerceIn(-1f, 1f)
+    }
+
+    fun setPitch(position: Float) {
+        _pitch.value = position.coerceIn(-1f, 1f)
+    }
+
     // ---- the drive. See [Drive] -------------------------------------------------------
 
     private val _drive = MutableStateFlow(0f)

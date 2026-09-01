@@ -155,6 +155,35 @@ class WallSceneViewModel @Inject constructor(
 
     fun onFilterChange(position: Float) = rack.setFilter(position)
 
+    /**
+     * Tempo and key, −1 … 0 … +1 each, and independent of one another.
+     *
+     * A turntable cannot do this — its pitch follows its speed because that is what a groove
+     * passing a needle means — and [com.jawon.app.playback.ScratchTone] deliberately keeps them
+     * welded for exactly that reason. Here Media3's time-stretcher takes them apart.
+     */
+    val speedPosition: StateFlow<Float> = rack.speed
+    val pitchPosition: StateFlow<Float> = rack.pitch
+
+    fun onSpeedChange(position: Float) {
+        rack.setSpeed(position)
+        pushSpeedAndPitch()
+    }
+
+    fun onPitchChange(position: Float) {
+        rack.setPitch(position)
+        pushSpeedAndPitch()
+    }
+
+    private fun pushSpeedAndPitch() {
+        viewModelScope.launch {
+            playbackRepository.setSpeedAndPitch(
+                com.jawon.app.playback.Varispeed.speedFor(rack.speed.value),
+                com.jawon.app.playback.Varispeed.pitchFor(rack.pitch.value)
+            )
+        }
+    }
+
     /** Saturation, 0 clean … 1 broken. See [com.jawon.app.playback.Drive]. */
     val drivePosition: StateFlow<Float> = rack.drive
 
