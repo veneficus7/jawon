@@ -235,13 +235,22 @@ Honest list, in the order they matter:
    "nothing loaded yet" from "nothing in the library" — one `WallLayout.loaded`
    flag, previously conflated, which is why an empty library could never render
    anything.
-3. **Almost no tests.** `playback/CrossfadeTest` is real — eleven cases on the
-   fade curve and its timing, written because that feature can otherwise only be
-   judged by ear — but it is the only one. `WallLayout.from`, `OpenSequence`,
-   `ShelfHover` and `Scratch` are still untested, and are deliberately pure
-   functions with no Android or Filament types in them: the shelf-bounds maths,
-   the animation curves and the scrub cursor. They are free to test and nobody
-   has.
+3. ~~**Almost no tests.**~~ **108, covering every pure file.** `CrossfadeTest` is
+   no longer alone: `Patina`, `WallLayout`'s crate flip, `CaseDiscard`, `Scratch`,
+   `ShelfHover`, `OpenSequence` and `ReplayGain` are all covered — the wear curve,
+   the shelf-bounds maths, the animation curves, the scrub cursor and the volume
+   levelling.
+
+   **Two of them found real mistakes while being written**, both in the test
+   rather than the code, which is its own kind of useful: an assertion that
+   compared shard *positions* when the pieces go on drifting by design, and one
+   that expected a −20dB tag to halve twice over when the clamp stops it at −15dB.
+   A third pinned behaviour that had never been stated anywhere — that a zero
+   length track does not trap the scrub cursor.
+
+   What is still untested is everything touching Android or Filament, which is
+   most of the app: the scene, the DAOs, the importer, the backup writer. Those
+   need instrumentation or Robolectric, and neither is set up.
 4. **Play listing assets**: a 512×512 icon, a feature graphic, screenshots, and a
    privacy policy.
 

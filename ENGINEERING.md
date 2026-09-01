@@ -52,7 +52,7 @@ and a green build says nothing about it.
 | **Quality tiers** | Written and adaptive, but only ever run on a Galaxy S25 Ultra. Three of five testers on S23-class hardware reported stutter; that is what the tiers exist for and none of it is confirmed. |
 | **Slot reuse after a delete** | The discard animation's one previous bug was leaving a pool slot at zero scale forever. Fixed in two places, but the reuse path itself is still unverified — provoking it means deleting a real album. |
 | **Stats screens** | The data is no longer the problem: `PlayEvent` is live and filling, written by `PlaybackRepository` so background listening counts too, and `PlayEventDao.albumTotals()` is the query they will be built on. Only the screens are missing. |
-| **Tests** | One file, and it is the template's `assertEquals(4, 2 + 2)`. `WallLayout`, `OpenSequence`, `ShelfHover` and `Scratch` are deliberately pure and free to test. |
+| **Tests** | **108, and all four named pure files are covered.** `Patina`, `WallLayout` (the crate flip), `CaseDiscard`, `Scratch`, `ShelfHover`, `OpenSequence` and `ReplayGain` alongside the original `CrossfadeTest`. Two of them caught real mistakes while being written. Still untested: everything touching Android or Filament, which is most of the app. |
 | **Not started** | Colour schemes · crossfade · equaliser · stats screens (the `PlayEvent` table they read is live and collecting) |
 | **Needs a decision first** | Lyrics · online collecting · vinyl/cassette/iPod modes. The first two extend the app's network use; the last is three more rooms before one is finished. |
 
