@@ -80,6 +80,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -815,6 +816,24 @@ fun WallSceneScreen(
         // record lands on its tracklist rather than on the equaliser.
         var showEqualiser by remember { mutableStateOf(false) }
         LaunchedEffect(selectedAlbumId) { if (selectedAlbumId == null) showEqualiser = false }
+
+        // How tall the deck panel is: three stops, dragged by its header. See DeckDetent.
+        var detent by remember { mutableStateOf(DeckDetent.DECK) }
+        val sheetFraction = remember { Animatable(DeckDetent.DECK.fraction) }
+        val screenHeightPx = with(LocalDensity.current) {
+            LocalConfiguration.current.screenHeightDp.dp.toPx()
+        }
+        // Settles to the chosen stop once the finger is off. Slightly underdamped, so it arrives
+        // with a suggestion of weight instead of easing politely to a halt — the same reason the
+        // case's open sequence has beats rather than a single curve.
+        LaunchedEffect(detent) {
+            sheetFraction.animateTo(
+                detent.fraction,
+                spring(dampingRatio = 0.82f, stiffness = 620f)
+            )
+        }
+        // Opening the next record should not inherit the height the last one was left at.
+        LaunchedEffect(selectedAlbumId) { if (selectedAlbumId == null) detent = DeckDetent.DECK }
         // Goes to the vibrator directly rather than through the view's haptic feedback �
         // see RoomHaptics for why the disc had no vibration at all before this.
         val haptics = remember(context) { RoomHaptics(context) }
@@ -2254,20 +2273,35 @@ fun WallSceneScreen(
                 onEqPreset = viewModel::onEqPreset,
                 onEqReset = viewModel::onEqReset,
                 showEqualiser = showEqualiser,
-                onShowEqualiser = { showEqualiser = it },
+                onShowEqualiser = {
+                    showEqualiser = it
+                    // Opening the rack from the smallest stop would show about one control.
+                    // Anything the user dragged to themselves is left alone.
+                    if (it && detent == DeckDetent.PEEK) detent = DeckDetent.DECK
+                },
+                onSheetDrag = { dy ->
+                    // Up is negative on screen and taller here, hence the sign. Dragged live
+                    // rather than animated, because a sheet that lags the finger stops feeling
+                    // like a thing being moved and starts feeling like a request being processed.
+                    scope.launch {
+                        sheetFraction.snapTo(
+                            DeckDetent.clamp(sheetFraction.value - dy / screenHeightPx)
+                        )
+                    }
+                },
+                onSheetRelease = { detent = DeckDetent.nearestTo(sheetFraction.value) },
+                sheetFraction = sheetFraction.value,
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
-                    // Taller with the equaliser open: five band sliders do not fit in the
-                    // half-screen the tracklist is comfortable in, and shrinking them to fit
-                    // would make the one control here that needs precision the fiddliest.
+                    // Three stops, dragged by the header — see DeckDetent.
                     //
-                    // The resting height went 0.52 → 0.575 when the fader arrived. Everything
-                    // in this panel is pinned except the tracklist, which takes the slack —
-                    // so a new 46dp control does not cost the panel height, it costs the
-                    // *tracklist* a row, and at 0.52 there was only about one row of slack to
-                    // take. The list was left showing a single row clipped through the middle.
-                    // This hands back what the fader took, and no more.
-                    .fillMaxHeight(if (showEqualiser) 0.70f else 0.575f)
+                    // This used to be a fixed fraction, and it could not stay one. Everything in
+                    // the panel is pinned except the list in the middle, which takes the slack,
+                    // so every control added to the rack cost the tracklist a row; by the time
+                    // the filter, drive and echo were all there the equaliser had been pushed off
+                    // the bottom. "Watch the record spin" and "show me all twenty-seven tracks"
+                    // are different heights and only the user knows which one they want.
+                    .fillMaxHeight(sheetFraction.value)
                     .graphicsLayer {
                         alpha = deckAlpha
                         // Rises the last few millimetres into place as it fades up. A panel

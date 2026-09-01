@@ -1,6 +1,9 @@
 package com.jawon.app.ui.wallscene
 
+import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.draggable
+import androidx.compose.foundation.gestures.rememberDraggableState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
@@ -81,7 +84,7 @@ import kotlin.math.roundToInt
 import androidx.compose.ui.graphics.Color as ComposeColor
 
 /**
- * The deck, in the room: what PLAN.md Â§4 asks of The Deck minus the disc itself, which is
+ * The deck, in the room: what PLAN.md §4 asks of The Deck minus the disc itself, which is
  * already there in 3D behind this.
  *
  * Sits over a scrim rather than a solid sheet so the room still reads through it, matching
@@ -104,9 +107,9 @@ fun DeckOverlay(
     sleepMode: SleepTimer.Mode,
     sleepRemainingMs: Long?,
     onSleepModeChange: (SleepTimer.Mode) -> Unit,
-    /** The crossfader, 0 shut and 1 open â the other hand. See [com.jawon.app.playback.Crossfader]. */
+    /** The crossfader, 0 shut and 1 open — the other hand. See [com.jawon.app.playback.Crossfader]. */
     onFaderChange: (Float) -> Unit,
-    /** The filter knob, â1 low-pass â¦ 0 off â¦ +1 high-pass. See [com.jawon.app.playback.DjFilter]. */
+    /** The filter knob, −1 low-pass … 0 off … +1 high-pass. See [com.jawon.app.playback.DjFilter]. */
     filterPosition: StateFlow<Float>,
     onFilterChange: (Float) -> Unit,
     /** Saturation, 0 clean … 1 broken. See [com.jawon.app.playback.Drive]. */
@@ -134,18 +137,40 @@ fun DeckOverlay(
     onEqBandChange: (Int, Int) -> Unit,
     onEqPreset: (Int) -> Unit,
     onEqReset: () -> Unit,
+    /**
+     * Dragging the panel taller or shorter. Only the header does this — not the whole sheet —
+     * because the tracklist and the rack both scroll vertically, and a sheet that also claimed
+     * vertical drags would fight them for every gesture.
+     */
+    onSheetDrag: (Float) -> Unit,
+    onSheetRelease: () -> Unit,
+    /** How tall the panel currently is, as a fraction of the screen. See [DeckDetent]. */
+    sheetFraction: Float,
     showEqualiser: Boolean,
     onShowEqualiser: (Boolean) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    // Short enough that the fixed rows no longer fit, so the optional ones come out. Sits above
+    // PEEK rather than at it, so the panel sheds its extras while being dragged toward that stop
+    // instead of all at once when it arrives.
+    val compact = sheetFraction < COMPACT_BELOW
 
     Column(
         modifier = modifier
             .fillMaxWidth()
+            // The scrim fades in over a fixed *screen* distance, not a fixed fraction of the
+            // panel.
+            //
+            // A constant 0.22 was right while the panel was always a little over half the screen.
+            // Dragged to full height that same fraction becomes a much taller band of near
+            // transparency, and it stops sitting over the dark room and starts sitting over the
+            // spinning disc — with the album title trying to be read against it. Dividing by the
+            // height holds the fade at the size it was tuned to be.
             .background(
                 Brush.verticalGradient(
                     0f to ComposeColor.Transparent,
-                    0.22f to ComposeColor(0xD1060403),
+                    (FADE_SCREEN_FRACTION / sheetFraction.coerceAtLeast(0.05f))
+                        .coerceIn(0.08f, 0.32f) to ComposeColor(0xD1060403),
                     1f to ComposeColor(0xF7060403)
                 )
             )
@@ -156,9 +181,34 @@ fun DeckOverlay(
             .padding(top = 16.dp, bottom = 8.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
+        // Everything down to the readout is the grab area, and only this much of it.
+        //
+        // The tracklist and the rack below both scroll vertically. A sheet that claimed vertical
+        // drags anywhere on its surface would be arguing with them over every gesture, and the
+        // loser of that argument changes depending on which one gets the pointer first — which
+        // is the ordering ENGINEERING.md's trap 6 warns is not guaranteed. Confining the drag to the
+        // header means the two never meet.
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            modifier = Modifier
+                .fillMaxWidth()
+                .draggable(
+                    orientation = Orientation.Vertical,
+                    state = rememberDraggableState { onSheetDrag(it) },
+                    onDragStopped = { onSheetRelease() }
+                )
+        ) {
+            // The grab handle. Small, and the only affordance saying the panel moves at all.
+            Box(
+                Modifier
+                    .padding(bottom = 10.dp)
+                    .width(36.dp)
+                    .height(3.dp)
+                    .background(CrateEdge, RoundedCornerShape(2.dp))
+            )
         // Dropped while the equaliser is up. The panel has to grow to fit five band sliders,
         // and a display-size title is both the largest thing here and the least useful when
-        // what you are doing is listening â the artist and the format readout stay, because
+        // what you are doing is listening — the artist and the format readout stay, because
         // those are what you check against while adjusting.
         if (!showEqualiser) {
             Text(
@@ -169,23 +219,35 @@ fun DeckOverlay(
                 overflow = TextOverflow.Ellipsis
             )
         }
-        // Whoever is actually singing, which on a compilation is not who the shelf is filed
-        // under. Falls back to the album's artist when the file carried no per-track credit â
-        // including every track imported before that column existed.
-        Text(
-            text = (deck.currentTrack?.artist?.takeIf { it.isNotBlank() } ?: artist).uppercase(),
-            style = JawonTextStyle.mono,
-            modifier = Modifier.padding(top = 6.dp)
-        )
-        // The quality readout is the resting state of this slot; a scratch takes it over.
-        // Both are drawn inside ScrubOrQuality so that the scratch's ~12Hz updates
-        // recompose these two lines and nothing else (ENGINEERING.md rule 3).
-        ScrubOrQuality(scrubReadout = scrubReadout, deck = deck)
+        if (!compact) {
+            // Whoever is actually singing, which on a compilation is not who the shelf is filed
+            // under. Falls back to the album's artist when the file carried no per-track credit —
+            // including every track imported before that column existed.
+            Text(
+                text = (deck.currentTrack?.artist?.takeIf { it.isNotBlank() } ?: artist).uppercase(),
+                style = JawonTextStyle.mono,
+                modifier = Modifier.padding(top = 6.dp)
+            )
+            // The quality readout is the resting state of this slot; a scratch takes it over.
+            // Both are drawn inside ScrubOrQuality so that the scratch's ~12Hz updates
+            // recompose these two lines and nothing else (ENGINEERING.md rule 3).
+            ScrubOrQuality(scrubReadout = scrubReadout, deck = deck)
+        }
+        }
+
+        // Everything from here to the fader is dropped at the shortest stop.
+        //
+        // Not shrunk — dropped. At PEEK the panel is under a third of the screen and the fixed
+        // rows alone want more than that, so laying them all out anyway pushed the transport off
+        // the bottom: the one height whose whole purpose is watching the record turn was also
+        // the one where play and pause had gone. What survives is the title, the progress bar and
+        // the transport, which is what that height is for.
+        if (!compact) {
 
         // Two views of the same slot: the tracklist, or the equaliser.
         //
         // The equaliser lives here as well as in Settings because reaching it there means
-        // closing the record first â and an equaliser is adjusted *by ear*, which needs the
+        // closing the record first — and an equaliser is adjusted *by ear*, which needs the
         // music still playing. A mode switch rather than a floating sheet: the panel is
         // already an overlay on a 3D scene, and stacking another one over it costs more than
         // swapping what this one shows.
@@ -214,7 +276,7 @@ fun DeckOverlay(
         }
 
         // The tracklist takes the slack, so the controls below it stay pinned to the bottom
-        // of the panel â the reachable part of a phone this tall.
+        // of the panel — the reachable part of a phone this tall.
         if (showEqualiser) {
             Column(
                 modifier = Modifier
@@ -224,7 +286,7 @@ fun DeckOverlay(
                     .padding(top = 10.dp)
             ) {
                 // Above the equaliser, and outside its on/off switch, because this is Jawon's
-                // own filter rather than the platform's â it runs inside the player's pipeline
+                // own filter rather than the platform's — it runs inside the player's pipeline
                 // and works whether or not the phone offers a system equaliser at all.
                 FilterStrip(positionFlow = filterPosition, onChange = onFilterChange)
 
@@ -251,7 +313,7 @@ fun DeckOverlay(
                     )
                 } else {
                     // Off is a real state, and the switch belongs to the same control the
-                    // settings screen owns â so this turns it on rather than pretending the
+                    // settings screen owns — so this turns it on rather than pretending the
                     // equaliser is broken.
                     Text(
                         text = "The equaliser is off.",
@@ -292,6 +354,8 @@ fun DeckOverlay(
             }
         }
 
+        }
+
         ProgressRow(
             positionFlow = positionFlow,
             scrubReadout = scrubReadout,
@@ -330,8 +394,9 @@ fun DeckOverlay(
         }
 
         // Under the transport, where a fader is on a real deck and where a thumb can reach it
-        // while the other hand is on the disc.
-        FaderStrip(onChange = onFaderChange)
+        // while the other hand is on the disc. Dropped at PEEK along with everything else that
+        // is not the record and its transport.
+        if (!compact) FaderStrip(onChange = onFaderChange)
     }
 }
 
@@ -339,7 +404,7 @@ fun DeckOverlay(
  * The two-line slot under the artist: normally the quality readout, and while the disc is
  * being turned, where the scratch has dragged to.
  *
- * The `State` is read *here* rather than in the caller on purpose â that is what confines a
+ * The `State` is read *here* rather than in the caller on purpose — that is what confines a
  * scratch's updates to this composable instead of recomposing the whole deck.
  */
 @Composable
@@ -348,7 +413,7 @@ private fun ScrubOrQuality(scrubReadout: State<ScrubReadout?>, deck: DeckState) 
     if (scrub != null) {
         val track = deck.tracks.getOrNull(scrub.trackIndex)
         Text(
-            text = (if (scrub.forward) "â¶â¶  " else "ââ  ") +
+            text = (if (scrub.forward) "▶▶  " else "◀◀  ") +
                 formatDuration(scrub.positionMs) + " / " +
                 formatDuration(track?.durationMs ?: 0L),
             style = JawonTextStyle.mono,
@@ -380,7 +445,7 @@ private fun ScrubOrQuality(scrubReadout: State<ScrubReadout?>, deck: DeckState) 
 }
 
 /**
- * Isolated so the 2Hz position tick recomposes only the bar and its two labels â the
+ * Isolated so the 2Hz position tick recomposes only the bar and its two labels — the
  * tracklist above it doesn't need to redraw twice a second.
  *
  * That isolation is also why the scrub readout is read *here* rather than passed in as a
@@ -401,7 +466,7 @@ private fun ProgressRow(
 
     // While the disc is being turned the bar follows the *scrub*, not the player.
     //
-    // It used to follow `positionFlow`, which is polled at 2Hz â so spinning the platter
+    // It used to follow `positionFlow`, which is polled at 2Hz — so spinning the platter
     // moved the disc immediately and dragged the bar along behind it in visible steps, a
     // third of a second late. The scrub cursor is the value the disc itself is drawn from,
     // so taking it here is what puts the two in sync.
@@ -591,12 +656,12 @@ private fun SleepOption(label: String, selected: Boolean, onClick: () -> Unit) {
 }
 
 /**
- * The crossfader â the other hand.
+ * The crossfader — the other hand.
  *
  * A scratch is two hands: one moves the record and supplies the pitch, one cuts the sound in
  * and out and supplies the rhythm. Every named technique is a pattern of cuts over a movement,
  * so without this the disc can only smear. It sits directly under the transport, within reach
- * of a thumb while the other hand is on the disc â which is the only arrangement that lets
+ * of a thumb while the other hand is on the disc — which is the only arrangement that lets
  * anyone actually do the two things at once on a phone.
  *
  * **It springs open when released**, like a fader hand coming off. Left where it was last put,
@@ -662,8 +727,8 @@ private fun FaderStrip(onChange: (Float) -> Unit) {
 /**
  * The filter knob, as a strip with a centre detent.
  *
- * **Why a strip and not a rotary.** A knob is the right *object* â this is one control covering
- * two filters, which is what a mixer spends a knob on â but a rotary on a touchscreen is turned
+ * **Why a strip and not a rotary.** A knob is the right *object* — this is one control covering
+ * two filters, which is what a mixer spends a knob on — but a rotary on a touchscreen is turned
  * by dragging in an arc your finger cannot see, and the finger covers the very thing it is
  * setting. A strip is the same single control with a travel a thumb can actually follow.
  *
@@ -681,7 +746,7 @@ private fun FilterStrip(positionFlow: StateFlow<Float>, onChange: (Float) -> Uni
     var wasCentred by remember { mutableStateOf(true) }
 
     fun set(x: Float) {
-        // â1 at the far left, +1 at the far right, 0 in the middle.
+        // −1 at the far left, +1 at the far right, 0 in the middle.
         val raw = ((x / width) * 2f - 1f).coerceIn(-1f, 1f)
         val centred = abs(raw) <= DjFilter.DEAD_ZONE
         if (centred && !wasCentred) {
@@ -745,7 +810,7 @@ private fun FilterStrip(positionFlow: StateFlow<Float>, onChange: (Float) -> Uni
             // reads at a glance: left is low-pass, right is high-pass.
             //
             // Two halves rather than one box with a computed alignment. The single-box version
-            // put the fill on the opposite side from the handle â aligning a half-width box to
+            // put the fill on the opposite side from the handle — aligning a half-width box to
             // the end anchors it in the *right* half, then fills within that, which draws a
             // left-hand sweep on the right of the screen.
             Row(Modifier.fillMaxWidth().align(Alignment.Center)) {
@@ -784,7 +849,7 @@ private fun FilterStrip(positionFlow: StateFlow<Float>, onChange: (Float) -> Uni
     }
 }
 
-/** `OFF`, `LP 4.2k` or `HP 320` â a value you can read aloud, not a nameless slider. */
+/** `OFF`, `LP 4.2k` or `HP 320` — a value you can read aloud, not a nameless slider. */
 private fun filterReadout(position: Float): String {
     val mode = DjFilter.modeFor(position)
     if (mode == DjFilter.Mode.OFF) return "OFF"
@@ -796,7 +861,7 @@ private fun filterReadout(position: Float): String {
 /**
  * The echo, as three labelled slots in one module.
  *
- * MIX rests at zero and is the one you actually perform with â the gesture is throwing it in for
+ * MIX rests at zero and is the one you actually perform with — the gesture is throwing it in for
  * a bar and pulling it back out, which is why it sits last and reads as the loudest control here.
  * TIME and FEED are set once and left.
  */
@@ -922,3 +987,20 @@ private fun DriveModule(positionFlow: StateFlow<Float>, onChange: (Float) -> Uni
         RackSlider("AMOUNT", position, onChange, emphasised = true)
     }
 }
+
+/**
+ * How far down the *screen* the deck's scrim finishes fading in.
+ *
+ * Derived rather than picked: 0.22 of a panel that was 0.575 of the screen, which is the value
+ * the gradient was tuned at before the panel could be dragged.
+ */
+private const val FADE_SCREEN_FRACTION = 0.22f * 0.575f
+
+/**
+ * Below this panel height the deck sheds everything but the record's identity and its transport.
+ *
+ * Set between PEEK and DECK rather than at PEEK exactly, so the change happens *during* the drag
+ * toward the short stop rather than snapping at the end of it — a panel that reorganises itself
+ * on arrival reads as a glitch, while one that does it under the finger reads as a response.
+ */
+private const val COMPACT_BELOW = 0.44f
