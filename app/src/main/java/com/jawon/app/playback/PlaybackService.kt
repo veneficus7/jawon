@@ -15,6 +15,7 @@ import androidx.media3.session.MediaSessionService
 import com.jawon.app.MainActivity
 import com.jawon.app.R
 import com.jawon.app.data.playback.EqualizerController
+import com.jawon.app.data.playback.NativeEffects
 import com.jawon.app.data.prefs.AppPreferences
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
@@ -37,6 +38,10 @@ class PlaybackService : MediaSessionService() {
      */
     @Inject
     lateinit var equalizer: EqualizerController
+
+    /** Bass, width, reverb and loudness — the same session, the same lifecycle. */
+    @Inject
+    lateinit var nativeEffects: NativeEffects
 
     @Inject
     lateinit var preferences: AppPreferences
@@ -114,6 +119,7 @@ class PlaybackService : MediaSessionService() {
         player.addListener(object : Player.Listener {
             override fun onAudioSessionIdChanged(audioSessionId: Int) {
                 equalizer.attach(audioSessionId)
+                nativeEffects.attach(audioSessionId)
             }
 
             // Handed straight over: only the engine knows which seeks are its own.
@@ -124,6 +130,7 @@ class PlaybackService : MediaSessionService() {
             ) = crossfade.onDiscontinuity(reason)
         })
         equalizer.attach(player.audioSessionId)
+        nativeEffects.attach(player.audioSessionId)
         crossfade.start()
 
         // Jawon's own mark in the status bar and on the lock screen, in place of Media3's
@@ -170,6 +177,7 @@ class PlaybackService : MediaSessionService() {
         crossfadeEngine?.release()
         crossfadeEngine = null
         equalizer.release()
+        nativeEffects.release()
         mediaSession?.run {
             player.release()
             release()

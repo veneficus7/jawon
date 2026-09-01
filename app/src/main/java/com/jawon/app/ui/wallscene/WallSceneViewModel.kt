@@ -61,6 +61,8 @@ class WallSceneViewModel @Inject constructor(
     private val playbackRepository: PlaybackRepository,
     private val coverStore: CoverImageStore,
     private val equalizer: EqualizerController,
+    /** Bass, width, reverb and loudness — whichever of them this phone has. */
+    private val nativeEffects: com.jawon.app.data.playback.NativeEffects,
     private val preferences: AppPreferences,
     private val audioRouteReader: AudioRouteReader,
     /**
@@ -188,6 +190,24 @@ class WallSceneViewModel @Inject constructor(
     val drivePosition: StateFlow<Float> = rack.drive
 
     fun onDriveChange(position: Float) = rack.setDrive(position)
+
+    /**
+     * The four the platform provides, and which of them this phone actually has.
+     *
+     * Availability is a flow rather than a constant because the effects are built when a player
+     * acquires its audio session, which happens after the room is already on screen.
+     */
+    val nativeAvailable: StateFlow<Set<com.jawon.app.data.playback.NativeEffect>> =
+        nativeEffects.available
+    val bassStrength: StateFlow<Float> = nativeEffects.bassStrength
+    val stereoWidth: StateFlow<Float> = nativeEffects.stereoWidth
+    val reverbPreset: StateFlow<Int> = nativeEffects.reverbPreset
+    val loudnessGain: StateFlow<Float> = nativeEffects.loudnessGain
+
+    fun onBassChange(value: Float) = nativeEffects.setBassStrength(value)
+    fun onWidthChange(value: Float) = nativeEffects.setStereoWidth(value)
+    fun onReverbChange(preset: Int) = nativeEffects.setReverbPreset(preset)
+    fun onLoudnessChange(value: Float) = nativeEffects.setLoudnessGain(value)
 
     /** The echo's three knobs. See [com.jawon.app.playback.Echo]. */
     val echoTime: StateFlow<Float> = rack.echoTime

@@ -156,6 +156,45 @@ class AppPreferences @Inject constructor(@param:ApplicationContext context: Cont
         _caseSpin.value = clamped
     }
 
+    // ---- the platform effects. See [com.jawon.app.data.playback.NativeEffects] -----------
+    //
+    // Persisted, like the equaliser's bands, because these are a preference rather than a
+    // performance: someone who likes a little bass boost likes it on the next record too. The
+    // rack's own controls — filter, drive, echo, speed, pitch — deliberately are *not* saved,
+    // because those are gestures and a track starting up already filtered would be a fault.
+
+    private val _bassStrength = MutableStateFlow(prefs.getFloat(KEY_BASS, 0f))
+    val bassStrength: StateFlow<Float> = _bassStrength.asStateFlow()
+
+    fun setBassStrength(value: Float) {
+        prefs.edit { putFloat(KEY_BASS, value) }
+        _bassStrength.value = value
+    }
+
+    private val _stereoWidth = MutableStateFlow(prefs.getFloat(KEY_WIDTH, 0f))
+    val stereoWidth: StateFlow<Float> = _stereoWidth.asStateFlow()
+
+    fun setStereoWidth(value: Float) {
+        prefs.edit { putFloat(KEY_WIDTH, value) }
+        _stereoWidth.value = value
+    }
+
+    private val _reverbPreset = MutableStateFlow(prefs.getInt(KEY_REVERB, 0))
+    val reverbPreset: StateFlow<Int> = _reverbPreset.asStateFlow()
+
+    fun setReverbPreset(value: Int) {
+        prefs.edit { putInt(KEY_REVERB, value) }
+        _reverbPreset.value = value
+    }
+
+    private val _loudnessGain = MutableStateFlow(prefs.getFloat(KEY_LOUDNESS, 0f))
+    val loudnessGain: StateFlow<Float> = _loudnessGain.asStateFlow()
+
+    fun setLoudnessGain(value: Float) {
+        prefs.edit { putFloat(KEY_LOUDNESS, value) }
+        _loudnessGain.value = value
+    }
+
     /**
      * Whether the one-time pass that reads per-track artists out of existing files has run.
      *
@@ -168,6 +207,10 @@ class AppPreferences @Inject constructor(@param:ApplicationContext context: Cont
 
     private companion object {
         const val KEY_TRACK_ARTIST_BACKFILL = "track_artist_backfill_done"
+        const val KEY_BASS = "effect_bass"
+        const val KEY_WIDTH = "effect_width"
+        const val KEY_REVERB = "effect_reverb"
+        const val KEY_LOUDNESS = "effect_loudness"
         const val KEY_CASE_SPIN = "case_spin"
         const val KEY_CROSSFADE_MS = "crossfade_ms"
         const val KEY_FETCH_COVER_ART = "fetch_cover_art"

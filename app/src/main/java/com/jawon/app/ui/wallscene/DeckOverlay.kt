@@ -27,6 +27,7 @@ import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.rememberCoroutineScope
 import kotlinx.coroutines.launch
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -65,6 +66,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.jawon.app.data.local.Track
 import com.jawon.app.data.playback.EqBand
+import com.jawon.app.data.playback.NativeEffect
+import com.jawon.app.data.playback.NativeEffects
 import com.jawon.app.ui.common.EqualizerPanel
 import com.jawon.app.ui.common.formatDuration
 import com.jawon.app.ui.common.qualityReadoutOutput
@@ -128,6 +131,16 @@ fun DeckOverlay(
     onEchoTime: (Float) -> Unit,
     onEchoFeedback: (Float) -> Unit,
     onEchoMix: (Float) -> Unit,
+    /** The platform's own four, and which of them this phone has. See [NativeEffects]. */
+    nativeAvailable: StateFlow<Set<NativeEffect>>,
+    bassStrength: StateFlow<Float>,
+    stereoWidth: StateFlow<Float>,
+    reverbPreset: StateFlow<Int>,
+    loudnessGain: StateFlow<Float>,
+    onBassChange: (Float) -> Unit,
+    onWidthChange: (Float) -> Unit,
+    onReverbChange: (Int) -> Unit,
+    onLoudnessChange: (Float) -> Unit,
     onPlayPause: () -> Unit,
     onNext: () -> Unit,
     onPrevious: () -> Unit,
@@ -378,6 +391,18 @@ fun DeckOverlay(
                     onTime = onEchoTime,
                     onFeedback = onEchoFeedback,
                     onMix = onEchoMix
+                )
+
+                NativeEffectsModule(
+                    availableFlow = nativeAvailable,
+                    bassFlow = bassStrength,
+                    widthFlow = stereoWidth,
+                    reverbFlow = reverbPreset,
+                    loudnessFlow = loudnessGain,
+                    onBass = onBassChange,
+                    onWidth = onWidthChange,
+                    onReverb = onReverbChange,
+                    onLoudness = onLoudnessChange
                 )
 
                 if (eqEnabled) {
@@ -1151,5 +1176,74 @@ private fun CentredStrip(position: Float, onChange: (Float) -> Unit) {
                     RoundedCornerShape(2.dp)
                 )
         )
+    }
+}
+
+/**
+ * The four effects the platform supplies, drawn only where the phone actually has them.
+ *
+ * **An absent module is absent, not disabled.** Vendor support for these varies, and a greyed
+ * row saying "your phone cannot do this" is a row of screen spent on bad news. If a phone has
+ * none of them the whole block disappears and the rack is Jawon's own effects, which still
+ * work — they run inside the player's pipeline rather than on the audio session.
+ */
+@Composable
+private fun NativeEffectsModule(
+    availableFlow: StateFlow<Set<NativeEffect>>,
+    bassFlow: StateFlow<Float>,
+    widthFlow: StateFlow<Float>,
+    reverbFlow: StateFlow<Int>,
+    loudnessFlow: StateFlow<Float>,
+    onBass: (Float) -> Unit,
+    onWidth: (Float) -> Unit,
+    onReverb: (Int) -> Unit,
+    onLoudness: (Float) -> Unit
+) {
+    val available by availableFlow.collectAsState()
+    if (available.isEmpty()) return
+
+    val bass by bassFlow.collectAsState()
+    val width by widthFlow.collectAsState()
+    val reverb by reverbFlow.collectAsState()
+    val loudness by loudnessFlow.collectAsState()
+
+    Column(modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp)) {
+        Text(
+            "SPACE",
+            style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = 10.sp),
+            modifier = Modifier.padding(bottom = 2.dp)
+        )
+
+        if (NativeEffect.REVERB in available) {
+            // A row of names rather than a slider: the platform offers rooms, not a dial, and
+            // pretending otherwise would put seven discrete values under a continuous control.
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState())
+                    .padding(vertical = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                NativeEffects.REVERB_PRESETS.forEachIndexed { index, name ->
+                    val selected = index == reverb
+                    Text(
+                        text = name,
+                        fontFamily = JetBrainsMonoFamily,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 9.sp,
+                        letterSpacing = 1.1.sp,
+                        color = if (selected) LampAmber else LabelDim,
+                        modifier = Modifier
+                            .border(1.dp, if (selected) LampAmber else CrateEdge)
+                            .clickable { onReverb(index) }
+                            .padding(horizontal = 8.dp, vertical = 5.dp)
+                    )
+                }
+            }
+        }
+
+        if (NativeEffect.BASS in available) RackSlider("BASS", bass, onBass)
+        if (NativeEffect.WIDTH in available) RackSlider("WIDTH", width, onWidth)
+        if (NativeEffect.LOUDNESS in available) RackSlider("LOUD", loudness, onLoudness)
     }
 }
