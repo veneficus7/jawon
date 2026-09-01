@@ -3,6 +3,7 @@ package com.jawon.app.data.playback
 import android.content.ComponentName
 import android.content.Context
 import androidx.media3.common.MediaItem
+import com.jawon.app.playback.SleepTimer
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.Player
 import androidx.media3.session.MediaController
@@ -80,11 +81,48 @@ class PlaybackRepository @Inject constructor(
         val fromPositionMs: Long
     )
 
+    // ---- Sleep timer ---------------------------------------------------------------
+
+    private val _sleepMode = MutableStateFlow<SleepTimer.Mode>(SleepTimer.Mode.Off)
+    val sleepMode: StateFlow<SleepTimer.Mode> = _sleepMode.asStateFlow()
+
+    /** When a countdown fires, in `System.currentTimeMillis`. Null for the other modes. */
+    private val _sleepEndsAt = MutableStateFlow<Long?>(null)
+    val sleepEndsAt: StateFlow<Long?> = _sleepEndsAt.asStateFlow()
+
+    fun setSleepMode(mode: SleepTimer.Mode) {
+        _sleepMode.value = mode
+        _sleepEndsAt.value = when (mode) {
+            is SleepTimer.Mode.After -> SleepTimer.endsAt(mode.minutes, System.currentTimeMillis())
+            else -> null
+        }
+    }
+
+    /**
+     * Stop, and clear the timer.
+     *
+     * Pausing rather than releasing: someone who wakes up and reaches for the phone should
+     * find the record where it stopped, which is the same promise the resume feature makes.
+     */
+    private suspend fun sleepNow() {
+        _sleepMode.value = SleepTimer.Mode.Off
+        _sleepEndsAt.value = null
+        setPlaying(false)
+    }
+
     private val playerListener = object : Player.Listener {
         override fun onEvents(player: Player, events: Player.Events) {
             // Before the state is replaced, so the *previous* index is still readable.
             noteTransition(player)
             updatePlaybackState(player)
+
+            // End of the record, for the sleep mode that waits for one. STATE_ENDED is the
+            // queue running out, and a queue here is exactly one album — see SleepTimer.
+            if (player.playbackState == Player.STATE_ENDED &&
+                _sleepMode.value == SleepTimer.Mode.EndOfAlbum
+            ) {
+                scope.launch { sleepNow() }
+            }
         }
     }
 
@@ -223,6 +261,13 @@ class PlaybackRepository @Inject constructor(
                 // one small write.
                 if (++tick % POSITION_SAVE_EVERY_TICKS == 0) {
                     rememberPosition(player.currentMediaItemIndex, _positionMs.value)
+                }
+
+                // The countdown, checked on the poll that is already running rather than on
+                // a timer of its own. Half a second of overshoot is imperceptible on a
+                // fifteen-minute sleep timer and it costs no second coroutine.
+                if (SleepTimer.hasExpired(_sleepEndsAt.value, System.currentTimeMillis())) {
+                    sleepNow()
                 }
                 delay(500)
             }

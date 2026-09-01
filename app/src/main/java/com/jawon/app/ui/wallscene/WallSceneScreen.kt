@@ -6,6 +6,17 @@ import android.util.Log
 import android.view.MotionEvent
 import androidx.activity.compose.BackHandler
 import android.view.HapticFeedbackConstants
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -680,7 +691,13 @@ fun WallSceneScreen(
         // things that are baked once � the IBL cubemap and the shadow map. `tier` is state
         // and can step down mid-session, driving everything on the Filament View, which is
         // where the per-frame cost actually is.
+        val sleepMode by viewModel.sleepMode.collectAsStateWithLifecycle()
+        val sleepRemainingMs by viewModel.sleepRemainingMs.collectAsStateWithLifecycle()
+        val diagnostics = viewModel.diagnostics
         val initialTier = remember(context) { QualityTier.detect(context) }
+        // Reported so a tester can photograph what the room actually chose � see
+        // RoomDiagnostics for why that is worth a Settings section.
+        remember(initialTier) { diagnostics.onTierDetected(initialTier); initialTier }
         var tier by remember { mutableStateOf(initialTier) }
         val frameWatch = remember { FrameWatch() }
 
@@ -1509,6 +1526,8 @@ fun WallSceneScreen(
                 // than running one, so the `remember` that re-applies the View options fires
                 // between frames rather than in the middle of this one. `FrameWatch` latches
                 // after firing, so this happens at most once per session.
+                if (dt > 0f) diagnostics.onFrame(dt)
+
                 if (dt > 0f && frameWatch.onFrame(dt)) {
                     tier.below?.let { stepped ->
                         Log.i(
@@ -1516,6 +1535,7 @@ fun WallSceneScreen(
                             "Frame times are missing the mark; quality $tier -> $stepped"
                         )
                         tier = stepped
+                        diagnostics.onTierStepped(stepped)
                     }
                 }
 
@@ -2036,6 +2056,20 @@ fun WallSceneScreen(
         // case, and is left alone while browsing so it exits the app normally.
         BackHandler(enabled = selectedAlbumId != null) { closeCase() }
 
+        // Search, only while browsing. Like the crate flip it is a Compose overlay with its
+        // own pointer input, so the scene never sees these events (ENGINEERING.md trap 6), and it
+        // lands on a record through the same `animateTo` the flip and the magnet use.
+        if (selectedAlbumId == null) {
+            WallSearchBar(
+                layout = layout,
+                onGoTo = { target ->
+                    scope.launch { panX.animateTo(target.x, animationSpec = FLIP_SPRING) }
+                    scope.launch { panY.animateTo(target.y, animationSpec = FLIP_SPRING) }
+                },
+                modifier = Modifier.align(Alignment.TopEnd)
+            )
+        }
+
         // The crate flip, only while browsing and only on a library big enough to need it.
         //
         // `animateTo` on the same `Animatable`s the magnet uses, which is what keeps this safe:
@@ -2116,6 +2150,9 @@ fun WallSceneScreen(
             DeckOverlay(
                 title = openCase?.title.orEmpty(),
                 artist = openCase?.artist.orEmpty(),
+                sleepMode = sleepMode,
+                sleepRemainingMs = sleepRemainingMs,
+                onSleepModeChange = viewModel::onSleepModeChange,
                 deck = deck,
                 positionFlow = viewModel.positionMs,
                 onPlayPause = viewModel::onPlayPause,
@@ -2153,6 +2190,154 @@ fun WallSceneScreen(
 }
 
 /** One room-chrome action: a real 48dp target with a quiet mono label under it. */
+/**
+ * Finding a record by typing it.
+ *
+ * Collapsed to a single icon until it is wanted, because the room is the point and a search
+ * field sitting permanently over it would be the first piece of ordinary app chrome in a
+ * screen that has worked hard not to have any.
+ *
+ * Results are a short list rather than a filtered wall. Filtering would mean rebuilding the
+ * layout — every case re-binding, the shelf packing up around the gaps — for something the
+ * user is about to leave. Panning to the record instead keeps the wall exactly as it was, and
+ * arriving at a record *on its shelf, in its place* is the answer the room should give.
+ */
+@Composable
+private fun WallSearchBar(
+    layout: WallLayout,
+    onGoTo: (CaseLayout) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    if (layout.cases.size < SEARCH_MIN_ALBUMS) return
+
+    var open by remember { mutableStateOf(false) }
+    var query by remember { mutableStateOf("") }
+    val focus = remember { FocusRequester() }
+    val keyboard = LocalSoftwareKeyboardController.current
+
+    fun close() {
+        open = false
+        query = ""
+        keyboard?.hide()
+    }
+
+    Column(
+        modifier = modifier.padding(top = 8.dp, end = 6.dp),
+        horizontalAlignment = Alignment.End
+    ) {
+        if (!open) {
+            IconButton(onClick = { open = true }) {
+                Icon(
+                    Icons.Default.Search,
+                    contentDescription = "Find a record",
+                    tint = LabelDim
+                )
+            }
+            return@Column
+        }
+
+        // Opened: the field, and whatever it matches.
+        LaunchedEffect(Unit) { focus.requestFocus() }
+
+        val matches = remember(layout, query) {
+            if (query.isBlank()) emptyList() else WallSearch.rank(layout.cases, query).take(6)
+        }
+
+        Column(
+            modifier = Modifier
+                .width(292.dp)
+                .background(ComposeColor(0xF21A1511), RoundedCornerShape(4.dp))
+                .padding(6.dp)
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    Icons.Default.Search,
+                    contentDescription = null,
+                    tint = LampAmber,
+                    modifier = Modifier.padding(start = 8.dp).size(17.dp)
+                )
+                BasicTextField(
+                    value = query,
+                    onValueChange = { query = it },
+                    singleLine = true,
+                    textStyle = TextStyle(
+                        fontFamily = JetBrainsMonoFamily,
+                        fontSize = 13.sp,
+                        color = LabelCream
+                    ),
+                    cursorBrush = SolidColor(LampAmber),
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                    keyboardActions = KeyboardActions(
+                        onSearch = {
+                            WallSearch.best(layout.cases, query)?.let { onGoTo(it); close() }
+                        }
+                    ),
+                    decorationBox = { inner ->
+                        if (query.isEmpty()) {
+                            Text(
+                                "ALBUM OR ARTIST",
+                                fontFamily = JetBrainsMonoFamily,
+                                fontSize = 11.sp,
+                                letterSpacing = 1.4.sp,
+                                color = LabelDim.copy(alpha = 0.7f)
+                            )
+                        }
+                        inner()
+                    },
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(horizontal = 10.dp, vertical = 12.dp)
+                        .focusRequester(focus)
+                )
+                IconButton(onClick = { close() }) {
+                    Icon(Icons.Default.Close, contentDescription = "Close search", tint = LabelDim)
+                }
+            }
+
+            if (query.isNotBlank() && matches.isEmpty()) {
+                Text(
+                    text = "NOTHING ON THE SHELVES MATCHES",
+                    fontFamily = JetBrainsMonoFamily,
+                    fontSize = 10.sp,
+                    letterSpacing = 1.2.sp,
+                    color = LabelDim,
+                    modifier = Modifier.padding(start = 12.dp, top = 4.dp, bottom = 10.dp)
+                )
+            }
+
+            matches.forEach { case ->
+                Column(
+                    Modifier
+                        .fillMaxWidth()
+                        .clickable { onGoTo(case); close() }
+                        .padding(horizontal = 12.dp, vertical = 9.dp)
+                ) {
+                    Text(
+                        text = case.title,
+                        fontFamily = JetBrainsMonoFamily,
+                        fontSize = 12.sp,
+                        color = LabelCream,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Text(
+                        text = case.artist.uppercase(),
+                        fontFamily = JetBrainsMonoFamily,
+                        fontSize = 9.sp,
+                        letterSpacing = 1.sp,
+                        color = LabelDim,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+        }
+    }
+}
+
+/** Below this a glance finds a record faster than typing does. */
+private const val SEARCH_MIN_ALBUMS = 12
+
 /**
  * The crate flip — a thumb rail down the right edge that runs the wall past you.
  *

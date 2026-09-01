@@ -19,10 +19,13 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Bedtime
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -51,7 +54,10 @@ import com.jawon.app.ui.common.EqualizerPanel
 import com.jawon.app.ui.common.formatDuration
 import com.jawon.app.ui.common.qualityReadoutOutput
 import com.jawon.app.ui.common.qualityReadoutSource
+import com.jawon.app.playback.SleepTimer
 import com.jawon.app.ui.theme.CrateEdge
+import com.jawon.app.ui.theme.CrateRaised
+import com.jawon.app.ui.theme.LabelCream
 import com.jawon.app.ui.theme.JawonTextStyle
 import com.jawon.app.ui.theme.LabelDim
 import com.jawon.app.ui.theme.JetBrainsMonoFamily
@@ -79,6 +85,10 @@ fun DeckOverlay(
     artist: String,
     deck: DeckState,
     positionFlow: StateFlow<Long>,
+    /** What the sleep timer is set to, and how long is left on a countdown. */
+    sleepMode: SleepTimer.Mode,
+    sleepRemainingMs: Long?,
+    onSleepModeChange: (SleepTimer.Mode) -> Unit,
     onPlayPause: () -> Unit,
     onNext: () -> Unit,
     onPrevious: () -> Unit,
@@ -156,6 +166,18 @@ fun DeckOverlay(
             if (eqAvailable) {
                 DeckTab("SOUND", selected = showEqualiser) { onShowEqualiser(true) }
             }
+
+            Box(Modifier.weight(1f))
+
+            // The sleep timer lives on the deck, not in Settings, for the same reason the
+            // equaliser was moved here: it is set while a record is playing and you are
+            // already lying down, and making someone close the case and cross two screens to
+            // reach it is how a feature goes unused.
+            SleepChip(
+                mode = sleepMode,
+                remainingMs = sleepRemainingMs,
+                onPick = onSleepModeChange
+            )
         }
 
         // The tracklist takes the slack, so the controls below it stay pinned to the bottom
@@ -430,4 +452,87 @@ private fun DeckTab(label: String, selected: Boolean, onClick: () -> Unit) {
                 .background(if (selected) LampAmber else ComposeColor.Transparent)
         )
     }
+}
+
+/**
+ * The sleep timer, as one chip on the deck's tab row.
+ *
+ * Collapsed to its current state until tapped, because it is off almost always and a row of
+ * five countdown lengths permanently across the deck would be five controls competing with
+ * the record for attention.
+ *
+ * "End of record" sits at the top of the menu rather than among the minutes: it is the option
+ * this app is actually recommending, and burying it under 15 / 30 / 45 would make it look
+ * like an afterthought instead of the point.
+ */
+@Composable
+private fun SleepChip(
+    mode: SleepTimer.Mode,
+    remainingMs: Long?,
+    onPick: (SleepTimer.Mode) -> Unit
+) {
+    var open by remember { mutableStateOf(false) }
+    val on = mode != SleepTimer.Mode.Off
+
+    Box {
+        Row(
+            modifier = Modifier
+                .clickable { open = true }
+                .padding(vertical = 2.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                Icons.Default.Bedtime,
+                contentDescription = "Sleep timer",
+                tint = if (on) LampAmber else LabelDim,
+                modifier = Modifier.size(15.dp)
+            )
+            if (on) {
+                Text(
+                    text = SleepTimer.label(mode, remainingMs),
+                    fontFamily = JetBrainsMonoFamily,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 9.sp,
+                    letterSpacing = 1.2.sp,
+                    color = LampAmber,
+                    modifier = Modifier.padding(start = 6.dp)
+                )
+            }
+        }
+
+        DropdownMenu(
+            expanded = open,
+            onDismissRequest = { open = false },
+            modifier = Modifier.background(CrateRaised)
+        ) {
+            SleepOption("END OF RECORD", mode == SleepTimer.Mode.EndOfAlbum) {
+                onPick(SleepTimer.Mode.EndOfAlbum); open = false
+            }
+            SleepTimer.OFFERED_MINUTES.forEach { minutes ->
+                val option = SleepTimer.Mode.After(minutes)
+                SleepOption("$minutes MINUTES", mode == option) {
+                    onPick(option); open = false
+                }
+            }
+            SleepOption("OFF", mode == SleepTimer.Mode.Off) {
+                onPick(SleepTimer.Mode.Off); open = false
+            }
+        }
+    }
+}
+
+@Composable
+private fun SleepOption(label: String, selected: Boolean, onClick: () -> Unit) {
+    DropdownMenuItem(
+        text = {
+            Text(
+                text = label,
+                fontFamily = JetBrainsMonoFamily,
+                fontSize = 11.sp,
+                letterSpacing = 1.3.sp,
+                color = if (selected) LampAmber else LabelCream
+            )
+        },
+        onClick = onClick
+    )
 }

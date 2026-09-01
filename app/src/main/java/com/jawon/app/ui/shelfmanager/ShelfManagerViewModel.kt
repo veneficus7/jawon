@@ -6,10 +6,13 @@ import com.jawon.app.data.local.AlbumDao
 import com.jawon.app.data.local.Shelf
 import com.jawon.app.data.local.ShelfDao
 import com.jawon.app.data.local.ShelfWithAlbums
+import com.jawon.app.data.prefs.AppPreferences
+import com.jawon.app.ui.wallscene.WallSort
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.util.UUID
@@ -18,8 +21,21 @@ import javax.inject.Inject
 @HiltViewModel
 class ShelfManagerViewModel @Inject constructor(
     private val shelfDao: ShelfDao,
-    private val albumDao: AlbumDao
+    private val albumDao: AlbumDao,
+    private val preferences: AppPreferences
 ) : ViewModel() {
+
+    /**
+     * How records are filed along a shelf.
+     *
+     * Lives here as well as in the wall's own ViewModel because both read the same
+     * preference — this screen sets it, the room reacts to it, and neither owns a copy.
+     */
+    val sort: StateFlow<WallSort> = preferences.wallSort
+        .map { WallSort.fromName(it) }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), WallSort.SHELF)
+
+    fun onSortChanged(value: WallSort) = preferences.setWallSort(value.name)
 
     val shelves: StateFlow<List<ShelfWithAlbums>> =
         combine(shelfDao.getAll(), albumDao.getAll()) { shelves, albums ->

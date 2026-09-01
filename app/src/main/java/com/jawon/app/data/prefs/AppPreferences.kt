@@ -116,6 +116,15 @@ class AppPreferences @Inject constructor(@param:ApplicationContext context: Cont
      * and a collection that has them is a collection whose owner already decided they wanted
      * it — see the Mode docs for why album and not track.
      */
+    /** How records are filed along a shelf, as a [com.jawon.app.ui.wallscene.WallSort] name. */
+    private val _wallSort = MutableStateFlow(prefs.getString(KEY_WALL_SORT, null) ?: "SHELF")
+    val wallSort: StateFlow<String> = _wallSort.asStateFlow()
+
+    fun setWallSort(name: String) {
+        prefs.edit { putString(KEY_WALL_SORT, name) }
+        _wallSort.value = name
+    }
+
     private val _replayGainMode =
         MutableStateFlow(prefs.getString(KEY_REPLAY_GAIN, null) ?: "ALBUM")
     val replayGainMode: StateFlow<String> = _replayGainMode.asStateFlow()
@@ -155,5 +164,6 @@ class AppPreferences @Inject constructor(@param:ApplicationContext context: Cont
         const val KEY_EQ_ENABLED = "equalizer_enabled"
         const val KEY_EQ_BANDS = "equalizer_bands"
         const val KEY_REPLAY_GAIN = "replay_gain_mode"
+        const val KEY_WALL_SORT = "wall_sort"
     }
 }

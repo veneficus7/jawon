@@ -25,7 +25,8 @@ class SettingsViewModel @Inject constructor(
     private val preferences: AppPreferences,
     private val equalizer: EqualizerController,
     private val updateChecker: UpdateChecker,
-    private val backup: LibraryBackup
+    private val backup: LibraryBackup,
+    private val diagnostics: com.jawon.app.ui.wallscene.RoomDiagnostics
 ) : ViewModel() {
 
     val fetchCoverArt: StateFlow<Boolean> = preferences.fetchCoverArt
@@ -137,6 +138,23 @@ class SettingsViewModel @Inject constructor(
         )
         _backupBusy.value = false
     }
+
+    // ---- Diagnostics ---------------------------------------------------------------
+
+    /**
+     * Read on demand rather than observed.
+     *
+     * The frame loop writes plain fields at up to 120Hz; turning that into a flow would
+     * recompose this screen every frame for a readout nobody is watching change.
+     */
+    fun diagnosticsSnapshot() = diagnostics.snapshot()
+
+    fun onResetDiagnostics() = diagnostics.reset()
+
+    /** What the phone says it is, so a screenshot identifies the hardware it came from. */
+    fun deviceLine(): String =
+        "${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL} · " +
+            "ANDROID ${android.os.Build.VERSION.RELEASE} (API ${android.os.Build.VERSION.SDK_INT})"
 
     /** "1 shelf", "2 shelves". A backup of one shelf reporting "1 shelves" reads as a stub. */
     private fun plural(count: Int, one: String, many: String = one + "s") =

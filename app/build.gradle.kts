@@ -29,6 +29,12 @@ plugins {
 }
 
 android {
+    testOptions {
+        unitTests {
+            // Robolectric needs the merged manifest and resources to stand up a Context.
+            isIncludeAndroidResources = true
+        }
+    }
     namespace = "com.jawon.app"
     compileSdk = 37
 
@@ -154,6 +160,15 @@ dependencies {
     ksp(libs.androidx.room.compiler)
 
     testImplementation(libs.junit)
+
+    // Robolectric, so the data layer can be tested on the JVM in seconds rather than needing
+    // a device. The backup writer is the reason: it is what stands between someone and losing
+    // their collection, and a silent regression in it would only be found by a person who had
+    // already lost everything.
+    testImplementation(libs.robolectric)
+    testImplementation(libs.androidx.test.core)
+    testImplementation(libs.androidx.room.testing)
+    testImplementation(libs.kotlinx.coroutines.test)
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
     androidTestImplementation(libs.androidx.espresso.core)

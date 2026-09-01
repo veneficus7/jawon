@@ -281,7 +281,11 @@ data class WallLayout(
              * stays a pure function of its arguments — an album absent from the map has
              * never been played and gets a clean case.
              */
-            wearByAlbum: Map<String, Float> = emptyMap()
+            wearByAlbum: Map<String, Float> = emptyMap(),
+            /** How the records are filed along each shelf. */
+            sort: WallSort = WallSort.SHELF,
+            /** Total listening per album, for [WallSort.PLAYED]. */
+            listenedMs: Map<String, Long> = emptyMap()
         ): WallLayout {
             // Loaded, and there is genuinely nothing — not the placeholder. One lit, labelled
             // board, and no cases.
@@ -336,7 +340,10 @@ data class WallLayout(
             // than letting the neighbours jump.
             val cases = shelves.flatMapIndexed { row, shelf ->
                 val count = shelf.albums.size
-                shelf.albums.mapIndexed { col, album ->
+                // Ordered here rather than in the query: the DAO returns slotIndex order, and
+                // a sort is a view over the shelf rather than a change to how it is filed �
+                // switching back to AS FILED has to give the arrangement the user made.
+                WallSort.order(shelf.albums, sort, listenedMs).mapIndexed { col, album ->
                     CaseLayout(
                         albumId = album.id,
                         title = album.title,

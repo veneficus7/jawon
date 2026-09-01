@@ -14,6 +14,7 @@ import com.jawon.app.data.playback.EqBand
 import com.jawon.app.data.playback.EqualizerController
 import com.jawon.app.data.playback.PlaybackRepository
 import com.jawon.app.data.prefs.AppPreferences
+import com.jawon.app.playback.SleepTimer
 import com.jawon.app.ui.common.qualityReadoutSource
 import com.jawon.app.ui.theme.RoomScheme
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -26,7 +27,9 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -58,8 +61,13 @@ class WallSceneViewModel @Inject constructor(
     private val playbackRepository: PlaybackRepository,
     private val coverStore: CoverImageStore,
     private val equalizer: EqualizerController,
-    preferences: AppPreferences,
-    private val audioRouteReader: AudioRouteReader
+    private val preferences: AppPreferences,
+    private val audioRouteReader: AudioRouteReader,
+    /**
+     * Written by the frame loop, read by Settings. Exposed rather than injected into the
+     * composable directly so the scene keeps talking to one object.
+     */
+    val diagnostics: RoomDiagnostics
 ) : ViewModel() {
 
 
@@ -82,18 +90,55 @@ class WallSceneViewModel @Inject constructor(
         combine(
             shelfDao.getAll(),
             albumDao.getAll(),
-            playEventDao.albumTotals()
-        ) { shelves, albums, totals ->
+            playEventDao.albumTotals(),
+            preferences.wallSort
+        ) { shelves, albums, totals, sortName ->
             val albumsByShelf = albums.groupBy { it.shelfId }
+            // One read of the totals, two uses: the quantised wear the cases are drawn with,
+            // and the raw milliseconds MOST PLAYED orders by. Deriving both here keeps the
+            // two from ever disagreeing about which record has been played more.
             WallLayout.from(
                 shelves.map { shelf -> ShelfWithAlbums(shelf, albumsByShelf[shelf.id].orEmpty()) },
-                Patina.byAlbum(totals)
+                Patina.byAlbum(totals),
+                WallSort.fromName(sortName),
+                totals.associate { it.albumId to it.totalMs }
             )
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), WallLayout())
+
+    /** How the wall is filed, for the chip on the shelf screen and the crate flip's copy. */
+    val wallSort: StateFlow<WallSort> = preferences.wallSort
+        .map { WallSort.fromName(it) }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), WallSort.SHELF)
+
+    fun onWallSortChanged(sort: WallSort) = preferences.setWallSort(sort.name)
 
     /** The album whose case should sit proud of its slot (PLAN.md §9 #3). */
     private val _nowPlayingAlbumId = MutableStateFlow<String?>(null)
     val nowPlayingAlbumId: StateFlow<String?> = _nowPlayingAlbumId.asStateFlow()
+
+    // ---- Sleep timer -----------------------------------------------------------------
+
+    val sleepMode: StateFlow<SleepTimer.Mode> = playbackRepository.sleepMode
+
+    /**
+     * Milliseconds left on a countdown, ticked once a second.
+     *
+     * Its own slow flow rather than the 2Hz position poll: the chip shows whole minutes, so
+     * anything faster recomposes the deck for a number that has not changed.
+     */
+    val sleepRemainingMs: StateFlow<Long?> = playbackRepository.sleepEndsAt
+        .flatMapLatest { endsAt ->
+            if (endsAt == null) flowOf(null)
+            else flow<Long?> {
+                while (true) {
+                    emit(SleepTimer.remainingMs(endsAt, System.currentTimeMillis()))
+                    delay(1_000)
+                }
+            }
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
+    fun onSleepModeChange(mode: SleepTimer.Mode) = playbackRepository.setSleepMode(mode)
 
     /** Read only by the progress bar, so the 2Hz tick can't recompose the tracklist. */
     val positionMs: StateFlow<Long> = playbackRepository.positionMs

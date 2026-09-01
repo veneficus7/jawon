@@ -326,6 +326,112 @@ private fun SchemePicker(current: RoomScheme, onPick: (RoomScheme) -> Unit) {
  * On a device with no working equaliser it says so plainly instead of showing dead controls.
  */
 /**
+ * What the room is actually managing on this hardware.
+ *
+ * **This exists to be photographed.** Three of the first five testers said the room was "not
+ * that smooth", every performance figure in the project comes from one Galaxy S25 Ultra, and
+ * the quality tiers written in response have never been seen doing anything. Buying those
+ * phones costs money; asking the people already holding them for a screenshot costs this.
+ *
+ * So it is written for someone who did not build the app: the tier is named in words, the
+ * frame time is given as fps as well as milliseconds, and the line that actually matters —
+ * whether the room stepped itself down — says so in a sentence rather than by two values
+ * differing.
+ */
+@Composable
+private fun DiagnosticsSection(
+    device: String,
+    snapshot: com.jawon.app.ui.wallscene.RoomDiagnostics.Snapshot,
+    onReset: () -> Unit
+) {
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Text(
+            text = device.uppercase(),
+            style = JawonTextStyle.mono.copy(color = LabelCream, fontSize = 10.sp),
+            lineHeight = 15.sp
+        )
+
+        if (!snapshot.hasData) {
+            Text(
+                text = "Browse the room for a few seconds, then come back — there is not " +
+                    "enough here to measure yet.",
+                style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = 10.sp),
+                lineHeight = 16.sp
+            )
+            return@Column
+        }
+
+        DiagnosticRow("QUALITY", snapshot.currentTier?.name ?: "—")
+        DiagnosticRow("CHOSEN AT START", snapshot.detectedTier?.name ?: "—")
+        DiagnosticRow("AVERAGE", "${snapshot.averageFps} FPS  ·  %.1f MS".format(snapshot.averageMs))
+        DiagnosticRow("WORST FRAME", "%.1f MS".format(snapshot.worstMs))
+        DiagnosticRow("SLOW FRAMES", "%.1f%%".format(snapshot.slowPercent))
+        DiagnosticRow("FRAMES SEEN", snapshot.frames.toString())
+
+        Text(
+            text = if (snapshot.stepDowns > 0) {
+                "Jawon lowered its own quality ${snapshot.stepDowns} " +
+                    "time${if (snapshot.stepDowns == 1) "" else "s"} because frames were " +
+                    "arriving late. That is the room protecting itself, and it is worth " +
+                    "knowing about."
+            } else {
+                "The room has held the quality it started at."
+            },
+            style = JawonTextStyle.mono.copy(
+                color = if (snapshot.stepDowns > 0) LampAmber else LabelDim,
+                fontSize = 10.sp
+            ),
+            lineHeight = 16.sp,
+            modifier = Modifier.padding(top = 4.dp)
+        )
+
+        Box(
+            modifier = Modifier
+                .padding(top = 6.dp)
+                .border(1.dp, CrateEdge)
+                .clickable(onClick = onReset)
+                .padding(horizontal = 16.dp, vertical = 10.dp)
+        ) {
+            Text(
+                text = "MEASURE AGAIN",
+                fontFamily = JetBrainsMonoFamily,
+                fontWeight = FontWeight.Bold,
+                fontSize = 10.sp,
+                letterSpacing = 1.5.sp,
+                color = LabelDim
+            )
+        }
+    }
+}
+
+@Composable
+private fun DiagnosticRow(label: String, value: String) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Text(
+            text = label,
+            fontFamily = JetBrainsMonoFamily,
+            fontSize = 10.sp,
+            letterSpacing = 1.4.sp,
+            color = LabelDim
+        )
+        Text(
+            text = value,
+            fontFamily = JetBrainsMonoFamily,
+            fontWeight = FontWeight.Bold,
+            fontSize = 10.sp,
+            letterSpacing = 1.sp,
+            color = LabelCream
+        )
+    }
+}
+
+/**
  * Which ReplayGain tags to level by.
  *
  * Three states on one row rather than a switch plus a sub-option, because the middle choice
@@ -836,6 +942,14 @@ fun SettingsScreen(
                 message = backupMessage,
                 onWrite = { writeBackupLauncher.launch(viewModel.suggestedBackupName()) },
                 onRead = { readBackupLauncher.launch(arrayOf("application/zip", "*/*")) }
+            )
+
+            SectionHeader("HOW IT IS RUNNING")
+
+            DiagnosticsSection(
+                device = viewModel.deviceLine(),
+                snapshot = viewModel.diagnosticsSnapshot(),
+                onReset = viewModel::onResetDiagnostics
             )
 
             Text(

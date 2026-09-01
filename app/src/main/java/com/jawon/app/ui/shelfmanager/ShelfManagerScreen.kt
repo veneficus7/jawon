@@ -36,6 +36,8 @@ import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LocalTextStyle
@@ -69,6 +71,7 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.jawon.app.data.local.Album
 import com.jawon.app.data.local.ShelfWithAlbums
+import com.jawon.app.ui.wallscene.WallSort
 import com.jawon.app.ui.theme.ArchivoFamily
 import com.jawon.app.ui.theme.CrateBlack
 import com.jawon.app.ui.theme.CrateEdge
@@ -101,6 +104,7 @@ fun ShelfManagerScreen(
     viewModel: ShelfManagerViewModel = hiltViewModel()
 ) {
     val shelves by viewModel.shelves.collectAsStateWithLifecycle()
+    val sort by viewModel.sort.collectAsStateWithLifecycle()
     var openShelfId by remember { mutableStateOf<String?>(null) }
     var creating by remember { mutableStateOf(false) }
 
@@ -126,6 +130,10 @@ fun ShelfManagerScreen(
             ),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
+            item {
+                FilingRow(current = sort, onPick = viewModel::onSortChanged)
+            }
+
             item {
                 AnimatedVisibility(
                     visible = creating,
@@ -233,6 +241,87 @@ private fun ScreenHeader(
             .height(1.dp)
             .background(CrateEdge)
     )
+}
+
+/**
+ * How records are filed along every shelf.
+ *
+ * At the top of the list rather than in Settings: this is a property of the collection, not a
+ * preference about the app, and it belongs next to the shelves it rearranges.
+ *
+ * The note underneath earns its space. Sorting alphabetically is what turns the crate flip's
+ * rail into an actual A–Z index rather than a labelled position scrubber, and that connection
+ * is not guessable from a list of six words.
+ */
+@Composable
+private fun FilingRow(current: WallSort, onPick: (WallSort) -> Unit) {
+    var open by remember { mutableStateOf(false) }
+
+    Column(Modifier.fillMaxWidth().padding(bottom = 6.dp)) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .border(1.dp, CrateEdge)
+                .clickable { open = true }
+                .padding(horizontal = 16.dp, vertical = 13.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "FILED BY",
+                fontFamily = JetBrainsMonoFamily,
+                fontSize = 10.sp,
+                letterSpacing = 1.6.sp,
+                color = LabelDim,
+                modifier = Modifier.weight(1f)
+            )
+            Text(
+                text = current.label,
+                fontFamily = JetBrainsMonoFamily,
+                fontWeight = FontWeight.Bold,
+                fontSize = 10.sp,
+                letterSpacing = 1.6.sp,
+                color = LampAmber
+            )
+            Icon(
+                Icons.Default.KeyboardArrowDown,
+                contentDescription = "Change how records are filed",
+                tint = LabelDim,
+                modifier = Modifier.padding(start = 8.dp).size(18.dp)
+            )
+        }
+
+        Text(
+            text = if (current.isAlphabetical) {
+                "The letters on the wall's thumb rail are a real A–Z index in this order."
+            } else {
+                "File by album or artist and the wall's thumb rail becomes an A–Z index."
+            },
+            style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = 9.5.sp),
+            lineHeight = 15.sp,
+            modifier = Modifier.padding(top = 7.dp, start = 2.dp)
+        )
+
+        DropdownMenu(
+            expanded = open,
+            onDismissRequest = { open = false },
+            modifier = Modifier.background(CrateRaised)
+        ) {
+            WallSort.entries.forEach { option ->
+                DropdownMenuItem(
+                    text = {
+                        Text(
+                            text = option.label,
+                            fontFamily = JetBrainsMonoFamily,
+                            fontSize = 11.sp,
+                            letterSpacing = 1.4.sp,
+                            color = if (option == current) LampAmber else LabelCream
+                        )
+                    },
+                    onClick = { onPick(option); open = false }
+                )
+            }
+        }
+    }
 }
 
 /** One shelf, drawn as its board. Collapsed it is a label and a count; open it, and it edits. */
