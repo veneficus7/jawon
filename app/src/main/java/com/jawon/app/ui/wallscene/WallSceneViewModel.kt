@@ -25,6 +25,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flow
@@ -167,22 +168,37 @@ class WallSceneViewModel @Inject constructor(
     val speedPosition: StateFlow<Float> = rack.speed
     val pitchPosition: StateFlow<Float> = rack.pitch
 
-    fun onSpeedChange(position: Float) {
-        rack.setSpeed(position)
-        pushSpeedAndPitch()
-    }
+    fun onSpeedChange(position: Float) = rack.setSpeed(position)
 
-    fun onPitchChange(position: Float) {
-        rack.setPitch(position)
-        pushSpeedAndPitch()
-    }
+    fun onPitchChange(position: Float) = rack.setPitch(position)
 
-    private fun pushSpeedAndPitch() {
+    /**
+     * Carries the two knobs to the player, at a rate the player can survive.
+     *
+     * **This used to fire per pointer event, and that was a real fault.** A drag emits sixty to
+     * a hundred and twenty moves a second, each one previously launching a coroutine that made
+     * an IPC to the session — and `setPlaybackParameters` is not a cheap setter. It makes
+     * ExoPlayer reconfigure its audio pipeline: Sonic is rebuilt and every `AudioProcessor` in
+     * the chain, of which Jawon now has three, is flushed. Several hundred of those in the
+     * couple of seconds it takes to drag a slider is enough to stall playback and leave the
+     * transport unresponsive, which is what the owner hit while testing speed, pitch and the
+     * filter together.
+     *
+     * `conflate` is the fix and the right shape besides: while a call is in flight the
+     * intermediate positions are dropped, the newest one is kept, and the value the finger
+     * finally rested on is always the one that lands. No debounce, so it stays responsive —
+     * this throttles to what the player can accept rather than to a timer.
+     */
+    init {
         viewModelScope.launch {
-            playbackRepository.setSpeedAndPitch(
-                com.jawon.app.playback.Varispeed.speedFor(rack.speed.value),
-                com.jawon.app.playback.Varispeed.pitchFor(rack.pitch.value)
-            )
+            combine(rack.speed, rack.pitch) { speed, pitch -> speed to pitch }
+                .conflate()
+                .collect { (speed, pitch) ->
+                    playbackRepository.setSpeedAndPitch(
+                        com.jawon.app.playback.Varispeed.speedFor(speed),
+                        com.jawon.app.playback.Varispeed.pitchFor(pitch)
+                    )
+                }
         }
     }
 

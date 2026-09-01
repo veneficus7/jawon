@@ -353,7 +353,23 @@ class PlaybackRepository @Inject constructor(
 
     suspend fun seekTo(positionMs: Long) = ensureController().seekTo(positionMs)
 
-    suspend fun seekToTrack(index: Int) = ensureController().seekTo(index, 0L)
+    /**
+     * Choose a track from the list.
+     *
+     * **The `play()` is the whole point, and its absence was a real bug.** Seeking alone leaves
+     * `playWhenReady` exactly as it was, so tapping a track while paused moved the playhead in
+     * silence and looked, from the outside, like the tracklist had stopped working. That is
+     * precisely what a record ending leaves you in: playback stops, and every tap after it
+     * seeks and does nothing audible.
+     *
+     * Choosing a track is a request to *hear* it. No player in the world makes you tap the
+     * track and then press play.
+     */
+    suspend fun seekToTrack(index: Int) {
+        val controller = ensureController()
+        controller.seekTo(index, 0L)
+        controller.play()
+    }
 
     /**
      * Seek to a position within a specific queue item — what the disc scratch needs, since
