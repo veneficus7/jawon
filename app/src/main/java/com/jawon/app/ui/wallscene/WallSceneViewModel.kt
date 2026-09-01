@@ -159,6 +159,11 @@ class WallSceneViewModel @Inject constructor(
 
     fun onFilterChange(position: Float) = rack.setFilter(position)
 
+    /** Saturation, 0 clean … 1 broken. See [com.jawon.app.playback.Drive]. */
+    val drivePosition: StateFlow<Float> = rack.drive
+
+    fun onDriveChange(position: Float) = rack.setDrive(position)
+
     /** The echo's three knobs. See [com.jawon.app.playback.Echo]. */
     val echoTime: StateFlow<Float> = rack.echoTime
     val echoFeedback: StateFlow<Float> = rack.echoFeedback

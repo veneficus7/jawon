@@ -81,9 +81,16 @@ class PlaybackService : MediaSessionService() {
             ) = DefaultAudioSink.Builder(context)
                 .setEnableFloatOutput(enableFloatOutput)
                 .setEnableAudioTrackPlaybackParams(enableAudioTrackPlaybackParams)
-                // Filter first, so the echo's repeats inherit whatever the filter was doing when
-                // they were made — see EchoAudioProcessor.
-                .setAudioProcessors(arrayOf(FilterAudioProcessor(rack), EchoAudioProcessor(rack)))
+                // Filter, then drive, then echo. Filter first means the drive is fed whatever the
+                // filter left, so the two interact as they do on a real chain; echo last means the
+                // repeats are echoes of the *driven* signal rather than clean copies underneath it.
+                .setAudioProcessors(
+                    arrayOf(
+                        FilterAudioProcessor(rack),
+                        DriveAudioProcessor(rack),
+                        EchoAudioProcessor(rack)
+                    )
+                )
                 .build()
         }
 

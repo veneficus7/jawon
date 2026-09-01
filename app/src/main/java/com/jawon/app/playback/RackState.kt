@@ -38,6 +38,23 @@ class RackState @Inject constructor() {
         _filter.value = clamped
     }
 
+    // ---- the drive. See [Drive] -------------------------------------------------------
+
+    private val _drive = MutableStateFlow(0f)
+
+    /** Saturation, 0 clean … 1 broken. Rests at zero: a clean player is the honest default. */
+    val drive: StateFlow<Float> = _drive.asStateFlow()
+
+    @Volatile
+    var drivePosition: Float = 0f
+        private set
+
+    fun setDrive(position: Float) {
+        val clamped = position.coerceIn(0f, 1f)
+        drivePosition = clamped
+        _drive.value = clamped
+    }
+
     // ---- the echo. See [Echo] ---------------------------------------------------------
     //
     // Three knobs, each 0..1, because that is what a delay you *play* needs: how long the

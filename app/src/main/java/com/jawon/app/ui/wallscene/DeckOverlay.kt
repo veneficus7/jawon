@@ -65,6 +65,7 @@ import com.jawon.app.ui.common.formatDuration
 import com.jawon.app.ui.common.qualityReadoutOutput
 import com.jawon.app.ui.common.qualityReadoutSource
 import com.jawon.app.playback.DjFilter
+import com.jawon.app.playback.Drive
 import com.jawon.app.playback.Echo
 import com.jawon.app.playback.SleepTimer
 import com.jawon.app.ui.theme.CrateEdge
@@ -80,7 +81,7 @@ import kotlin.math.roundToInt
 import androidx.compose.ui.graphics.Color as ComposeColor
 
 /**
- * The deck, in the room: what PLAN.md §4 asks of The Deck minus the disc itself, which is
+ * The deck, in the room: what PLAN.md Â§4 asks of The Deck minus the disc itself, which is
  * already there in 3D behind this.
  *
  * Sits over a scrim rather than a solid sheet so the room still reads through it, matching
@@ -103,11 +104,14 @@ fun DeckOverlay(
     sleepMode: SleepTimer.Mode,
     sleepRemainingMs: Long?,
     onSleepModeChange: (SleepTimer.Mode) -> Unit,
-    /** The crossfader, 0 shut and 1 open — the other hand. See [com.jawon.app.playback.Crossfader]. */
+    /** The crossfader, 0 shut and 1 open â the other hand. See [com.jawon.app.playback.Crossfader]. */
     onFaderChange: (Float) -> Unit,
-    /** The filter knob, −1 low-pass … 0 off … +1 high-pass. See [com.jawon.app.playback.DjFilter]. */
+    /** The filter knob, â1 low-pass â¦ 0 off â¦ +1 high-pass. See [com.jawon.app.playback.DjFilter]. */
     filterPosition: StateFlow<Float>,
     onFilterChange: (Float) -> Unit,
+    /** Saturation, 0 clean … 1 broken. See [com.jawon.app.playback.Drive]. */
+    drivePosition: StateFlow<Float>,
+    onDriveChange: (Float) -> Unit,
     /** The echo. Mix rests at zero: an effect you throw in starts out of the way. */
     echoTime: StateFlow<Float>,
     echoFeedback: StateFlow<Float>,
@@ -154,7 +158,7 @@ fun DeckOverlay(
     ) {
         // Dropped while the equaliser is up. The panel has to grow to fit five band sliders,
         // and a display-size title is both the largest thing here and the least useful when
-        // what you are doing is listening — the artist and the format readout stay, because
+        // what you are doing is listening â the artist and the format readout stay, because
         // those are what you check against while adjusting.
         if (!showEqualiser) {
             Text(
@@ -166,7 +170,7 @@ fun DeckOverlay(
             )
         }
         // Whoever is actually singing, which on a compilation is not who the shelf is filed
-        // under. Falls back to the album's artist when the file carried no per-track credit —
+        // under. Falls back to the album's artist when the file carried no per-track credit â
         // including every track imported before that column existed.
         Text(
             text = (deck.currentTrack?.artist?.takeIf { it.isNotBlank() } ?: artist).uppercase(),
@@ -181,7 +185,7 @@ fun DeckOverlay(
         // Two views of the same slot: the tracklist, or the equaliser.
         //
         // The equaliser lives here as well as in Settings because reaching it there means
-        // closing the record first — and an equaliser is adjusted *by ear*, which needs the
+        // closing the record first â and an equaliser is adjusted *by ear*, which needs the
         // music still playing. A mode switch rather than a floating sheet: the panel is
         // already an overlay on a 3D scene, and stacking another one over it costs more than
         // swapping what this one shows.
@@ -210,7 +214,7 @@ fun DeckOverlay(
         }
 
         // The tracklist takes the slack, so the controls below it stay pinned to the bottom
-        // of the panel — the reachable part of a phone this tall.
+        // of the panel â the reachable part of a phone this tall.
         if (showEqualiser) {
             Column(
                 modifier = Modifier
@@ -220,9 +224,11 @@ fun DeckOverlay(
                     .padding(top = 10.dp)
             ) {
                 // Above the equaliser, and outside its on/off switch, because this is Jawon's
-                // own filter rather than the platform's — it runs inside the player's pipeline
+                // own filter rather than the platform's â it runs inside the player's pipeline
                 // and works whether or not the phone offers a system equaliser at all.
                 FilterStrip(positionFlow = filterPosition, onChange = onFilterChange)
+
+                DriveModule(positionFlow = drivePosition, onChange = onDriveChange)
 
                 EchoModule(
                     timeFlow = echoTime,
@@ -245,7 +251,7 @@ fun DeckOverlay(
                     )
                 } else {
                     // Off is a real state, and the switch belongs to the same control the
-                    // settings screen owns — so this turns it on rather than pretending the
+                    // settings screen owns â so this turns it on rather than pretending the
                     // equaliser is broken.
                     Text(
                         text = "The equaliser is off.",
@@ -333,7 +339,7 @@ fun DeckOverlay(
  * The two-line slot under the artist: normally the quality readout, and while the disc is
  * being turned, where the scratch has dragged to.
  *
- * The `State` is read *here* rather than in the caller on purpose — that is what confines a
+ * The `State` is read *here* rather than in the caller on purpose â that is what confines a
  * scratch's updates to this composable instead of recomposing the whole deck.
  */
 @Composable
@@ -342,7 +348,7 @@ private fun ScrubOrQuality(scrubReadout: State<ScrubReadout?>, deck: DeckState) 
     if (scrub != null) {
         val track = deck.tracks.getOrNull(scrub.trackIndex)
         Text(
-            text = (if (scrub.forward) "▶▶  " else "◀◀  ") +
+            text = (if (scrub.forward) "â¶â¶  " else "ââ  ") +
                 formatDuration(scrub.positionMs) + " / " +
                 formatDuration(track?.durationMs ?: 0L),
             style = JawonTextStyle.mono,
@@ -374,7 +380,7 @@ private fun ScrubOrQuality(scrubReadout: State<ScrubReadout?>, deck: DeckState) 
 }
 
 /**
- * Isolated so the 2Hz position tick recomposes only the bar and its two labels — the
+ * Isolated so the 2Hz position tick recomposes only the bar and its two labels â the
  * tracklist above it doesn't need to redraw twice a second.
  *
  * That isolation is also why the scrub readout is read *here* rather than passed in as a
@@ -395,7 +401,7 @@ private fun ProgressRow(
 
     // While the disc is being turned the bar follows the *scrub*, not the player.
     //
-    // It used to follow `positionFlow`, which is polled at 2Hz — so spinning the platter
+    // It used to follow `positionFlow`, which is polled at 2Hz â so spinning the platter
     // moved the disc immediately and dragged the bar along behind it in visible steps, a
     // third of a second late. The scrub cursor is the value the disc itself is drawn from,
     // so taking it here is what puts the two in sync.
@@ -585,12 +591,12 @@ private fun SleepOption(label: String, selected: Boolean, onClick: () -> Unit) {
 }
 
 /**
- * The crossfader — the other hand.
+ * The crossfader â the other hand.
  *
  * A scratch is two hands: one moves the record and supplies the pitch, one cuts the sound in
  * and out and supplies the rhythm. Every named technique is a pattern of cuts over a movement,
  * so without this the disc can only smear. It sits directly under the transport, within reach
- * of a thumb while the other hand is on the disc — which is the only arrangement that lets
+ * of a thumb while the other hand is on the disc â which is the only arrangement that lets
  * anyone actually do the two things at once on a phone.
  *
  * **It springs open when released**, like a fader hand coming off. Left where it was last put,
@@ -656,8 +662,8 @@ private fun FaderStrip(onChange: (Float) -> Unit) {
 /**
  * The filter knob, as a strip with a centre detent.
  *
- * **Why a strip and not a rotary.** A knob is the right *object* — this is one control covering
- * two filters, which is what a mixer spends a knob on — but a rotary on a touchscreen is turned
+ * **Why a strip and not a rotary.** A knob is the right *object* â this is one control covering
+ * two filters, which is what a mixer spends a knob on â but a rotary on a touchscreen is turned
  * by dragging in an arc your finger cannot see, and the finger covers the very thing it is
  * setting. A strip is the same single control with a travel a thumb can actually follow.
  *
@@ -675,7 +681,7 @@ private fun FilterStrip(positionFlow: StateFlow<Float>, onChange: (Float) -> Uni
     var wasCentred by remember { mutableStateOf(true) }
 
     fun set(x: Float) {
-        // −1 at the far left, +1 at the far right, 0 in the middle.
+        // â1 at the far left, +1 at the far right, 0 in the middle.
         val raw = ((x / width) * 2f - 1f).coerceIn(-1f, 1f)
         val centred = abs(raw) <= DjFilter.DEAD_ZONE
         if (centred && !wasCentred) {
@@ -739,7 +745,7 @@ private fun FilterStrip(positionFlow: StateFlow<Float>, onChange: (Float) -> Uni
             // reads at a glance: left is low-pass, right is high-pass.
             //
             // Two halves rather than one box with a computed alignment. The single-box version
-            // put the fill on the opposite side from the handle — aligning a half-width box to
+            // put the fill on the opposite side from the handle â aligning a half-width box to
             // the end anchors it in the *right* half, then fills within that, which draws a
             // left-hand sweep on the right of the screen.
             Row(Modifier.fillMaxWidth().align(Alignment.Center)) {
@@ -778,7 +784,7 @@ private fun FilterStrip(positionFlow: StateFlow<Float>, onChange: (Float) -> Uni
     }
 }
 
-/** `OFF`, `LP 4.2k` or `HP 320` — a value you can read aloud, not a nameless slider. */
+/** `OFF`, `LP 4.2k` or `HP 320` â a value you can read aloud, not a nameless slider. */
 private fun filterReadout(position: Float): String {
     val mode = DjFilter.modeFor(position)
     if (mode == DjFilter.Mode.OFF) return "OFF"
@@ -790,7 +796,7 @@ private fun filterReadout(position: Float): String {
 /**
  * The echo, as three labelled slots in one module.
  *
- * MIX rests at zero and is the one you actually perform with — the gesture is throwing it in for
+ * MIX rests at zero and is the one you actually perform with â the gesture is throwing it in for
  * a bar and pulling it back out, which is why it sits last and reads as the loudest control here.
  * TIME and FEED are set once and left.
  */
@@ -884,5 +890,35 @@ private fun RackSlider(
                     )
             )
         }
+    }
+}
+
+/**
+ * Saturation, as one control.
+ *
+ * One knob rather than the usual drive-plus-output pair, because the output half is not a
+ * decision anyone wants to make — it exists only to stop the drive knob doubling as a volume
+ * knob, and [Drive] handles that itself. Leaving it out is the same constraint the filter
+ * applies: one control, doing the whole job.
+ */
+@Composable
+private fun DriveModule(positionFlow: StateFlow<Float>, onChange: (Float) -> Unit) {
+    val position by positionFlow.collectAsState()
+    Column(modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text("DRIVE", style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = 10.sp))
+            Text(
+                text = if (position <= Drive.SILENT) "CLEAN"
+                else "×${"%.1f".format(Drive.driveFor(position))}",
+                style = JawonTextStyle.mono.copy(
+                    color = if (position <= Drive.SILENT) LabelDim else LampAmber,
+                    fontSize = 10.sp
+                )
+            )
+        }
+        RackSlider("AMOUNT", position, onChange, emphasised = true)
     }
 }

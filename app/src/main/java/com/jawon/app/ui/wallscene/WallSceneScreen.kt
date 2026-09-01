@@ -2225,6 +2225,8 @@ fun WallSceneScreen(
                 onFaderChange = viewModel::onFaderChange,
                 filterPosition = viewModel.filterPosition,
                 onFilterChange = viewModel::onFilterChange,
+                drivePosition = viewModel.drivePosition,
+                onDriveChange = viewModel::onDriveChange,
                 echoTime = viewModel.echoTime,
                 echoFeedback = viewModel.echoFeedback,
                 echoMix = viewModel.echoMix,
