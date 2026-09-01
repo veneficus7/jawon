@@ -2033,11 +2033,14 @@ fun WallSceneScreen(
         if (selectedAlbumId == null) {
             CrateFlip(
                 layout = layout,
+                // Two coroutines, not three. This used to launch an outer one that launched
+                // two more, per album passed — and a drag across a 200-album library passes
+                // one every five pixels, so a single flip started several hundred coroutines
+                // that each immediately cancelled the one before. The axes still need one
+                // each, because `animateTo` suspends until it arrives.
                 onScrub = { target ->
-                    scope.launch {
-                        launch { panX.animateTo(target.x, animationSpec = FLIP_SPRING) }
-                        launch { panY.animateTo(target.y, animationSpec = FLIP_SPRING) }
-                    }
+                    scope.launch { panX.animateTo(target.x, animationSpec = FLIP_SPRING) }
+                    scope.launch { panY.animateTo(target.y, animationSpec = FLIP_SPRING) }
                 },
                 modifier = Modifier
                     .align(Alignment.CenterEnd)
@@ -2172,15 +2175,26 @@ private fun CrateFlip(
     var fraction by remember { mutableFloatStateOf(0f) }
     var railHeight by remember { mutableFloatStateOf(1f) }
     var lastLanded by remember { mutableStateOf<String?>(null) }
+    var lastLetter by remember { mutableStateOf(' ') }
 
     fun scrubTo(y: Float) {
         fraction = (y / railHeight).coerceIn(0f, 1f)
         layout.caseAtFraction(fraction)?.let { landed ->
             if (landed.albumId != lastLanded) {
                 lastLanded = landed.albumId
-                // One tick per record passed, so the rail feels like cards going by under a
-                // thumb rather than a slider.
-                haptics.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+                // A tick per *divider*, not per record.
+                //
+                // Per record is what this did, and it does not survive a real library: at 215
+                // albums the rail passes one every five pixels, so a single drag fired a
+                // couple of hundred ticks — a continuous buzz rather than feedback. Ticking on
+                // the letter caps it at the number of dividers and is the better signal
+                // anyway, because feeling the dividers go by is exactly what flipping a crate
+                // is like.
+                val letter = WallLayout.initialOf(landed.title)
+                if (letter != lastLetter) {
+                    lastLetter = letter
+                    haptics.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+                }
                 onScrub(landed)
             }
         }
@@ -2201,11 +2215,12 @@ private fun CrateFlip(
             exit = fadeOut(tween(160))
         ) {
             val landed = layout.caseAtFraction(fraction)
-            Box(
-                Modifier
+            Row(
+                modifier = Modifier
                     .padding(end = 10.dp)
-                    .background(ComposeColor(0xE81C1712), RoundedCornerShape(3.dp))
-                    .padding(horizontal = 16.dp, vertical = 10.dp)
+                    .background(ComposeColor(0xEE1C1712), RoundedCornerShape(3.dp))
+                    .padding(start = 14.dp, end = 16.dp, top = 9.dp, bottom = 9.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
                     text = landed?.title?.let { WallLayout.initialOf(it).toString() } ?: "",
@@ -2214,6 +2229,34 @@ private fun CrateFlip(
                     fontSize = 34.sp,
                     color = LampAmber
                 )
+                // The title as well as the letter.
+                //
+                // On a small library the letter was enough. On a real one each mark on the
+                // rail covers a dozen or more records, so a letter says almost nothing about
+                // where you have landed — it tells you the drawer, not the record. The title
+                // is what makes coarse navigation usable: the rail gets you to the right part
+                // of the wall and this tells you exactly where that is.
+                landed?.let {
+                    Column(Modifier.padding(start = 12.dp).width(150.dp)) {
+                        Text(
+                            text = it.title,
+                            fontFamily = JetBrainsMonoFamily,
+                            fontSize = 12.sp,
+                            color = LabelCream,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Text(
+                            text = it.artist.uppercase(),
+                            fontFamily = JetBrainsMonoFamily,
+                            fontSize = 9.sp,
+                            letterSpacing = 1.sp,
+                            color = LabelDim,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
             }
         }
 
