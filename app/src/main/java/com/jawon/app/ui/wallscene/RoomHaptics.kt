@@ -44,12 +44,43 @@ class RoomHaptics(context: Context) {
      * Predefined effects rather than hand-rolled durations. The vendor tunes these to its own
      * actuator, so `EFFECT_TICK` on a phone with a good linear motor is a crisp click rather
      * than the 20ms buzz that a raw `createOneShot` produces on the same hardware.
+     *
+     * **`createPredefined` is API 29 and the floor is 28.** These used to call it
+     * unconditionally, in field initialisers, which is a `NoSuchMethodError` while
+     * *constructing* this class — and the room builds one as it composes, so an Android 9
+     * phone would have died on the way into the wall. Every Android 9 phone: the failure
+     * needs only a vibrator to be present.
+     *
+     * It survived an Android 9 emulator precisely because emulators have no vibrator, so
+     * `hasVibrator()` was false, `vibrator` was null and the `?.let` never reached the call.
+     * There is no emulator configuration that would have caught this.
+     *
+     * Below 29, a hand-rolled one-shot. It is the "20ms buzz" this comment complains about,
+     * but a slightly coarse tick on a 2018 phone is not in the same category as a crash.
      */
-    private val tickEffect: VibrationEffect? =
-        vibrator?.let { VibrationEffect.createPredefined(VibrationEffect.EFFECT_TICK) }
+    private val tickEffect: VibrationEffect? = vibrator?.let { effect(light = true) }
 
-    private val detentEffect: VibrationEffect? =
-        vibrator?.let { VibrationEffect.createPredefined(VibrationEffect.EFFECT_CLICK) }
+    private val detentEffect: VibrationEffect? = vibrator?.let { effect(light = false) }
+
+    /**
+     * The vendor's own effect where the platform has it, a one-shot where it does not.
+     *
+     * A boolean rather than an effect id, so `EFFECT_TICK` and `EFFECT_CLICK` are only ever
+     * *named* inside the version check. Both are API 29 fields: referenced outside it they get
+     * inlined at compile time on older platforms, which is the same bug wearing a different
+     * hat and is what lint's `InlinedApi` is warning about.
+     */
+    private fun effect(light: Boolean): VibrationEffect =
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            VibrationEffect.createPredefined(
+                if (light) VibrationEffect.EFFECT_TICK else VibrationEffect.EFFECT_CLICK
+            )
+        } else {
+            VibrationEffect.createOneShot(
+                if (light) 12L else 22L,
+                VibrationEffect.DEFAULT_AMPLITUDE
+            )
+        }
 
     /**
      * One notch of the platter. Fired every [Scratch.HAPTIC_STEP_DEG] of rotation, so this

@@ -36,9 +36,6 @@ interface PlayEventDao {
     )
     fun albumTotals(): Flow<List<AlbumListening>>
 
-    @Query("SELECT * FROM PlayEvent ORDER BY startedAt DESC LIMIT :limit")
-    fun recent(limit: Int = 200): Flow<List<PlayEvent>>
-
     /** For the delete path: an album's history goes with it. */
     @Query("DELETE FROM PlayEvent WHERE albumId = :albumId")
     suspend fun deleteForAlbum(albumId: String)

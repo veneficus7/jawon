@@ -89,8 +89,10 @@ class SettingsViewModel @Inject constructor(
     /**
      * What the last backup or restore did, for the line under the buttons.
      *
-     * A one-shot message rather than a persisted state: this reports on an action the user
-     * has just taken and has no meaning on the next visit to the screen.
+     * Stays until the next one replaces it, and is not persisted — it lives as long as this
+     * screen's ViewModel and no longer. There was a `dismiss` for it, which nothing ever
+     * called: a result line that clears itself while someone is still reading it is worse
+     * than one that sits there until they do something else.
      */
     private val _backupMessage = MutableStateFlow<String?>(null)
     val backupMessage: StateFlow<String?> = _backupMessage.asStateFlow()
@@ -135,8 +137,6 @@ class SettingsViewModel @Inject constructor(
         )
         _backupBusy.value = false
     }
-
-    fun onBackupMessageShown() { _backupMessage.value = null }
 
     /** "1 shelf", "2 shelves". A backup of one shelf reporting "1 shelves" reads as a stub. */
     private fun plural(count: Int, one: String, many: String = one + "s") =

@@ -146,10 +146,6 @@ class UpdateChecker @Inject constructor(
         }
     }
 
-    fun dismiss() {
-        _state.value = UpdateState.Idle
-    }
-
     /** Whether the platform will let this app ask to install one. */
     fun canRequestInstall(): Boolean =
         context.packageManager.canRequestPackageInstalls()

@@ -708,7 +708,18 @@ fun WallSceneScreen(
         // Keyed on the tier as well, so a mid-session step down re-applies the whole post
         // chain. `RoomAtmosphere.apply` replaces each option struct wholesale rather than
         // mutating it, so running it again is safe.
-        remember(filamentView, tier) { RoomAtmosphere.apply(filamentView, tier) }
+        //
+        // The block returns the tier it applied, and that is not decoration. Lint rejects a
+        // `remember` returning Unit, on the grounds that composition can fail or restart and
+        // leave an object mutated by a composition that never committed. The objection is
+        // right in general and does not bite here: the target is a long-lived Filament View
+        // rather than composition state, and `apply` is idempotent — an abandoned composition
+        // leaves the same settings a committed one would. Returning the tier says what the
+        // remembered value actually is instead of silencing the rule with a discard.
+        remember(filamentView, tier) {
+            RoomAtmosphere.apply(filamentView, tier)
+            tier
+        }
 
         // DESIGN.md §4: "Respect reduced-motion settings: drop ambient rotation, parallax,
         // and dust; keep press feedback and the open sequence." Android reports this as an

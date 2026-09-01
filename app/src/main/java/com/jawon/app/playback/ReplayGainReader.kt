@@ -4,6 +4,7 @@ import androidx.media3.common.Metadata
 import androidx.media3.common.Player
 import androidx.media3.extractor.metadata.id3.TextInformationFrame
 import androidx.media3.extractor.metadata.vorbis.VorbisComment
+import androidx.media3.common.util.UnstableApi
 import com.jawon.app.data.prefs.AppPreferences
 
 /**
@@ -24,6 +25,7 @@ import com.jawon.app.data.prefs.AppPreferences
  * holding playback until the tags turn up, which trades an audible level step for an audible
  * delay on every single track, including the ones with no tags at all.
  */
+@UnstableApi
 class ReplayGainReader(
     private val volume: PlayerVolume,
     private val preferences: AppPreferences

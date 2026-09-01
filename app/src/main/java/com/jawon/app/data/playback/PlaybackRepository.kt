@@ -173,6 +173,7 @@ class PlaybackRepository @Inject constructor(
         }
     }
 
+    @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
     private suspend fun ensureController(): MediaController = withContext(Dispatchers.Main.immediate) {
         controller?.let { return@withContext it }
         connectMutex.withLock {

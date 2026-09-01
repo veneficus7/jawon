@@ -22,9 +22,6 @@ interface AlbumDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertAll(albums: List<Album>)
 
-    @Query("SELECT * FROM Album WHERE id = :id")
-    fun getById(id: String): Flow<Album?>
-
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(album: Album)
 

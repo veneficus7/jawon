@@ -19,9 +19,6 @@ interface TrackDao {
      * and cached as a bitmap, so subscribing every visible album to live track updates would
      * be dozens of open queries to redraw art that never changes.
      */
-    @Query("SELECT title FROM Track WHERE albumId = :albumId ORDER BY trackNumber")
-    suspend fun titlesForAlbum(albumId: String): List<String>
-
     /**
      * Every file already in the library, for the device scan to skip.
      *
