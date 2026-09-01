@@ -69,7 +69,9 @@ class WallSceneViewModel @Inject constructor(
      */
     val diagnostics: RoomDiagnostics,
     /** Makes the sound while a hand is on the disc. See [com.jawon.app.playback.ScratchAudio]. */
-    val scratchAudio: com.jawon.app.playback.ScratchAudio
+    val scratchAudio: com.jawon.app.playback.ScratchAudio,
+    /** The crossfader, shared with the service so it cuts normal playback too. */
+    private val fader: com.jawon.app.playback.FaderState
 ) : ViewModel() {
 
 
@@ -141,6 +143,9 @@ class WallSceneViewModel @Inject constructor(
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
     fun onSleepModeChange(mode: SleepTimer.Mode) = playbackRepository.setSleepMode(mode)
+
+    /** Where the crossfader is, 0 shut and 1 open. Reaches the player and the scratch engine. */
+    fun onFaderChange(position: Float) = fader.set(position)
 
     /** Read only by the progress bar, so the 2Hz tick can't recompose the tracklist. */
     val positionMs: StateFlow<Long> = playbackRepository.positionMs

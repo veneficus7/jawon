@@ -1192,12 +1192,22 @@ fun WallSceneScreen(
             if (!scratch.active) return
             scratch.active = false
 
-            // Where the record actually ended up is what the audio engine's own cursor says,
-            // not what the throttled seek last reported — the sound is the thing the user was
-            // steering, so it is the authority on where they stopped.
-            val landedMs = scratchAudio.end()
-            val offset = landedMs ?: scratch.cursor.offsetMs
-            viewModel.onScrub(scratch.cursor.trackIndex, offset)
+            scratchAudio.end()
+
+            // **The finger is the authority on where the record ended up, not the audio.**
+            //
+            // This briefly asked the sound engine instead, on the reasoning that the sound is
+            // what the user was steering. It is not: the audio cursor only advances while
+            // output is actually being produced, at the *smoothed* rate, and stops entirely
+            // below the silence threshold â€” so a quick scrub moves the finger across half a
+            // record and the audio a small fraction of that. Releasing then snapped playback
+            // back toward wherever the disc was first grabbed, which is precisely what was
+            // reported.
+            //
+            // `scratch.cursor` is walked from the real angle deltas on every touch event and
+            // has no such limit. It is what the throttled seeks during the drag already use,
+            // which is why the position was right until the moment of release.
+            viewModel.onScrub(scratch.cursor.trackIndex, scratch.cursor.offsetMs)
             scrubReadout.value = null
             // Let the platter go: pick playback back up exactly where the scrub left it, and
             // only if it was running when the disc was grabbed.
@@ -2212,7 +2222,7 @@ fun WallSceneScreen(
             DeckOverlay(
                 title = openCase?.title.orEmpty(),
                 artist = openCase?.artist.orEmpty(),
-                onFaderChange = { scratchAudio.setFader(it) },
+                onFaderChange = viewModel::onFaderChange,
                 sleepMode = sleepMode,
                 sleepRemainingMs = sleepRemainingMs,
                 onSleepModeChange = viewModel::onSleepModeChange,

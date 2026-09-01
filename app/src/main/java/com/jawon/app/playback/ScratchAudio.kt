@@ -54,7 +54,10 @@ import kotlin.math.min
  * second and a contended lock in a frame callback is a dropped frame.
  */
 @Singleton
-class ScratchAudio @Inject constructor() {
+class ScratchAudio @Inject constructor(
+    /** Shared with the service, so one fader cuts both the player and this. */
+    private val fader: FaderState
+) {
 
     private var track: AudioTrack? = null
     private var pcm: ShortArray = ShortArray(0)
@@ -71,8 +74,7 @@ class ScratchAudio @Inject constructor() {
     @Volatile private var targetRate = 0f
     private var currentRate = 0f
 
-    /** The crossfader, 0 shut and 1 open. Written by the fader strip, read by the writer. */
-    @Volatile private var faderPosition = Crossfader.RESTING
+    /** Where the smoothing has got to. The position itself lives in [FaderState]. */
     private var currentCut = Crossfader.RESTING
 
     @Volatile private var running = false
@@ -134,22 +136,16 @@ class ScratchAudio @Inject constructor() {
         targetRate = ScratchTone.rateFor(radiansPerSecond)
     }
 
-    /** Where the crossfader is, 0..1. Called from the fader strip while a finger drags it. */
-    fun setFader(position: Float) {
-        faderPosition = position
-    }
-
     /**
-     * Stop, and report where the record ended up so the real player can be seeked there.
+     * Stop.
      *
-     * Null when there was nothing decoded, in which case the caller keeps whatever position
-     * its own cursor arrived at.
+     * Deliberately reports nothing. It used to hand back where its own cursor had reached, so
+     * the caller could seek the real player there — which was wrong, and was the cause of a
+     * release snapping playback back toward where the disc was grabbed. This cursor only moves
+     * while audio is being produced, at the smoothed rate, and not at all below the silence
+     * threshold; the gesture's cursor has no such limit and is the honest answer.
      */
-    fun end(): Long? {
-        val landed = if (ready) {
-            windowStartMs + ((cursor / channels) / sampleRate * 1000.0).toLong()
-        } else null
-
+    fun end() {
         running = false
         prepareJob?.cancel()
         prepareJob = null
@@ -178,8 +174,6 @@ class ScratchAudio @Inject constructor() {
                 dying?.release()
             }
         }, "jawon-scratch-release").start()
-
-        return landed
     }
 
     // ---- output ----------------------------------------------------------------------
@@ -265,7 +259,7 @@ class ScratchAudio @Inject constructor() {
             val rate = currentRate
 
             currentCut = Crossfader.approach(
-                currentCut, Crossfader.gainFor(faderPosition), chunkSeconds
+                currentCut, Crossfader.gainFor(fader.current), chunkSeconds
             )
 
             if (!ScratchTone.audible(rate)) {

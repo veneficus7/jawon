@@ -46,7 +46,7 @@ object ScratchTone {
      * Fast enough to still feel like your hand, slow enough that a single stray event cannot
      * be heard as a tick.
      */
-    const val RATE_SMOOTHING_PER_S = 38f
+    const val RATE_SMOOTHING_PER_S = 72f
 
     /**
      * Rate below which the disc counts as stopped and the output is silenced.
@@ -134,7 +134,7 @@ object ScratchTone {
      */
     fun gainFor(rate: Float): Float {
         val speed = abs(rate)
-        return (0.82f + 0.30f * speed).coerceAtMost(1.35f)
+        return (0.76f + 0.40f * speed).coerceAtMost(1.38f)
     }
 
     /**
@@ -147,7 +147,7 @@ object ScratchTone {
      */
     fun driveFor(rate: Float): Float {
         val speed = abs(rate)
-        return 1.0f + 2.6f * speed
+        return 1.5f + 5.2f * speed
     }
 
     /**
@@ -186,7 +186,7 @@ object ScratchTone {
         if (sampleRate <= 0) return 1f
         val speed = abs(rate)
         // Wide open at rest, closing toward a few kHz as the record is thrown about.
-        val cutoffHz = (16_000f - 5_200f * speed).coerceIn(1_800f, 20_000f)
+        val cutoffHz = (15_000f - 5_800f * speed).coerceIn(1_400f, 20_000f)
         val x = TWO_PI * cutoffHz / sampleRate
         return (x / (x + 1f)).coerceIn(0.01f, 1f)
     }

@@ -30,6 +30,9 @@ class PlayerVolume(private val player: Player) {
     /** The crossfade envelope, 0..1. */
     private var fade = 1f
 
+    /** The crossfader, 0 shut and 1 open — see [Crossfader]. */
+    private var cut = 1f
+
     fun setGain(value: Float) {
         gain = value.coerceAtLeast(0f)
         apply()
@@ -40,10 +43,17 @@ class PlayerVolume(private val player: Player) {
         apply()
     }
 
+    /** The crossfader's cut, applied to normal playback so a transform is possible at all. */
+    fun setCut(value: Float) {
+        cut = value.coerceIn(0f, 1f)
+        apply()
+    }
+
     /** Back to a plain, unlevelled, un-faded player. */
     fun reset() {
         gain = 1f
         fade = 1f
+        cut = 1f
         apply()
     }
 
@@ -53,6 +63,6 @@ class PlayerVolume(private val player: Player) {
     private fun apply() {
         // runCatching because a released player throws, and a volume write is never worth
         // taking the service down for.
-        runCatching { player.volume = (gain * fade).coerceIn(0f, 1f) }
+        runCatching { player.volume = (gain * fade * cut).coerceIn(0f, 1f) }
     }
 }

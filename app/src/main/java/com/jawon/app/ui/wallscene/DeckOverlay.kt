@@ -189,8 +189,6 @@ fun DeckOverlay(
             )
         }
 
-        FaderStrip(onChange = onFaderChange)
-
         // The tracklist takes the slack, so the controls below it stay pinned to the bottom
         // of the panel — the reachable part of a phone this tall.
         if (showEqualiser) {
@@ -290,6 +288,10 @@ fun DeckOverlay(
                 )
             }
         }
+
+        // Under the transport, where a fader is on a real deck and where a thumb can reach it
+        // while the other hand is on the disc.
+        FaderStrip(onChange = onFaderChange)
     }
 }
 
