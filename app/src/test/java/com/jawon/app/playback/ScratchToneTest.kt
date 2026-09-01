@@ -143,6 +143,54 @@ class ScratchToneTest {
         assertEquals(0, ScratchTone.sampleAt(ShortArray(0), 0.0).toInt())
     }
 
+    // ---- grains, which are what hold the pitch ----------------------------------------
+
+    @Test
+    fun `a grain window opens and closes at zero`() {
+        // A step at either edge is a click, once per grain, twenty times a second.
+        assertEquals(0f, ScratchTone.grainWindow(0, 100), 1e-5f)
+        assertEquals(0f, ScratchTone.grainWindow(99, 100), 1e-5f)
+    }
+
+    @Test
+    fun `a grain window is fully open in the middle`() {
+        assertEquals(1f, ScratchTone.grainWindow(50, 101), 1e-4f)
+    }
+
+    @Test
+    fun `two half-overlapped windows sum to one`() {
+        // The property the whole scheme rests on: without it the overlap pumps in and out
+        // instead of adding back to unit gain.
+        val n = 128
+        val hop = n / 2
+        for (i in 0 until hop) {
+            val here = ScratchTone.grainWindow(i + hop, n)
+            val next = ScratchTone.grainWindow(i, n)
+            assertEquals("overlap does not sum to one at $i", 1f, here + next, 0.02f)
+        }
+    }
+
+    @Test
+    fun `a window is never negative and never exceeds one`() {
+        for (i in 0 until 200) {
+            val v = ScratchTone.grainWindow(i, 200)
+            assertTrue("window out of range at $i: $v", v in -1e-5f..1.0001f)
+        }
+    }
+
+    @Test
+    fun `a degenerate grain length does not divide by zero`() {
+        assertEquals(1f, ScratchTone.grainWindow(0, 1), 1e-5f)
+        assertEquals(1f, ScratchTone.grainWindow(0, 0), 1e-5f)
+    }
+
+    @Test
+    fun `a grain is long enough to carry a pitch and short enough to follow a hand`() {
+        // Too short and the grains are audible as a buzz at their own rate; too long and the
+        // sound smears behind the finger.
+        assertTrue(ScratchTone.GRAIN_MS in 25f..90f)
+    }
+
     @Test
     fun `interpolation never wraps past the sixteen bit range`() {
         val extremes = shortArrayOf(Short.MIN_VALUE, Short.MAX_VALUE)

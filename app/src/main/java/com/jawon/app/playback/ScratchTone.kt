@@ -98,5 +98,38 @@ object ScratchTone {
         return (a + (b - a) * frac).toInt().coerceIn(-32768, 32767).toShort()
     }
 
+    // ---- Grains, which are what keep the pitch where it belongs ----------------------
+
+    /**
+     * How long one grain of audio is, in milliseconds.
+     *
+     * **Reading the record faster does not have to mean reading it higher.** Stepping a cursor
+     * through samples at 2x is what a turntable does and it doubles the pitch — everybody
+     * sounding like a chipmunk, which is exactly the complaint. So the audio is not read at
+     * the scrub rate at all. It is read at *normal* rate, in short grains, from a playhead that
+     * moves at the scrub rate: speed becomes how fast you travel through the record, and pitch
+     * stays where the record put it.
+     *
+     * The length is the whole compromise. Too short and the grains are heard as a buzz at their
+     * own repetition rate; too long and the sound lags behind the finger and smears. Around
+     * fifty milliseconds is long enough to carry a pitch and short enough to still feel
+     * attached to a hand.
+     */
+    const val GRAIN_MS = 52f
+
+    /**
+     * The window applied across a grain, `0` at each edge and `1` in the middle.
+     *
+     * Raised cosine, overlapped by exactly half, which is the pair of properties that make
+     * this work: two adjacent windows sum to one everywhere, so the overlap adds back to unit
+     * gain instead of pumping. Without a window the joins are step discontinuities — a click
+     * per grain, twenty times a second.
+     */
+    fun grainWindow(index: Int, length: Int): Float {
+        if (length <= 1) return 1f
+        val phase = index.toFloat() / (length - 1).toFloat()
+        return 0.5f * (1f - kotlin.math.cos(TWO_PI * phase))
+    }
+
     private const val TWO_PI = 6.2831855f
 }

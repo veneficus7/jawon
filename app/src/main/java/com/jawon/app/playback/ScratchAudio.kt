@@ -213,34 +213,62 @@ class ScratchAudio @Inject constructor() {
         }
     }
 
+    /**
+     * Granular playback: constant pitch, variable speed.
+     *
+     * Each pass emits one hop — half a grain — built from the tail of the previous grain and
+     * the head of a new one, both raised-cosine windowed so they sum to unit gain. Every grain
+     * is read from `pcm` at *normal* rate, which is what holds the pitch; what the scrub rate
+     * moves is where the next grain is *taken from*. Speed is travel through the record, pitch
+     * is whatever the record was recorded at.
+     */
     private fun writeLoop(out: AudioTrack, chunkSamples: Int) {
-        val buffer = ShortArray(chunkSamples.coerceAtLeast(256))
-        // Each chunk covers this much time, which is the step the rate smoothing advances by.
-        val chunkSeconds = (buffer.size / channels).toFloat() / sampleRate
+        val grainFrames = (ScratchTone.GRAIN_MS / 1000f * sampleRate).toInt().coerceAtLeast(64)
+        val hopFrames = grainFrames / 2
+        val hopSamples = hopFrames * channels
+        val buffer = ShortArray(hopSamples)
+        // Carries the second half of each grain into the next pass, where it is added to the
+        // first half of the following one. This is the overlap.
+        var tail = FloatArray(hopSamples)
+        val hopSeconds = hopFrames.toFloat() / sampleRate
 
         while (running) {
-            currentRate = ScratchTone.approach(currentRate, targetRate, chunkSeconds)
+            currentRate = ScratchTone.approach(currentRate, targetRate, hopSeconds)
             val rate = currentRate
-            val step = rate.toDouble()
 
             if (!ScratchTone.audible(rate)) {
-                // Held still: silence, not a buzz. See ScratchTone.SILENCE_BELOW.
+                // Held still: silence, not a buzz. See ScratchTone.SILENCE_BELOW. The tail is
+                // cleared too, or the last grain would ring on under a motionless finger.
                 java.util.Arrays.fill(buffer, 0)
-                cursor += step * buffer.size
+                java.util.Arrays.fill(tail, 0f)
             } else {
+                val nextTail = FloatArray(hopSamples)
+                // Where this grain is taken from. The cursor is in samples, and grains are
+                // read forward from it whichever way the finger is travelling — a grain
+                // played backwards is not lower, it is reversed, which sounds like a fault
+                // rather than like scratching.
+                val grainStart = cursor
                 var i = 0
-                while (i < buffer.size) {
-                    // Channels advance together so a stereo image is not torn apart by the
-                    // interpolation reading one side a fraction ahead of the other.
-                    val frameBase = cursor
+                while (i < grainFrames * channels) {
+                    val amp = ScratchTone.grainWindow(i / channels, grainFrames)
                     var c = 0
-                    while (c < channels && i < buffer.size) {
-                        buffer[i] = ScratchTone.sampleAt(pcm, frameBase + c)
-                        i++
+                    while (c < channels) {
+                        val s = ScratchTone.sampleAt(pcm, grainStart + i + c) * amp
+                        if (i + c < hopSamples) {
+                            // First half: add to the previous grain's tail.
+                            buffer[i + c] = (tail[i + c] + s)
+                                .toInt().coerceIn(-32768, 32767).toShort()
+                        } else {
+                            nextTail[i + c - hopSamples] = s
+                        }
                         c++
                     }
-                    cursor += step * channels
+                    i += channels
                 }
+                tail = nextTail
+                // And the playhead travels at the scrub rate — this, and only this, is where
+                // speed lives.
+                cursor += rate.toDouble() * hopSamples
             }
 
             val written = runCatching { out.write(buffer, 0, buffer.size) }.getOrDefault(-1)

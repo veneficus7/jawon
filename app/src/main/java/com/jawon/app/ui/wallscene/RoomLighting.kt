@@ -214,7 +214,31 @@ object RoomLighting {
      * a light source in a reflection rather than as a pale grey patch.
      */
     private const val LAMP_LEVEL = 1.2f
-    private const val VOID_LEVEL = 0.15f
+
+    /**
+     * The environment's floor — how bright the room is in the directions with no lamp in them.
+     *
+     * **This is why cover art disappeared as a case turned.** Reported as artwork being
+     * invisible "at sharp angles", and it was neither culling, nor depth, nor the clear shell:
+     * two of those were tried and the third was disproved by making the shell transparent and
+     * watching the artwork stay dark. It is simply that a cover is a *lit surface*, and this
+     * room has one lamp.
+     *
+     * At 0.15 against a `VOID_COLOR` already down at 0.071, the darkest direction in the
+     * environment came out around 0.011 — one percent of what a surface facing the lamp
+     * receives. So as a case turned its cover away from the light there was nothing else to
+     * light it, and the artwork went to black. The owner spotted the physics before I did:
+     * *"for the cover art to be invisible there should be a direct light from the background
+     * but there is no any light beside the cd cases"* — quite right, and the absence of that
+     * fill was the whole fault.
+     *
+     * 0.62 gives a real floor while keeping the lamp four times brighter than it, so the room
+     * stays a dark shop with one hot source rather than becoming evenly lit. What it costs is
+     * a little of the contrast between the lit and unlit sides of a case. What it buys is that
+     * every record on the wall can be recognised at every angle, which is the one thing a wall
+     * you browse by looking has to do.
+     */
+    private const val VOID_LEVEL = 0.62f
 
     /**
      * A small, fierce lamp burned into the cubemap — **the thing that makes glossy surfaces
