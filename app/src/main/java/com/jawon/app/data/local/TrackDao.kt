@@ -34,6 +34,18 @@ interface TrackDao {
     @Query("SELECT * FROM Track ORDER BY albumId, trackNumber")
     suspend fun listAll(): List<Track>
 
+    /**
+     * Tracks whose own artist was never read — everything imported before that column existed.
+     *
+     * See `TrackArtistBackfill`: without a pass over these, per-track credits would only ever
+     * appear on albums added after the update, and an existing library would look unchanged.
+     */
+    @Query("SELECT * FROM Track WHERE artist IS NULL")
+    suspend fun withoutArtist(): List<Track>
+
+    @Query("UPDATE Track SET artist = :artist WHERE id = :id")
+    suspend fun setArtist(id: String, artist: String)
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(track: Track)
 

@@ -247,9 +247,14 @@ class WallSceneViewModel @Inject constructor(
                 position >= tracks[index].durationMs - FINISHED_TAIL_MS
 
             if (finished) {
-                playbackRepository.playAlbum(tracks)
+                playbackRepository.playAlbum(tracks, albumArtist = album?.artist)
             } else {
-                playbackRepository.playAlbum(tracks, startIndex = index, startPositionMs = position)
+                playbackRepository.playAlbum(
+                    tracks,
+                    startIndex = index,
+                    startPositionMs = position,
+                    albumArtist = album?.artist
+                )
             }
         }
     }

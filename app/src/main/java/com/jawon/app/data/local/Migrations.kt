@@ -39,3 +39,12 @@ val MIGRATION_1_2 = Migration(1, 2) { db: SupportSQLiteDatabase ->
     db.execSQL("CREATE INDEX IF NOT EXISTS index_PlayEvent_albumId ON PlayEvent (albumId)")
     db.execSQL("CREATE INDEX IF NOT EXISTS index_PlayEvent_startedAt ON PlayEvent (startedAt)")
 }
+
+val MIGRATION_2_3 = Migration(2, 3) { db: SupportSQLiteDatabase ->
+    // The track's own credited artist, which a compilation needs and the album's artist cannot
+    // stand in for. Nullable with no default: a library imported before this column existed has
+    // never read the per-track tag, and inventing the album's artist for every one of those
+    // rows would make a guess indistinguishable from something the file actually said. Null
+    // means "not known", and the deck falls back to the album for exactly those.
+    db.execSQL("ALTER TABLE Track ADD COLUMN artist TEXT")
+}

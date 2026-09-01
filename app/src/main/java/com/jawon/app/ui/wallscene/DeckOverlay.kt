@@ -148,8 +148,11 @@ fun DeckOverlay(
                 overflow = TextOverflow.Ellipsis
             )
         }
+        // Whoever is actually singing, which on a compilation is not who the shelf is filed
+        // under. Falls back to the album's artist when the file carried no per-track credit —
+        // including every track imported before that column existed.
         Text(
-            text = artist.uppercase(),
+            text = (deck.currentTrack?.artist?.takeIf { it.isNotBlank() } ?: artist).uppercase(),
             style = JawonTextStyle.mono,
             modifier = Modifier.padding(top = 6.dp)
         )

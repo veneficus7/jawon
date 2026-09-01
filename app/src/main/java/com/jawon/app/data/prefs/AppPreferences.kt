@@ -156,7 +156,18 @@ class AppPreferences @Inject constructor(@param:ApplicationContext context: Cont
         _caseSpin.value = clamped
     }
 
+    /**
+     * Whether the one-time pass that reads per-track artists out of existing files has run.
+     *
+     * Not a StateFlow: nothing in the UI reacts to it, and it is read once per launch on a
+     * background path. See `TrackArtistBackfill`.
+     */
+    var trackArtistBackfillDone: Boolean
+        get() = prefs.getBoolean(KEY_TRACK_ARTIST_BACKFILL, false)
+        set(value) = prefs.edit { putBoolean(KEY_TRACK_ARTIST_BACKFILL, value) }
+
     private companion object {
+        const val KEY_TRACK_ARTIST_BACKFILL = "track_artist_backfill_done"
         const val KEY_CASE_SPIN = "case_spin"
         const val KEY_CROSSFADE_MS = "crossfade_ms"
         const val KEY_FETCH_COVER_ART = "fetch_cover_art"

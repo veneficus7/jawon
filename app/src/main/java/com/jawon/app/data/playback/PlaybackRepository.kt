@@ -286,7 +286,12 @@ class PlaybackRepository @Inject constructor(
      * `Album.lastTrackIndex`. It defaults to the beginning so callers that genuinely mean
      * "from the top" do not have to say so.
      */
-    suspend fun playAlbum(tracks: List<Track>, startIndex: Int = 0, startPositionMs: Long = 0L) {
+    suspend fun playAlbum(
+        tracks: List<Track>,
+        startIndex: Int = 0,
+        startPositionMs: Long = 0L,
+        albumArtist: String? = null
+    ) {
         val controller = ensureController()
         // Recorded before the queue is replaced, so the last stretch of the album being
         // swapped out is not lost — and so `queuedTracks` still describes it while we do.
@@ -294,7 +299,7 @@ class PlaybackRepository @Inject constructor(
         segment = null
         queuedTracks = tracks
         controller.setMediaItems(
-            tracks.map { it.toMediaItem() },
+            tracks.map { it.toMediaItem(albumArtist) },
             startIndex.coerceIn(0, (tracks.size - 1).coerceAtLeast(0)),
             startPositionMs.coerceAtLeast(0L)
         )
@@ -353,9 +358,20 @@ class PlaybackRepository @Inject constructor(
     }
 }
 
-private fun Track.toMediaItem(): MediaItem =
+/**
+ * [albumArtist] is the fallback, not the answer: a track carries its own credit on a
+ * compilation, and the notification should name whoever is actually singing. Files that
+ * carry no per-track tag — and every track imported before that column existed — fall back
+ * to the record's artist, which is the best thing known about them.
+ */
+private fun Track.toMediaItem(albumArtist: String?): MediaItem =
     MediaItem.Builder()
         .setMediaId(id)
         .setUri(fileUri)
-        .setMediaMetadata(MediaMetadata.Builder().setTitle(title).build())
+        .setMediaMetadata(
+            MediaMetadata.Builder()
+                .setTitle(title)
+                .setArtist(artist?.takeIf { it.isNotBlank() } ?: albumArtist)
+                .build()
+        )
         .build()

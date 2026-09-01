@@ -238,7 +238,7 @@ class AlbumImportRepository @Inject constructor(
      * — and a duplicate check that only catches exact matches catches almost nothing.
      */
     private fun albumKey(title: String, artist: String): String =
-        (title + ' ' + artist).lowercase().filter { it.isLetterOrDigit() }
+        (title + ' ' + artist).lowercase().filter { it.isLetterOrDigit() }
 
     private fun android.database.Cursor.getStringOrNull(index: Int): String? =
         if (isNull(index)) null else getString(index)
@@ -370,6 +370,10 @@ class AlbumImportRepository @Inject constructor(
                     albumId = albumId,
                     trackNumber = track.trackNumber ?: (index + 1),
                     title = track.title,
+                    // Kept per track, not folded into the album. The reader has always pulled
+                    // this tag; until now it was only used to guess the album's artist and then
+                    // thrown away, which is why a compilation played back under one name.
+                    artist = track.artist,
                     durationMs = track.durationMs,
                     fileUri = track.fileUri.toString(),
                     mimeType = track.mimeType,
