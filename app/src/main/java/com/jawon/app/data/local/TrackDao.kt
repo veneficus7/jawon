@@ -33,8 +33,15 @@ interface TrackDao {
     @Query("SELECT fileUri FROM Track")
     suspend fun allFileUris(): List<String>
 
+    /** One-shot, for the backup writer. */
+    @Query("SELECT * FROM Track ORDER BY albumId, trackNumber")
+    suspend fun listAll(): List<Track>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(track: Track)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAll(tracks: List<Track>)
 
     @Delete
     suspend fun delete(track: Track)

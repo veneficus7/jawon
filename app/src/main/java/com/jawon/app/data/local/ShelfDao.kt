@@ -12,6 +12,10 @@ interface ShelfDao {
     @Query("SELECT * FROM Shelf ORDER BY `order`")
     fun getAll(): Flow<List<Shelf>>
 
+    /** One-shot, for the backup writer — it needs a snapshot, not a subscription. */
+    @Query("SELECT * FROM Shelf ORDER BY `order`")
+    suspend fun listAll(): List<Shelf>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(shelf: Shelf)
 

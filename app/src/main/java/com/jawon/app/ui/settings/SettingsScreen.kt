@@ -4,6 +4,8 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.provider.Settings
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -322,6 +324,96 @@ private fun SchemePicker(current: RoomScheme, onPick: (RoomScheme) -> Unit) {
  * is usual and not guaranteed — so this draws whatever it is told about rather than assuming.
  * On a device with no working equaliser it says so plainly instead of showing dead controls.
  */
+/**
+ * Writing the collection out to a file, and reading it back.
+ *
+ * The copy is careful about one thing in particular. What this saves is the *curation* — the
+ * shelves, the order, the corrected titles, the artwork, the listening history — and not the
+ * music, which Jawon never had. And a restore onto a different phone brings the shelves back
+ * but may not bring the audio, because a content URI belongs to the device that issued it.
+ * Someone who finds that out after a factory reset has been misled by a button labelled
+ * "restore", so it says so before they need it.
+ */
+@Composable
+private fun BackupSection(
+    busy: Boolean,
+    message: String?,
+    onWrite: () -> Unit,
+    onRead: () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 26.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Text(
+            text = "BACK UP YOUR SHELVES",
+            fontFamily = JetBrainsMonoFamily,
+            fontWeight = FontWeight.Bold,
+            fontSize = 11.sp,
+            letterSpacing = 2.sp,
+            color = LabelCream
+        )
+        Text(
+            text = "Saves which records are on which shelf, what the shelves are called and " +
+                "how they glow, the titles and artwork you fixed, and every hour of " +
+                "listening the case wear is drawn from. Your audio files are not copied — " +
+                "they are already on your phone and Jawon never touches them.",
+            style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = 10.sp),
+            lineHeight = 16.sp
+        )
+        Text(
+            text = "Restoring onto the same phone brings everything back. Onto a different " +
+                "one, the shelves and artwork come back but the tracks may need importing " +
+                "again — Android ties a file's address to the device that issued it.",
+            style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = 10.sp),
+            lineHeight = 16.sp
+        )
+
+        Row(
+            modifier = Modifier.padding(top = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            BackupButton(text = "SAVE A COPY", enabled = !busy, onClick = onWrite)
+            BackupButton(text = "RESTORE", enabled = !busy, onClick = onRead)
+        }
+
+        if (busy) {
+            Text(
+                text = "WORKING…",
+                style = JawonTextStyle.mono.copy(fontSize = 10.sp)
+            )
+        }
+        message?.let {
+            Text(
+                text = it,
+                style = JawonTextStyle.mono.copy(color = LabelCream, fontSize = 10.sp),
+                lineHeight = 16.sp
+            )
+        }
+    }
+}
+
+@Composable
+private fun BackupButton(text: String, enabled: Boolean, onClick: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .border(1.dp, if (enabled) LampAmber.copy(alpha = 0.55f) else CrateEdge)
+            .clickable(enabled = enabled, onClick = onClick)
+            .padding(horizontal = 18.dp, vertical = 11.dp)
+    ) {
+        Text(
+            text = text,
+            fontFamily = JetBrainsMonoFamily,
+            fontWeight = FontWeight.Bold,
+            fontSize = 10.sp,
+            letterSpacing = 1.6.sp,
+            color = if (enabled) LampAmber else LabelDim
+        )
+    }
+}
+
 @Composable
 private fun EqualizerSection(
     available: Boolean,
@@ -433,6 +525,19 @@ fun SettingsScreen(
     val crossfadeMs by viewModel.crossfadeMs.collectAsStateWithLifecycle()
     val updateState by viewModel.updateState.collectAsStateWithLifecycle()
     val caseSpin by viewModel.caseSpin.collectAsStateWithLifecycle()
+    val backupBusy by viewModel.backupBusy.collectAsStateWithLifecycle()
+    val backupMessage by viewModel.backupMessage.collectAsStateWithLifecycle()
+
+    // SAF both ways, for the same reason the folder import uses it: the file belongs to the
+    // user, in a place they chose and can find again, not in this app's private storage where
+    // an uninstall would take the backup along with the thing it was backing up.
+    val writeBackupLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("application/zip")
+    ) { uri -> uri?.let { viewModel.onWriteBackup(context, it) } }
+
+    val readBackupLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri -> uri?.let { viewModel.onReadBackup(context, it) } }
     // Not remembered: the user can leave to grant the permission and come straight back,
     // and a cached "no" would leave them looking at a button that says to do what they just did.
     val canInstall = viewModel.canRequestInstall()
@@ -656,6 +761,13 @@ fun SettingsScreen(
                     "thing Jawon sends anywhere.",
                 checked = fetchCoverArt,
                 onCheckedChange = viewModel::onFetchCoverArtChanged
+            )
+
+            BackupSection(
+                busy = backupBusy,
+                message = backupMessage,
+                onWrite = { writeBackupLauncher.launch(viewModel.suggestedBackupName()) },
+                onRead = { readBackupLauncher.launch(arrayOf("application/zip", "*/*")) }
             )
 
             Text(

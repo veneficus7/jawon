@@ -15,6 +15,13 @@ interface AlbumDao {
     @Query("SELECT * FROM Album ORDER BY shelfId, slotIndex")
     fun getAll(): Flow<List<Album>>
 
+    /** One-shot, for the backup writer. */
+    @Query("SELECT * FROM Album ORDER BY shelfId, slotIndex")
+    suspend fun listAll(): List<Album>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAll(albums: List<Album>)
+
     @Query("SELECT * FROM Album WHERE id = :id")
     fun getById(id: String): Flow<Album?>
 

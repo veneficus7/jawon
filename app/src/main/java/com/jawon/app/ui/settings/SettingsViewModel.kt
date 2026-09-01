@@ -2,6 +2,9 @@ package com.jawon.app.ui.settings
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import android.content.Context
+import android.net.Uri
+import com.jawon.app.data.backup.LibraryBackup
 import com.jawon.app.data.playback.EqBand
 import com.jawon.app.data.playback.EqualizerController
 import com.jawon.app.data.prefs.AppPreferences
@@ -11,7 +14,9 @@ import com.jawon.app.data.update.UpdateState
 import com.jawon.app.playback.Crossfade
 import com.jawon.app.ui.theme.RoomScheme
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -19,7 +24,8 @@ import javax.inject.Inject
 class SettingsViewModel @Inject constructor(
     private val preferences: AppPreferences,
     private val equalizer: EqualizerController,
-    private val updateChecker: UpdateChecker
+    private val updateChecker: UpdateChecker,
+    private val backup: LibraryBackup
 ) : ViewModel() {
 
     val fetchCoverArt: StateFlow<Boolean> = preferences.fetchCoverArt
@@ -70,4 +76,62 @@ class SettingsViewModel @Inject constructor(
 
     fun onDownloadUpdate(update: AvailableUpdate) =
         viewModelScope.launch { updateChecker.download(update) }
+
+    // ---- Backup --------------------------------------------------------------------
+
+    /**
+     * What the last backup or restore did, for the line under the buttons.
+     *
+     * A one-shot message rather than a persisted state: this reports on an action the user
+     * has just taken and has no meaning on the next visit to the screen.
+     */
+    private val _backupMessage = MutableStateFlow<String?>(null)
+    val backupMessage: StateFlow<String?> = _backupMessage.asStateFlow()
+
+    private val _backupBusy = MutableStateFlow(false)
+    val backupBusy: StateFlow<Boolean> = _backupBusy.asStateFlow()
+
+    /** The name offered to the file picker. Dated, because people keep more than one. */
+    fun suggestedBackupName(): String {
+        val stamp = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US)
+            .format(java.util.Date())
+        return "jawon-library-$stamp.zip"
+    }
+
+    fun onWriteBackup(context: Context, destination: Uri) = viewModelScope.launch {
+        _backupBusy.value = true
+        _backupMessage.value = runCatching { backup.writeTo(context, destination) }.fold(
+            onSuccess = { w ->
+                "Saved ${w.albums} ${plural(w.albums, "album")} on " +
+                    "${w.shelves} ${plural(w.shelves, "shelf", "shelves")}, " +
+                    "${w.tracks} ${plural(w.tracks, "track")} and " +
+                    "${w.covers} ${plural(w.covers, "image")}."
+            },
+            // The message, not the class name. A backup failing is one of the few places a
+            // user genuinely needs to know what went wrong.
+            onFailure = { "Could not write the backup: ${it.message ?: "unknown error"}" }
+        )
+        _backupBusy.value = false
+    }
+
+    fun onReadBackup(context: Context, source: Uri) = viewModelScope.launch {
+        _backupBusy.value = true
+        _backupMessage.value = runCatching { backup.readFrom(context, source) }.fold(
+            onSuccess = { r ->
+                "Restored ${r.albums} ${plural(r.albums, "album")} on " +
+                    "${r.shelves} ${plural(r.shelves, "shelf", "shelves")}, " +
+                    "${r.tracks} ${plural(r.tracks, "track")}, " +
+                    "${r.covers} ${plural(r.covers, "image")} and " +
+                    "${r.plays} ${plural(r.plays, "play")} of history."
+            },
+            onFailure = { "Could not restore: ${it.message ?: "unknown error"}" }
+        )
+        _backupBusy.value = false
+    }
+
+    fun onBackupMessageShown() { _backupMessage.value = null }
+
+    /** "1 shelf", "2 shelves". A backup of one shelf reporting "1 shelves" reads as a stub. */
+    private fun plural(count: Int, one: String, many: String = one + "s") =
+        if (count == 1) one else many
 }

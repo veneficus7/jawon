@@ -2,6 +2,7 @@ package com.jawon.app.data.local
 
 import androidx.room.Dao
 import androidx.room.Insert
+import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import kotlinx.coroutines.flow.Flow
 
@@ -10,6 +11,13 @@ interface PlayEventDao {
 
     @Insert
     suspend fun insert(event: PlayEvent)
+
+    /** One-shot, for the backup writer. */
+    @Query("SELECT * FROM PlayEvent ORDER BY startedAt")
+    suspend fun listAll(): List<PlayEvent>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAll(events: List<PlayEvent>)
 
     /**
      * Total listening time per album, most-listened first.
