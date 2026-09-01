@@ -41,7 +41,7 @@ class CrossfadeEngine(
     /**
      * The main player's volume, shared with ReplayGain. The fade sets its own factor here
      * rather than writing `main.volume`, so levelling survives a fade and a fade lands on top
-     * of the level the record asked for — see [PlayerVolume].
+     * of the level the record asked for â€” see [PlayerVolume].
      */
     private val mainVolume: PlayerVolume
 ) {

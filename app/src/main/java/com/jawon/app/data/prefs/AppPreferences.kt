@@ -114,7 +114,7 @@ class AppPreferences @Inject constructor(@param:ApplicationContext context: Cont
      *
      * Defaults to album gain rather than off. Levelling is what the tags were written for,
      * and a collection that has them is a collection whose owner already decided they wanted
-     * it — see the Mode docs for why album and not track.
+     * it â€” see the Mode docs for why album and not track.
      */
     /** How records are filed along a shelf, as a [com.jawon.app.ui.wallscene.WallSort] name. */
     private val _wallSort = MutableStateFlow(prefs.getString(KEY_WALL_SORT, null) ?: "SHELF")

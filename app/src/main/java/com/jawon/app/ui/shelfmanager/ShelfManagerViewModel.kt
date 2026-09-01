@@ -29,7 +29,7 @@ class ShelfManagerViewModel @Inject constructor(
      * How records are filed along a shelf.
      *
      * Lives here as well as in the wall's own ViewModel because both read the same
-     * preference — this screen sets it, the room reacts to it, and neither owns a copy.
+     * preference â€” this screen sets it, the room reacts to it, and neither owns a copy.
      */
     val sort: StateFlow<WallSort> = preferences.wallSort
         .map { WallSort.fromName(it) }

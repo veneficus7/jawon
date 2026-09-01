@@ -108,7 +108,7 @@ object WallDimens {
      * it can separate two surfaces therefore depends on the *ratio* of these two numbers far
      * more than on either alone.
      *
-     * SceneView's defaults are a 5cm near plane against a 1km far plane — a ratio of twenty
+     * SceneView's defaults are a 5cm near plane against a 1km far plane â€” a ratio of twenty
      * thousand to one, chosen for scenes measured in metres. This room is measured in
      * centimetres and its artwork plates sit fractions of a millimetre off the faces they
      * decorate, which that ratio cannot reliably resolve at any distance and cannot resolve
@@ -363,7 +363,7 @@ data class WallLayout(
             val cases = shelves.flatMapIndexed { row, shelf ->
                 val count = shelf.albums.size
                 // Ordered here rather than in the query: the DAO returns slotIndex order, and
-                // a sort is a view over the shelf rather than a change to how it is filed —
+                // a sort is a view over the shelf rather than a change to how it is filed â€”
                 // switching back to AS FILED has to give the arrangement the user made.
                 WallSort.order(shelf.albums, sort, listenedMs).mapIndexed { col, album ->
                     CaseLayout(
