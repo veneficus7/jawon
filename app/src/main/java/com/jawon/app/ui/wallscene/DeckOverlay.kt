@@ -25,6 +25,11 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -155,6 +160,24 @@ fun DeckOverlay(
     // instead of all at once when it arrives.
     val compact = sheetFraction < COMPACT_BELOW
 
+    val scope = rememberCoroutineScope()
+    val pagerState = rememberPagerState(
+        initialPage = if (showEqualiser) PAGE_SOUND else PAGE_TRACKS
+    ) { PAGE_COUNT }
+
+    // The pager and the hoisted flag have to agree without chasing each other. The flag drives
+    // the pager only when they actually differ, and the pager reports back on `settledPage`
+    // rather than `currentPage` — reporting mid-drag would write the destination before the
+    // finger had committed to it, and the panel would resize under a gesture the user had not
+    // finished making.
+    LaunchedEffect(showEqualiser) {
+        val target = if (showEqualiser) PAGE_SOUND else PAGE_TRACKS
+        if (pagerState.currentPage != target) pagerState.animateScrollToPage(target)
+    }
+    LaunchedEffect(pagerState.settledPage) {
+        onShowEqualiser(pagerState.settledPage == PAGE_SOUND)
+    }
+
     Column(
         modifier = modifier
             .fillMaxWidth()
@@ -206,11 +229,14 @@ fun DeckOverlay(
                     .height(3.dp)
                     .background(CrateEdge, RoundedCornerShape(2.dp))
             )
-        // Dropped while the equaliser is up. The panel has to grow to fit five band sliders,
-        // and a display-size title is both the largest thing here and the least useful when
-        // what you are doing is listening — the artist and the format readout stay, because
-        // those are what you check against while adjusting.
-        if (!showEqualiser) {
+            // Always shown now, on every page.
+            //
+            // It used to be dropped while the equaliser was up, to buy the band sliders room
+            // back when this slot was a mode you switched into. As a *page* that reads as a
+            // fault: the header lurches halfway through the swipe, and the record you are
+            // holding loses its name because you looked at its tone controls. The sheet is
+            // draggable now, so room is something the user asks for rather than something the
+            // panel takes.
             Text(
                 text = title,
                 style = MaterialTheme.typography.displaySmall,
@@ -218,7 +244,6 @@ fun DeckOverlay(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
-        }
         if (!compact) {
             // Whoever is actually singing, which on a compilation is not who the shelf is filed
             // under. Falls back to the album's artist when the file carried no per-track credit —
@@ -257,12 +282,40 @@ fun DeckOverlay(
                 .padding(top = 8.dp),
             horizontalArrangement = Arrangement.spacedBy(18.dp)
         ) {
-            DeckTab("TRACKS", selected = !showEqualiser) { onShowEqualiser(false) }
-            if (eqAvailable) {
-                DeckTab("SOUND", selected = showEqualiser) { onShowEqualiser(true) }
+            // Still tappable — a swipe is the faster way, not the only way. The labels now read
+            // the pager rather than a boolean, so they track a half-finished drag instead of
+            // flipping when it lands.
+            DeckTab("TRACKS", selected = pagerState.currentPage == PAGE_TRACKS) {
+                scope.launch { pagerState.animateScrollToPage(PAGE_TRACKS) }
+            }
+            // No longer gated on the platform equaliser: this page is mostly Jawon's own effects
+            // now, and the filter, drive and echo run inside the player's pipeline whether or not
+            // the phone offers a system equaliser at all. Hiding the whole page because one panel
+            // on it was unavailable hid three that were not.
+            DeckTab("SOUND", selected = pagerState.currentPage == PAGE_SOUND) {
+                scope.launch { pagerState.animateScrollToPage(PAGE_SOUND) }
             }
 
             Box(Modifier.weight(1f))
+
+            // Which page, as two dots. The one piece of the pager that says a second page exists
+            // at all — without it a swipe is a gesture nobody knows to make.
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(5.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.padding(end = 12.dp)
+            ) {
+                for (page in 0 until pagerState.pageCount) {
+                    Box(
+                        Modifier
+                            .size(5.dp)
+                            .background(
+                                if (page == pagerState.currentPage) LampAmber else CrateEdge,
+                                RoundedCornerShape(3.dp)
+                            )
+                    )
+                }
+            }
 
             // The sleep timer lives on the deck, not in Settings, for the same reason the
             // equaliser was moved here: it is set while a record is playing and you are
@@ -275,13 +328,29 @@ fun DeckOverlay(
             )
         }
 
-        // The tracklist takes the slack, so the controls below it stay pinned to the bottom
-        // of the panel — the reachable part of a phone this tall.
-        if (showEqualiser) {
+        // The pages take the slack, so the controls below them stay pinned to the bottom of the
+        // panel — the reachable part of a phone this tall.
+        //
+        // A pager rather than a swapped branch, because switching should be a gesture rather than
+        // a target. It also makes room for the third page lyrics will want: pages cost a swipe
+        // each, while tabs cost screen width none of which is spare.
+        //
+        // The horizontal drags inside these pages — the filter, the drive, the echo's three —
+        // consume the pointer before the pager sees it, so a drag that starts on a control moves
+        // that control and a drag that starts anywhere else turns the page. That is the ordinary
+        // Compose resolution and it is the behaviour anyone expects; it is also the thing most
+        // likely to feel wrong, so it is what to check first on the device.
+        HorizontalPager(
+            state = pagerState,
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f)
+        ) { page ->
+        if (page == PAGE_SOUND) {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .weight(1f)
+                    .fillMaxHeight()
                     .verticalScroll(rememberScrollState())
                     .padding(top = 10.dp)
             ) {
@@ -341,7 +410,7 @@ fun DeckOverlay(
             LazyColumn(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .weight(1f)
+                    .fillMaxHeight()
                     .padding(top = 12.dp)
             ) {
                 itemsIndexed(deck.tracks) { index, track ->
@@ -352,6 +421,7 @@ fun DeckOverlay(
                     )
                 }
             }
+        }
         }
 
         }
@@ -1004,3 +1074,13 @@ private const val FADE_SCREEN_FRACTION = 0.22f * 0.575f
  * on arrival reads as a glitch, while one that does it under the finger reads as a response.
  */
 private const val COMPACT_BELOW = 0.44f
+
+/**
+ * The deck's pages.
+ *
+ * Two for now. Lyrics are the third, and are a *view* rather than a control — which is why they
+ * belong here and not as another module crammed into the rack.
+ */
+private const val PAGE_TRACKS = 0
+private const val PAGE_SOUND = 1
+private const val PAGE_COUNT = 2
