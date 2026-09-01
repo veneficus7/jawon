@@ -99,6 +99,28 @@ object WallDimens {
      * shelf rather than scrubbing a filmstrip. Main tuning knob.
      */
     const val CAMERA_Z = 0.78f
+
+    /**
+     * Camera clip planes, and the reason cover art used to vanish when zoomed out.
+     *
+     * A depth buffer resolves distance hyperbolically: almost all of its precision is spent
+     * just past the near plane, and what is left thins out rapidly with distance. How finely
+     * it can separate two surfaces therefore depends on the *ratio* of these two numbers far
+     * more than on either alone.
+     *
+     * SceneView's defaults are a 5cm near plane against a 1km far plane — a ratio of twenty
+     * thousand to one, chosen for scenes measured in metres. This room is measured in
+     * centimetres and its artwork plates sit fractions of a millimetre off the faces they
+     * decorate, which that ratio cannot reliably resolve at any distance and cannot resolve
+     * at all once the wall is a few metres away. The plate and the case body then flicker or
+     * swap, which is what "the artwork disappears, and worse when zoomed out" was.
+     *
+     * 0.12m is safely nearer than anything ever drawn: the disc sits 0.55m from the lens at
+     * its closest and a case rises RISE_Z toward it. 14m clears the widest wall a library is
+     * likely to build plus its margin. The ratio drops from 20,000:1 to about 117:1.
+     */
+    const val NEAR_PLANE = 0.12f
+    const val FAR_PLANE = 14f
 }
 
 data class CaseLayout(

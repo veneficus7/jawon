@@ -104,6 +104,8 @@ import com.jawon.app.ui.wallscene.WallDimens.CASE_D
 import com.jawon.app.ui.wallscene.WallDimens.CASE_H
 import com.jawon.app.ui.wallscene.WallDimens.CASE_W
 import com.jawon.app.ui.wallscene.WallDimens.FOCAL_LENGTH_MM
+import com.jawon.app.ui.wallscene.WallDimens.FAR_PLANE
+import com.jawon.app.ui.wallscene.WallDimens.NEAR_PLANE
 import com.jawon.app.ui.wallscene.WallDimens.PLATE_LIFT
 import com.jawon.app.ui.wallscene.WallDimens.PROUD_Z
 import com.jawon.app.ui.wallscene.WallDimens.PLATE_W
@@ -491,6 +493,9 @@ private class ScratchDriver {
      * was there rather than assuming play.
      */
     var resumeOnRelease = false
+
+    /** When the last touch move arrived, for turning angle deltas into a velocity. */
+    var lastMoveAt = 0L
     var lastAngle = 0f
     var cursor = Scratch.Cursor(0, 0L)
     var durations: List<Long> = emptyList()
@@ -694,6 +699,7 @@ fun WallSceneScreen(
         val sleepMode by viewModel.sleepMode.collectAsStateWithLifecycle()
         val sleepRemainingMs by viewModel.sleepRemainingMs.collectAsStateWithLifecycle()
         val diagnostics = viewModel.diagnostics
+        val scratchAudio = viewModel.scratchAudio
         val initialTier = remember(context) { QualityTier.detect(context) }
         // Reported so a tester can photograph what the room actually chose � see
         // RoomDiagnostics for why that is worth a Settings section.
@@ -751,6 +757,33 @@ fun WallSceneScreen(
         val cameraNode = rememberCameraNode(engine) {
             focalLength = FOCAL_LENGTH_MM
             position = Position(0f, 0f, CAMERA_Z)
+            // **Clip planes, set explicitly — this is a depth-precision fix, not tuning.**
+            //
+            // The reported symptom was that cover art vanished at grazing angles and that the
+            // angle at which it vanished got *wider the further you zoomed out*. That second
+            // half is the diagnosis: a culling or facing problem has a fixed angle, and only
+            // depth precision changes with distance.
+            //
+            // The artwork is a plate sitting 0.6mm behind the lid's outer face. Whether it or
+            // the lid wins the depth test at that separation depends entirely on how finely
+            // the depth buffer can resolve at that distance — and a depth buffer's resolution
+            // is hyperbolic in the near:far ratio, so it collapses as things get further away.
+            // Left at the default near plane the ratio is in the thousands, which cannot
+            // reliably separate two surfaces 0.6mm apart at arm's length, let alone across a
+            // room. At grazing angles the separation along the view ray shrinks further, which
+            // is why the two symptoms arrived together.
+            //
+            // This room is measured in centimetres and the camera never gets closer than about
+            // 0.3m to anything: the disc sits 0.55m away at its nearest, and a case rises only
+            // RISE_Z toward the lens. A 0.12m near plane is therefore free, and it buys back
+            // more than an order of magnitude of precision exactly where it was being lost.
+            //
+            // As *properties*, not `setProjection`. `WallDimens.FOCAL_LENGTH_MM` records that
+            // SceneView re-runs `updateProjection()` on every surface resize and discards a
+            // directly-set projection; these two are the inputs that call reads, so they
+            // survive a rotation or a window resize where a direct call would silently revert.
+            near = NEAR_PLANE
+            far = FAR_PLANE
             // Seeded before the first frame, not just eased toward in onFrame. Filament's
             // depth-of-field pass asserts a positive focus distance, and a camera starts at
             // zero — enabling DOF without this aborts the process on the first frame.
@@ -1158,7 +1191,13 @@ fun WallSceneScreen(
         fun endScratch() {
             if (!scratch.active) return
             scratch.active = false
-            viewModel.onScrub(scratch.cursor.trackIndex, scratch.cursor.offsetMs)
+
+            // Where the record actually ended up is what the audio engine's own cursor says,
+            // not what the throttled seek last reported � the sound is the thing the user was
+            // steering, so it is the authority on where they stopped.
+            val landedMs = scratchAudio.end()
+            val offset = landedMs ?: scratch.cursor.offsetMs
+            viewModel.onScrub(scratch.cursor.trackIndex, offset)
             scrubReadout.value = null
             // Let the platter go: pick playback back up exactly where the scrub left it, and
             // only if it was running when the disc was grabbed.
@@ -1207,6 +1246,19 @@ fun WallSceneScreen(
                         // true before the grab, or grabbing a paused disc would start it.
                         scratch.resumeOnRelease = frame.isPlaying
                         if (frame.isPlaying) viewModel.setPlaying(false)
+                        scratch.lastMoveAt = SystemClock.uptimeMillis()
+
+                        // The player is stopped, so from here the sound is ours to make.
+                        // Handed the track under the playhead and where in it we are; the
+                        // decode runs off the main thread and the gesture never waits on it.
+                        deck.tracks.getOrNull(scratch.cursor.trackIndex)?.let { track ->
+                            scratchAudio.begin(
+                                context,
+                                scope,
+                                android.net.Uri.parse(track.fileUri),
+                                scratch.cursor.offsetMs
+                            )
+                        }
                     }
                 }
             },
@@ -1371,6 +1423,16 @@ fun WallSceneScreen(
                         )
 
                         val now = SystemClock.uptimeMillis()
+
+                        // The audio follows the same delta the disc does, turned into a
+                        // velocity. Measured against the wall clock rather than the frame
+                        // clock because touch events do not arrive on frame boundaries, and
+                        // dividing a real angle by an assumed interval is how a steady drag
+                        // ends up sounding like it is stuttering.
+                        val sinceMove = (now - scratch.lastMoveAt).coerceAtLeast(1L)
+                        scratch.lastMoveAt = now
+                        scratchAudio.setAngularVelocity(delta / (sinceMove / 1000f))
+
                         if (scratch.cursor.trackIndex != before) {
                             // A track boundary went past under the finger. Heavier than the
                             // scrub texture and deliberately a different effect, so a skip

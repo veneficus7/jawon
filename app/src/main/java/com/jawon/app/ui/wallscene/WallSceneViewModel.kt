@@ -67,7 +67,9 @@ class WallSceneViewModel @Inject constructor(
      * Written by the frame loop, read by Settings. Exposed rather than injected into the
      * composable directly so the scene keeps talking to one object.
      */
-    val diagnostics: RoomDiagnostics
+    val diagnostics: RoomDiagnostics,
+    /** Makes the sound while a hand is on the disc. See [com.jawon.app.playback.ScratchAudio]. */
+    val scratchAudio: com.jawon.app.playback.ScratchAudio
 ) : ViewModel() {
 
 
