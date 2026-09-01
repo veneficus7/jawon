@@ -493,17 +493,43 @@ def build_closed_case():
     # RoomLighting.LAMP_HOT_LEVEL). Roughness 0.02 under a full clearcoat against a hot
     # source gives a hard, moving highlight; the same numbers against the old smooth gradient
     # gave nothing. The environment was the missing half, not the surface.
+    #
+    # **The fresnel was hiding the album art, which is the one thing the wall exists to show.**
+    #
+    # Reported as "cover art is not visible from sharp angles, and worse zoomed out", and it
+    # was neither culling nor depth: on a blended surface the specular is not attenuated by
+    # alpha, so as fresnel climbs toward 1 at grazing incidence the shell's own reflection
+    # swamps whatever is behind it. Reflecting a dark room, that reads as a dark blue slab
+    # where a cover should be — which is exactly what a case at the edge of the shelf looked
+    # like. Zooming out makes it worse for the plainest possible reason: more of the wall is
+    # off-axis, so more cases are being seen at the angles where this bites.
+    #
+    # Every number below is a retreat from physical accuracy, on purpose. Polystyrene really is
+    # 1.59 with a hard clearcoat, and a real jewel case really does go to a mirror when you
+    # tilt it — but a real jewel case is one you can pick up and tilt back. Here the wall turns
+    # the cases for you, so half the presentation would be spent showing you a reflection of an
+    # unlit room instead of the record. The shelf has to read first.
+    #
+    # - ior 1.59 -> 1.24 lowers F0 and, more usefully, flattens how fast fresnel climbs.
+    # - coat 1.0 -> 0.28. The clearcoat is a second specular lobe with its own fresnel, fixed
+    #   at 1.5, and it was doubling the effect the first one was already causing.
+    # - roughness 0.02 -> 0.09 spreads the grazing reflection instead of mirroring the room
+    #   into a single hard sheet.
+    #
+    # The highlight survives all three: RoomLighting's hot lamp is what makes this read as
+    # glass (see the note above), and it still does — it is now a sheen across the cover rather
+    # than a shutter over it.
     obj.data.materials.append(
         principled(
             "JewelCaseClear",
             base_color=(0.90, 0.94, 1.0),
             metallic=0.0,
-            roughness=0.02,
-            coat=1.0,
-            coat_roughness=0.01,
+            roughness=0.09,
+            coat=0.28,
+            coat_roughness=0.04,
             alpha=0.16,
             blend=True,
-            ior=1.59,          # polystyrene, for the fresnel falloff at grazing angles
+            ior=1.24,
         )
     )
     return obj

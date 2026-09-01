@@ -101,6 +101,27 @@ class ScratchAudio @Inject constructor() {
             windowStartMs = decoded.startMs
             cursor = ((positionMs - decoded.startMs) / 1000.0) * sampleRate * channels
             startOutput()
+
+            // **Then widen it, because the first window is not big enough to scratch with.**
+            //
+            // One revolution of the disc is `Scratch.SEC_PER_REV` seconds of audio — six —
+            // so a four-second window runs out inside a single turn, and the sound simply
+            // stopped after a couple of spins. It cannot just be decoded wide to begin with:
+            // this has to make a noise the instant a finger lands, and half a minute of audio
+            // takes long enough to decode that the start of the gesture would be silent.
+            //
+            // So: a small window to start on, immediately, and a large one that replaces it a
+            // moment later. The swap re-bases the cursor onto the new window's origin, and a
+            // torn read across it costs at most a click of silence, because `sampleAt` already
+            // answers out-of-range with zero rather than a held sample.
+            val wide = withContext(Dispatchers.IO) {
+                runCatching { decodeWindow(context, uri, positionMs, WIDE_WINDOW_MS) }.getOrNull()
+            }
+            if (wide == null || !running) return@launch
+            val playingMs = windowStartMs + ((cursor / channels) / sampleRate * 1000.0)
+            windowStartMs = wide.startMs
+            pcm = wide.samples
+            cursor = ((playingMs - wide.startMs) / 1000.0) * sampleRate * channels
         }
     }
 
@@ -243,7 +264,12 @@ class ScratchAudio @Inject constructor() {
      * with the player: this needs raw samples in an array, which is exactly what a player is
      * built to avoid ever handing out.
      */
-    private fun decodeWindow(context: Context, uri: Uri, positionMs: Long): Window? {
+    private fun decodeWindow(
+        context: Context,
+        uri: Uri,
+        positionMs: Long,
+        halfWindowMs: Long = WINDOW_MS
+    ): Window? {
         val extractor = MediaExtractor()
         var codec: MediaCodec? = null
         try {
@@ -259,8 +285,8 @@ class ScratchAudio @Inject constructor() {
             val rate = format.getInteger(MediaFormat.KEY_SAMPLE_RATE)
             val ch = format.getInteger(MediaFormat.KEY_CHANNEL_COUNT).coerceIn(1, 2)
 
-            val startMs = (positionMs - WINDOW_MS).coerceAtLeast(0L)
-            val endMs = positionMs + WINDOW_MS
+            val startMs = (positionMs - halfWindowMs).coerceAtLeast(0L)
+            val endMs = positionMs + halfWindowMs
             extractor.seekTo(startMs * 1000L, MediaExtractor.SEEK_TO_PREVIOUS_SYNC)
 
             codec = MediaCodec.createDecoderByType(mime).apply {
@@ -333,6 +359,16 @@ class ScratchAudio @Inject constructor() {
          * rather than clicking — see [ScratchTone.sampleAt].
          */
         const val WINDOW_MS = 4_000L
+
+        /**
+         * The window that replaces it, once there has been time to decode one.
+         *
+         * Twenty-five seconds either side is four full revolutions of the disc in each
+         * direction, which is past the point where anyone is still scratching rather than
+         * seeking. Around 9MB of PCM for a stereo 44.1kHz track, held only while a finger is
+         * down.
+         */
+        const val WIDE_WINDOW_MS = 25_000L
 
         const val TIMEOUT_US = 8_000L
     }
