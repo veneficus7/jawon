@@ -118,6 +118,24 @@ object ScratchTone {
     const val GRAIN_MS = 52f
 
     /**
+     * How many frames one grain is at [sampleRate] — **always even, and that is not tidiness.**
+     *
+     * Grains overlap by exactly half, so the second half of each one is carried into the next
+     * pass and must fit the buffer the first half writes into. An odd length makes those two
+     * halves different sizes: 52ms at 44.1kHz is 2293 frames, which halves to 1146 and leaves
+     * 1147 over. The tail then runs two samples past the end of its array.
+     *
+     * That is not a glitch, it is an `ArrayIndexOutOfBoundsException` on the audio thread,
+     * which took the whole app down the first time someone spun the disc. Rounding to even
+     * here — once, where the number is decided — is what makes the two halves equal by
+     * construction rather than by luck of the sample rate.
+     */
+    fun grainFramesFor(sampleRate: Int): Int {
+        val raw = (GRAIN_MS / 1000f * sampleRate).toInt().coerceAtLeast(64)
+        return if (raw % 2 == 0) raw else raw + 1
+    }
+
+    /**
      * The window applied across a grain, `0` at each edge and `1` in the middle.
      *
      * Raised cosine, overlapped by exactly half, which is the pair of properties that make

@@ -207,7 +207,18 @@ class ScratchAudio @Inject constructor() {
         track = out
         runCatching { out.play() }
 
-        writer = Thread({ writeLoop(out, minBuffer / 2) }, "jawon-scratch").apply {
+        writer = Thread({
+            // **Nothing here may ever kill the app.**
+            //
+            // It already did once: an off-by-two in the grain arithmetic threw an
+            // ArrayIndexOutOfBounds on this thread, and an uncaught exception on any thread
+            // takes the whole process with it — so the app died the moment anyone spun the
+            // disc. The arithmetic is fixed and tested, but the shape of the risk is
+            // permanent: this loop runs audio maths on a background thread while a finger is
+            // moving, and the worst it should ever be able to do is stop making noise.
+            runCatching { writeLoop(out, minBuffer / 2) }
+                .onFailure { Log.w(TAG, "scratch output stopped: $it") }
+        }, "jawon-scratch").apply {
             priority = Thread.MAX_PRIORITY
             start()
         }
@@ -223,7 +234,7 @@ class ScratchAudio @Inject constructor() {
      * is whatever the record was recorded at.
      */
     private fun writeLoop(out: AudioTrack, chunkSamples: Int) {
-        val grainFrames = (ScratchTone.GRAIN_MS / 1000f * sampleRate).toInt().coerceAtLeast(64)
+        val grainFrames = ScratchTone.grainFramesFor(sampleRate)
         val hopFrames = grainFrames / 2
         val hopSamples = hopFrames * channels
         val buffer = ShortArray(hopSamples)

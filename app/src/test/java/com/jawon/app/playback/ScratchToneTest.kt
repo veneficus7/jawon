@@ -146,6 +146,39 @@ class ScratchToneTest {
     // ---- grains, which are what hold the pitch ----------------------------------------
 
     @Test
+    fun `a grain is always an even number of frames`() {
+        // The crash this prevents: grains overlap by exactly half, so an odd length leaves the
+        // two halves different sizes and the tail runs off the end of its array — an
+        // ArrayIndexOutOfBounds on the audio thread, which took the whole app down the first
+        // time anyone spun the disc. 52ms at 44.1kHz is 2293 frames, which is where it bit.
+        for (rate in listOf(8_000, 11_025, 16_000, 22_050, 32_000, 44_100, 48_000, 88_200, 96_000)) {
+            val frames = ScratchTone.grainFramesFor(rate)
+            assertEquals("odd grain at ${rate}Hz", 0, frames % 2)
+        }
+    }
+
+    @Test
+    fun `the two halves of a grain are exactly equal`() {
+        // Stated directly, because this is the property the overlap buffer depends on.
+        for (rate in listOf(44_100, 48_000, 22_050)) {
+            val frames = ScratchTone.grainFramesFor(rate)
+            val hop = frames / 2
+            assertEquals("halves differ at ${rate}Hz", frames, hop * 2)
+        }
+    }
+
+    @Test
+    fun `a grain is never degenerately short even at a silly sample rate`() {
+        assertTrue(ScratchTone.grainFramesFor(1) >= 64)
+        assertTrue(ScratchTone.grainFramesFor(0) >= 64)
+    }
+
+    @Test
+    fun `grain length tracks the sample rate`() {
+        assertTrue(ScratchTone.grainFramesFor(48_000) > ScratchTone.grainFramesFor(22_050))
+    }
+
+    @Test
     fun `a grain window opens and closes at zero`() {
         // A step at either edge is a click, once per grain, twenty times a second.
         assertEquals(0f, ScratchTone.grainWindow(0, 100), 1e-5f)
