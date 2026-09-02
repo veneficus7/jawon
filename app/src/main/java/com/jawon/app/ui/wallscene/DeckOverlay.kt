@@ -122,6 +122,7 @@ fun DeckOverlay(
     pitchPosition: StateFlow<Float>,
     onSpeedChange: (Float) -> Unit,
     onPitchChange: (Float) -> Unit,
+    onPitchCommit: () -> Unit,
     /** Saturation, 0 clean … 1 broken. See [com.jawon.app.playback.Drive]. */
     drivePosition: StateFlow<Float>,
     onDriveChange: (Float) -> Unit,
@@ -269,8 +270,14 @@ fun DeckOverlay(
             // holding loses its name because you looked at its tone controls. The sheet is
             // draggable now, so room is something the user asks for rather than something the
             // panel takes.
+            // The *track*, not the record.
+            //
+            // The album's name is on the spine, on the front of the case, and on the shelf label
+            // — you have just chosen it, and it is still behind this panel. What you cannot see
+            // anywhere else is which of its tracks is playing, and that is what a deck is for.
+            // Falls back to the album for the moment before a track is loaded.
             Text(
-                text = title,
+                text = deck.currentTrack?.title?.takeIf { it.isNotBlank() } ?: title,
                 style = MaterialTheme.typography.displaySmall,
                 textAlign = TextAlign.Center,
                 maxLines = 1,
@@ -405,7 +412,7 @@ fun DeckOverlay(
                     pitchFlow = pitchPosition,
                     onSpeed = onSpeedChange,
                     onPitch = onPitchChange,
-                    showPitch = false
+                    onPitchCommit = onPitchCommit
                 )
 
                 DriveModule(positionFlow = drivePosition, onChange = onDriveChange)
@@ -1085,8 +1092,14 @@ private fun VarispeedModule(
     pitchFlow: StateFlow<Float>,
     onSpeed: (Float) -> Unit,
     onPitch: (Float) -> Unit,
-    /** Off until the pipeline can survive the control being moved. See the call site. */
-    showPitch: Boolean = true
+    /**
+     * The pitch gesture has ended.
+     *
+     * Pitch is the one control here whose value must not reach the player mid-drag — see
+     * [com.jawon.app.playback.RackState.pitchApplied]. Speed has no such restriction and is
+     * applied continuously.
+     */
+    onPitchCommit: () -> Unit
 ) {
     val speed by speedFlow.collectAsState()
     val pitch by pitchFlow.collectAsState()
@@ -1108,23 +1121,22 @@ private fun VarispeedModule(
         }
         CentredStrip(speed, onSpeed)
 
-        if (showPitch) {
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Text("PITCH", style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = 10.sp))
-                Text(
-                    text = if (Varispeed.isNeutral(pitch)) "NORMAL"
-                    else "%+.1f ST".format(Varispeed.semitonesFor(pitch)),
-                    style = JawonTextStyle.mono.copy(
-                        color = if (Varispeed.isNeutral(pitch)) LabelDim else LampAmber,
-                        fontSize = 10.sp
-                    )
+        // The readout follows the finger; the player is only told on release. See onPitchCommit.
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text("PITCH", style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = 10.sp))
+            Text(
+                text = if (Varispeed.isNeutral(pitch)) "NORMAL"
+                else "%+.1f ST".format(Varispeed.semitonesFor(pitch)),
+                style = JawonTextStyle.mono.copy(
+                    color = if (Varispeed.isNeutral(pitch)) LabelDim else LampAmber,
+                    fontSize = 10.sp
                 )
-            }
-            CentredStrip(pitch, onPitch)
+            )
         }
+        CentredStrip(pitch, onPitch, onCommit = onPitchCommit)
     }
 }
 
@@ -1135,7 +1147,15 @@ private fun VarispeedModule(
  * rest at centre should be operated the same way, and a user who learns one has learned them.
  */
 @Composable
-private fun CentredStrip(position: Float, onChange: (Float) -> Unit) {
+private fun CentredStrip(
+    position: Float,
+    onChange: (Float) -> Unit,
+    /**
+     * Called when the finger lifts, for controls whose value must not reach the player until
+     * the gesture has settled. See [RackState.pitchApplied] for why pitch is one of those.
+     */
+    onCommit: (() -> Unit)? = null
+) {
     var width by remember { mutableFloatStateOf(1f) }
     val haptics = LocalHapticFeedback.current
     var wasCentred by remember { mutableStateOf(true) }
@@ -1156,7 +1176,9 @@ private fun CentredStrip(position: Float, onChange: (Float) -> Unit) {
             .onSizeChanged { width = it.width.toFloat().coerceAtLeast(1f) }
             .pointerInput(Unit) {
                 detectHorizontalDragGestures(
-                    onDragStart = { set(it.x) }
+                    onDragStart = { set(it.x) },
+                    onDragEnd = { onCommit?.invoke() },
+                    onDragCancel = { onCommit?.invoke() }
                 ) { change, _ -> set(change.position.x) }
             }
     ) {

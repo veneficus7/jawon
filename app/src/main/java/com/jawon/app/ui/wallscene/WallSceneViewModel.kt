@@ -170,7 +170,10 @@ class WallSceneViewModel @Inject constructor(
 
     fun onSpeedChange(position: Float) = rack.setSpeed(position)
 
+    /** Moves the readout only. The player is told on release — see [RackState.pitchApplied]. */
     fun onPitchChange(position: Float) = rack.setPitch(position)
+
+    fun onPitchCommit() = rack.commitPitch()
 
     /**
      * Carries the two knobs to the player, at a rate the player can survive.
@@ -191,7 +194,7 @@ class WallSceneViewModel @Inject constructor(
      */
     init {
         viewModelScope.launch {
-            combine(rack.speed, rack.pitch) { speed, pitch -> speed to pitch }
+            combine(rack.speed, rack.pitchApplied) { speed, pitch -> speed to pitch }
                 .conflate()
                 .collect { (speed, pitch) ->
                     playbackRepository.setSpeedAndPitch(

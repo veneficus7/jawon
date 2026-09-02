@@ -47,8 +47,33 @@ class RackState @Inject constructor() {
     private val _speed = MutableStateFlow(CENTRE)
     val speed: StateFlow<Float> = _speed.asStateFlow()
 
+    /**
+     * Where the pitch control is, for the readout — updated continuously as it is dragged.
+     *
+     * **Deliberately not what reaches the player.** See [pitchApplied].
+     */
     private val _pitch = MutableStateFlow(CENTRE)
     val pitch: StateFlow<Float> = _pitch.asStateFlow()
+
+    /**
+     * The pitch the player is actually told about, which only changes when the finger lifts.
+     *
+     * **This split is a fix, not a nicety.** Every time the pitch passes through neutral,
+     * Media3's time-stretcher is added to or removed from the audio pipeline — a full
+     * reconfiguration rather than a change of ratio — and a dragging finger crosses centre
+     * repeatedly. That left the playback thread spinning at a whole core with no progress at
+     * all, until the player's own watchdog declared it stuck; the phone got hot enough to
+     * throttle and the deck sat at 0:00. Throttling the updates did not help, because the
+     * problem is the crossing rather than the rate.
+     *
+     * A settled pitch is cheap at any amount — an octave down measured barely above idle. So
+     * the player is told once, when the gesture ends, and never sees the sweep in between.
+     *
+     * Speed does not need this. It never reproduced the fault, and being able to slew it while
+     * listening is most of what it is for.
+     */
+    private val _pitchApplied = MutableStateFlow(CENTRE)
+    val pitchApplied: StateFlow<Float> = _pitchApplied.asStateFlow()
 
     fun setSpeed(position: Float) {
         _speed.value = position.coerceIn(-1f, 1f)
@@ -56,6 +81,11 @@ class RackState @Inject constructor() {
 
     fun setPitch(position: Float) {
         _pitch.value = position.coerceIn(-1f, 1f)
+    }
+
+    /** The finger has come off the pitch control: hand the settled value to the player. */
+    fun commitPitch() {
+        _pitchApplied.value = _pitch.value
     }
 
     // ---- the drive. See [Drive] -------------------------------------------------------
