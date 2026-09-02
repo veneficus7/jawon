@@ -1611,6 +1611,23 @@ private fun SegmentRing(
                             var turning = false
 
                             drag(down.id) { change ->
+                                // **Consumed from the very first movement, before deciding what
+                                // the gesture is.**
+                                //
+                                // This page sits inside a HorizontalPager, and turning the band
+                                // is mostly a sideways drag. The pager's own slop is a few
+                                // pixels — far less than four degrees of arc — so while this was
+                                // still making up its mind the pager had already claimed the
+                                // gesture and swiped to the tracklist. Turning the band did
+                                // nothing except change the page, which is exactly what the
+                                // owner saw.
+                                //
+                                // A child sees the Main pass before its parents, so consuming
+                                // every change here keeps the pager out of it from the start.
+                                // Deciding tap-versus-turn is then this function's business
+                                // alone, and it still decides it by total travel below.
+                                change.consume()
+
                                 val now = angleOf(change.position, centre)
                                 val step = angleDelta(last, now)
                                 last = now
@@ -1626,7 +1643,6 @@ private fun SegmentRing(
                                             (it.value + step / SEG_SWEEP).coerceIn(0f, 1f)
                                         )
                                     }
-                                    change.consume()
                                 }
                             }
 
