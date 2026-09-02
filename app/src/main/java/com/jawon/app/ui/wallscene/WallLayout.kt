@@ -1,7 +1,6 @@
 package com.jawon.app.ui.wallscene
 
 import com.jawon.app.data.local.ShelfWithAlbums
-import kotlin.math.abs
 import kotlin.math.roundToInt
 
 /**

@@ -21,7 +21,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
@@ -66,9 +65,7 @@ import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.jawon.app.data.playback.EqBand
 import com.jawon.app.data.playback.NativeEffect
 import com.jawon.app.data.playback.NativeEffects
@@ -79,10 +76,7 @@ import com.jawon.app.playback.RackChannel
 import com.jawon.app.playback.Varispeed
 import com.jawon.app.ui.theme.DeckFinish
 import com.jawon.app.ui.theme.RackLayout
-import com.jawon.app.ui.theme.LabelCream
-import com.jawon.app.ui.theme.LampAmber
 import com.jawon.app.ui.theme.LocalDeckFinish
-import com.jawon.app.ui.theme.OxideTeal
 import java.util.Locale
 import kotlin.math.abs
 import kotlin.math.atan2
@@ -308,15 +302,7 @@ private fun Cell(
         label = "entry"
     )
 
-    val pulse = rememberInfiniteTransition(label = "cell").animateFloat(
-        initialValue = SELECT_PULSE_LOW,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(SELECT_PULSE_MS, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "pulse"
-    )
+    val pulse = selectionPulse(selected)
 
     Box(
         modifier = modifier
@@ -334,7 +320,7 @@ private fun Cell(
             .border(
                 width = if (selected) 2.dp else 1.dp,
                 color = if (selected) {
-                    finish.accent.copy(alpha = pulse.value)
+                    finish.accent.copy(alpha = pulse)
                 } else {
                     finish.keyEdge
                 },
@@ -550,6 +536,30 @@ private const val CELL_FADE_MS = 220
 // window's glow, because eight of these pulsing in time would be a fairground.
 private const val SELECT_PULSE_LOW = 0.55f
 private const val SELECT_PULSE_MS = 1900
+
+/**
+ * The breathing edge of whichever control is selected — and *only* while one is.
+ *
+ * **An infinite transition runs whether or not anything reads it.** It holds a frame callback
+ * open for as long as it is in composition, so the previous shape of this — one declared
+ * unconditionally in every key — had a still panel asking Compose for sixty frames a second to
+ * animate a value that eight of the nine keys were not looking at. The panel never idled.
+ *
+ * Declaring it inside the branch is what stops that: Compose discards the group when `selected`
+ * goes false and cancels the animation with it, so the clock runs while a key is lit and stops
+ * the moment it is not. There is only ever one selected key, so at most one of these is alive.
+ */
+@Composable
+private fun selectionPulse(selected: Boolean): Float =
+    if (!selected) 1f else rememberInfiniteTransition(label = "pulse").animateFloat(
+        initialValue = SELECT_PULSE_LOW,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(SELECT_PULSE_MS, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "pulse"
+    ).value
 
 /** How strongly a switched-in key bleeds its own colour. Scaled by the mode's glow. */
 // The pool of light under a switched-in key. Reach is a fraction of the key's width, so the
@@ -862,277 +872,6 @@ private const val EQ_GAP = 4
 private const val FLAT_SLOP_MB = 40
 
 /**
- * The effects in orbit around the disc.
- *
- * **No grid, and that is the point.** Eight studs on an arc with the selected effect's controls
- * in the middle of it — the only layout here that could not belong to any other app, because it
- * is built around the record rather than around a screen. It is also the only one that leaves
- * the disc uncovered: the arc opens upward, so the thing you came to look at stays visible
- * through the gap.
- *
- * Laid out by hand rather than with a layout: a ring is polar and Compose's containers are not,
- * so each stud is placed by angle at a radius measured from the panel's own width. Everything is
- * a fraction of that width, so it holds together on any screen without a second set of numbers.
- */
-@Composable
-private fun RingRack(
-    cells: List<RackCell>,
-    engaged: Set<RackChannel>,
-    selected: RackChannel?,
-    arrived: Boolean,
-    onToggle: (RackChannel) -> Unit,
-    onSelect: (RackChannel) -> Unit,
-    /**
-     * The equaliser's bands.
-     *
-     * The ring had no idea the equaliser existed, so selecting its stud handed the middle three
-     * empty faders — the effect looked broken rather than unimplemented. Five bands also need
-     * more room than three, so the hole widens for them.
-     */
-    eqBands: List<EqBand>,
-    eqRangeMb: Pair<Int, Int>,
-    onEqBandChange: (Int, Int) -> Unit,
-    modifier: Modifier = Modifier
-) {
-    val finish = LocalDeckFinish.current
-    val params = cells.firstOrNull { it.channel == selected }?.params.orEmpty()
-
-    // **One box for the ring, and everything measured from its middle.**
-    //
-    // The first version placed the studs against the panel and centred the core against the
-    // panel *separately*, which is two frames of reference for one circle — the core came out
-    // sitting over the left-hand studs rather than in the hole. Giving the ring its own square
-    // box makes the maths local: the studs are offsets from this box's centre, and the core is
-    // simply centred in it, so the two cannot disagree.
-    BoxWithConstraints(
-        modifier = modifier.fillMaxWidth().height(RING_HEIGHT.dp),
-        contentAlignment = Alignment.Center
-    ) {
-        val diameter = minOf(maxWidth, maxHeight) * RING_DIAMETER_FRACTION
-        val radius = diameter / 2
-
-        Box(
-            modifier = Modifier
-                .size(diameter)
-                // **Every stud's glow is painted here, on the ring's own canvas.**
-                //
-                // Twice now the bloom has been drawn inside the stud and twice it has come out
-                // with a visible rectangle around it, because something in that node's modifier
-                // chain renders to an offscreen layer the size of the stud and clips whatever
-                // reaches past it. Moving the draw earlier in the chain was not enough.
-                //
-                // So it stops being the stud's business. The ring is one large node, the blooms
-                // are drawn into it at the same polar positions the studs are placed at, and
-                // there is no small box anywhere for them to be cut against. The glows land
-                // under the studs because this is `drawBehind` on their common parent.
-                .drawBehind {
-                    if (finish.glow <= 0f) return@drawBehind
-                    val r = size.minDimension / 2f
-                    val reach = RING_STUD.dp.toPx() * RING_BLOOM_REACH
-
-                    cells.forEachIndexed { i, cell ->
-                        if (cell.channel !in engaged) return@forEachIndexed
-                        val a = -90.0 - RING_SWEEP_DEGREES / 2.0 +
-                            RING_SWEEP_DEGREES * i / (cells.size - 1).coerceAtLeast(1)
-                        val rad = Math.toRadians(a + 180.0)
-                        val heart = Offset(
-                            size.width / 2f + r * cos(rad).toFloat(),
-                            size.height / 2f + r * sin(rad).toFloat()
-                        )
-                        drawCircle(
-                            brush = Brush.radialGradient(
-                                colors = listOf(
-                                    cell.hue.copy(alpha = RING_BLOOM_CORE * finish.glow),
-                                    cell.hue.copy(alpha = RING_BLOOM_CORE * 0.3f * finish.glow),
-                                    Color.Transparent
-                                ),
-                                center = heart,
-                                radius = reach
-                            ),
-                            radius = reach,
-                            center = heart
-                        )
-                    }
-                },
-            contentAlignment = Alignment.Center
-        ) {
-            cells.forEachIndexed { i, cell ->
-                // The arc runs from lower-left round the bottom to lower-right, leaving the top
-                // open so the record above is never behind a stud.
-                val sweep = RING_SWEEP_DEGREES
-                val angle = -90.0 - sweep / 2.0 + sweep * i / (cells.size - 1).coerceAtLeast(1)
-                val rad = Math.toRadians(angle + 180.0)
-
-                RingStud(
-                    cell = cell,
-                    order = i,
-                    arrived = arrived,
-                    engaged = cell.channel in engaged,
-                    selected = cell.channel == selected,
-                    onToggle = { onToggle(cell.channel) },
-                    onSelect = { onSelect(cell.channel) },
-                    modifier = Modifier.offset(
-                        x = radius * cos(rad).toFloat(),
-                        y = radius * sin(rad).toFloat()
-                    )
-                )
-            }
-
-            // The middle of the ring: what is selected, and its controls. Kept narrow so it
-            // never reaches the studs — the hole in a ring is the point of a ring. Centred in
-            // the ring's own box, so it lands in the hole by construction.
-            val onEq = selected == RackChannel.EQ
-            Column(
-                modifier = Modifier
-                    .align(Alignment.Center)
-                    // Five bands need more of the hole than three faders do, so the core widens
-                    // for the equaliser rather than squeezing five controls into three's room.
-                    .fillMaxWidth(if (onEq) RING_CORE_WIDTH_EQ else RING_CORE_WIDTH),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                Text(
-                    text = selected?.label ?: "—",
-                    fontFamily = finish.keyType,
-                    fontSize = finish.keyTypeSize * 1.5f,
-                    fontWeight = FontWeight.Bold,
-                    color = finish.plateInk,
-                    maxLines = 1
-                )
-                if (onEq) {
-                    EqBands(
-                        bands = eqBands,
-                        rangeMb = eqRangeMb,
-                        onBandChange = onEqBandChange,
-                        height = RING_FADER_HEIGHT,
-                        modifier = Modifier.padding(top = 8.dp)
-                    )
-                } else {
-                    // Stacked rather than side by side: the inside of a circle is wide and
-                    // short, so each control gets the whole width of the hole for its travel
-                    // instead of a third of it.
-                    Column(
-                        modifier = Modifier.padding(top = 8.dp).fillMaxWidth(),
-                        verticalArrangement = Arrangement.spacedBy(RING_PARAM_GAP.dp)
-                    ) {
-                        repeat(FADER_SLOTS) { slot ->
-                            RingParam(
-                                param = params.getOrNull(slot),
-                                hue = cells.firstOrNull { it.channel == selected }?.hue
-                                    ?: finish.accent,
-                                live = selected != null && selected in engaged
-                            )
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-/** One stud on the ring: a lit disc rather than a key, because a ring has no corners. */
-@Composable
-private fun RingStud(
-    cell: RackCell,
-    order: Int,
-    arrived: Boolean,
-    engaged: Boolean,
-    selected: Boolean,
-    onToggle: () -> Unit,
-    onSelect: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    val finish = LocalDeckFinish.current
-
-    var pressed by remember { mutableStateOf(false) }
-    val press = animateFloatAsState(
-        targetValue = if (pressed) PRESS_SCALE else 1f,
-        animationSpec = spring(Spring.DampingRatioMediumBouncy, Spring.StiffnessMedium),
-        label = "press"
-    )
-    val lit = animateFloatAsState(
-        targetValue = if (engaged) 1f else 0f,
-        animationSpec = tween(CELL_FADE_MS),
-        label = "lit"
-    )
-    // The studs light in sequence around the arc, so the ring switches on like a sign rather
-    // than appearing all at once.
-    val entry = animateFloatAsState(
-        targetValue = if (arrived) 1f else 0f,
-        animationSpec = tween(ENTRY_MS, order * ENTRY_STAGGER_MS, FastOutSlowInEasing),
-        label = "entry"
-    )
-    val pulse = rememberInfiniteTransition(label = "stud").animateFloat(
-        initialValue = SELECT_PULSE_LOW,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(
-            tween(SELECT_PULSE_MS, easing = FastOutSlowInEasing),
-            RepeatMode.Reverse
-        ),
-        label = "pulse"
-    )
-
-    Column(
-        modifier = modifier.width(RING_STUD.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Box(
-            modifier = Modifier
-                .size(RING_STUD.dp)
-                .graphicsLayer {
-                    scaleX = press.value * (0.6f + 0.4f * entry.value)
-                    scaleY = press.value * (0.6f + 0.4f * entry.value)
-                    alpha = entry.value
-                }
-                .background(
-                    if (engaged) cell.hue.copy(alpha = lit.value) else Color.Transparent,
-                    CircleShape
-                )
-                .border(
-                    width = if (selected) 2.dp else 1.dp,
-                    color = when {
-                        selected -> finish.accent.copy(alpha = pulse.value)
-                        engaged -> Color.Transparent
-                        else -> finish.keyEdge
-                    },
-                    shape = CircleShape
-                )
-                .then(
-                    if (cell.available) {
-                        Modifier.pointerInput(cell.channel, engaged, selected) {
-                            detectTapGestures(
-                                onPress = {
-                                    pressed = true
-                                    tryAwaitRelease()
-                                    pressed = false
-                                },
-                                onTap = {
-                                    when {
-                                        !engaged -> { onToggle(); onSelect() }
-                                        selected -> onToggle()
-                                        else -> onSelect()
-                                    }
-                                }
-                            )
-                        }
-                    } else {
-                        Modifier
-                    }
-                )
-                .alpha(if (cell.available) 1f else UNAVAILABLE_ALPHA)
-        )
-        Text(
-            text = cell.channel.label,
-            fontFamily = finish.keyType,
-            fontSize = finish.keyTypeSize * 0.86f,
-            color = if (engaged) finish.plateInk else finish.plateDim,
-            maxLines = 1,
-            textAlign = TextAlign.Center,
-            modifier = Modifier.padding(top = 3.dp).graphicsLayer { alpha = entry.value }
-        )
-    }
-}
-
-/**
  * A rack of modules, each as wide as it is complicated.
  *
  * **The panel tells you where the depth is.** The echo is three times the width of the drive
@@ -1241,15 +980,7 @@ private fun Module(
         animationSpec = tween(ENTRY_MS, order * ENTRY_STAGGER_MS, FastOutSlowInEasing),
         label = "entry"
     )
-    val pulse = rememberInfiniteTransition(label = "module").animateFloat(
-        initialValue = SELECT_PULSE_LOW,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(
-            tween(SELECT_PULSE_MS, easing = FastOutSlowInEasing),
-            RepeatMode.Reverse
-        ),
-        label = "pulse"
-    )
+    val pulse = selectionPulse(selected)
 
     Column(
         modifier = modifier
@@ -1262,7 +993,7 @@ private fun Module(
             .background(if (engaged) finish.key else Color.Transparent)
             .border(
                 width = if (selected) 2.dp else 1.dp,
-                color = if (selected) finish.accent.copy(alpha = pulse.value) else finish.keyEdge
+                color = if (selected) finish.accent.copy(alpha = pulse) else finish.keyEdge
             )
             .alpha(if (cell.available) 1f else UNAVAILABLE_ALPHA)
             .then(
@@ -1365,35 +1096,6 @@ private fun Screws(finish: DeckFinish) {
         }
     }
 }
-
-// ---- the ring ------------------------------------------------------------------------
-/** How tall the ring's panel is. Taller than a grid, because a ring is round. */
-private const val RING_HEIGHT = 284
-
-/** The studs sit this far from the centre, as a fraction of the panel's width. */
-/** The ring fills this much of the shorter side of its panel. */
-// Sized so the studs, which stick out half their own width past the arc, still clear the panel.
-// At 0.94 with 46dp studs the ring ran off both sides and collided with the progress bar.
-private const val RING_DIAMETER_FRACTION = 0.76f
-
-/** How much of a full circle the arc covers. Open at the top, so the disc stays visible. */
-private const val RING_SWEEP_DEGREES = 232.0
-
-// **Sized for a thumb, not for a diagram.** The first ring drew 30dp studs and a 54dp throw,
-// which looked right in a screenshot and was fiddly to actually use — well under the 48dp a
-// touch target wants. The studs are the primary control on this layout, so they are the biggest
-// ones in the app.
-private const val RING_STUD = 46
-private const val RING_CORE_WIDTH = 0.58f
-
-/** The hole opens up for the equaliser, which needs five columns where the rest need three. */
-private const val RING_CORE_WIDTH_EQ = 0.72f
-
-/** A known height, so the core can be placed against the ring centre instead of guessed at. */
-private const val RING_CORE_HEIGHT = 96
-private const val RING_FADER_HEIGHT = 78
-private const val RING_BLOOM_REACH = 1.5f
-private const val RING_BLOOM_CORE = 0.75f
 
 // ---- the modular case ----------------------------------------------------------------
 private const val MODULE_HEIGHT = 132
@@ -1849,15 +1551,24 @@ private fun SegmentRing(
             // the animation costs a layer's alpha per frame instead of redrawing eight wedges,
             // their blooms and their labels — and read inside `graphicsLayer` it recomposes
             // nothing at all. Only while something is selected: an idle panel should be still.
-            val alive = rememberInfiniteTransition(label = "alive").animateFloat(
-                initialValue = SELECT_PULSE_LOW,
-                targetValue = 1f,
-                animationSpec = infiniteRepeatable(
-                    tween(SELECT_PULSE_MS, easing = FastOutSlowInEasing),
-                    RepeatMode.Reverse
-                ),
-                label = "alive"
-            )
+            // Declared inside the branch rather than gated at the point of use. An infinite
+            // transition holds a frame callback open for as long as it is in composition, so
+            // one sitting here unconditionally kept Compose ticking over a still panel with
+            // nothing selected and nothing to animate. Null when idle; the clock stops with it.
+            //
+            // Not [selectionPulse], because that returns the value and reading a value in the
+            // body is the thing this must not do — see the note below about the layer.
+            val alive = if (selected == null) null else {
+                rememberInfiniteTransition(label = "alive").animateFloat(
+                    initialValue = SELECT_PULSE_LOW,
+                    targetValue = 1f,
+                    animationSpec = infiniteRepeatable(
+                        tween(SELECT_PULSE_MS, easing = FastOutSlowInEasing),
+                        RepeatMode.Reverse
+                    ),
+                    label = "alive"
+                )
+            }
             Text(
                 text = selected?.label ?: "—",
                 fontFamily = finish.display,
@@ -1867,7 +1578,7 @@ private fun SegmentRing(
                 maxLines = 1,
                 modifier = Modifier
                     .align(Alignment.Center)
-                    .graphicsLayer { alpha = if (selected != null) alive.value else 1f }
+                    .graphicsLayer { alpha = alive?.value ?: 1f }
             )
         }
     }
@@ -2009,175 +1720,6 @@ private const val SEG_VALUE_OFFSET = 7
 private const val SEG_VALUE_TRACK = 5f
 private const val SEG_VALUE_GLOW = 0.28f
 private const val SEG_VALUE_BEAD = 7f
-
-/**
- * A knob, turned by dragging straight up and down.
- *
- * **It looks rotary and it is not driven rotationally, and that is deliberate.** A control you
- * turn by tracing an arc is the wrong thing on a touchscreen twice over: the arc is invisible, so
- * there is nothing to follow, and your finger sits exactly on top of the pointer you are trying
- * to read. Every audio application that ships a knob solves it the same way — the gesture is a
- * vertical drag, the *drawing* is a rotation — and that is what this does.
- *
- * It earns its place next to the segmented band because the whole layout is circular: three
- * straight sliders under a ring look like a different instrument bolted to the bottom of it,
- * where three knobs read as the same machine.
- */
-@Composable
-private fun RingKnob(
-    param: RackParam?,
-    hue: Color,
-    live: Boolean,
-    modifier: Modifier = Modifier
-) {
-    val finish = LocalDeckFinish.current
-
-    if (param == null) {
-        // An unused slot is an empty collar rather than a dead knob — a knob you cannot turn
-        // reads as broken, an empty ring reads as room this effect does not need.
-        Column(
-            modifier = modifier,
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(KNOB_SIZE.dp)
-                    .alpha(KNOB_BLANK_ALPHA)
-                    .border(1.dp, finish.keyEdge, CircleShape)
-            )
-        }
-        return
-    }
-
-    val v = param.value.coerceIn(0f, 1f)
-    val neutral = if (param.bipolar) 0.5f else 0f
-    val working = live && kotlin.math.abs(v - neutral) > NEUTRAL_SLOP
-
-    Column(
-        modifier = modifier,
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Canvas(
-            modifier = Modifier
-                .size(KNOB_SIZE.dp)
-                .pointerInput(param.name) {
-                    detectVerticalDragGestures(
-                        onDragEnd = { param.onCommit?.invoke() },
-                        onDragCancel = { param.onCommit?.invoke() }
-                    ) { change, dragAmount ->
-                        // Up is more. The travel is a fixed distance rather than the knob's own
-                        // size, so a small knob is not a twitchy one.
-                        param.onChange((param.value - dragAmount / KNOB_TRAVEL_PX).coerceIn(0f, 1f))
-                        change.consume()
-                    }
-                }
-        ) {
-            val r = size.minDimension / 2f
-            val ringR = r - KNOB_RING_INSET
-            val stroke = Stroke(width = KNOB_STROKE, cap = StrokeCap.Round)
-            val arcRect = Rect(
-                center.x - ringR, center.y - ringR,
-                center.x + ringR, center.y + ringR
-            )
-
-            // The empty travel, so the knob reads as a dial even at rest.
-            drawArc(
-                // Bright enough to see. This was `keyEdge`, which on a near-black cyberpunk
-                // ground is invisible — the knobs were drawing correctly and looked absent.
-                color = finish.plateDim.copy(alpha = KNOB_TRACK_ALPHA),
-                startAngle = KNOB_START,
-                sweepAngle = KNOB_SWEEP,
-                useCenter = false,
-                topLeft = arcRect.topLeft,
-                size = arcRect.size,
-                style = stroke
-            )
-
-            // A bipolar control fills from its centre, so "off" is a position rather than a
-            // number — the same rule every other control in the rack follows.
-            val from = if (param.bipolar) KNOB_START + KNOB_SWEEP / 2f else KNOB_START
-            val to = KNOB_START + KNOB_SWEEP * v
-            if (kotlin.math.abs(to - from) > 0.5f) {
-                val glow = finish.glow * (if (working) 1f else 0f)
-                if (glow > 0f) {
-                    drawArc(
-                        color = hue.copy(alpha = KNOB_BLOOM_ALPHA * glow),
-                        startAngle = minOf(from, to),
-                        sweepAngle = kotlin.math.abs(to - from),
-                        useCenter = false,
-                        topLeft = arcRect.topLeft,
-                        size = arcRect.size,
-                        style = Stroke(width = KNOB_STROKE * 3f, cap = StrokeCap.Round)
-                    )
-                }
-                drawArc(
-                    color = if (working) hue else finish.cap,
-                    startAngle = minOf(from, to),
-                    sweepAngle = kotlin.math.abs(to - from),
-                    useCenter = false,
-                    topLeft = arcRect.topLeft,
-                    size = arcRect.size,
-                    style = stroke
-                )
-            }
-
-            // The pointer: the one part that actually says which way the knob is facing.
-            val a = Math.toRadians((KNOB_START + KNOB_SWEEP * v).toDouble())
-            drawLine(
-                color = if (working) hue else finish.cap,
-                start = Offset(
-                    center.x + (ringR - KNOB_POINTER) * cos(a).toFloat(),
-                    center.y + (ringR - KNOB_POINTER) * sin(a).toFloat()
-                ),
-                end = Offset(
-                    center.x + (ringR - KNOB_STROKE) * cos(a).toFloat(),
-                    center.y + (ringR - KNOB_STROKE) * sin(a).toFloat()
-                ),
-                strokeWidth = KNOB_STROKE,
-                cap = StrokeCap.Round
-            )
-        }
-
-        Text(
-            text = param.name,
-            fontFamily = finish.keyType,
-            fontSize = finish.keyTypeSize * 0.9f,
-            color = finish.plateDim,
-            maxLines = 1,
-            textAlign = TextAlign.Center,
-            modifier = Modifier.padding(top = 4.dp)
-        )
-        Text(
-            text = param.readout(v),
-            fontFamily = finish.keyType,
-            fontSize = finish.keyTypeSize * 0.9f,
-            color = if (working) hue else finish.plateDim,
-            maxLines = 1,
-            textAlign = TextAlign.Center
-        )
-    }
-}
-
-/** Classic three-quarter turn: seven o'clock round to five, with the gap at the bottom. */
-private const val KNOB_START = 135f
-private const val KNOB_SWEEP = 270f
-
-private const val KNOB_SIZE = 58
-private const val KNOB_STROKE = 5f
-private const val KNOB_RING_INSET = 5f
-private const val KNOB_POINTER = 16f
-private const val KNOB_BLOOM_ALPHA = 0.34f
-private const val KNOB_BLANK_ALPHA = 0.22f
-private const val KNOB_TRACK_ALPHA = 0.55f
-
-/**
- * How far the finger travels for the knob's whole range, in pixels.
- *
- * Fixed rather than proportional to the knob: tying it to the drawing would make a small knob
- * twitchy and a large one sluggish, when what the hand actually wants is the same distance every
- * time.
- */
-private const val KNOB_TRAVEL_PX = 420f
 
 /**
  * The equaliser as a response curve.

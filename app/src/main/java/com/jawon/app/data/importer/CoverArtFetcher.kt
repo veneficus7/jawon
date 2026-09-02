@@ -3,7 +3,6 @@ package com.jawon.app.data.importer
 import android.content.Context
 import android.net.Uri
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import java.io.File

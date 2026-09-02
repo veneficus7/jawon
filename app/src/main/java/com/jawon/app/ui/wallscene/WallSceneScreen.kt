@@ -33,7 +33,6 @@ import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.calculateTargetValue
 import androidx.compose.animation.core.exponentialDecay
 import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
@@ -58,7 +57,6 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -78,6 +76,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.graphics.Color as ComposeColor
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalConfiguration
@@ -101,14 +100,11 @@ import com.jawon.app.ui.theme.RoomScheme
 import com.jawon.app.ui.wallscene.WallDimens.BOARD_D
 import com.jawon.app.ui.wallscene.WallDimens.BOARD_H
 import com.jawon.app.ui.wallscene.WallDimens.CAMERA_Z
-import com.jawon.app.ui.wallscene.WallDimens.CASE_D
 import com.jawon.app.ui.wallscene.WallDimens.CASE_H
-import com.jawon.app.ui.wallscene.WallDimens.CASE_W
 import com.jawon.app.ui.wallscene.WallDimens.FOCAL_LENGTH_MM
 import com.jawon.app.ui.wallscene.WallDimens.FAR_PLANE
 import com.jawon.app.ui.wallscene.WallDimens.NEAR_PLANE
 import com.jawon.app.ui.wallscene.WallDimens.PLATE_LIFT
-import com.jawon.app.ui.wallscene.WallDimens.PROUD_Z
 import com.jawon.app.ui.wallscene.WallDimens.PLATE_W
 import com.jawon.app.ui.wallscene.WallDimens.ROW_PITCH
 import com.jawon.app.ui.wallscene.WallDimens.SLOT_PITCH
@@ -122,7 +118,6 @@ import com.google.android.filament.android.TextureHelper
 import dev.romainguy.kotlin.math.normalize
 import io.github.sceneview.SceneView
 import io.github.sceneview.collision.Vector3
-import io.github.sceneview.math.Direction
 import io.github.sceneview.math.Position
 import io.github.sceneview.math.Rotation
 import io.github.sceneview.math.Scale
@@ -148,7 +143,6 @@ import kotlin.math.atan2
 import kotlin.math.exp
 import kotlin.math.floor
 import kotlin.math.pow
-import androidx.compose.ui.graphics.Color as ComposeColor
 
 /** Fling coast. The prototype's friction of 28 is a ~36ms time constant — barely a coast; */
 /** this is looser so a flick actually travels. Tuning knob. */
@@ -1738,8 +1732,10 @@ fun WallSceneScreen(
                         // The beam stands on the board and never turns, so it only needs
                         // placing � at the foot of the bay, under wherever the case is
                         // hanging. CASE_H/2 down from the album's centre is the board top.
-                        slot.beam?.position =
-                            Position(slot.baseX, slot.baseY - CASE_H / 2f, slot.baseZ)
+                        //
+                        // And placing it is nearly always a no-op, which is why it goes through
+                        // the slot rather than being written here: see CaseSlot.placeBeam.
+                        slot.placeBeam(slot.baseX, slot.baseY - CASE_H / 2f, slot.baseZ)
 
                         if (slot.discardClock != null) {
                             // Being removed. The shelved case stays hidden for the whole

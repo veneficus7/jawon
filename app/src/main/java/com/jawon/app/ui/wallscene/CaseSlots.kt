@@ -4,6 +4,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
+import kotlin.math.abs
 import kotlin.math.floor
 import kotlin.math.sin
 import com.google.android.filament.MaterialInstance
@@ -93,14 +94,59 @@ class CaseSlot {
      * The `1 - exp(-rate * dt)` form rather than a fixed fraction per frame, for the reason
      * `WallZoom` uses it: a plain lerp converges at a speed that depends on how often it is
      * called, and this app runs at both 60 and 120.
+     *
+     * **Lands exactly, and then does nothing.** An exponential approach never quite arrives, so
+     * without the snap below every slot on the wall kept running an `exp` every frame for the
+     * rest of the session to move itself by a millionth of a millimetre — and, worse, kept
+     * reporting movement to everything downstream that only wants to know when a case has
+     * actually gone somewhere. Inside [SETTLE_EPS] the two are the same place at this scale.
      */
     fun settleTowardTarget(dt: Float) {
         if (dt <= 0f) return
+        val dx = targetX - baseX
+        val dy = targetY - baseY
+        val dz = targetZ - baseZ
+        if (abs(dx) < SETTLE_EPS && abs(dy) < SETTLE_EPS && abs(dz) < SETTLE_EPS) {
+            if (dx != 0f || dy != 0f || dz != 0f) snapToTarget()
+            return
+        }
         val k = 1f - kotlin.math.exp(-REPACK_RATE * dt)
-        baseX += (targetX - baseX) * k
-        baseY += (targetY - baseY) * k
-        baseZ += (targetZ - baseZ) * k
+        baseX += dx * k
+        baseY += dy * k
+        baseZ += dz * k
     }
+
+    /**
+     * Put the underlight at the foot of this case's bay, if it is not already there.
+     *
+     * **The beam does not move.** It stands on the board and never turns — the case above it
+     * hovers and leans, the shaft of light does not — so its position changes only when a shelf
+     * repacks around a deletion or the slot is handed to a different album. The frame driver was
+     * nevertheless writing it every frame, and a position write is not free: SceneView composes
+     * a transform matrix and pushes it across to Filament's transform manager, which for a wall
+     * of visible bays came to something over a thousand pointless native writes a second.
+     *
+     * Guarded here rather than at the call site so the last-written place travels with the slot,
+     * which is what makes it correct across pooling: a slot handed to a new album has a new
+     * [baseX], so the comparison fails and the beam is placed. Trap 5 in ENGINEERING.md is the same
+     * hazard from the other direction — this is the frame driver writing *less*, not `bind`
+     * restoring less.
+     */
+    fun placeBeam(x: Float, y: Float, z: Float) {
+        if (x == beamAtX && y == beamAtY && z == beamAtZ) return
+        beam?.position = Position(x, y, z)
+        beamAtX = x
+        beamAtY = y
+        beamAtZ = z
+    }
+
+    /**
+     * Where [placeBeam] last put the beam. NaN so the first call always writes: NaN compares
+     * false against everything, including itself.
+     */
+    private var beamAtX = Float.NaN
+    private var beamAtY = Float.NaN
+    private var beamAtZ = Float.NaN
 
     /** Put this case where it belongs immediately, with no travel. */
     fun snapToTarget() {
@@ -222,6 +268,16 @@ class CaseSlot {
          * shelf healing is the last beat of that, not a separate event.
          */
         const val REPACK_RATE = 7f
+
+        /**
+         * Close enough to home to stop moving, in metres.
+         *
+         * A tenth of a millimetre, against a case 125mm wide and shelves 150mm apart: three
+         * orders of magnitude below anything the eye can resolve on this wall, and below the
+         * point where the transform even changes the rendered pixels. What it buys is the
+         * arrival — see [settleTowardTarget].
+         */
+        const val SETTLE_EPS = 0.0001f
     }
 }
 

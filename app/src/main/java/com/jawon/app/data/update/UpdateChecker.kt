@@ -1,7 +1,6 @@
 package com.jawon.app.data.update
 
 import android.content.Context
-import android.content.pm.PackageManager
 import android.util.Log
 import androidx.core.content.pm.PackageInfoCompat
 import dagger.hilt.android.qualifiers.ApplicationContext
