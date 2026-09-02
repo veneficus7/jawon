@@ -2,7 +2,7 @@ package com.jawon.app.data.prefs
 
 import android.content.Context
 import androidx.core.content.edit
-import com.jawon.app.ui.theme.DeckFinish
+import com.jawon.app.ui.theme.DeckStyle
 import com.jawon.app.ui.theme.RoomScheme
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -60,8 +60,8 @@ class AppPreferences @Inject constructor(@param:ApplicationContext context: Cont
         _roomScheme.value = scheme
     }
 
-    private val _deckFinish =
-        MutableStateFlow(DeckFinish.fromName(prefs.getString(KEY_DECK_FINISH, null)))
+    private val _deckStyle =
+        MutableStateFlow(DeckStyle.fromName(prefs.getString(KEY_DECK_FINISH, null)))
 
     /**
      * What the deck is made of. See [DeckFinish].
@@ -69,11 +69,11 @@ class AppPreferences @Inject constructor(@param:ApplicationContext context: Cont
      * Separate from [roomScheme] because they answer different questions — where you are standing
      * against what you are playing the disc on — and the combinations are the point.
      */
-    val deckFinish: StateFlow<DeckFinish> = _deckFinish.asStateFlow()
+    val deckStyle: StateFlow<DeckStyle> = _deckStyle.asStateFlow()
 
-    fun setDeckFinish(finish: DeckFinish) {
-        prefs.edit { putString(KEY_DECK_FINISH, finish.name) }
-        _deckFinish.value = finish
+    fun setDeckStyle(style: DeckStyle) {
+        prefs.edit { putString(KEY_DECK_FINISH, style.name) }
+        _deckStyle.value = style
     }
 
     private val _equalizerEnabled =

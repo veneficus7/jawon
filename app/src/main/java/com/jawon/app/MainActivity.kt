@@ -34,8 +34,8 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             val roomScheme by preferences.roomScheme.collectAsStateWithLifecycle()
-            val deckFinish by preferences.deckFinish.collectAsStateWithLifecycle()
-            JawonTheme(roomScheme = roomScheme, deckFinish = deckFinish) {
+            val deckStyle by preferences.deckStyle.collectAsStateWithLifecycle()
+            JawonTheme(roomScheme = roomScheme, deckStyle = deckStyle) {
                 Surface(modifier = Modifier.fillMaxSize()) {
                     JawonNavHost()
 

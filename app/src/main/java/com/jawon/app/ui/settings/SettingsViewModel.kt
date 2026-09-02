@@ -12,7 +12,7 @@ import com.jawon.app.data.update.AvailableUpdate
 import com.jawon.app.data.update.UpdateChecker
 import com.jawon.app.data.update.UpdateState
 import com.jawon.app.playback.Crossfade
-import com.jawon.app.ui.theme.DeckFinish
+import com.jawon.app.ui.theme.DeckStyle
 import com.jawon.app.ui.theme.RoomScheme
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -43,10 +43,10 @@ class SettingsViewModel @Inject constructor(
 
     fun onRoomSchemeChanged(scheme: RoomScheme) = preferences.setRoomScheme(scheme)
 
-    /** What the deck is made of. See [com.jawon.app.ui.theme.DeckFinish]. */
-    val deckFinish: StateFlow<DeckFinish> = preferences.deckFinish
+    /** Which deck. See [com.jawon.app.ui.theme.DeckStyle]. */
+    val deckStyle: StateFlow<DeckStyle> = preferences.deckStyle
 
-    fun onDeckFinishChanged(finish: DeckFinish) = preferences.setDeckFinish(finish)
+    fun onDeckStyleChanged(style: DeckStyle) = preferences.setDeckStyle(style)
 
     val caseSpin: StateFlow<Float> = preferences.caseSpin
 

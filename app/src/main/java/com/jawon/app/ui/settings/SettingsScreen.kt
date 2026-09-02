@@ -67,6 +67,7 @@ import com.jawon.app.ui.theme.LabelCream
 import com.jawon.app.ui.theme.LabelDim
 import com.jawon.app.ui.theme.LampAmber
 import com.jawon.app.ui.theme.DeckFinish
+import com.jawon.app.ui.theme.DeckStyle
 import com.jawon.app.ui.theme.RoomScheme
 
 /**
@@ -687,7 +688,7 @@ fun SettingsScreen(
     val fetchCoverArt by viewModel.fetchCoverArt.collectAsStateWithLifecycle()
     val fetchLyrics by viewModel.fetchLyrics.collectAsStateWithLifecycle()
     val roomScheme by viewModel.roomScheme.collectAsStateWithLifecycle()
-    val deckFinish by viewModel.deckFinish.collectAsStateWithLifecycle()
+    val deckStyle by viewModel.deckStyle.collectAsStateWithLifecycle()
     val eqAvailable by viewModel.eqAvailable.collectAsStateWithLifecycle()
     val eqEnabled by viewModel.eqEnabled.collectAsStateWithLifecycle()
     val eqBands by viewModel.eqBands.collectAsStateWithLifecycle()
@@ -820,8 +821,9 @@ fun SettingsScreen(
             SectionHeader("THE DECK")
 
             FinishPicker(
-                current = deckFinish,
-                onPick = viewModel::onDeckFinishChanged
+                current = deckStyle,
+                scheme = roomScheme,
+                onPick = viewModel::onDeckStyleChanged
             )
 
             Box(Modifier.height(28.dp))
@@ -986,69 +988,94 @@ fun SettingsScreen(
 }
 
 /**
- * What the deck is made of, previewed as the thing itself.
+ * Which deck, previewed as the thing itself.
  *
- * Each swatch is a scrap of the actual faceplate with its own window on it, because the
- * difference between these is entirely material — a list of three names would tell you nothing,
- * and "Separates" means little until you have seen the cyan glow on brushed metal.
+ * Each swatch is a scrap of the actual front with its own window lit on it, because the
+ * difference between these is entirely material — a list of four names would tell you nothing,
+ * and "Separates" means very little until you have seen a cyan tube glowing on brushed metal.
+ *
+ * Previewed **against the room that is currently chosen**, since a plate takes part of its colour
+ * from the lamp lighting it. Change the room above and these change with it, which is the fastest
+ * way to understand that the two settings are not independent decorations.
  */
 @Composable
-private fun FinishPicker(current: DeckFinish, onPick: (DeckFinish) -> Unit) {
+private fun FinishPicker(
+    current: DeckStyle,
+    scheme: RoomScheme,
+    onPick: (DeckStyle) -> Unit
+) {
     Column(
         modifier = Modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
+        verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            DeckFinish.entries.forEach { finish ->
-                val selected = finish == current
-                Column(
-                    modifier = Modifier
-                        .weight(1f)
-                        .border(
-                            width = if (selected) 2.dp else 1.dp,
-                            color = if (selected) finish.accent else CrateEdge
-                        )
-                        .clickable { onPick(finish) }
-                        .padding(1.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    // A slice of plate with the display window sitting on it.
-                    Box(
+        DeckStyle.entries.chunked(2).forEach { row ->
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                row.forEach { style ->
+                    val finish = DeckFinish.of(style, scheme)
+                    val selected = style == current
+                    Column(
                         modifier = Modifier
-                            .fillMaxWidth()
-                            .height(56.dp)
-                            .background(Brush.verticalGradient(listOf(finish.plate, finish.plateLow))),
-                        contentAlignment = Alignment.Center
+                            .weight(1f)
+                            .border(
+                                width = if (selected) 2.dp else 1.dp,
+                                color = if (selected) finish.accent else CrateEdge
+                            )
+                            .clickable { onPick(style) }
+                            .padding(1.dp)
                     ) {
+                        // A slice of the front, with the window sitting on it. The plate is
+                        // drawn over the crate's own dark so its translucency reads here too.
                         Box(
                             modifier = Modifier
-                                .fillMaxWidth(0.78f)
-                                .height(26.dp)
-                                .background(finish.window)
-                                .border(1.dp, finish.windowEdge),
+                                .fillMaxWidth()
+                                .height(64.dp)
+                                .background(CrateBlack)
+                                .background(
+                                    Brush.verticalGradient(
+                                        listOf(
+                                            finish.plate.copy(alpha = finish.plateOpacity),
+                                            finish.plateLow.copy(alpha = finish.plateOpacity)
+                                        )
+                                    )
+                                ),
                             contentAlignment = Alignment.Center
                         ) {
-                            Text(
-                                text = "88:88",
-                                fontFamily = finish.display,
-                                fontSize = finish.displaySize,
-                                color = finish.displayInk
-                            )
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth(0.82f)
+                                    .height(30.dp)
+                                    .background(finish.window)
+                                    .border(1.dp, finish.windowEdge),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = "88:88",
+                                    fontFamily = finish.display,
+                                    fontSize = finish.displaySize,
+                                    color = finish.displayInk
+                                )
+                            }
                         }
+                        Text(
+                            text = style.displayName.uppercase(),
+                            style = JawonTextStyle.mono.copy(
+                                color = if (selected) finish.accent else LabelCream,
+                                fontSize = 10.sp
+                            ),
+                            modifier = Modifier.padding(start = 8.dp, top = 7.dp)
+                        )
+                        Text(
+                            text = style.blurb,
+                            style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = 9.sp),
+                            modifier = Modifier.padding(start = 8.dp, end = 8.dp, bottom = 8.dp)
+                        )
                     }
-                    Text(
-                        text = finish.displayName.uppercase(),
-                        style = JawonTextStyle.mono.copy(
-                            color = if (selected) finish.accent else LabelDim,
-                            fontSize = 9.sp
-                        ),
-                        modifier = Modifier.padding(vertical = 6.dp)
-                    )
                 }
             }
         }
         Text(
-            text = "The room and the deck are separate: any finish goes with any scheme.",
+            text = "The room and the deck are separate settings, but not separate worlds: " +
+                "a metal front is lit by whichever lamp the room is using.",
             style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = 10.sp)
         )
     }
