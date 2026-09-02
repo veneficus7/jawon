@@ -204,7 +204,10 @@ private fun Cell(
                 .padding(horizontal = 4.dp, vertical = 3.dp)
                 .fillMaxWidth()
                 .height(2.dp)
-                .background(if (engaged) cell.hue else finish.keyEdge, RoundedCornerShape(1.dp))
+                .background(
+                    if (engaged) cell.hue.copy(alpha = HUE_ALPHA) else Color.Transparent,
+                    RoundedCornerShape(1.dp)
+                )
         )
         Text(
             text = cell.channel.label,
@@ -315,6 +318,16 @@ private fun Modifier.bevel(raised: Boolean): Modifier = drawBehind {
 
 private val ComposeTransparent = Color.Transparent
 
+/**
+ * How loud a cell's colour bar is.
+ *
+ * Eight fully saturated bars across two rows read as a toy rather than an instrument — the room
+ * behind this panel is a dark shop with one warm lamp, and eight primaries shouting over it do
+ * not belong to it. Pulled well back so the bar tells a thumb where the filter is without being
+ * the first thing the eye lands on.
+ */
+private const val HUE_ALPHA = 0.62f
+
 private const val GLOW_SPREAD = 0.16f
 private const val GLOW_ALPHA = 0.30f
 private const val CELL_GAP = 5
@@ -324,7 +337,7 @@ private const val FADER_HEIGHT = 150
 private const val CAP_HEIGHT = 9
 private const val NEUTRAL_SLOP = 0.02f
 private const val BYPASSED_ALPHA = 0.4f
-private const val BLANK_ALPHA = 0.22f
+private const val BLANK_ALPHA = 0.13f
 private const val UNAVAILABLE_ALPHA = 0.25f
 private const val READOUT_SECONDARY = 0.62f
 
