@@ -156,6 +156,27 @@ class AppPreferences @Inject constructor(@param:ApplicationContext context: Cont
         _caseSpin.value = clamped
     }
 
+    private val _fetchLyrics = MutableStateFlow(prefs.getBoolean(KEY_FETCH_LYRICS, true))
+
+    /**
+     * Whether to look a track's words up online when the file does not carry them.
+     *
+     * On by default, for the same reason as [fetchCoverArt] and with the same limits: the
+     * feature is useless switched off, and what leaves the device is one title, one artist, one
+     * album and a duration — no identifier, no account, nothing about the rest of the library.
+     * Asked only when the lyrics page is actually opened for a track that has none, and the
+     * answer is cached so a track is never looked up twice.
+     *
+     * The source is LRCLIB, which is free, unregistered and MIT-licensed. See
+     * [com.jawon.app.data.lyrics.LrclibClient] for why not one of the commercial services.
+     */
+    val fetchLyrics: StateFlow<Boolean> = _fetchLyrics.asStateFlow()
+
+    fun setFetchLyrics(enabled: Boolean) {
+        prefs.edit { putBoolean(KEY_FETCH_LYRICS, enabled) }
+        _fetchLyrics.value = enabled
+    }
+
     // ---- the platform effects. See [com.jawon.app.data.playback.NativeEffects] -----------
     //
     // Persisted, like the equaliser's bands, because these are a preference rather than a
@@ -214,6 +235,7 @@ class AppPreferences @Inject constructor(@param:ApplicationContext context: Cont
         const val KEY_CASE_SPIN = "case_spin"
         const val KEY_CROSSFADE_MS = "crossfade_ms"
         const val KEY_FETCH_COVER_ART = "fetch_cover_art"
+        const val KEY_FETCH_LYRICS = "fetch_lyrics"
         const val KEY_ROOM_SCHEME = "room_scheme"
         const val KEY_EQ_ENABLED = "equalizer_enabled"
         const val KEY_EQ_BANDS = "equalizer_bands"

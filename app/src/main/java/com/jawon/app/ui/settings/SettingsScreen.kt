@@ -684,6 +684,7 @@ fun SettingsScreen(
 ) {
     val context = LocalContext.current
     val fetchCoverArt by viewModel.fetchCoverArt.collectAsStateWithLifecycle()
+    val fetchLyrics by viewModel.fetchLyrics.collectAsStateWithLifecycle()
     val roomScheme by viewModel.roomScheme.collectAsStateWithLifecycle()
     val eqAvailable by viewModel.eqAvailable.collectAsStateWithLifecycle()
     val eqEnabled by viewModel.eqEnabled.collectAsStateWithLifecycle()
@@ -935,6 +936,18 @@ fun SettingsScreen(
                     "thing Jawon sends anywhere.",
                 checked = fetchCoverArt,
                 onCheckedChange = viewModel::onFetchCoverArtChanged
+            )
+
+            SettingRow(
+                title = "LOOK UP LYRICS",
+                // Same rule as above: name the service, name exactly what is sent, and say
+                // when. "Enhanced metadata" is not something anyone can decide about.
+                detail = "When a track carries no lyrics of its own, send its title, artist, " +
+                    "album and length to LRCLIB to look them up. Asked only when you open " +
+                    "the lyrics page, and only for tracks that have none — the answer is " +
+                    "kept so the same track is never looked up twice. Nothing else is sent.",
+                checked = fetchLyrics,
+                onCheckedChange = viewModel::onFetchLyricsChanged
             )
 
             BackupSection(

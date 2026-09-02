@@ -48,3 +48,14 @@ val MIGRATION_2_3 = Migration(2, 3) { db: SupportSQLiteDatabase ->
     // means "not known", and the deck falls back to the album for exactly those.
     db.execSQL("ALTER TABLE Track ADD COLUMN artist TEXT")
 }
+
+val MIGRATION_3_4 = Migration(3, 4) { db: SupportSQLiteDatabase ->
+    // Lyrics fetched from LRCLIB, kept so a track is only ever looked up once. Nullable, and
+    // null means "not looked up" rather than "has none" — the two need to stay distinguishable
+    // or a track with genuinely no lyrics would be asked for again on every visit.
+    //
+    // Only *fetched* words live here. Embedded tags and `.lrc` sidecars are already on the
+    // device and are read straight from it; caching a copy would just be a second thing to
+    // keep in step with the file.
+    db.execSQL("ALTER TABLE Track ADD COLUMN fetchedLyrics TEXT")
+}

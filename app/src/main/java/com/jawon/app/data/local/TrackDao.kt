@@ -46,6 +46,13 @@ interface TrackDao {
     @Query("UPDATE Track SET artist = :artist WHERE id = :id")
     suspend fun setArtist(id: String, artist: String)
 
+    /** Remember what a lookup returned, including that it returned nothing. */
+    @Query("UPDATE Track SET fetchedLyrics = :lyrics WHERE id = :id")
+    suspend fun setFetchedLyrics(id: String, lyrics: String)
+
+    @Query("SELECT fetchedLyrics FROM Track WHERE id = :id")
+    suspend fun fetchedLyrics(id: String): String?
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(track: Track)
 

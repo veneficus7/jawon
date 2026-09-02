@@ -13,7 +13,10 @@ enum class LyricSource {
     EMBEDDED,
 
     /** A `.lrc` beside the audio. Usually timed, and the only offline way to get timing. */
-    SIDECAR
+    SIDECAR,
+
+    /** LRCLIB. The only one that leaves the device, and only when the other two find nothing. */
+    ONLINE
 }
 
 /**

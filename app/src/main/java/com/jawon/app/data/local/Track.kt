@@ -21,6 +21,14 @@ data class Track(
      * deck falls back to the album's artist in that case.
      */
     val artist: String? = null,
+    /**
+     * Words fetched from LRCLIB, so a track is looked up at most once.
+     *
+     * Null means "never looked up", not "has none" — a track that genuinely has no lyrics is
+     * stored as an empty string, so it is not asked for again every time the page is opened.
+     * Embedded tags and `.lrc` sidecars are not cached here: they are already on the device.
+     */
+    val fetchedLyrics: String? = null,
     val durationMs: Long,
     val fileUri: String,
     // captured at import, drives the quality readout

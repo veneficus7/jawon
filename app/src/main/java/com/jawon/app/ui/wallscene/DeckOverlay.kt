@@ -1382,4 +1382,5 @@ private fun LyricsPage(
 private fun sourceLabel(source: LyricSource): String = when (source) {
     LyricSource.EMBEDDED -> "FROM THE FILE'S TAG"
     LyricSource.SIDECAR -> "FROM AN .LRC BESIDE IT"
+    LyricSource.ONLINE -> "FROM LRCLIB"
 }

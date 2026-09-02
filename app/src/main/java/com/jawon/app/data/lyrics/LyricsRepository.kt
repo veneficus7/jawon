@@ -13,38 +13,81 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 /**
- * Finds a track's words, offline.
+ * Finds a track's words.
  *
- * Two places to look, in this order:
+ * Three places to look, and the order is the point: the device is asked before the network, so
+ * a file carrying its own words is answered instantly, offline and privately, and nothing is
+ * sent for a track whose lyrics were already sitting on the phone.
  *
- * 1. **A `.lrc` beside the audio**, which is the only offline source of *timed* lyrics and is
- *    what every tool in the wild writes. Preferred when it exists, even though it is the less
- *    reliable of the two to reach.
- * 2. **The file's own `USLT` tag**, which is plain words with no timing. Always reachable,
- *    because it is inside the file Jawon already has permission to read.
+ * 1. **A `.lrc` beside the audio** — the only offline source of *timed* lyrics, and what every
+ *    tool in the wild writes.
+ * 2. **The file's own `USLT` tag** — plain words, no timing, always reachable because it is
+ *    inside a file Jawon already has permission to read.
+ * 3. **LRCLIB**, and only if the first two found nothing. Free, unregistered, MIT-licensed and
+ *    behind a Settings switch; what leaves the device is a title, an artist, an album and a
+ *    duration. See [LrclibClient].
  *
  * **The wrinkle, which is Jawon's alone.** Every file here arrives as a content URI, never a
- * path, so "the file next to it" is not a directory listing — it is a guess at a sibling
- * document id, and it only works for libraries imported through the folder picker. For tracks
- * found by the device scan there is often no reachable sibling at all, and those get the
- * embedded tag or nothing. That is a property of the storage model rather than a bug, and it is
- * why the source is shown to the user.
+ * path, so "the file next to it" is not a directory listing. Two routes cover the two ways a
+ * library arrives — a sibling document in a granted tree, or the indexed path of a scanned
+ * file — and which one works is a property of the storage model rather than a choice.
  *
- * Cached per track: the lyrics page is opened and closed repeatedly while a record plays, and
- * re-reading a megabyte of tag each time would be felt.
+ * Cached twice over: in memory for the session, because the lyrics page is opened and closed
+ * repeatedly while a record plays; and in the database for anything fetched, so a track is
+ * never looked up twice.
  */
 @Singleton
 class LyricsRepository @Inject constructor(
-    @param:ApplicationContext private val context: Context
+    @param:ApplicationContext private val context: Context,
+    private val trackDao: com.jawon.app.data.local.TrackDao,
+    private val preferences: com.jawon.app.data.prefs.AppPreferences,
+    private val lrclib: LrclibClient
 ) {
 
     private val cache = HashMap<String, Lyrics?>()
 
-    suspend fun lyricsFor(track: Track): Lyrics? = withContext(Dispatchers.IO) {
-        synchronized(cache) { if (cache.containsKey(track.id)) return@withContext cache[track.id] }
-        val found = sidecarFor(track.fileUri) ?: embeddedIn(track.fileUri)
-        synchronized(cache) { cache[track.id] = found }
-        found
+    suspend fun lyricsFor(track: Track, albumTitle: String = ""): Lyrics? =
+        withContext(Dispatchers.IO) {
+            synchronized(cache) {
+                if (cache.containsKey(track.id)) return@withContext cache[track.id]
+            }
+            val found = sidecarFor(track.fileUri)
+                ?: embeddedIn(track.fileUri)
+                ?: online(track, albumTitle)
+            synchronized(cache) { cache[track.id] = found }
+            found
+        }
+
+    /**
+     * The third tier: ask LRCLIB, but only after the device has been asked first.
+     *
+     * **Order matters more than it looks.** A file that carries its own words is answered
+     * instantly, offline, and privately; going to the network first would send a request for
+     * every track whose lyrics were already sitting on the phone. So this runs only when both
+     * local sources have come up empty.
+     *
+     * Cached in the database, and an empty string is cached too — that is how "we asked and
+     * there are none" is told apart from "never asked", which is what stops a track without
+     * lyrics being looked up again every time the page is opened.
+     */
+    private suspend fun online(track: Track, albumTitle: String): Lyrics? {
+        val cached = runCatching { trackDao.fetchedLyrics(track.id) }.getOrNull()
+        if (cached != null) return cached.takeIf { it.isNotBlank() }?.let { LrcParser.parse(it) }
+            ?.copy(source = LyricSource.ONLINE)
+
+        if (!preferences.fetchLyrics.value) return null
+        val artist = track.artist?.takeIf { it.isNotBlank() } ?: return null
+
+        val result = lrclib.fetch(
+            title = track.title,
+            artist = artist,
+            album = albumTitle,
+            durationSeconds = (track.durationMs / 1000).toInt()
+        )
+        val words = result?.best.orEmpty()
+        runCatching { trackDao.setFetchedLyrics(track.id, words) }
+        if (words.isBlank()) return null
+        return LrcParser.parse(words)?.copy(source = LyricSource.ONLINE)
     }
 
     /** Forget everything, for when a library changes underneath us. */

@@ -123,6 +123,16 @@ class WallSceneViewModel @Inject constructor(
 
     fun onWallSortChanged(sort: WallSort) = preferences.setWallSort(sort.name)
 
+    /**
+     * The open record's title, for a lyrics lookup.
+     *
+     * LRCLIB matches on the album as well as the track, which is what separates an album cut
+     * from the same song on a compilation. Empty is acceptable — the lookup simply gets less
+     * to go on.
+     */
+    private suspend fun albumTitleNow(): String =
+        _nowPlayingAlbumId.value?.let { albumDao.findById(it)?.title }.orEmpty()
+
     /** The album whose case should sit proud of its slot (PLAN.md §9 #3). */
     private val _nowPlayingAlbumId = MutableStateFlow<String?>(null)
     val nowPlayingAlbumId: StateFlow<String?> = _nowPlayingAlbumId.asStateFlow()
@@ -297,7 +307,10 @@ class WallSceneViewModel @Inject constructor(
     val lyrics: StateFlow<Lyrics?> = deck
         .map { it.currentTrack }
         .distinctUntilChanged { a, b -> a?.id == b?.id }
-        .map { track -> track?.let { lyricsRepository.lyricsFor(it) } }
+        .map { track -> track?.let { lyricsRepository.lyricsFor(it, albumTitleNow()) } }
+        // The lookup can take a network round trip, so it must not block the page from drawing.
+        // `null` while it runs is the same state as "no lyrics", which is what the page already
+        // shows and is honest either way.
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
     /**

@@ -31,9 +31,14 @@ class SettingsViewModel @Inject constructor(
 
     val fetchCoverArt: StateFlow<Boolean> = preferences.fetchCoverArt
 
+    /** See [com.jawon.app.data.lyrics.LrclibClient] for why LRCLIB and not a commercial one. */
+    val fetchLyrics: StateFlow<Boolean> = preferences.fetchLyrics
+
     val roomScheme: StateFlow<RoomScheme> = preferences.roomScheme
 
     fun onFetchCoverArtChanged(enabled: Boolean) = preferences.setFetchCoverArt(enabled)
+
+    fun onFetchLyricsChanged(enabled: Boolean) = preferences.setFetchLyrics(enabled)
 
     fun onRoomSchemeChanged(scheme: RoomScheme) = preferences.setRoomScheme(scheme)
 
