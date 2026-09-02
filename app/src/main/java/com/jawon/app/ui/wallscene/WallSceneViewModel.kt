@@ -264,25 +264,46 @@ class WallSceneViewModel @Inject constructor(
     fun onReverbChange(preset: Int) = nativeEffects.setReverbPreset(preset)
     fun onLoudnessChange(value: Float) = nativeEffects.setLoudnessGain(value)
 
-    /** Which of the rack's six channels are in circuit. See [RackChannel]. */
-    val engagedChannels: StateFlow<Set<RackChannel>> = rack.engaged
+    /**
+     * Which of the rack's eight cells are in circuit. See [RackChannel].
+     *
+     * **The equaliser is not the rack's to remember.** It has its own on/off, saved in its own
+     * preference and shared with the Settings screen, and it defaults to *off* — while every
+     * rack channel defaults to *in*. Holding a second copy of that truth here made the EQ cell
+     * lie: it drew itself switched in while the equaliser was off, so the first tap turned off
+     * something already off and appeared to do nothing at all. Every effect needed two taps.
+     *
+     * So the cell's state is read from the equaliser itself rather than mirrored.
+     */
+    val engagedChannels: StateFlow<Set<RackChannel>> =
+        combine(rack.engaged, equalizer.enabled) { engaged, eqOn ->
+            if (eqOn) engaged + RackChannel.EQ else engaged - RackChannel.EQ
+        }.stateIn(
+            viewModelScope,
+            SharingStarted.WhileSubscribed(5_000),
+            rack.engaged.value - RackChannel.EQ
+        )
 
     /**
      * A cell on the rack's grid has been tapped: switch that effect in, or take it out.
      *
      * Three of the eight are not this app's own DSP — [RackChannel.SPACE] and
      * [RackChannel.TONE] run on the platform's audio effects, and [RackChannel.EQ] is the
-     * system equaliser. [RackState] stays the single answer to "what is in circuit", but it does
-     * not own the hardware those three sit on, so the toggle is passed along here rather than
-     * observed from over there.
+     * system equaliser. [RackState] stays the single answer to "what is in circuit" for
+     * everything it actually owns, and the other three are told rather than observed.
      */
     fun onChannelToggle(channel: RackChannel) {
+        // The equaliser owns its own switch, so this flips that and never touches the rack's
+        // set — otherwise the two drift and the cell starts lying again.
+        if (channel == RackChannel.EQ) {
+            onEqEnabledChanged(!equalizer.enabled.value)
+            return
+        }
         rack.toggleEngaged(channel)
         val engaged = rack.isEngaged(channel)
         when (channel) {
             RackChannel.TONE -> nativeEffects.setToneEngaged(engaged)
             RackChannel.SPACE -> nativeEffects.setSpaceEngaged(engaged)
-            RackChannel.EQ -> onEqEnabledChanged(engaged)
             else -> Unit
         }
     }

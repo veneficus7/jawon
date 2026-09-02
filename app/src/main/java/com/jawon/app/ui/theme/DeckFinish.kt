@@ -69,23 +69,35 @@ enum class DeckWindowGlass(
     /** How far the display's own light bleeds past its segments. Zero for a reflective LCD. */
     val glow: Dp,
     val type: FontFamily,
-    val size: TextUnit
+    val size: TextUnit,
+    /**
+     * How far apart the letters sit.
+     *
+     * A display window is one of the few places where tracking carries the whole character of a
+     * design: wide and airy reads as a title card, tight reads as a readout. It is most of what
+     * separates these two from each other at a glance.
+     */
+    val tracking: TextUnit
 ) {
     /** The shop's own: warm mono on near-black. */
-    AMBER(Color(0xFF0E0B09), Color(0xFF2A2119), 5.dp, MidnightPalette.lampAmber, 0.dp, JetBrainsMonoFamily, 13.sp),
+    AMBER(Color(0xFF0E0B09), Color(0xFF2A2119), 5.dp, MidnightPalette.lampAmber, 0.dp, JetBrainsMonoFamily, 13.sp, 0.5.sp),
 
     /**
      * A vacuum-fluorescent tube. Cyan-green, enormous, and legible at arm's length across a dark
      * room — which is exactly the situation this app is always in. The rare piece of retro that
      * is also genuinely better at the job.
      */
-    TUBE(Color(0xFF0A100E), Color(0xFF2A302E), 4.dp, Color(0xFF5FF0E0), 7.dp, Vt323Family, 19.sp),
+    // Wide and cold. The letters are pushed apart until the window reads as a title card rather
+    // than a readout — the look of a slow, enormous, confident piece of hardware.
+    TUBE(Color(0xFF060C0A), Color(0xFF2A302E), 4.dp, Color(0xFF6FFFF0), 9.dp, Vt323Family, 24.sp, 3.5.sp),
 
     /** A neon bar sign behind glass — the one display that is not a machine readout. */
-    ROSE(Color(0xFF120A0E), Color(0xFF2E1A22), 5.dp, Color(0xFFFF5C8A), 6.dp, Vt323Family, 19.sp),
+    // Enormous and close, bleeding into itself. Type at this size stops being a label and starts
+    // being the light source, which is the whole idea of a sign seen through rain.
+    ROSE(Color(0xFF150910), Color(0xFF3A1C2A), 5.dp, Color(0xFFFF3D7F), 12.dp, Vt323Family, 26.sp, 1.5.sp),
 
     /** Four-pixel green on black: the desktop player, not the hi-fi. */
-    PIXEL(Color(0xFF050805), Color(0xFF1A1A1A), 2.dp, Color(0xFF25F06A), 5.dp, SilkscreenFamily, 11.sp)
+    PIXEL(Color(0xFF050805), Color(0xFF1A1A1A), 2.dp, Color(0xFF25F06A), 5.dp, SilkscreenFamily, 11.sp, 1.sp)
 }
 
 
@@ -117,6 +129,7 @@ data class DeckFinish(
     val displayGlow: Dp,
     val display: FontFamily,
     val displaySize: TextUnit,
+    val displayTracking: TextUnit,
 
     val key: Color,
     val keyEdge: Color,
@@ -157,7 +170,11 @@ data class DeckFinish(
             // On a dark plate the deck simply uses the mode's own lettering; a pale one has to
             // invert, because cream on aluminium is unreadable.
             val ink = if (plate.pale) Color(0xFF1C201E) else scheme.palette.labelCream
-            val dim = if (plate.pale) Color(0xFF5A605E) else scheme.palette.labelDim
+            // **Darkened hard for the pale plate.** #5A605E on brushed aluminium is about four to
+            // one, which is a pass on paper and unreadable on a phone held at arm's length in a
+            // dark room — the owner could not read it. Dark grey on light grey is the one
+            // contrast pairing this app has that has to be checked rather than assumed.
+            val dim = if (plate.pale) Color(0xFF323836) else scheme.palette.labelDim
 
             // Keys are wells cut into the plate: darker than it, and see-through, so the room
             // reads faintly through the whole rack.
@@ -185,6 +202,7 @@ data class DeckFinish(
                 displayGlow = glass.glow,
                 display = glass.type,
                 displaySize = glass.size,
+                displayTracking = glass.tracking,
 
                 key = keyBase.copy(alpha = KEY_ALPHA),
                 keyEdge = lerp(lit, Color.Black, 0.55f).copy(alpha = KEY_EDGE_ALPHA),

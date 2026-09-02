@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -37,7 +38,8 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
-import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.Color
@@ -48,6 +50,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.jawon.app.data.playback.EqBand
 import com.jawon.app.data.playback.NativeEffect
 import com.jawon.app.data.playback.NativeEffects
 import com.jawon.app.playback.DjFilter
@@ -107,8 +110,11 @@ fun RackGrid(
     selected: RackChannel?,
     onToggle: (RackChannel) -> Unit,
     onSelect: (RackChannel) -> Unit,
-    modifier: Modifier = Modifier,
-    eqContent: @Composable () -> Unit
+    /** The equaliser's bands, drawn on this face rather than borrowed from Settings. */
+    eqBands: List<EqBand>,
+    eqRangeMb: Pair<Int, Int>,
+    onEqBandChange: (Int, Int) -> Unit,
+    modifier: Modifier = Modifier
 ) {
     val finish = LocalDeckFinish.current
 
@@ -116,17 +122,28 @@ fun RackGrid(
     // selected, directly under the deck's own — two glowing displays a centimetre apart, which
     // read as a mistake rather than as a machine. A real component has one window, so the
     // selection went up into that one and this got the space back.
+    // **The grid arrives rather than appearing.**
+    //
+    // Each key rises and fades in a beat after the one before it, left to right and top to
+    // bottom, so opening the page reads as a machine powering up instead of a screen being
+    // swapped. The stagger is what makes it feel authored — eight things moving together is a
+    // transition, eight things moving in sequence is a sequence.
+    var arrived by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) { arrived = true }
+
     Column(modifier = modifier.fillMaxWidth()) {
 
         // Two rows of four. A 4×2 grid keeps every cell about 74dp wide on a phone, which is
         // comfortably above a thumb's minimum, and it reads as a bank of keys rather than a list.
-        cells.chunked(4).forEach { row ->
+        cells.chunked(4).forEachIndexed { rowIndex, row ->
             Row(
                 modifier = Modifier.fillMaxWidth().padding(bottom = CELL_GAP.dp),
                 horizontalArrangement = Arrangement.spacedBy(CELL_GAP.dp)
             ) {
-                row.forEach { cell ->
+                row.forEachIndexed { colIndex, cell ->
                     Cell(
+                        order = rowIndex * 4 + colIndex,
+                        arrived = arrived,
                         cell = cell,
                         engaged = cell.channel in engaged,
                         selected = cell.channel == selected,
@@ -141,7 +158,12 @@ fun RackGrid(
         // The equaliser cannot ride three faders, so when it is the selected cell it takes the
         // row over entirely rather than pretending to be an effect with three knobs.
         if (selected == RackChannel.EQ) {
-            Box(modifier = Modifier.padding(top = 6.dp)) { eqContent() }
+            EqBands(
+                bands = eqBands,
+                rangeMb = eqRangeMb,
+                onBandChange = onEqBandChange,
+                modifier = Modifier.padding(top = 6.dp)
+            )
         } else {
             val params = cells.firstOrNull { it.channel == selected }?.params.orEmpty()
             // The faders take whatever height is left rather than a fixed slab, so the panel has
@@ -169,6 +191,9 @@ fun RackGrid(
 @Composable
 private fun Cell(
     cell: RackCell,
+    /** Where this key sits in the power-up sequence. */
+    order: Int,
+    arrived: Boolean,
     engaged: Boolean,
     selected: Boolean,
     onToggle: () -> Unit,
@@ -203,6 +228,17 @@ private fun Cell(
 
     // The selected cell breathes its own colour, so which cell owns the faders is answerable
     // from the corner of your eye rather than by reading a border.
+    // Rise and fade, delayed by this key's place in the sequence.
+    val entry = animateFloatAsState(
+        targetValue = if (arrived) 1f else 0f,
+        animationSpec = tween(
+            durationMillis = ENTRY_MS,
+            delayMillis = order * ENTRY_STAGGER_MS,
+            easing = FastOutSlowInEasing
+        ),
+        label = "entry"
+    )
+
     val pulse = rememberInfiniteTransition(label = "cell").animateFloat(
         initialValue = SELECT_PULSE_LOW,
         targetValue = 1f,
@@ -219,15 +255,31 @@ private fun Cell(
             .graphicsLayer {
                 scaleX = press.value
                 scaleY = press.value
+                alpha = entry.value
+                translationY = (1f - entry.value) * ENTRY_RISE_PX
             }
-            // The engaged key's own colour bleeds behind it, as strongly as the mode allows.
+            // **An underlight, not a halo.**
+            //
+            // The first version washed colour evenly behind the key, which is not what light
+            // does and not what the owner meant: a lit case on a shelf throws a *pool onto the
+            // board beneath it*. So the wash is anchored to the bottom edge, brightest where the
+            // key meets the plate and falling off upward and outward, and it is allowed to spill
+            // past the key by scaling rather than by taking any layout room.
             .drawBehind {
                 val g = finish.glow * lit.value
                 if (g > 0f) {
                     val spread = if (selected) pulse.value else 1f
-                    drawRoundRect(
-                        color = cell.hue.copy(alpha = CELL_HALO_ALPHA * g * spread),
-                        cornerRadius = CornerRadius(finish.keyRadius.toPx() * 2f)
+                    val pool = size.height * UNDERLIGHT_REACH
+                    drawRect(
+                        brush = Brush.verticalGradient(
+                            0f to Color.Transparent,
+                            1f - UNDERLIGHT_REACH to cell.hue.copy(
+                                alpha = CELL_HALO_ALPHA * 0.5f * g * spread
+                            ),
+                            1f to cell.hue.copy(alpha = CELL_HALO_ALPHA * g * spread)
+                        ),
+                        topLeft = Offset(-pool * 0.5f, 0f),
+                        size = Size(size.width + pool, size.height + pool)
                     )
                 }
             }
@@ -407,6 +459,12 @@ private const val HUE_ALPHA = 0.85f
 
 // How hard a key is pushed, and how long a switched-in key takes to come up.
 private const val PRESS_SCALE = 0.93f
+
+// The power-up sequence: how far a key rises from, how long it takes, and the beat between one
+// key and the next. Short enough that the whole bank is up in well under half a second.
+private const val ENTRY_MS = 260
+private const val ENTRY_STAGGER_MS = 34
+private const val ENTRY_RISE_PX = 34f
 private const val CELL_FADE_MS = 220
 
 // The selected key breathes so it can be found without reading. Slower and shallower than the
@@ -415,7 +473,10 @@ private const val SELECT_PULSE_LOW = 0.55f
 private const val SELECT_PULSE_MS = 1900
 
 /** How strongly a switched-in key bleeds its own colour. Scaled by the mode's glow. */
-private const val CELL_HALO_ALPHA = 0.30f
+private const val CELL_HALO_ALPHA = 0.55f
+
+/** How far past the key the pool of light reaches, as a fraction of the key's own height. */
+private const val UNDERLIGHT_REACH = 0.42f
 
 private const val GLOW_SPREAD = 0.16f
 private const val GLOW_ALPHA = 0.30f
@@ -600,3 +661,115 @@ private val HUE_ECHO = Color(0xFF2F7D71)
 private val HUE_SPACE = Color(0xFFF0A93C)
 private val HUE_TONE = Color(0xFFEFE3CC)
 private val HUE_EQ = Color(0xFFEFE3CC)
+
+/**
+ * The equaliser as bands on the rack's own face.
+ *
+ * **Not the Settings panel squeezed in here.** That one is a stack of full-width horizontal
+ * sliders, which is right on a scrolling settings page and wrong in a fixed slot: dropped into
+ * the fader row it ran straight off the bottom of the deck and drew over the progress bar and
+ * the transport. This is the same five bands built the way everything else on this face is
+ * built — vertical, in the space three faders would have taken, resting at the centre line.
+ *
+ * Five columns rather than three, so each is narrower than a rack fader. That is acceptable
+ * here and nowhere else: an equaliser is set by ear in one pass and then left alone, unlike the
+ * filter or the echo, which are ridden.
+ */
+@Composable
+private fun EqBands(
+    bands: List<EqBand>,
+    rangeMb: Pair<Int, Int>,
+    onBandChange: (Int, Int) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val finish = LocalDeckFinish.current
+    val (minMb, maxMb) = rangeMb
+    val span = (maxMb - minMb).coerceAtLeast(1)
+
+    Row(
+        modifier = modifier.fillMaxWidth().height(FADER_HEIGHT.dp),
+        horizontalArrangement = Arrangement.spacedBy(EQ_GAP.dp)
+    ) {
+        bands.forEach { band ->
+            var height by remember(band.index) { mutableFloatStateOf(1f) }
+            val shape = RoundedCornerShape(finish.keyRadius)
+            val unit = ((band.levelMb - minMb).toFloat() / span).coerceIn(0f, 1f)
+            val flat = kotlin.math.abs(band.levelMb) < FLAT_SLOP_MB
+
+            Column(
+                modifier = Modifier.weight(1f),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f)
+                        .background(finish.groove, shape)
+                        .border(1.dp, finish.keyEdge, shape)
+                        .onSizeChanged { height = it.height.toFloat().coerceAtLeast(1f) }
+                        .pointerInput(band.index) {
+                            detectVerticalDragGestures(
+                                onDragStart = {
+                                    onBandChange(
+                                        band.index,
+                                        levelFor(it.y, height, minMb, span)
+                                    )
+                                }
+                            ) { change, _ ->
+                                onBandChange(
+                                    band.index,
+                                    levelFor(change.position.y, height, minMb, span)
+                                )
+                            }
+                        }
+                ) {
+                    // Flat is the centre line, and it is drawn, because "no change" is a
+                    // position a thumb aims at rather than a number anyone reads.
+                    Box(
+                        Modifier
+                            .align(Alignment.Center)
+                            .fillMaxWidth()
+                            .height(1.dp)
+                            .background(finish.keyEdge)
+                    )
+                    Box(
+                        Modifier
+                            .align(BiasAlignment(horizontalBias = 0f, verticalBias = 1f - unit * 2f))
+                            .fillMaxWidth()
+                            .padding(horizontal = 2.dp)
+                            .height(CAP_HEIGHT.dp)
+                            .background(
+                                if (flat) finish.cap else finish.accent,
+                                RoundedCornerShape(1.dp)
+                            )
+                    )
+                }
+                Text(
+                    text = shortHz(band.centerHz),
+                    fontFamily = finish.keyType,
+                    fontSize = finish.keyTypeSize * 0.92f,
+                    color = if (flat) finish.plateDim else finish.plateInk,
+                    maxLines = 1,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.padding(top = 3.dp).fillMaxWidth()
+                )
+            }
+        }
+    }
+}
+
+/** A drag position on a band, as a gain in millibels. Up is more, so the y is inverted. */
+private fun levelFor(y: Float, height: Float, minMb: Int, span: Int): Int =
+    (minMb + (1f - (y / height).coerceIn(0f, 1f)) * span).roundToInt()
+
+/** `60`, `910`, `3.6k`, `14k` — a frequency in the four characters a band label has room for. */
+private fun shortHz(hz: Int): String = when {
+    hz >= 10_000 -> "${hz / 1000}k"
+    hz >= 1_000 -> String.format(Locale.US, "%.1fk", hz / 1000f)
+    else -> hz.toString()
+}
+
+private const val EQ_GAP = 4
+
+/** Within this of zero, a band counts as flat and stops being drawn as a change. */
+private const val FLAT_SLOP_MB = 40

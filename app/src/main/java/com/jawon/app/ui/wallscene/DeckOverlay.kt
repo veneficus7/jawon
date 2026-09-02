@@ -481,26 +481,11 @@ fun DeckOverlay(
                     engaged = engagedChannels.collectAsState().value,
                     selected = selectedCell,
                     onToggle = onChannelToggle,
-                    onSelect = { selectedCell = if (selectedCell == it) null else it }
-                ) {
-                    if (eqAvailable) {
-                        EqualizerPanel(
-                            bands = eqBands,
-                            rangeMb = eqRangeMb,
-                            presets = eqPresets,
-                            onBandChange = onEqBandChange,
-                            onPreset = onEqPreset,
-                            onReset = onEqReset,
-                            compact = true
-                        )
-                    } else {
-                        Text(
-                            text = "This phone has no equaliser.",
-                            style = JawonTextStyle.mono.copy(color = finish.plateDim, fontSize = 10.sp),
-                            modifier = Modifier.padding(vertical = 10.dp)
-                        )
-                    }
-                }
+                    onSelect = { selectedCell = if (selectedCell == it) null else it },
+                    eqBands = eqBands,
+                    eqRangeMb = eqRangeMb,
+                    onEqBandChange = onEqBandChange
+                )
             }
         } else if (page == PAGE_LYRICS) {
             LyricsPage(
@@ -1275,7 +1260,7 @@ private fun DisplayText(
             fontSize = size,
             fontWeight = weight,
             color = colour,
-            letterSpacing = 0.5.sp,
+            letterSpacing = finish.displayTracking,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )
