@@ -1375,9 +1375,16 @@ private fun LyricsPage(
     // Keep the sung line a third of the way down rather than at the top: a lyric sheet reads
     // better with what is coming next already on screen. Two lines above it is close enough at
     // every sheet height, and cheaper than measuring the viewport every frame.
-    LaunchedEffect(current) {
-        if (current >= 0) {
-            runCatching { listState.animateScrollToItem((current - 2).coerceAtLeast(0)) }
+    // Keyed on the words as well as the line, so a new track starts at the top instead of
+    // inheriting wherever the last one had scrolled to. Before the first stamp there is no line
+    // to follow, and the top is the honest place to be.
+    LaunchedEffect(words, current) {
+        runCatching {
+            if (current >= 0) {
+                listState.animateScrollToItem((current - 2).coerceAtLeast(0))
+            } else {
+                listState.scrollToItem(0)
+            }
         }
     }
 
@@ -1462,9 +1469,9 @@ private fun rememberSmoothPosition(sampled: Long, isPlaying: Boolean): State<Lon
         withFrameMillis { anchorFrame = it }
         while (true) {
             withFrameMillis { frame ->
-                // Never allowed to run backwards: a new sample arriving slightly behind the
-                // extrapolation would otherwise make the highlight jump back a line.
-                value = maxOf(value, sampled + (frame - anchorFrame))
+                // A small step backwards is the extrapolation and the player disagreeing about
+                // the same moment; a large one is a seek or a new track. See Playhead.
+                value = Playhead.next(value, sampled + (frame - anchorFrame))
             }
         }
     }
