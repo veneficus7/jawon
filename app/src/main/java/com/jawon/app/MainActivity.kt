@@ -31,6 +31,29 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        // **Ask the display for 60Hz, not 120.**
+        //
+        // This is the single largest thing the app can do about heat, and it is a whole-window
+        // decision rather than a scene one, which is why it lives here.
+        //
+        // Jawon is not a feed that draws when you scroll and then stops: it renders a lit room
+        // every frame for as long as it is open, so it pays the refresh rate continuously in a
+        // way an ordinary app never does. On this phone that meant 120 frames a second of scene
+        // traversal and draw-call submission — measured at a flat ~0.39 of a core on Filament's
+        // own thread whatever else was happening. Halving the frames halves that submission,
+        // and the GPU's fragment work with it.
+        //
+        // The room is the wrong thing to spend a high refresh rate on in any case. It drifts,
+        // bobs and glows; nothing in it moves fast enough for 120 to read differently from 60,
+        // and the two gestures that *are* fast — the scratch and the pan — are tracking a finger
+        // that samples at the touch rate rather than the display rate. Android 15 makes the same
+        // judgement for games by default, for the same reasons.
+        //
+        // A request, not a command: the platform is free to ignore it, and does when something
+        // else on screen needs more. Harmless if so.
+        window.attributes = window.attributes.apply { preferredRefreshRate = TARGET_REFRESH_HZ }
+
         enableEdgeToEdge()
         setContent {
             val roomScheme by preferences.roomScheme.collectAsStateWithLifecycle()
@@ -53,3 +76,12 @@ class MainActivity : ComponentActivity() {
         }
     }
 }
+
+/**
+ * The refresh rate the room asks for.
+ *
+ * Sixty rather than the panel's full hundred and twenty. See the note in `onCreate`: a
+ * continuously-rendered scene pays its refresh rate every single frame, and nothing in this room
+ * moves fast enough for the difference to be visible.
+ */
+private const val TARGET_REFRESH_HZ = 60f
