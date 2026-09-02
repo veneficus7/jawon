@@ -290,16 +290,16 @@ private const val SCRIM_FADE_FRACTION = 0.22f
 
 /** Hairline spacing on a brushed plate. Close enough to read as grain, far enough to stay cheap. */
 private const val GRAIN_SPACING_PX = 3f
-private const val GRAIN_ALPHA = 0.09f
+private const val GRAIN_ALPHA = 0.20f
 
 /** The printed grid on a workbench surface. Wide enough to read as paper, not as noise. */
-private const val DOT_SPACING_PX = 22f
-private const val DOT_ALPHA = 0.05f
+private const val DOT_SPACING_PX = 20f
+private const val DOT_ALPHA = 0.13f
 
 // Where the raking light crosses the plate, and how strong it is at its brightest.
-private const val SHEEN_CENTRE = 0.16f
-private const val SHEEN_WIDTH = 0.30f
-private const val SHEEN_PEAK = 0.11f
+private const val SHEEN_CENTRE = 0.14f
+private const val SHEEN_WIDTH = 0.34f
+private const val SHEEN_PEAK = 0.26f
 
 /**
  * The finish in force, for everything the deck draws.

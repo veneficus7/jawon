@@ -56,7 +56,13 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.Spring
 import androidx.compose.runtime.derivedStateOf
@@ -1103,6 +1109,21 @@ private fun DeckWindow(
             // radial wash rather than a blur, because the only real blur Android offers needs
             // API 31 and this app runs from 28.
             if (finish.glow > 0f) {
+                // **Breathing, and driven from the draw phase.**
+                //
+                // A sign in a bar hums rather than sits still, and a glow that never moves
+                // reads as a gradient someone painted on. Read inside `graphicsLayer`, so the
+                // sixty-times-a-second value never recomposes anything — it only redraws one
+                // layer. ENGINEERING.md rule 3: high-frequency state must not drive recomposition.
+                val breath = rememberInfiniteTransition(label = "glow").animateFloat(
+                    initialValue = BREATH_LOW,
+                    targetValue = 1f,
+                    animationSpec = infiniteRepeatable(
+                        animation = tween(BREATH_MS, easing = FastOutSlowInEasing),
+                        repeatMode = RepeatMode.Reverse
+                    ),
+                    label = "breath"
+                )
                 Box(
                     modifier = Modifier
                         .matchParentSize()
@@ -1113,6 +1134,7 @@ private fun DeckWindow(
                         .graphicsLayer {
                             scaleY = HALO_SPREAD_Y
                             scaleX = HALO_SPREAD_X
+                            alpha = breath.value
                         }
                         .background(
                             Brush.radialGradient(
@@ -1264,8 +1286,16 @@ private fun DisplayText(
 private const val SECONDARY_SCALE = 0.58f
 
 // How far the window's light spills past its own frame, and how strong it is at the centre.
-private const val HALO_SPREAD_Y = 2.4f
-private const val HALO_SPREAD_X = 1.08f
-private const val HALO_ALPHA = 0.30f
+// **Deliberately loud.** The first pass at these was so restrained the owner could not see the
+// effect at all on a real screen, which makes it worse than nothing: it costs frames and buys
+// no design. A neon sign in a dark bar is not subtle, and neither is this now.
+private const val HALO_SPREAD_Y = 3.1f
+private const val HALO_SPREAD_X = 1.16f
+private const val HALO_ALPHA = 0.80f
+
+// How far the glow breathes, and how long one breath takes. Slow enough to read as a sign
+// humming rather than as something blinking for attention.
+private const val BREATH_LOW = 0.62f
+private const val BREATH_MS = 2800
 private const val GLOW_SPREAD = 0.16f
 private const val GLOW_ALPHA = 0.28f

@@ -19,6 +19,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
@@ -27,6 +28,18 @@ import androidx.compose.ui.BiasAlignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.pointer.pointerInput
@@ -165,13 +178,70 @@ private fun Cell(
     val finish = LocalDeckFinish.current
     val shape = RoundedCornerShape(finish.keyRadius)
 
+    // **A key that does not move when you hit it is a picture of a key.**
+    //
+    // Pressed goes down and slightly dark, then springs back — low stiffness so it overshoots a
+    // little, the way a real key rebounds past its rest position. Held in the draw phase via
+    // `graphicsLayer`, so the spring redraws one layer instead of recomposing the grid.
+    var pressed by remember { mutableStateOf(false) }
+    val press = animateFloatAsState(
+        targetValue = if (pressed) PRESS_SCALE else 1f,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioMediumBouncy,
+            stiffness = Spring.StiffnessMedium
+        ),
+        label = "press"
+    )
+
+    // Switching in fades the key up rather than snapping it, which is what makes throwing an
+    // effect in and out read as one gesture instead of two states.
+    val lit = animateFloatAsState(
+        targetValue = if (engaged) 1f else 0f,
+        animationSpec = tween(CELL_FADE_MS),
+        label = "lit"
+    )
+
+    // The selected cell breathes its own colour, so which cell owns the faders is answerable
+    // from the corner of your eye rather than by reading a border.
+    val pulse = rememberInfiniteTransition(label = "cell").animateFloat(
+        initialValue = SELECT_PULSE_LOW,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(SELECT_PULSE_MS, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "pulse"
+    )
+
     Box(
         modifier = modifier
             .aspectRatio(CELL_ASPECT)
-            .background(if (engaged) finish.key else Color.Transparent, shape)
+            .graphicsLayer {
+                scaleX = press.value
+                scaleY = press.value
+            }
+            // The engaged key's own colour bleeds behind it, as strongly as the mode allows.
+            .drawBehind {
+                val g = finish.glow * lit.value
+                if (g > 0f) {
+                    val spread = if (selected) pulse.value else 1f
+                    drawRoundRect(
+                        color = cell.hue.copy(alpha = CELL_HALO_ALPHA * g * spread),
+                        cornerRadius = CornerRadius(finish.keyRadius.toPx() * 2f)
+                    )
+                }
+            }
+            .background(
+                if (engaged) finish.key else Color.Transparent,
+                shape
+            )
             .border(
-                width = 1.dp,
-                color = if (selected) finish.accent else finish.keyEdge,
+                width = if (selected) 2.dp else 1.dp,
+                color = if (selected) {
+                    finish.accent.copy(alpha = pulse.value)
+                } else {
+                    finish.keyEdge
+                },
                 shape = shape
             )
             .then(if (finish.bevelled) Modifier.bevel(engaged) else Modifier)
@@ -179,17 +249,24 @@ private fun Cell(
             .then(
                 if (cell.available) {
                     Modifier.pointerInput(cell.channel, engaged, selected) {
-                        detectTapGestures {
-                            // Switch it in and select it; tapping the one already selected takes
-                            // it out again. One gesture doing two jobs, but the two are never
-                            // ambiguous: a cell that is out can only be switched in, and the
-                            // selected one is the only cell a second tap can reach.
-                            when {
-                                !engaged -> { onToggle(); onSelect() }
-                                selected -> onToggle()
-                                else -> onSelect()
+                        detectTapGestures(
+                            onPress = {
+                                pressed = true
+                                tryAwaitRelease()
+                                pressed = false
+                            },
+                            onTap = {
+                                // Switch it in and select it; tapping the one already selected
+                                // takes it out again. One gesture doing two jobs, but the two are
+                                // never ambiguous: a cell that is out can only be switched in,
+                                // and the selected one is the only cell a second tap can reach.
+                                when {
+                                    !engaged -> { onToggle(); onSelect() }
+                                    selected -> onToggle()
+                                    else -> onSelect()
+                                }
                             }
-                        }
+                        )
                     }
                 } else {
                     Modifier
@@ -205,7 +282,7 @@ private fun Cell(
                 .fillMaxWidth()
                 .height(2.dp)
                 .background(
-                    if (engaged) cell.hue.copy(alpha = HUE_ALPHA) else Color.Transparent,
+                    cell.hue.copy(alpha = HUE_ALPHA * lit.value),
                     RoundedCornerShape(1.dp)
                 )
         )
@@ -214,7 +291,7 @@ private fun Cell(
             fontFamily = finish.keyType,
             fontSize = finish.keyTypeSize,
             fontWeight = FontWeight.Bold,
-            color = if (engaged) finish.keyInk else finish.keyDim,
+            color = lerp(finish.keyDim, finish.keyInk, lit.value),
             maxLines = 1,
             textAlign = TextAlign.Center
         )
@@ -326,7 +403,19 @@ private val ComposeTransparent = Color.Transparent
  * not belong to it. Pulled well back so the bar tells a thumb where the filter is without being
  * the first thing the eye lands on.
  */
-private const val HUE_ALPHA = 0.62f
+private const val HUE_ALPHA = 0.85f
+
+// How hard a key is pushed, and how long a switched-in key takes to come up.
+private const val PRESS_SCALE = 0.93f
+private const val CELL_FADE_MS = 220
+
+// The selected key breathes so it can be found without reading. Slower and shallower than the
+// window's glow, because eight of these pulsing in time would be a fairground.
+private const val SELECT_PULSE_LOW = 0.55f
+private const val SELECT_PULSE_MS = 1900
+
+/** How strongly a switched-in key bleeds its own colour. Scaled by the mode's glow. */
+private const val CELL_HALO_ALPHA = 0.30f
 
 private const val GLOW_SPREAD = 0.16f
 private const val GLOW_ALPHA = 0.30f
