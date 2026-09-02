@@ -117,31 +117,36 @@ class NativeEffects @Inject constructor(
 
     // ---- the rack's bypass ------------------------------------------------------------
     //
-    // Two of the rack's six channels are these, and a bypassed channel has to go silent while
-    // its fader stays where the user left it. The stored strength is therefore untouched here
-    // and only [applyBass]/[applyWidth] consult these, which is why a bypass reads as a zero
-    // strength: that already means "released of duty" below, so switching a channel out also
-    // stops it costing anything.
+    // Two of the rack's eight cells land here: TONE is the bass and width pair, SPACE is the
+    // reverb room and the loudness. A cell that is switched out has to go silent while its
+    // faders stay where the user left them, so the stored values are untouched and only the
+    // apply functions consult these flags. A bypass therefore reads as a zero strength — which
+    // already means "released of duty" below, so switching a cell out also stops it costing
+    // anything.
     //
     // Held here rather than read from RackState so this class keeps no dependency on the rack —
-    // the caller that flips the channel tells us, in the same breath.
+    // the caller that flips the cell tells us, in the same breath.
 
     @Volatile
-    private var bassEngaged = true
+    private var toneEngaged = true
 
     @Volatile
-    private var widthEngaged = true
+    private var spaceEngaged = true
 
-    fun setBassEngaged(engaged: Boolean) {
-        if (bassEngaged == engaged) return
-        bassEngaged = engaged
+    /** Bass and stereo width, as one cell. */
+    fun setToneEngaged(engaged: Boolean) {
+        if (toneEngaged == engaged) return
+        toneEngaged = engaged
         applyBass()
+        applyWidth()
     }
 
-    fun setWidthEngaged(engaged: Boolean) {
-        if (widthEngaged == engaged) return
-        widthEngaged = engaged
-        applyWidth()
+    /** The reverb room and the loudness, as one cell. */
+    fun setSpaceEngaged(engaged: Boolean) {
+        if (spaceEngaged == engaged) return
+        spaceEngaged = engaged
+        applyReverb()
+        applyLoudness()
     }
 
     fun setReverbPreset(preset: Int) {
@@ -160,7 +165,7 @@ class NativeEffects @Inject constructor(
 
     private fun applyBass() {
         val effect = bass ?: return
-        val value = if (bassEngaged) preferences.bassStrength.value else 0f
+        val value = if (toneEngaged) preferences.bassStrength.value else 0f
         runCatching {
             // Off means *released of duty*, not zero strength: an enabled effect with a zero
             // setting still sits in the chain doing arithmetic on every sample.
@@ -171,7 +176,7 @@ class NativeEffects @Inject constructor(
 
     private fun applyWidth() {
         val effect = virtualizer ?: return
-        val value = if (widthEngaged) preferences.stereoWidth.value else 0f
+        val value = if (toneEngaged) preferences.stereoWidth.value else 0f
         runCatching {
             effect.enabled = value > OFF
             if (value > OFF) effect.setStrength((value * MAX_STRENGTH).toInt().toShort())
@@ -180,7 +185,7 @@ class NativeEffects @Inject constructor(
 
     private fun applyReverb() {
         val effect = reverb ?: return
-        val preset = preferences.reverbPreset.value
+        val preset = if (spaceEngaged) preferences.reverbPreset.value else 0
         runCatching {
             effect.enabled = preset > 0
             effect.preset = preset.toShort()
@@ -193,7 +198,7 @@ class NativeEffects @Inject constructor(
 
     private fun applyLoudness() {
         val effect = loudness ?: return
-        val value = preferences.loudnessGain.value
+        val value = if (spaceEngaged) preferences.loudnessGain.value else 0f
         runCatching {
             effect.enabled = value > OFF
             // Millibels. Deliberately capped well below what the effect will accept: this is

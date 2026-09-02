@@ -46,6 +46,24 @@ val JetBrainsMonoFamily = FontFamily(
     )
 )
 
+/**
+ * The two period faces, used only by [com.jawon.app.ui.theme.DeckFinish].
+ *
+ * **These exist because the alternative was to fake them.** A vacuum-fluorescent window and a
+ * 1998 desktop player are recognisable almost entirely by their lettering — tall thin segments
+ * in one case, a hard four-pixel grid in the other — and rendering either in a modern mono
+ * misses by a mile. Together they cost about 178KB, which is the first time theming this app has
+ * cost bytes rather than constants, and worth it for the only two finishes that need them.
+ *
+ * Both are SIL Open Font Licence.
+ */
+
+/** VT323 — the tall, thin, slightly soft face of a hi-fi display window. */
+val Vt323Family = FontFamily(Font(R.font.vt323))
+
+/** Silkscreen — a true bitmap face, four pixels tall, for the desktop-player finish. */
+val SilkscreenFamily = FontFamily(Font(R.font.silkscreen))
+
 // Material's default Typography() already has a real size/weight ramp
 // (display 57sp down to label 11sp) — only the font family (and, for
 // display, the weight/letter-spacing DESIGN.md calls for) needs overriding.

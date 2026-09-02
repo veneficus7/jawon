@@ -3,6 +3,7 @@ package com.jawon.app.ui.theme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 
 // Midnight Shop is the only room (ENGINEERING.md locked decision) and dynamic
 // color is a DESIGN.md anti-goal, so this is a single fixed dark scheme —
@@ -26,14 +27,23 @@ private fun schemeFor(accent: androidx.compose.ui.graphics.Color) = darkColorSch
     outline = CrateEdge,
 )
 
+/**
+ * @param roomScheme where you are standing — the lamp, the wall, the boards.
+ * @param deckFinish what you are playing the disc on. Independent of the room on purpose: the
+ *   two multiply rather than compete, and a brushed aluminium component belongs in a midnight
+ *   shop just as happily as under a cold striplight.
+ */
 @Composable
 fun JawonTheme(
     roomScheme: RoomScheme = RoomScheme.MIDNIGHT_SHOP,
+    deckFinish: DeckFinish = DeckFinish.SHOP,
     content: @Composable () -> Unit
 ) {
-    MaterialTheme(
-        colorScheme = schemeFor(roomScheme.accent),
-        typography = Typography,
-        content = content
-    )
+    CompositionLocalProvider(LocalDeckFinish provides deckFinish) {
+        MaterialTheme(
+            colorScheme = schemeFor(roomScheme.accent),
+            typography = Typography,
+            content = content
+        )
+    }
 }

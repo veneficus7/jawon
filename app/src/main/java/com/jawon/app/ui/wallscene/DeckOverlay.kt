@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -97,7 +98,10 @@ import com.jawon.app.ui.theme.LabelCream
 import com.jawon.app.ui.theme.JawonTextStyle
 import com.jawon.app.ui.theme.LabelDim
 import com.jawon.app.ui.theme.JetBrainsMonoFamily
+import com.jawon.app.ui.theme.DeckFinish
 import com.jawon.app.ui.theme.LampAmber
+import com.jawon.app.ui.theme.LocalDeckFinish
+import com.jawon.app.ui.theme.deckPlate
 import kotlinx.coroutines.flow.StateFlow
 import kotlin.math.abs
 import kotlin.math.roundToInt
@@ -158,7 +162,7 @@ fun DeckOverlay(
     onWidthChange: (Float) -> Unit,
     onReverbChange: (Int) -> Unit,
     onLoudnessChange: (Float) -> Unit,
-    /** Which of the six channels on the rack's face are in circuit. See [RackFace]. */
+    /** Which of the eight cells on the rack are switched in. See [RackGrid]. */
     engagedChannels: StateFlow<Set<RackChannel>>,
     onChannelToggle: (RackChannel) -> Unit,
     onPlayPause: () -> Unit,
@@ -206,6 +210,28 @@ fun DeckOverlay(
     val scope = rememberCoroutineScope()
     val pagerState = rememberPagerState(initialPage = deckPage) { PAGE_COUNT }
 
+    /**
+     * Which cell the rack's faders currently belong to.
+     *
+     * Local, and deliberately not hoisted: it is a property of looking at this page rather than
+     * of the app, and forgetting it when the case closes is the right behaviour — the next record
+     * should open on its own tracklist with nothing already picked out.
+     */
+    var selectedCell by remember { mutableStateOf<RackChannel?>(null) }
+
+    /** What the deck is made of. See [DeckFinish]. */
+    val finish = LocalDeckFinish.current
+
+    // Arriving at the rack with nothing selected means three empty fader slots and no way to
+    // guess that tapping a key fills them. Picking the first one is not a decision on the
+    // user's behalf — nothing is switched in or out by it — it just means the page opens
+    // showing what it is for.
+    LaunchedEffect(pagerState.currentPage) {
+        if (pagerState.currentPage == PAGE_SOUND && selectedCell == null) {
+            selectedCell = RackChannel.FILTER
+        }
+    }
+
     // The pager and the hoisted page have to agree without chasing each other. The hoisted value
     // drives the pager only when they actually differ, and the pager reports back on
     // `settledPage` rather than `currentPage` — reporting mid-drag would write the destination
@@ -229,14 +255,7 @@ fun DeckOverlay(
             // transparency, and it stops sitting over the dark room and starts sitting over the
             // spinning disc — with the album title trying to be read against it. Dividing by the
             // height holds the fade at the size it was tuned to be.
-            .background(
-                Brush.verticalGradient(
-                    0f to ComposeColor.Transparent,
-                    (FADE_SCREEN_FRACTION / sheetFraction.coerceAtLeast(0.05f))
-                        .coerceIn(0.08f, 0.32f) to ComposeColor(0xD1060403),
-                    1f to ComposeColor(0xF7060403)
-                )
-            )
+            .deckPlate(finish, sheetFraction)
             // The app is edge-to-edge, so without this the tracklist and transport run
             // underneath the system navigation bar.
             .navigationBarsPadding()
@@ -284,7 +303,7 @@ fun DeckOverlay(
                     .padding(bottom = 10.dp)
                     .width(36.dp)
                     .height(3.dp)
-                    .background(CrateEdge, RoundedCornerShape(2.dp))
+                    .background(finish.plateEdge, RoundedCornerShape(2.dp))
             )
             // Always shown now, on every page.
             //
@@ -300,27 +319,19 @@ fun DeckOverlay(
             // — you have just chosen it, and it is still behind this panel. What you cannot see
             // anywhere else is which of its tracks is playing, and that is what a deck is for.
             // Falls back to the album for the moment before a track is loaded.
-            Text(
-                text = deck.currentTrack?.title?.takeIf { it.isNotBlank() } ?: title,
-                style = MaterialTheme.typography.displaySmall,
-                textAlign = TextAlign.Center,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
+            DeckWindow(
+                title = title,
+                artist = artist,
+                deck = deck,
+                positionFlow = positionFlow,
+                scrubReadout = scrubReadout,
+                compact = compact,
+                rackStatus = if (pagerState.currentPage == PAGE_SOUND) {
+                    (selectedCell?.label ?: "--") + "  " + engagedChannels.collectAsState().value.size + " IN"
+                } else {
+                    null
+                }
             )
-        if (!compact) {
-            // Whoever is actually singing, which on a compilation is not who the shelf is filed
-            // under. Falls back to the album's artist when the file carried no per-track credit —
-            // including every track imported before that column existed.
-            Text(
-                text = (deck.currentTrack?.artist?.takeIf { it.isNotBlank() } ?: artist).uppercase(),
-                style = JawonTextStyle.mono,
-                modifier = Modifier.padding(top = 6.dp)
-            )
-            // The quality readout is the resting state of this slot; a scratch takes it over.
-            // Both are drawn inside ScrubOrQuality so that the scratch's ~12Hz updates
-            // recompose these two lines and nothing else (ENGINEERING.md rule 3).
-            ScrubOrQuality(scrubReadout = scrubReadout, deck = deck)
-        }
         }
 
         // Everything from here to the fader is dropped at the shortest stop.
@@ -376,7 +387,7 @@ fun DeckOverlay(
                         Modifier
                             .size(5.dp)
                             .background(
-                                if (page == pagerState.currentPage) LampAmber else CrateEdge,
+                                if (page == pagerState.currentPage) finish.accent else finish.plateEdge,
                                 RoundedCornerShape(3.dp)
                             )
                     )
@@ -413,110 +424,73 @@ fun DeckOverlay(
                 .weight(1f)
         ) { page ->
         if (page == PAGE_SOUND) {
+            // **Layout C: eight cells you switch in and out, over three faders that follow.**
+            //
+            // Effects first, parameters second — the order you use them in when something is
+            // already playing. Tapping a cell throws the effect in and selects it; the faders
+            // underneath then belong to whichever cell is selected. The old stack of full-width
+            // sliders is gone rather than hidden: it drew several of these controls a second
+            // time, which is why the page read as duplicated.
+            //
+            // No scroll. Everything the rack can do is on this one face, which is the whole
+            // point of the layout.
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
                     .fillMaxHeight()
-                    .verticalScroll(rememberScrollState())
-                    .padding(top = 10.dp)
+                    .padding(top = 8.dp),
+                // Centred rather than hung from the top: the rack is a fixed-size object, and
+                // whatever height is left over should sit evenly around it instead of pooling
+                // underneath as a lake of empty plate.
+                verticalArrangement = Arrangement.Center
             ) {
-                // **The face: six pads over six faders, all live at once.**
-                //
-                // The pad says whether an effect is in, the fader says how much, and the two
-                // stay independent — a bypassed channel keeps its fader exactly where it was,
-                // so tapping it back in lands on the same amount instead of making you find it
-                // again by hand. Sweeping the filter while pushing the echo's feedback is one
-                // gesture with two thumbs here, which is the move this whole page exists for
-                // and the one thing a layout that shows a single module at a time cannot do.
-                //
-                // What is *not* here is everything you set rather than play: pitch, the reverb
-                // room, loudness, the equaliser. See [RackFace] for why six is the ceiling.
-                RackFace(
-                    channels = rackChannels(
+                RackGrid(
+                    cells = rackCells(
                         filter = filterPosition.collectAsState().value,
                         speed = speedPosition.collectAsState().value,
+                        pitch = pitchPosition.collectAsState().value,
                         drive = drivePosition.collectAsState().value,
+                        echoTime = echoTime.collectAsState().value,
+                        echoFeedback = echoFeedback.collectAsState().value,
                         echoMix = echoMix.collectAsState().value,
+                        reverbPreset = reverbPreset.collectAsState().value,
+                        loudness = loudnessGain.collectAsState().value,
                         bass = bassStrength.collectAsState().value,
                         width = stereoWidth.collectAsState().value,
                         available = nativeAvailable.collectAsState().value,
-                        onFilterChange = onFilterChange,
-                        onSpeedChange = onSpeedChange,
-                        onDriveChange = onDriveChange,
+                        onFilter = onFilterChange,
+                        onSpeed = onSpeedChange,
+                        onPitch = onPitchChange,
+                        onPitchCommit = onPitchCommit,
+                        onDrive = onDriveChange,
+                        onEchoTime = onEchoTime,
+                        onEchoFeedback = onEchoFeedback,
                         onEchoMix = onEchoMix,
-                        onBassChange = onBassChange,
-                        onWidthChange = onWidthChange
+                        onReverb = onReverbChange,
+                        onLoudness = onLoudnessChange,
+                        onBass = onBassChange,
+                        onWidth = onWidthChange
                     ),
                     engaged = engagedChannels.collectAsState().value,
-                    onToggle = onChannelToggle
-                )
-
-                // The echo's shape, under the face. Time and feedback are not presence — they
-                // are what the repeats sound like — and they keep working while the mix fader
-                // above decides whether any of it is audible.
-                EchoModule(
-                    timeFlow = echoTime,
-                    feedbackFlow = echoFeedback,
-                    mixFlow = echoMix,
-                    onTime = onEchoTime,
-                    onFeedback = onEchoFeedback,
-                    onMix = onEchoMix
-                )
-
-                // Still the old stack below, until the drawer lands. Everything here is
-                // reachable and nothing has moved twice.
-                VarispeedModule(
-                    speedFlow = speedPosition,
-                    pitchFlow = pitchPosition,
-                    onSpeed = onSpeedChange,
-                    onPitch = onPitchChange,
-                    onPitchCommit = onPitchCommit
-                )
-
-                NativeEffectsModule(
-                    availableFlow = nativeAvailable,
-                    bassFlow = bassStrength,
-                    widthFlow = stereoWidth,
-                    reverbFlow = reverbPreset,
-                    loudnessFlow = loudnessGain,
-                    onBass = onBassChange,
-                    onWidth = onWidthChange,
-                    onReverb = onReverbChange,
-                    onLoudness = onLoudnessChange
-                )
-
-                if (eqEnabled) {
-                    EqualizerPanel(
-                        bands = eqBands,
-                        rangeMb = eqRangeMb,
-                        presets = eqPresets,
-                        onBandChange = onEqBandChange,
-                        onPreset = onEqPreset,
-                        onReset = onEqReset,
-                        compact = true
-                    )
-                } else {
-                    // Off is a real state, and the switch belongs to the same control the
-                    // settings screen owns — so this turns it on rather than pretending the
-                    // equaliser is broken.
-                    Text(
-                        text = "The equaliser is off.",
-                        style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = 11.sp),
-                        modifier = Modifier.padding(vertical = 8.dp)
-                    )
-                    Row(
-                        modifier = Modifier
-                            .border(1.dp, CrateEdge)
-                            .clickable { onEqEnabledChange(true) }
-                            .padding(horizontal = 14.dp, vertical = 8.dp)
-                    ) {
+                    selected = selectedCell,
+                    onToggle = onChannelToggle,
+                    onSelect = { selectedCell = if (selectedCell == it) null else it }
+                ) {
+                    if (eqAvailable) {
+                        EqualizerPanel(
+                            bands = eqBands,
+                            rangeMb = eqRangeMb,
+                            presets = eqPresets,
+                            onBandChange = onEqBandChange,
+                            onPreset = onEqPreset,
+                            onReset = onEqReset,
+                            compact = true
+                        )
+                    } else {
                         Text(
-                            "TURN IT ON",
-                            fontFamily = JetBrainsMonoFamily,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 11.sp,
-                            letterSpacing = 1.4.sp,
-                            color = LampAmber
+                            text = "This phone has no equaliser.",
+                            style = JawonTextStyle.mono.copy(color = finish.plateDim, fontSize = 10.sp),
+                            modifier = Modifier.padding(vertical = 10.dp)
                         )
                     }
                 }
@@ -568,6 +542,7 @@ fun DeckOverlay(
                 Icon(
                     Icons.Default.SkipPrevious,
                     contentDescription = "Previous track",
+                    tint = finish.plateInk,
                     modifier = Modifier.size(30.dp)
                 )
             }
@@ -575,7 +550,7 @@ fun DeckOverlay(
                 Icon(
                     imageVector = if (deck.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
                     contentDescription = if (deck.isPlaying) "Pause" else "Play",
-                    tint = LampAmber,
+                    tint = finish.accent,
                     modifier = Modifier.size(40.dp)
                 )
             }
@@ -583,6 +558,7 @@ fun DeckOverlay(
                 Icon(
                     Icons.Default.SkipNext,
                     contentDescription = "Next track",
+                    tint = finish.plateInk,
                     modifier = Modifier.size(30.dp)
                 )
             }
@@ -600,6 +576,7 @@ fun DeckOverlay(
  */
 @Composable
 private fun ScrubOrQuality(scrubReadout: State<ScrubReadout?>, deck: DeckState) {
+    val finish = LocalDeckFinish.current
     val scrub = scrubReadout.value
     if (scrub != null) {
         val track = deck.tracks.getOrNull(scrub.trackIndex)
@@ -612,7 +589,7 @@ private fun ScrubOrQuality(scrubReadout: State<ScrubReadout?>, deck: DeckState) 
         )
         Text(
             text = track?.title.orEmpty().uppercase(),
-            style = JawonTextStyle.mono.copy(color = LabelDim),
+            style = JawonTextStyle.mono.copy(color = finish.plateDim),
             modifier = Modifier.padding(top = 2.dp),
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
@@ -622,14 +599,14 @@ private fun ScrubOrQuality(scrubReadout: State<ScrubReadout?>, deck: DeckState) 
     deck.currentTrack?.let { track ->
         Text(
             text = qualityReadoutSource(track).uppercase(),
-            style = JawonTextStyle.mono.copy(color = LabelDim),
+            style = JawonTextStyle.mono.copy(color = finish.plateDim),
             modifier = Modifier.padding(top = 10.dp)
         )
         Text(
             text = qualityReadoutOutput(
                 track, deck.routeLabel, deck.outputSampleRateHz
             ).uppercase(),
-            style = JawonTextStyle.mono.copy(color = LabelDim),
+            style = JawonTextStyle.mono.copy(color = finish.plateDim),
             modifier = Modifier.padding(top = 2.dp)
         )
     }
@@ -651,6 +628,7 @@ private fun ProgressRow(
     durationMs: Long,
     onSeek: (Long) -> Unit
 ) {
+    val finish = LocalDeckFinish.current
     val position by positionFlow.collectAsState()
     var isDragging by remember { mutableStateOf(false) }
     var dragValue by remember { mutableFloatStateOf(0f) }
@@ -687,23 +665,32 @@ private fun ProgressRow(
             },
             valueRange = 0f..range,
             colors = SliderDefaults.colors(
-                thumbColor = LampAmber,
-                activeTrackColor = LampAmber,
-                inactiveTrackColor = CrateEdge
+                thumbColor = finish.accent,
+                activeTrackColor = finish.accent,
+                inactiveTrackColor = finish.plateEdge
             )
         )
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            Text(formatDuration(shown.toLong()), style = JawonTextStyle.mono)
-            Text(formatDuration(durationMs), style = JawonTextStyle.mono)
+            // Quiet, because the window above already carries the live time in the glass —
+            // this row is the scale for the bar, not the readout.
+            Text(
+                formatDuration(shown.toLong()),
+                style = JawonTextStyle.mono.copy(color = finish.plateDim)
+            )
+            Text(
+                formatDuration(durationMs),
+                style = JawonTextStyle.mono.copy(color = finish.plateDim)
+            )
         }
     }
 }
 
 @Composable
 private fun TrackRow(track: Track, isCurrent: Boolean, onClick: () -> Unit) {
+    val finish = LocalDeckFinish.current
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -715,20 +702,20 @@ private fun TrackRow(track: Track, isCurrent: Boolean, onClick: () -> Unit) {
         Text(
             text = "%02d".format(track.trackNumber),
             style = JawonTextStyle.mono.copy(
-                color = if (isCurrent) LampAmber else LabelDim
+                color = if (isCurrent) finish.accent else finish.plateDim
             )
         )
         Text(
             text = track.title,
             modifier = Modifier.weight(1f),
             style = MaterialTheme.typography.bodyMedium,
-            color = if (isCurrent) LampAmber else MaterialTheme.colorScheme.onBackground,
+            color = if (isCurrent) finish.accent else finish.plateInk,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )
         Text(
             text = formatDuration(track.durationMs),
-            style = JawonTextStyle.mono.copy(color = LabelDim)
+            style = JawonTextStyle.mono.copy(color = finish.plateDim)
         )
     }
 }
@@ -741,6 +728,7 @@ private fun TrackRow(track: Track, isCurrent: Boolean, onClick: () -> Unit) {
  */
 @Composable
 private fun DeckTab(label: String, selected: Boolean, onClick: () -> Unit) {
+    val finish = LocalDeckFinish.current
     Column(
         modifier = Modifier.clickable(onClick = onClick),
         horizontalAlignment = Alignment.CenterHorizontally
@@ -751,14 +739,14 @@ private fun DeckTab(label: String, selected: Boolean, onClick: () -> Unit) {
             fontWeight = FontWeight.Bold,
             fontSize = 10.sp,
             letterSpacing = 2.sp,
-            color = if (selected) LampAmber else LabelDim,
+            color = if (selected) finish.accent else finish.plateDim,
             modifier = Modifier.padding(bottom = 5.dp)
         )
         Box(
             Modifier
                 .width(26.dp)
                 .height(1.dp)
-                .background(if (selected) LampAmber else ComposeColor.Transparent)
+                .background(if (selected) finish.accent else ComposeColor.Transparent)
         )
     }
 }
@@ -780,6 +768,7 @@ private fun SleepChip(
     remainingMs: Long?,
     onPick: (SleepTimer.Mode) -> Unit
 ) {
+    val finish = LocalDeckFinish.current
     var open by remember { mutableStateOf(false) }
     val on = mode != SleepTimer.Mode.Off
 
@@ -793,7 +782,7 @@ private fun SleepChip(
             Icon(
                 Icons.Default.Bedtime,
                 contentDescription = "Sleep timer",
-                tint = if (on) LampAmber else LabelDim,
+                tint = if (on) finish.accent else finish.plateDim,
                 modifier = Modifier.size(15.dp)
             )
             if (on) {
@@ -803,7 +792,7 @@ private fun SleepChip(
                     fontWeight = FontWeight.Bold,
                     fontSize = 9.sp,
                     letterSpacing = 1.2.sp,
-                    color = LampAmber,
+                    color = finish.accent,
                     modifier = Modifier.padding(start = 6.dp)
                 )
             }
@@ -812,7 +801,7 @@ private fun SleepChip(
         DropdownMenu(
             expanded = open,
             onDismissRequest = { open = false },
-            modifier = Modifier.background(CrateRaised)
+            modifier = Modifier.background(finish.key)
         ) {
             SleepOption("END OF RECORD", mode == SleepTimer.Mode.EndOfAlbum) {
                 onPick(SleepTimer.Mode.EndOfAlbum); open = false
@@ -832,6 +821,7 @@ private fun SleepChip(
 
 @Composable
 private fun SleepOption(label: String, selected: Boolean, onClick: () -> Unit) {
+    val finish = LocalDeckFinish.current
     DropdownMenuItem(
         text = {
             Text(
@@ -839,275 +829,18 @@ private fun SleepOption(label: String, selected: Boolean, onClick: () -> Unit) {
                 fontFamily = JetBrainsMonoFamily,
                 fontSize = 11.sp,
                 letterSpacing = 1.3.sp,
-                color = if (selected) LampAmber else LabelCream
+                color = if (selected) finish.accent else finish.plateInk
             )
         },
         onClick = onClick
     )
 }
-/**
- * The filter knob, as a strip with a centre detent.
- *
- * **Why a strip and not a rotary.** A knob is the right *object* — this is one control covering
- * two filters, which is what a mixer spends a knob on — but a rotary on a touchscreen is turned
- * by dragging in an arc your finger cannot see, and the finger covers the very thing it is
- * setting. A strip is the same single control with a travel a thumb can actually follow.
- *
- * Does **not** spring back: a filter is a state you leave a track in and walk away from, not a
- * gesture you hold open.
- */
-@Composable
-private fun FilterStrip(positionFlow: StateFlow<Float>, onChange: (Float) -> Unit) {
-    val position by positionFlow.collectAsState()
-    var width by remember { mutableFloatStateOf(1f) }
-    val haptics = LocalHapticFeedback.current
-
-    // Whether the last thing the finger did was sit in the dead zone. Kept so the detent ticks
-    // once on the way in rather than buzzing continuously while the knob is parked at centre.
-    var wasCentred by remember { mutableStateOf(true) }
-
-    fun set(x: Float) {
-        // −1 at the far left, +1 at the far right, 0 in the middle.
-        val raw = ((x / width) * 2f - 1f).coerceIn(-1f, 1f)
-        val centred = abs(raw) <= DjFilter.DEAD_ZONE
-        if (centred && !wasCentred) {
-            // The click you feel on a real mixer as the knob drops into the middle. This is the
-            // difference between a control that is off and one you can *tell* is off without
-            // looking, which is the whole reason detents exist.
-            haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-        }
-        wasCentred = centred
-        // Snapped, so the drawn knob agrees with the filter. The DSP already treats anything
-        // inside the dead zone as bypassed; letting the marker sit visibly off-centre while the
-        // sound is untouched would be the fader's mistake again.
-        onChange(if (centred) 0f else raw)
-    }
-
-    Column(modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp)) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Text("FILTER", style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = 10.sp))
-            Text(
-                text = filterReadout(position),
-                style = JawonTextStyle.mono.copy(
-                    color = if (DjFilter.modeFor(position) == DjFilter.Mode.OFF) LabelDim else LampAmber,
-                    fontSize = 10.sp
-                )
-            )
-        }
-
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(top = 6.dp)
-                .height(34.dp)
-                .onSizeChanged { width = it.width.toFloat().coerceAtLeast(1f) }
-                .pointerInput(Unit) {
-                    detectHorizontalDragGestures(
-                        onDragStart = { set(it.x) }
-                    ) { change, _ -> set(change.position.x) }
-                }
-        ) {
-            // The travel.
-            Box(
-                Modifier
-                    .align(Alignment.Center)
-                    .fillMaxWidth()
-                    .height(1.dp)
-                    .background(CrateEdge)
-            )
-            // The detent, drawn taller than the rest so the middle is findable by eye as well
-            // as by feel.
-            Box(
-                Modifier
-                    .align(Alignment.Center)
-                    .width(1.dp)
-                    .height(12.dp)
-                    .background(LabelDim)
-            )
-            // How far from centre the filter is, drawn from the middle *outward* so the direction
-            // reads at a glance: left is low-pass, right is high-pass.
-            //
-            // Two halves rather than one box with a computed alignment. The single-box version
-            // put the fill on the opposite side from the handle — aligning a half-width box to
-            // the end anchors it in the *right* half, then fills within that, which draws a
-            // left-hand sweep on the right of the screen.
-            Row(Modifier.fillMaxWidth().align(Alignment.Center)) {
-                Box(Modifier.weight(1f), contentAlignment = Alignment.CenterEnd) {
-                    if (position < -DjFilter.DEAD_ZONE) {
-                        Box(
-                            Modifier
-                                .fillMaxWidth(abs(position).coerceIn(0f, 1f))
-                                .height(8.dp)
-                                .background(LampAmber)
-                        )
-                    }
-                }
-                Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
-                    if (position > DjFilter.DEAD_ZONE) {
-                        Box(
-                            Modifier
-                                .fillMaxWidth(position.coerceIn(0f, 1f))
-                                .height(8.dp)
-                                .background(LampAmber)
-                        )
-                    }
-                }
-            }
-            Box(
-                Modifier
-                    .align(BiasAlignment(horizontalBias = position.coerceIn(-1f, 1f), verticalBias = 0f))
-                    .width(14.dp)
-                    .height(30.dp)
-                    .background(
-                        if (DjFilter.modeFor(position) == DjFilter.Mode.OFF) LabelDim else LampAmber,
-                        RoundedCornerShape(2.dp)
-                    )
-            )
-        }
-    }
-}
 
 /** `OFF`, `LP 4.2k` or `HP 320` — a value you can read aloud, not a nameless slider. */
-private fun filterReadout(position: Float): String {
-    val mode = DjFilter.modeFor(position)
-    if (mode == DjFilter.Mode.OFF) return "OFF"
-    val hz = DjFilter.cutoffHz(position)
-    val label = if (hz >= 1000f) "${(hz / 100f).roundToInt() / 10f}k" else "${hz.roundToInt()}"
-    return if (mode == DjFilter.Mode.LOW_PASS) "LP $label" else "HP $label"
-}
 
-/**
- * The echo, as three labelled slots in one module.
- *
- * MIX rests at zero and is the one you actually perform with — the gesture is throwing it in for
- * a bar and pulling it back out, which is why it sits last and reads as the loudest control here.
- * TIME and FEED are set once and left.
- */
-@Composable
-private fun EchoModule(
-    timeFlow: StateFlow<Float>,
-    feedbackFlow: StateFlow<Float>,
-    mixFlow: StateFlow<Float>,
-    onTime: (Float) -> Unit,
-    onFeedback: (Float) -> Unit,
-    onMix: (Float) -> Unit
-) {
-    val time by timeFlow.collectAsState()
-    val feedback by feedbackFlow.collectAsState()
-    val mix by mixFlow.collectAsState()
-
-    Column(modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp)) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Text("ECHO", style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = 10.sp))
-            Text(
-                // A value you can read aloud, not a nameless slider.
-                text = if (mix <= 0.001f) "OFF" else "${Echo.timeMsFor(time).roundToInt()} MS",
-                style = JawonTextStyle.mono.copy(
-                    color = if (mix <= 0.001f) LabelDim else LampAmber,
-                    fontSize = 10.sp
-                )
-            )
-        }
-        RackSlider("TIME", time, onTime)
-        RackSlider("FEED", feedback, onFeedback)
-        RackSlider("MIX", mix, onMix, emphasised = true)
-    }
-}
 
 /** One 0..1 control: a name, a travel and a fill. The rack's unit of measurement. */
-@Composable
-private fun RackSlider(
-    label: String,
-    value: Float,
-    onChange: (Float) -> Unit,
-    emphasised: Boolean = false
-) {
-    var width by remember { mutableFloatStateOf(1f) }
-    Row(
-        modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Text(
-            text = label,
-            style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = 9.sp),
-            modifier = Modifier.width(44.dp)
-        )
-        Box(
-            modifier = Modifier
-                .weight(1f)
-                .height(if (emphasised) 26.dp else 20.dp)
-                .onSizeChanged { width = it.width.toFloat().coerceAtLeast(1f) }
-                .pointerInput(Unit) {
-                    detectHorizontalDragGestures(
-                        onDragStart = { onChange((it.x / width).coerceIn(0f, 1f)) }
-                    ) { change, _ -> onChange((change.position.x / width).coerceIn(0f, 1f)) }
-                }
-        ) {
-            Box(
-                Modifier
-                    .align(Alignment.CenterStart)
-                    .fillMaxWidth()
-                    .height(1.dp)
-                    .background(CrateEdge)
-            )
-            if (value > 0.001f) {
-                Box(
-                    Modifier
-                        .align(Alignment.CenterStart)
-                        .fillMaxWidth(value.coerceIn(0f, 1f))
-                        .height(if (emphasised) 8.dp else 5.dp)
-                        .background(if (emphasised) LampAmber else LabelDim)
-                )
-            }
-            Box(
-                Modifier
-                    .align(BiasAlignment(horizontalBias = value.coerceIn(0f, 1f) * 2f - 1f, verticalBias = 0f))
-                    .width(10.dp)
-                    .height(if (emphasised) 22.dp else 16.dp)
-                    .background(
-                        if (emphasised && value > 0.001f) LampAmber else LabelDim,
-                        RoundedCornerShape(2.dp)
-                    )
-            )
-        }
-    }
-}
 
-/**
- * Saturation, as one control.
- *
- * One knob rather than the usual drive-plus-output pair, because the output half is not a
- * decision anyone wants to make — it exists only to stop the drive knob doubling as a volume
- * knob, and [Drive] handles that itself. Leaving it out is the same constraint the filter
- * applies: one control, doing the whole job.
- */
-@Composable
-private fun DriveModule(positionFlow: StateFlow<Float>, onChange: (Float) -> Unit) {
-    val position by positionFlow.collectAsState()
-    Column(modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp)) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Text("DRIVE", style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = 10.sp))
-            Text(
-                text = if (position <= Drive.SILENT) "CLEAN"
-                else "×${"%.1f".format(Drive.driveFor(position))}",
-                style = JawonTextStyle.mono.copy(
-                    color = if (position <= Drive.SILENT) LabelDim else LampAmber,
-                    fontSize = 10.sp
-                )
-            )
-        }
-        RackSlider("AMOUNT", position, onChange, emphasised = true)
-    }
-}
 
 /**
  * How far down the *screen* the deck's scrim finishes fading in.
@@ -1140,226 +873,8 @@ internal const val PAGE_SOUND = 1
 internal const val PAGE_LYRICS = 2
 internal const val PAGE_COUNT = 3
 
-/**
- * Tempo and key, as a pair of centre-detented strips.
- *
- * They sit together because their whole point is being apart: a record deck has one control
- * here, and seeing two is the fastest way to understand that this is not that. Big numeric
- * readouts because these are the two values people actually aim at rather than sweep.
- */
-@Composable
-private fun VarispeedModule(
-    speedFlow: StateFlow<Float>,
-    pitchFlow: StateFlow<Float>,
-    onSpeed: (Float) -> Unit,
-    onPitch: (Float) -> Unit,
-    /**
-     * The pitch gesture has ended.
-     *
-     * Pitch is the one control here whose value must not reach the player mid-drag — see
-     * [com.jawon.app.playback.RackState.pitchApplied]. Speed has no such restriction and is
-     * applied continuously.
-     */
-    onPitchCommit: () -> Unit
-) {
-    val speed by speedFlow.collectAsState()
-    val pitch by pitchFlow.collectAsState()
 
-    Column(modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp)) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Text("SPEED", style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = 10.sp))
-            Text(
-                text = if (Varispeed.isNeutral(speed)) "NORMAL"
-                else "%.2f".format(Varispeed.speedFor(speed)) + "\u00D7",
-                style = JawonTextStyle.mono.copy(
-                    color = if (Varispeed.isNeutral(speed)) LabelDim else LampAmber,
-                    fontSize = 10.sp
-                )
-            )
-        }
-        CentredStrip(speed, onSpeed)
 
-        // The readout follows the finger; the player is only told on release. See onPitchCommit.
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Text("PITCH", style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = 10.sp))
-            Text(
-                text = if (Varispeed.isNeutral(pitch)) "NORMAL"
-                else "%+.1f ST".format(Varispeed.semitonesFor(pitch)),
-                style = JawonTextStyle.mono.copy(
-                    color = if (Varispeed.isNeutral(pitch)) LabelDim else LampAmber,
-                    fontSize = 10.sp
-                )
-            )
-        }
-        CentredStrip(pitch, onPitch, onCommit = onPitchCommit)
-    }
-}
-
-/**
- * A −1…0…+1 strip with a detent in the middle.
- *
- * Shared by speed and pitch, and shaped like [FilterStrip] on purpose: three controls that all
- * rest at centre should be operated the same way, and a user who learns one has learned them.
- */
-@Composable
-private fun CentredStrip(
-    position: Float,
-    onChange: (Float) -> Unit,
-    /**
-     * Called when the finger lifts, for controls whose value must not reach the player until
-     * the gesture has settled. See [RackState.pitchApplied] for why pitch is one of those.
-     */
-    onCommit: (() -> Unit)? = null
-) {
-    var width by remember { mutableFloatStateOf(1f) }
-    val haptics = LocalHapticFeedback.current
-    var wasCentred by remember { mutableStateOf(true) }
-
-    fun set(x: Float) {
-        val raw = ((x / width) * 2f - 1f).coerceIn(-1f, 1f)
-        val centred = Varispeed.isNeutral(raw)
-        if (centred && !wasCentred) haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-        wasCentred = centred
-        onChange(if (centred) 0f else raw)
-    }
-
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(top = 4.dp)
-            .height(28.dp)
-            .onSizeChanged { width = it.width.toFloat().coerceAtLeast(1f) }
-            .pointerInput(Unit) {
-                detectHorizontalDragGestures(
-                    onDragStart = { set(it.x) },
-                    onDragEnd = { onCommit?.invoke() },
-                    onDragCancel = { onCommit?.invoke() }
-                ) { change, _ -> set(change.position.x) }
-            }
-    ) {
-        Box(
-            Modifier
-                .align(Alignment.Center)
-                .fillMaxWidth()
-                .height(1.dp)
-                .background(CrateEdge)
-        )
-        Box(
-            Modifier
-                .align(Alignment.Center)
-                .width(1.dp)
-                .height(10.dp)
-                .background(LabelDim)
-        )
-        Row(Modifier.fillMaxWidth().align(Alignment.Center)) {
-            Box(Modifier.weight(1f), contentAlignment = Alignment.CenterEnd) {
-                if (position < -Varispeed.DEAD_ZONE) {
-                    Box(
-                        Modifier
-                            .fillMaxWidth(abs(position).coerceIn(0f, 1f))
-                            .height(6.dp)
-                            .background(LampAmber)
-                    )
-                }
-            }
-            Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
-                if (position > Varispeed.DEAD_ZONE) {
-                    Box(
-                        Modifier
-                            .fillMaxWidth(position.coerceIn(0f, 1f))
-                            .height(6.dp)
-                            .background(LampAmber)
-                    )
-                }
-            }
-        }
-        Box(
-            Modifier
-                .align(BiasAlignment(horizontalBias = position.coerceIn(-1f, 1f), verticalBias = 0f))
-                .width(12.dp)
-                .height(24.dp)
-                .background(
-                    if (Varispeed.isNeutral(position)) LabelDim else LampAmber,
-                    RoundedCornerShape(2.dp)
-                )
-        )
-    }
-}
-
-/**
- * The four effects the platform supplies, drawn only where the phone actually has them.
- *
- * **An absent module is absent, not disabled.** Vendor support for these varies, and a greyed
- * row saying "your phone cannot do this" is a row of screen spent on bad news. If a phone has
- * none of them the whole block disappears and the rack is Jawon's own effects, which still
- * work — they run inside the player's pipeline rather than on the audio session.
- */
-@Composable
-private fun NativeEffectsModule(
-    availableFlow: StateFlow<Set<NativeEffect>>,
-    bassFlow: StateFlow<Float>,
-    widthFlow: StateFlow<Float>,
-    reverbFlow: StateFlow<Int>,
-    loudnessFlow: StateFlow<Float>,
-    onBass: (Float) -> Unit,
-    onWidth: (Float) -> Unit,
-    onReverb: (Int) -> Unit,
-    onLoudness: (Float) -> Unit
-) {
-    val available by availableFlow.collectAsState()
-    if (available.isEmpty()) return
-
-    val bass by bassFlow.collectAsState()
-    val width by widthFlow.collectAsState()
-    val reverb by reverbFlow.collectAsState()
-    val loudness by loudnessFlow.collectAsState()
-
-    Column(modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp)) {
-        Text(
-            "SPACE",
-            style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = 10.sp),
-            modifier = Modifier.padding(bottom = 2.dp)
-        )
-
-        if (NativeEffect.REVERB in available) {
-            // A row of names rather than a slider: the platform offers rooms, not a dial, and
-            // pretending otherwise would put seven discrete values under a continuous control.
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState())
-                    .padding(vertical = 4.dp),
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                NativeEffects.REVERB_PRESETS.forEachIndexed { index, name ->
-                    val selected = index == reverb
-                    Text(
-                        text = name,
-                        fontFamily = JetBrainsMonoFamily,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 9.sp,
-                        letterSpacing = 1.1.sp,
-                        color = if (selected) LampAmber else LabelDim,
-                        modifier = Modifier
-                            .border(1.dp, if (selected) LampAmber else CrateEdge)
-                            .clickable { onReverb(index) }
-                            .padding(horizontal = 8.dp, vertical = 5.dp)
-                    )
-                }
-            }
-        }
-
-        if (NativeEffect.BASS in available) RackSlider("BASS", bass, onBass)
-        if (NativeEffect.WIDTH in available) RackSlider("WIDTH", width, onWidth)
-        if (NativeEffect.LOUDNESS in available) RackSlider("LOUD", loudness, onLoudness)
-    }
-}
 
 /**
  * The words, as a page rather than a control.
@@ -1379,6 +894,7 @@ private fun LyricsPage(
     positionFlow: StateFlow<Long>,
     isPlaying: Boolean
 ) {
+    val finish = LocalDeckFinish.current
     val lyrics by lyricsFlow.collectAsState()
     val words = lyrics
 
@@ -1386,7 +902,7 @@ private fun LyricsPage(
         Box(Modifier.fillMaxWidth().fillMaxHeight(), contentAlignment = Alignment.Center) {
             Text(
                 "NO LYRICS FOR THIS TRACK",
-                style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = 11.sp)
+                style = JawonTextStyle.mono.copy(color = finish.plateDim, fontSize = 11.sp)
             )
         }
         return
@@ -1427,7 +943,7 @@ private fun LyricsPage(
                 words.synced -> "SYNCED · ${sourceLabel(words.source)}"
                 else -> sourceLabel(words.source)
             },
-            style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = 9.sp),
+            style = JawonTextStyle.mono.copy(color = finish.plateDim, fontSize = 9.sp),
             modifier = Modifier.padding(top = 8.dp, bottom = 6.dp)
         )
         LazyColumn(state = listState, modifier = Modifier.fillMaxWidth().fillMaxHeight()) {
@@ -1452,7 +968,7 @@ private fun LyricsPage(
                     style = MaterialTheme.typography.bodyLarge.copy(
                         // Interpolated rather than picked, so a line brightens as it grows
                         // instead of snapping at the moment the scale animation starts.
-                        color = lerp(LabelDim, LabelCream, emphasis),
+                        color = lerp(finish.plateDim, finish.plateInk, emphasis),
                         fontWeight = if (sung) FontWeight.Bold else FontWeight.Normal,
                         fontSize = if (words.synced) 17.sp else 15.sp
                     ),
@@ -1514,3 +1030,204 @@ private fun sourceLabel(source: LyricSource): String = when (source) {
     LyricSource.SIDECAR -> "FROM AN .LRC BESIDE IT"
     LyricSource.ONLINE -> "FROM LRCLIB"
 }
+
+/**
+ * The deck's window: what a machine shows you about the disc it is holding.
+ *
+ * **The title went inside the glass, and that is the whole idea.** It used to be a large piece of
+ * display type floating on the panel, which reads as an app; a record player puts it behind a
+ * window with the time beside it, and once the title is in there the panel stops being a screen
+ * and starts being a front. It also fixes a real problem — a long track name was truncated at
+ * about fourteen characters at display size, and at window size it fits.
+ *
+ * Every finish gets one, because every finish is a machine. What changes is the glass: amber on
+ * near-black for the shop, a cyan vacuum-fluorescent tube for the component, four-pixel green for
+ * the desktop player.
+ */
+@Composable
+private fun DeckWindow(
+    title: String,
+    artist: String,
+    deck: DeckState,
+    positionFlow: StateFlow<Long>,
+    scrubReadout: State<ScrubReadout?>,
+    compact: Boolean,
+    /**
+     * What the rack is doing, when the rack is what you are looking at.
+     *
+     * Takes the place of the track number, because a component has one window and the rack used
+     * to open a second one directly beneath this. Null on the other pages, where the track
+     * number is the more useful thing to know.
+     */
+    rackStatus: String?
+) {
+    val finish = LocalDeckFinish.current
+
+    Column(modifier = Modifier.fillMaxWidth()) {
+
+        // Silkscreen. Costs one line and does more for the illusion than anything else on the
+        // panel — real machines are covered in small print nobody reads.
+        if (!compact) {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(bottom = 6.dp),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text(
+                    text = finish.brand,
+                    fontFamily = JetBrainsMonoFamily,
+                    fontSize = 8.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 3.sp,
+                    color = finish.plateDim
+                )
+                if (finish.model.isNotBlank()) {
+                    Text(
+                        text = finish.model,
+                        fontFamily = JetBrainsMonoFamily,
+                        fontSize = 8.sp,
+                        letterSpacing = 2.sp,
+                        color = finish.plateDim
+                    )
+                }
+            }
+        }
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(finish.window, RoundedCornerShape(finish.windowRadius))
+                .border(1.dp, finish.windowEdge, RoundedCornerShape(finish.windowRadius))
+                .padding(horizontal = 12.dp, vertical = 9.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                // The *track*, not the record. The album's name is on the spine, on the front of
+                // the case and on the shelf label — you just chose it. What you cannot see
+                // anywhere else is which of its tracks is playing, and that is what a deck is for.
+                DisplayText(
+                    text = (deck.currentTrack?.title?.takeIf { it.isNotBlank() } ?: title)
+                        .uppercase(),
+                    size = finish.displaySize,
+                    weight = FontWeight.Bold
+                )
+                if (!compact) {
+                    // Whoever is actually singing, which on a compilation is not who the shelf is
+                    // filed under. Falls back to the album's artist when the file carried no
+                    // per-track credit.
+                    DisplayText(
+                        text = (deck.currentTrack?.artist?.takeIf { it.isNotBlank() } ?: artist)
+                            .uppercase(),
+                        size = finish.displaySize * SECONDARY_SCALE,
+                        weight = FontWeight.Normal,
+                        dim = true
+                    )
+                }
+            }
+
+            // Its own composable so the twice-a-second tick recomposes the clock and nothing
+            // else — the panel around it holds still. ENGINEERING.md rule 3.
+            WindowClock(
+                positionFlow = positionFlow,
+                deck = deck,
+                scrubReadout = scrubReadout,
+                compact = compact,
+                rackStatus = rackStatus
+            )
+        }
+
+        if (!compact) {
+            // What the file actually is, in plate ink rather than in the glass: it is a property
+            // of the record, not something the machine is doing.
+            ScrubOrQuality(scrubReadout = scrubReadout, deck = deck)
+        }
+    }
+}
+
+/** The clock, alone, so the panel does not recompose twice a second with it. */
+@Composable
+private fun WindowClock(
+    positionFlow: StateFlow<Long>,
+    deck: DeckState,
+    scrubReadout: State<ScrubReadout?>,
+    compact: Boolean,
+    rackStatus: String?
+) {
+    val finish = LocalDeckFinish.current
+    val position by positionFlow.collectAsState()
+    val scrub = scrubReadout.value
+
+    // The gap matters: without it a long track name runs straight into the clock and the two
+    // read as one string.
+    Column(
+        horizontalAlignment = Alignment.End,
+        modifier = Modifier.padding(start = 14.dp)
+    ) {
+        DisplayText(
+            text = formatDuration(scrub?.positionMs ?: position),
+            size = finish.displaySize,
+            weight = FontWeight.Bold
+        )
+        if (!compact) {
+            val index = (scrub?.trackIndex ?: deck.currentTrackIndex) + 1
+            DisplayText(
+                text = rackStatus ?: ("TRK " + index.toString().padStart(2, Char(48))),
+                size = finish.displaySize * SECONDARY_SCALE,
+                weight = FontWeight.Normal,
+                dim = true
+            )
+        }
+    }
+}
+
+/**
+ * Type inside the glass, with the tube's own light bleeding past its segments.
+ *
+ * **Four offset copies rather than a blur.** `Modifier.blur` needs API 31 and this app's floor is
+ * 28, where it silently does nothing rather than failing — a halo that quietly vanishes on older
+ * phones is exactly the bug nobody finds. A text shadow is no good either: it is one directional
+ * drop, and a display tube spills evenly in every direction.
+ */
+@Composable
+private fun DisplayText(
+    text: String,
+    size: androidx.compose.ui.unit.TextUnit,
+    weight: FontWeight,
+    dim: Boolean = false
+) {
+    val finish = LocalDeckFinish.current
+    val colour = if (dim) finish.displayInk.copy(alpha = 0.6f) else finish.displayInk
+
+    Box {
+        if (finish.displayGlow > 0.dp) {
+            val spill = finish.displayGlow * GLOW_SPREAD
+            listOf(spill to 0.dp, -spill to 0.dp, 0.dp to spill, 0.dp to -spill).forEach { off ->
+                Text(
+                    text = text,
+                    fontFamily = finish.display,
+                    fontSize = size,
+                    fontWeight = weight,
+                    color = colour.copy(alpha = GLOW_ALPHA),
+                    letterSpacing = 0.5.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.offset(x = off.first, y = off.second)
+                )
+            }
+        }
+        Text(
+            text = text,
+            fontFamily = finish.display,
+            fontSize = size,
+            fontWeight = weight,
+            color = colour,
+            letterSpacing = 0.5.sp,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+    }
+}
+
+/** How much smaller the second line in the window is than the first. */
+private const val SECONDARY_SCALE = 0.58f
+private const val GLOW_SPREAD = 0.16f
+private const val GLOW_ALPHA = 0.28f

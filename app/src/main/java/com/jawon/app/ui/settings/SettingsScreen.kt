@@ -66,6 +66,7 @@ import com.jawon.app.ui.theme.JetBrainsMonoFamily
 import com.jawon.app.ui.theme.LabelCream
 import com.jawon.app.ui.theme.LabelDim
 import com.jawon.app.ui.theme.LampAmber
+import com.jawon.app.ui.theme.DeckFinish
 import com.jawon.app.ui.theme.RoomScheme
 
 /**
@@ -686,6 +687,7 @@ fun SettingsScreen(
     val fetchCoverArt by viewModel.fetchCoverArt.collectAsStateWithLifecycle()
     val fetchLyrics by viewModel.fetchLyrics.collectAsStateWithLifecycle()
     val roomScheme by viewModel.roomScheme.collectAsStateWithLifecycle()
+    val deckFinish by viewModel.deckFinish.collectAsStateWithLifecycle()
     val eqAvailable by viewModel.eqAvailable.collectAsStateWithLifecycle()
     val eqEnabled by viewModel.eqEnabled.collectAsStateWithLifecycle()
     val eqBands by viewModel.eqBands.collectAsStateWithLifecycle()
@@ -811,6 +813,15 @@ fun SettingsScreen(
             SchemePicker(
                 current = roomScheme,
                 onPick = viewModel::onRoomSchemeChanged
+            )
+
+            Box(Modifier.height(28.dp))
+
+            SectionHeader("THE DECK")
+
+            FinishPicker(
+                current = deckFinish,
+                onPick = viewModel::onDeckFinishChanged
             )
 
             Box(Modifier.height(28.dp))
@@ -971,5 +982,74 @@ fun SettingsScreen(
                 modifier = Modifier.padding(top = 48.dp, bottom = 48.dp)
             )
         }
+    }
+}
+
+/**
+ * What the deck is made of, previewed as the thing itself.
+ *
+ * Each swatch is a scrap of the actual faceplate with its own window on it, because the
+ * difference between these is entirely material — a list of three names would tell you nothing,
+ * and "Separates" means little until you have seen the cyan glow on brushed metal.
+ */
+@Composable
+private fun FinishPicker(current: DeckFinish, onPick: (DeckFinish) -> Unit) {
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            DeckFinish.entries.forEach { finish ->
+                val selected = finish == current
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .border(
+                            width = if (selected) 2.dp else 1.dp,
+                            color = if (selected) finish.accent else CrateEdge
+                        )
+                        .clickable { onPick(finish) }
+                        .padding(1.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    // A slice of plate with the display window sitting on it.
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(56.dp)
+                            .background(Brush.verticalGradient(listOf(finish.plate, finish.plateLow))),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth(0.78f)
+                                .height(26.dp)
+                                .background(finish.window)
+                                .border(1.dp, finish.windowEdge),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "88:88",
+                                fontFamily = finish.display,
+                                fontSize = finish.displaySize,
+                                color = finish.displayInk
+                            )
+                        }
+                    }
+                    Text(
+                        text = finish.displayName.uppercase(),
+                        style = JawonTextStyle.mono.copy(
+                            color = if (selected) finish.accent else LabelDim,
+                            fontSize = 9.sp
+                        ),
+                        modifier = Modifier.padding(vertical = 6.dp)
+                    )
+                }
+            }
+        }
+        Text(
+            text = "The room and the deck are separate: any finish goes with any scheme.",
+            style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = 10.sp)
+        )
     }
 }

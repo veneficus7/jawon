@@ -268,18 +268,21 @@ class WallSceneViewModel @Inject constructor(
     val engagedChannels: StateFlow<Set<RackChannel>> = rack.engaged
 
     /**
-     * A pad on the rack's face has been tapped: put that channel in, or take it out.
+     * A cell on the rack's grid has been tapped: switch that effect in, or take it out.
      *
-     * Two of the six are the platform's own effects rather than this app's, and they are told
-     * separately — [RackState] is the single answer to "what is in circuit", but it does not own
-     * the hardware those two run on, so the toggle is passed along here rather than observed.
+     * Three of the eight are not this app's own DSP — [RackChannel.SPACE] and
+     * [RackChannel.TONE] run on the platform's audio effects, and [RackChannel.EQ] is the
+     * system equaliser. [RackState] stays the single answer to "what is in circuit", but it does
+     * not own the hardware those three sit on, so the toggle is passed along here rather than
+     * observed from over there.
      */
     fun onChannelToggle(channel: RackChannel) {
         rack.toggleEngaged(channel)
         val engaged = rack.isEngaged(channel)
         when (channel) {
-            RackChannel.BASS -> nativeEffects.setBassEngaged(engaged)
-            RackChannel.WIDTH -> nativeEffects.setWidthEngaged(engaged)
+            RackChannel.TONE -> nativeEffects.setToneEngaged(engaged)
+            RackChannel.SPACE -> nativeEffects.setSpaceEngaged(engaged)
+            RackChannel.EQ -> onEqEnabledChanged(engaged)
             else -> Unit
         }
     }

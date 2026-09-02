@@ -2,6 +2,7 @@ package com.jawon.app.data.prefs
 
 import android.content.Context
 import androidx.core.content.edit
+import com.jawon.app.ui.theme.DeckFinish
 import com.jawon.app.ui.theme.RoomScheme
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -57,6 +58,22 @@ class AppPreferences @Inject constructor(@param:ApplicationContext context: Cont
         // everyone to a different scheme.
         prefs.edit { putString(KEY_ROOM_SCHEME, scheme.name) }
         _roomScheme.value = scheme
+    }
+
+    private val _deckFinish =
+        MutableStateFlow(DeckFinish.fromName(prefs.getString(KEY_DECK_FINISH, null)))
+
+    /**
+     * What the deck is made of. See [DeckFinish].
+     *
+     * Separate from [roomScheme] because they answer different questions — where you are standing
+     * against what you are playing the disc on — and the combinations are the point.
+     */
+    val deckFinish: StateFlow<DeckFinish> = _deckFinish.asStateFlow()
+
+    fun setDeckFinish(finish: DeckFinish) {
+        prefs.edit { putString(KEY_DECK_FINISH, finish.name) }
+        _deckFinish.value = finish
     }
 
     private val _equalizerEnabled =
@@ -237,6 +254,7 @@ class AppPreferences @Inject constructor(@param:ApplicationContext context: Cont
         const val KEY_FETCH_COVER_ART = "fetch_cover_art"
         const val KEY_FETCH_LYRICS = "fetch_lyrics"
         const val KEY_ROOM_SCHEME = "room_scheme"
+        const val KEY_DECK_FINISH = "deck_finish"
         const val KEY_EQ_ENABLED = "equalizer_enabled"
         const val KEY_EQ_BANDS = "equalizer_bands"
         const val KEY_REPLAY_GAIN = "replay_gain_mode"

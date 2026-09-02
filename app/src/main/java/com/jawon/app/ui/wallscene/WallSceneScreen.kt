@@ -2291,10 +2291,15 @@ fun WallSceneScreen(
                 deckPage = deckPage,
                 onDeckPageChange = {
                     deckPage = it
-                    // Arriving at the rack or the lyrics from the smallest stop would show about
-                    // one control, or one line. Anything the user dragged to themselves is left
-                    // alone.
-                    if (it != PAGE_TRACKS && detent == DeckDetent.PEEK) detent = DeckDetent.DECK
+                    // The rack is a whole instrument — eight keys, three faders and a window —
+                    // and at anything short of the tallest stop it arrives already clipped. So
+                    // SOUND asks for the full panel rather than merely more than PEEK. Lyrics
+                    // only need to escape the smallest stop, where one line is no use.
+                    when (it) {
+                        PAGE_SOUND -> if (detent != DeckDetent.FULL) detent = DeckDetent.FULL
+                        PAGE_LYRICS -> if (detent == DeckDetent.PEEK) detent = DeckDetent.DECK
+                        else -> Unit
+                    }
                 },
                 onSheetDrag = { dy ->
                     // Up is negative on screen and taller here, hence the sign. Dragged live

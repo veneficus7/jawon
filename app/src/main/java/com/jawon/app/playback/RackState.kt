@@ -7,14 +7,33 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 /**
- * The six things the rack's face can put in or take out.
+ * The eight effects the rack can put in or take out — one per cell of its grid.
  *
- * Six because that is what fits across a phone at a thumb's width — 52dp a channel, and a
- * seventh would take every one of them below the size a thumb can actually hit. Everything the
- * rack can do that is *not* on this list is something you set rather than something you play,
- * and those live in the drawer instead.
+ * **Effects, not parameters.** An earlier version of this listed six *controls*, which meant the
+ * echo appeared three times and could be bypassed in thirds. A cell is a whole effect: tapping
+ * it switches the thing in or out, and its parameters — one, two or three of them — appear on
+ * the faders below when it is selected. That is what makes eight fit where six controls did.
+ *
+ * [EQ] is the odd one and always will be: five bands cannot ride three faders, so its cell
+ * hands the row over to a five-band view instead. It is in this list because it is still
+ * something you switch in and out.
  */
-enum class RackChannel { FILTER, SPEED, DRIVE, ECHO, BASS, WIDTH }
+enum class RackChannel {
+    FILTER, SPEED, PITCH, DRIVE, ECHO, SPACE, TONE, EQ;
+
+    /** What the cell is called on the face. Kept short — a cell is about 74dp across. */
+    val label: String
+        get() = when (this) {
+            FILTER -> "FILT"
+            SPEED -> "SPD"
+            PITCH -> "PTCH"
+            DRIVE -> "DRV"
+            ECHO -> "ECHO"
+            SPACE -> "SPACE"
+            TONE -> "TONE"
+            EQ -> "EQ"
+        }
+}
 
 /**
  * Where the effects rack's controls live, between the finger turning them and the audio thread
@@ -87,6 +106,7 @@ class RackState @Inject constructor() {
         drivePosition = through(RackChannel.DRIVE, _drive.value, 0f)
         echoMixPosition = through(RackChannel.ECHO, _echoMix.value, 0f)
         _speedApplied.value = through(RackChannel.SPEED, _speed.value, CENTRE)
+        _pitchApplied.value = through(RackChannel.PITCH, _pitchTarget, CENTRE)
     }
 
     /** The value the audio should get: the target when the channel is in, neutral when it is out. */
@@ -169,9 +189,19 @@ class RackState @Inject constructor() {
         _pitch.value = position.coerceIn(-1f, 1f)
     }
 
+    /**
+     * The pitch the user last settled on, whether or not the player is currently being told.
+     *
+     * Bypassing the pitch cell has to be able to give this back exactly, and neither of the other
+     * two fields can: [pitch] follows a finger that may have moved on, and [pitchApplied] reads
+     * neutral for as long as the cell is out.
+     */
+    private var _pitchTarget: Float = CENTRE
+
     /** The finger has come off the pitch control: hand the settled value to the player. */
     fun commitPitch() {
-        _pitchApplied.value = _pitch.value
+        _pitchTarget = _pitch.value
+        _pitchApplied.value = through(RackChannel.PITCH, _pitchTarget, CENTRE)
     }
 
     // ---- the drive. See [Drive] -------------------------------------------------------

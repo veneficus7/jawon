@@ -102,25 +102,41 @@ class RackStateTest {
     }
 
     @Test
-    fun `pitch is not a channel and is untouched by any bypass`() {
-        // Pitch lives in the drawer: it commits on release and is set rather than played, so no
-        // pad owns it. Nothing on the face should be able to move it.
+    fun `pitch has its own cell, and bypassing it gives the key back exactly`() {
+        // Pitch is the one control that only reaches the player when the finger lifts, so its
+        // bypass has to restore the last *committed* value rather than wherever the readout was
+        // left. Getting this wrong would change the key of the music on a tap.
         val r = rack()
         r.setPitch(0.6f)
         r.commitPitch()
-        RackChannel.values().forEach { r.setEngaged(it, false) }
+        assertEquals(0.6f, r.pitchApplied.value, 1e-6f)
+
+        r.setEngaged(RackChannel.PITCH, false)
+        assertEquals(RackState.CENTRE, r.pitchApplied.value, 1e-6f)
+
+        r.setEngaged(RackChannel.PITCH, true)
+        assertEquals(0.6f, r.pitchApplied.value, 1e-6f)
+    }
+
+    @Test
+    fun `bypassing every other cell leaves the pitch alone`() {
+        val r = rack()
+        r.setPitch(0.6f)
+        r.commitPitch()
+        RackChannel.values().filter { it != RackChannel.PITCH }
+            .forEach { r.setEngaged(it, false) }
         assertEquals(0.6f, r.pitchApplied.value, 1e-6f)
     }
 
     @Test
     fun `toggling flips and reports`() {
         val r = rack()
-        r.toggleEngaged(RackChannel.BASS)
-        assertFalse(r.isEngaged(RackChannel.BASS))
-        assertFalse(RackChannel.BASS in r.engaged.value)
+        r.toggleEngaged(RackChannel.TONE)
+        assertFalse(r.isEngaged(RackChannel.TONE))
+        assertFalse(RackChannel.TONE in r.engaged.value)
 
-        r.toggleEngaged(RackChannel.BASS)
-        assertTrue(r.isEngaged(RackChannel.BASS))
+        r.toggleEngaged(RackChannel.TONE)
+        assertTrue(r.isEngaged(RackChannel.TONE))
     }
 
     @Test
