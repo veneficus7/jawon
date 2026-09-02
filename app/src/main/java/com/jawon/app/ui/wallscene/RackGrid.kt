@@ -3,7 +3,10 @@ package com.jawon.app.ui.wallscene
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.drag
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
@@ -81,6 +84,7 @@ import com.jawon.app.ui.theme.LampAmber
 import com.jawon.app.ui.theme.LocalDeckFinish
 import com.jawon.app.ui.theme.OxideTeal
 import java.util.Locale
+import kotlin.math.abs
 import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.hypot
@@ -1544,6 +1548,9 @@ private fun SegmentRing(
     val measurer = rememberTextMeasurer()
     val params = cells.firstOrNull { it.channel == selected }?.params.orEmpty()
 
+    /** What turning the band actually turns: the selected effect's first control. */
+    val knob = params.firstOrNull()
+
     // The band lights in sequence when the page opens, one wedge after the next round the arc.
     val entry = animateFloatAsState(
         targetValue = if (arrived) 1f else 0f,
@@ -1580,21 +1587,68 @@ private fun SegmentRing(
             Canvas(
                 modifier = Modifier
                     .fillMaxSize()
-                    .pointerInput(cells, engaged, selected) {
-                        detectTapGestures { pos ->
-                            val hit = segmentAt(
-                                pos = pos,
-                                width = size.width.toFloat(),
-                                height = size.height.toFloat(),
-                                inner = minOf(size.width, size.height) / 2f - SEG_BAND.dp.toPx()
-                            )
-                            val cell = cells.getOrNull(hit) ?: return@detectTapGestures
-                            if (!cell.available) return@detectTapGestures
-                            val isIn = cell.channel in engaged
-                            when {
-                                !isIn -> { onToggle(cell.channel); onSelect(cell.channel) }
-                                cell.channel == selected -> onToggle(cell.channel)
-                                else -> onSelect(cell.channel)
+                    .pointerInput(cells, engaged, selected, params) {
+                        // **One detector for both gestures, deliberately.**
+                        //
+                        // The band is a bank of switches you tap *and* a wheel you turn, on the
+                        // same pixels. Handing that to `detectTapGestures` and
+                        // `detectDragGestures` as two modifiers is the mistake this project has
+                        // already paid for once: two handlers on one gesture, with the winner
+                        // depending on which one consumes first, is what made the disc's release
+                        // fight its own scratch. So the press is taken once and this decides
+                        // what it was.
+                        //
+                        // A press becomes a turn only after the finger has travelled a few
+                        // degrees around the arc. Below that it is a tap, so a smudged press
+                        // switches an effect rather than quietly nudging its filter.
+                        awaitEachGesture {
+                            val down = awaitFirstDown()
+                            val centre = Offset(size.width / 2f, size.height / 2f)
+                            val inner = minOf(size.width, size.height) / 2f - SEG_BAND.dp.toPx()
+
+                            var last = angleOf(down.position, centre)
+                            var travelled = 0f
+                            var turning = false
+
+                            drag(down.id) { change ->
+                                val now = angleOf(change.position, centre)
+                                val step = angleDelta(last, now)
+                                last = now
+                                travelled += abs(step)
+
+                                if (!turning && travelled >= SEG_TURN_SLOP_DEGREES) turning = true
+                                if (turning) {
+                                    // A full sweep of the band is the control's full range, so
+                                    // the mapping is the arc itself rather than an invented
+                                    // sensitivity.
+                                    knob?.let {
+                                        it.onChange(
+                                            (it.value + step / SEG_SWEEP).coerceIn(0f, 1f)
+                                        )
+                                    }
+                                    change.consume()
+                                }
+                            }
+
+                            if (turning) {
+                                knob?.onCommit?.invoke()
+                            } else {
+                                // Never travelled far enough to be a turn, so it was a press.
+                                val hit = segmentAt(
+                                    pos = down.position,
+                                    width = size.width.toFloat(),
+                                    height = size.height.toFloat(),
+                                    inner = inner
+                                )
+                                val cell = cells.getOrNull(hit)
+                                if (cell != null && cell.available) {
+                                    val isIn = cell.channel in engaged
+                                    when {
+                                        !isIn -> { onToggle(cell.channel); onSelect(cell.channel) }
+                                        cell.channel == selected -> onToggle(cell.channel)
+                                        else -> onSelect(cell.channel)
+                                    }
+                                }
                             }
                         }
                     }
@@ -2134,3 +2188,26 @@ private const val EQ_GLOW_WIDTH = 10f
 private const val EQ_GLOW_ALPHA = 0.30f
 private const val EQ_FILL_ALPHA = 0.22f
 private const val EQ_HANDLE = 5f
+
+/** Where a point sits around the ring, in degrees, measured from the ring's centre. */
+internal fun angleOf(pos: Offset, centre: Offset): Float =
+    Math.toDegrees(atan2((pos.y - centre.y).toDouble(), (pos.x - centre.x).toDouble())).toFloat()
+
+/**
+ * How far the finger turned between two angles, signed, taking the short way round.
+ *
+ * **The whole gesture rests on this and it has exactly one hard case.** Angles come back from
+ * `atan2` in −180…180, so a finger crossing the left of the ring goes from 179° to −179° — a
+ * step of two degrees that subtracts to −358. Without the wrap the control would slam from one
+ * end of its range to the other every time the drag crossed that line, which is the sort of
+ * fault that only appears on one side of the dial and looks like a hardware glitch.
+ */
+internal fun angleDelta(from: Float, to: Float): Float {
+    var d = to - from
+    while (d > 180f) d -= 360f
+    while (d < -180f) d += 360f
+    return d
+}
+
+/** How far round the arc a press has to travel before it counts as a turn rather than a tap. */
+private const val SEG_TURN_SLOP_DEGREES = 4f
