@@ -77,6 +77,10 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Shadow
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -1236,35 +1240,36 @@ private fun DisplayText(
 ) {
     val finish = LocalDeckFinish.current
     val colour = if (dim) finish.displayInk.copy(alpha = 0.6f) else finish.displayInk
+    val glowPx = with(LocalDensity.current) { finish.displayGlow.toPx() }
 
-    Box {
-        if (finish.displayGlow > 0.dp) {
-            val spill = finish.displayGlow * GLOW_SPREAD
-            listOf(spill to 0.dp, -spill to 0.dp, 0.dp to spill, 0.dp to -spill).forEach { off ->
-                Text(
-                    text = text,
-                    fontFamily = finish.display,
-                    fontSize = size,
-                    fontWeight = weight,
-                    color = colour.copy(alpha = GLOW_ALPHA),
-                    letterSpacing = 0.5.sp,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.offset(x = off.first, y = off.second)
-                )
-            }
-        }
-        Text(
-            text = text,
+    Text(
+        text = text,
+        color = colour,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+        style = TextStyle(
             fontFamily = finish.display,
             fontSize = size,
             fontWeight = weight,
-            color = colour,
             letterSpacing = finish.displayTracking,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
+            // **A blurred shadow at zero offset, which is what a glow actually is.**
+            //
+            // This was four copies of the string at small offsets — a standard trick, and the
+            // wrong one here. The copies were left at a fixed 0.5sp letter-spacing while the
+            // real text moved to the mode's own tracking, so the two layouts drifted further
+            // apart with every character: on the device the artist line read
+            // "KENDRCKCKLAMARMAR". Ghosted text is far worse than no glow at all.
+            //
+            // A shadow with no offset and a blur radius is a genuine soft bloom around the
+            // glyphs, it is one draw rather than five, it cannot drift because there is only one
+            // layout, and unlike `Modifier.blur` it works down to this app's API floor.
+            shadow = if (glowPx > 0f) {
+                Shadow(color = colour, offset = Offset.Zero, blurRadius = glowPx)
+            } else {
+                null
+            }
         )
-    }
+    )
 }
 
 /** How much smaller the second line in the window is than the first. */

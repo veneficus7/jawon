@@ -66,7 +66,15 @@ enum class DeckWindowGlass(
     val edge: Color,
     val radius: Dp,
     val ink: Color,
-    /** How far the display's own light bleeds past its segments. Zero for a reflective LCD. */
+    /**
+     * How far the display's own light bleeds past its segments. Zero for a reflective LCD.
+     *
+     * **Small numbers only.** This is a blur radius in real pixels once scaled, and the first
+     * values here were 9 and 12 — roughly 36 and 48 pixels on this screen, which on the thin
+     * strokes of a pixel face does not read as a halo at all. It smears each glyph across its
+     * neighbours, and the artist line came out on the device as "KENDRICKCKMARLAMAR". A tube
+     * bleeds a couple of points, not a couple of characters.
+     */
     val glow: Dp,
     val type: FontFamily,
     val size: TextUnit,
@@ -89,15 +97,15 @@ enum class DeckWindowGlass(
      */
     // Wide and cold. The letters are pushed apart until the window reads as a title card rather
     // than a readout — the look of a slow, enormous, confident piece of hardware.
-    TUBE(Color(0xFF060C0A), Color(0xFF2A302E), 4.dp, Color(0xFF6FFFF0), 9.dp, Vt323Family, 24.sp, 3.5.sp),
+    TUBE(Color(0xFF060C0A), Color(0xFF2A302E), 4.dp, Color(0xFF6FFFF0), 2.5.dp, Vt323Family, 24.sp, 2.sp),
 
     /** A neon bar sign behind glass — the one display that is not a machine readout. */
     // Enormous and close, bleeding into itself. Type at this size stops being a label and starts
     // being the light source, which is the whole idea of a sign seen through rain.
-    ROSE(Color(0xFF150910), Color(0xFF3A1C2A), 5.dp, Color(0xFFFF3D7F), 12.dp, Vt323Family, 26.sp, 1.5.sp),
+    ROSE(Color(0xFF150910), Color(0xFF3A1C2A), 5.dp, Color(0xFFFF3D7F), 3.dp, Vt323Family, 26.sp, 1.5.sp),
 
     /** Four-pixel green on black: the desktop player, not the hi-fi. */
-    PIXEL(Color(0xFF050805), Color(0xFF1A1A1A), 2.dp, Color(0xFF25F06A), 5.dp, SilkscreenFamily, 11.sp, 1.sp)
+    PIXEL(Color(0xFF050805), Color(0xFF1A1A1A), 2.dp, Color(0xFF25F06A), 1.5.dp, SilkscreenFamily, 11.sp, 1.sp)
 }
 
 

@@ -38,7 +38,7 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
-import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
@@ -269,18 +269,36 @@ private fun Cell(
                 val g = finish.glow * lit.value
                 if (g > 0f) {
                     val spread = if (selected) pulse.value else 1f
-                    val pool = size.height * UNDERLIGHT_REACH
-                    drawRect(
-                        brush = Brush.verticalGradient(
-                            0f to Color.Transparent,
-                            1f - UNDERLIGHT_REACH to cell.hue.copy(
-                                alpha = CELL_HALO_ALPHA * 0.5f * g * spread
+
+                    // **A pool, not a rectangle.**
+                    //
+                    // The first version drew a rect with a gradient that only faded downward,
+                    // so its left, right and bottom edges were hard cuts — the owner could see
+                    // the boundary of the glow as a box around every key, which is the one thing
+                    // light never has.
+                    //
+                    // A radial brush drawn at exactly its own radius reaches zero alpha at the
+                    // boundary, so there is no edge anywhere. Squashed vertically and centred on
+                    // the key's bottom edge, which is what the room's own case beam does to the
+                    // shelf board underneath it: brightest where the object meets the surface,
+                    // falling away in every direction.
+                    val heart = Offset(size.width / 2f, size.height)
+                    val reach = size.width * UNDERLIGHT_REACH
+                    scale(scaleX = 1f, scaleY = UNDERLIGHT_SQUASH, pivot = heart) {
+                        drawCircle(
+                            brush = Brush.radialGradient(
+                                colors = listOf(
+                                    cell.hue.copy(alpha = UNDERLIGHT_CORE * g * spread),
+                                    cell.hue.copy(alpha = UNDERLIGHT_CORE * 0.45f * g * spread),
+                                    Color.Transparent
+                                ),
+                                center = heart,
+                                radius = reach
                             ),
-                            1f to cell.hue.copy(alpha = CELL_HALO_ALPHA * g * spread)
-                        ),
-                        topLeft = Offset(-pool * 0.5f, 0f),
-                        size = Size(size.width + pool, size.height + pool)
-                    )
+                            radius = reach,
+                            center = heart
+                        )
+                    }
                 }
             }
             .background(
@@ -473,10 +491,12 @@ private const val SELECT_PULSE_LOW = 0.55f
 private const val SELECT_PULSE_MS = 1900
 
 /** How strongly a switched-in key bleeds its own colour. Scaled by the mode's glow. */
-private const val CELL_HALO_ALPHA = 0.55f
-
-/** How far past the key the pool of light reaches, as a fraction of the key's own height. */
-private const val UNDERLIGHT_REACH = 0.42f
+// The pool of light under a switched-in key. Reach is a fraction of the key's width, so the
+// light spills well past it on both sides; the squash turns the circle into the ellipse a beam
+// makes where it lands on a flat surface.
+private const val UNDERLIGHT_REACH = 1.05f
+private const val UNDERLIGHT_SQUASH = 0.52f
+private const val UNDERLIGHT_CORE = 0.62f
 
 private const val GLOW_SPREAD = 0.16f
 private const val GLOW_ALPHA = 0.30f
