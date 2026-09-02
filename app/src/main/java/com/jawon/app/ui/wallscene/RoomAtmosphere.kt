@@ -247,11 +247,33 @@ object RoomAtmosphere {
             heightFalloff = 0f
         }
 
+        // **The underlights, and the most expensive thing in the room per unit of look.**
+        //
+        // Bloom is not one pass. It is a chain of downsamples and upsamples, and each one costs
+        // draw-call submission on Filament's own thread as well as fragment work on the GPU —
+        // at this panel's 1440x3120, a lot of both. It also runs on every frame of every screen,
+        // including a wall that is doing nothing.
+        //
+        // Measured back to back on the S25 Ultra, thermal 2-3, ten seconds a run, summed across
+        // the FEngine threads:
+        //
+        //     MEDIUM   234 jiffies
+        //     off      186
+        //     LOW      172
+        //
+        // LOW is not merely cheaper than MEDIUM — it landed at or below the cost of switching
+        // bloom *off entirely*, which says the whole of the saving is in the quality level and
+        // none of it in having the effect at all. A 26% cut in the room's continuous CPU for a
+        // glow the owner confirmed still reads correctly on the device.
+        //
+        // Not tier-gated, deliberately: this is now cheap enough on the flagship that the lower
+        // tiers have nothing left to give up here, and the underlight is the one thing in the
+        // room that cannot be turned off without the wall ceasing to look like Jawon.
         view.bloomOptions = View.BloomOptions().apply {
             enabled = true
             strength = BLOOM_STRENGTH
             threshold = true
-            quality = View.QualityLevel.MEDIUM
+            quality = View.QualityLevel.LOW
         }
 
         // Contact shading. Unlike the effects above this one is not mood — it is the thing
