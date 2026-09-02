@@ -175,11 +175,21 @@ class LyricsRepository @Inject constructor(
         }.onFailure { Log.i(TAG, "could not read $uri for lyrics", it) }.getOrNull() ?: return null
 
         val words = Id3Lyrics.read(head) ?: return null
-        return Lyrics(
-            words.lines().map { LyricLine(LyricLine.UNTIMED, it) },
-            synced = false,
-            source = LyricSource.EMBEDDED
-        )
+
+        // **Run the tag through the .lrc parser rather than assuming it is plain text.**
+        //
+        // `USLT` is the *unsynchronised* lyrics frame, and the obvious reading of that is that
+        // anything found in it has no timing — which is what this did, hard-coding `synced =
+        // false` and marking every line untimed. But the frame holds free text, and a great many
+        // taggers write ordinary LRC into it, timestamps and all, because the synchronised frame
+        // (`SYLT`) is barely supported by anything that would read it back. Treating those files
+        // as plain text threw away timing that was sitting right there in the tag, and the owner
+        // noticed exactly that: lyrics from the file's own tag never followed the music.
+        //
+        // The parser already tells timed from untimed and reports `synced` accordingly, so this
+        // is simply asking it instead of deciding in advance. A tag that really is plain text
+        // comes back untimed, as before.
+        return LrcParser.parse(words)?.copy(source = LyricSource.EMBEDDED)
     }
 
     private companion object {

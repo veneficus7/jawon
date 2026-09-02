@@ -154,6 +154,9 @@ fun RackGrid(
                 arrived = arrived,
                 onToggle = onToggle,
                 onSelect = onSelect,
+                eqBands = eqBands,
+                eqRangeMb = eqRangeMb,
+                onEqBandChange = onEqBandChange,
                 modifier = modifier
             )
             return
@@ -745,14 +748,16 @@ private fun EqBands(
     bands: List<EqBand>,
     rangeMb: Pair<Int, Int>,
     onBandChange: (Int, Int) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    /** How tall the bands are. The ring has less room in its hole than a panel has. */
+    height: Int = FADER_HEIGHT
 ) {
     val finish = LocalDeckFinish.current
     val (minMb, maxMb) = rangeMb
     val span = (maxMb - minMb).coerceAtLeast(1)
 
     Row(
-        modifier = modifier.fillMaxWidth().height(FADER_HEIGHT.dp),
+        modifier = modifier.fillMaxWidth().height(height.dp),
         horizontalArrangement = Arrangement.spacedBy(EQ_GAP.dp)
     ) {
         bands.forEach { band ->
@@ -860,6 +865,16 @@ private fun RingRack(
     arrived: Boolean,
     onToggle: (RackChannel) -> Unit,
     onSelect: (RackChannel) -> Unit,
+    /**
+     * The equaliser's bands.
+     *
+     * The ring had no idea the equaliser existed, so selecting its stud handed the middle three
+     * empty faders — the effect looked broken rather than unimplemented. Five bands also need
+     * more room than three, so the hole widens for them.
+     */
+    eqBands: List<EqBand>,
+    eqRangeMb: Pair<Int, Int>,
+    onEqBandChange: (Int, Int) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val finish = LocalDeckFinish.current
@@ -908,35 +923,48 @@ private fun RingRack(
             // The middle of the ring: what is selected, and its controls. Kept narrow so it
             // never reaches the studs — the hole in a ring is the point of a ring. Centred in
             // the ring's own box, so it lands in the hole by construction.
+            val onEq = selected == RackChannel.EQ
             Column(
                 modifier = Modifier
                     .align(Alignment.Center)
-                    .fillMaxWidth(RING_CORE_WIDTH),
+                    // Five bands need more of the hole than three faders do, so the core widens
+                    // for the equaliser rather than squeezing five controls into three's room.
+                    .fillMaxWidth(if (onEq) RING_CORE_WIDTH_EQ else RING_CORE_WIDTH),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-            Text(
-                text = selected?.label ?: "—",
-                fontFamily = finish.keyType,
-                fontSize = finish.keyTypeSize * 1.5f,
-                fontWeight = FontWeight.Bold,
-                color = finish.plateInk,
-                maxLines = 1
-            )
-            Row(
-                modifier = Modifier
-                    .padding(top = 10.dp)
-                    .fillMaxWidth()
-                    .height(RING_FADER_HEIGHT.dp),
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                    repeat(FADER_SLOTS) { slot ->
-                        Fader(
-                            param = params.getOrNull(slot),
-                            hue = cells.firstOrNull { it.channel == selected }?.hue
-                                ?: finish.accent,
-                            live = selected != null && selected in engaged,
-                            modifier = Modifier.weight(1f)
-                        )
+                Text(
+                    text = selected?.label ?: "—",
+                    fontFamily = finish.keyType,
+                    fontSize = finish.keyTypeSize * 1.5f,
+                    fontWeight = FontWeight.Bold,
+                    color = finish.plateInk,
+                    maxLines = 1
+                )
+                if (onEq) {
+                    EqBands(
+                        bands = eqBands,
+                        rangeMb = eqRangeMb,
+                        onBandChange = onEqBandChange,
+                        height = RING_FADER_HEIGHT,
+                        modifier = Modifier.padding(top = 8.dp)
+                    )
+                } else {
+                    Row(
+                        modifier = Modifier
+                            .padding(top = 10.dp)
+                            .fillMaxWidth()
+                            .height(RING_FADER_HEIGHT.dp),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        repeat(FADER_SLOTS) { slot ->
+                            Fader(
+                                param = params.getOrNull(slot),
+                                hue = cells.firstOrNull { it.channel == selected }?.hue
+                                    ?: finish.accent,
+                                live = selected != null && selected in engaged,
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
                     }
                 }
             }
@@ -1304,21 +1332,28 @@ private fun Screws(finish: DeckFinish) {
 
 // ---- the ring ------------------------------------------------------------------------
 /** How tall the ring's panel is. Taller than a grid, because a ring is round. */
-private const val RING_HEIGHT = 268
+private const val RING_HEIGHT = 306
 
 /** The studs sit this far from the centre, as a fraction of the panel's width. */
 /** The ring fills this much of the shorter side of its panel. */
-private const val RING_DIAMETER_FRACTION = 0.82f
+private const val RING_DIAMETER_FRACTION = 0.94f
 
 /** How much of a full circle the arc covers. Open at the top, so the disc stays visible. */
 private const val RING_SWEEP_DEGREES = 232.0
 
-private const val RING_STUD = 30
-private const val RING_CORE_WIDTH = 0.40f
+// **Sized for a thumb, not for a diagram.** The first ring drew 30dp studs and a 54dp throw,
+// which looked right in a screenshot and was fiddly to actually use — well under the 48dp a
+// touch target wants. The studs are the primary control on this layout, so they are the biggest
+// ones in the app.
+private const val RING_STUD = 46
+private const val RING_CORE_WIDTH = 0.44f
+
+/** The hole opens up for the equaliser, which needs five columns where the rest need three. */
+private const val RING_CORE_WIDTH_EQ = 0.66f
 
 /** A known height, so the core can be placed against the ring centre instead of guessed at. */
 private const val RING_CORE_HEIGHT = 96
-private const val RING_FADER_HEIGHT = 54
+private const val RING_FADER_HEIGHT = 78
 private const val RING_BLOOM_REACH = 1.5f
 private const val RING_BLOOM_CORE = 0.75f
 
