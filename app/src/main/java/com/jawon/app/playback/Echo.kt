@@ -83,9 +83,25 @@ object Echo {
         private val buffer = FloatArray(maxFrames.coerceAtLeast(2))
         private var write = 0
 
+        /**
+         * How many frames have been written since the last [reset], capped at the buffer size.
+         *
+         * **This is what makes clearing free, and clearing had to become free.** The buffer holds
+         * over a second of audio — some fifty thousand floats per channel — and `reset` used to
+         * zero all of it. That is fine once; it is ruinous at the rate this is actually called,
+         * because every change to playback speed or pitch flushes the audio pipeline, and a
+         * finger dragging the pitch slider produces those by the dozen per second. The playback
+         * thread ended up doing nothing but memset, pinned at a whole core, and it never caught
+         * up again — measured at 606 jiffies per six seconds against a healthy 11, with the phone
+         * hot enough to hit thermal throttling.
+         *
+         * Counting instead of clearing costs one increment per frame and makes [reset] O(1).
+         */
+        private var filled = 0
+
         fun reset() {
-            buffer.fill(0f)
             write = 0
+            filled = 0
         }
 
         /**
@@ -97,20 +113,29 @@ object Echo {
             val size = buffer.size
             // Never read the sample we are about to write, and never read past the buffer.
             val back = delayFrames.coerceIn(1f, (size - 2).toFloat())
-            val readAt = write - back
-            // Ring-wrapped, and written so a negative read point lands correctly rather than
-            // indexing backwards off the front of the array.
-            val base = ((readAt.toInt() % size) + size) % size
-            val frac = readAt - kotlin.math.floor(readAt)
-            val a = buffer[base]
-            val b = buffer[(base + 1) % size]
-            val delayed = a + (b - a) * frac
+            // Nothing was recorded that long ago yet, so there is nothing to hear. This is what
+            // stands in for the zeroed buffer `reset` used to leave behind: without it, a line
+            // that has just been cleared would read whatever the *previous* track left in the
+            // array and play it back as a burst of unrelated audio.
+            val delayed = if (back > filled) {
+                0f
+            } else {
+                val readAt = write - back
+                // Ring-wrapped, and written so a negative read point lands correctly rather than
+                // indexing backwards off the front of the array.
+                val base = ((readAt.toInt() % size) + size) % size
+                val frac = readAt - kotlin.math.floor(readAt)
+                val a = buffer[base]
+                val b = buffer[(base + 1) % size]
+                a + (b - a) * frac
+            }
 
             // Clamped on the way in, so a runaway is impossible even if a caller passes something
             // unreasonable — the ceiling is not a tuning value, it is a safety rail.
             val fb = feedback.coerceIn(0f, MAX_FEEDBACK)
             buffer[write] = (input + delayed * fb).coerceIn(-4f, 4f)
             write = (write + 1) % size
+            if (filled < size) filled++
 
             val wet = mix.coerceIn(0f, 1f)
             return (input * (1f - wet) + delayed * wet).coerceIn(-1f, 1f)

@@ -50,8 +50,7 @@ class DriveAudioProcessor(private val rack: RackState) : BaseAudioProcessor() {
         // identity is the same waste the filter's bypass avoids.
         if (!Drive.audible(target) && !Drive.audible(amount)) {
             amount = 0f
-            output.put(inputBuffer)
-            output.flip()
+            copyWholeFrames(inputBuffer, output, frames * 2 * channelCount)
             return
         }
 

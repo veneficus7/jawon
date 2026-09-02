@@ -119,6 +119,47 @@ class EchoTest {
     }
 
     @Test
+    fun `resetting is cheap, because it happens constantly`() {
+        // Every change to playback speed or pitch flushes the audio pipeline, which resets this
+        // line — and a finger on the pitch slider produces those by the dozen per second. When
+        // reset zeroed the whole buffer, that pinned the playback thread at a full core and it
+        // never recovered: 606 jiffies per six seconds against a healthy 11, hot enough to
+        // throttle the phone. A hundred thousand resets must not take meaningful time.
+        val line = Echo.Line(Echo.bufferFramesFor(48_000))
+        repeat(1_000) { line.process(0.5f, 500f, 0.5f, 1f) }
+        val started = System.nanoTime()
+        repeat(100_000) { line.reset() }
+        val millis = (System.nanoTime() - started) / 1_000_000
+        assertTrue("100k resets took ${millis}ms — reset is not O(1)", millis < 200)
+    }
+
+    @Test
+    fun `a reset line cannot play back what the last one left behind`() {
+        // Clearing is now a counter rather than a memset, so this is the property that replaces
+        // the zeroed buffer: until the line has recorded as far back as it is being asked to
+        // read, it must answer silence rather than whatever is still in the array.
+        val line = Echo.Line(Echo.bufferFramesFor(44_100))
+        repeat(5_000) { line.process(0.9f, 400f, 0.0f, 1f) }
+        line.reset()
+        // Feeding silence, fully wet: every output must be silent until enough new audio exists.
+        repeat(400) {
+            assertEquals("stale audio leaked after reset", 0f, line.process(0f, 400f, 0f, 1f), 1e-6f)
+        }
+    }
+
+    @Test
+    fun `a fresh line is silent until it has recorded far enough back`() {
+        val line = Echo.Line(Echo.bufferFramesFor(44_100))
+        // Fully wet with no feedback: nothing can come back until a whole delay has been
+        // recorded, which takes exactly `back` writes.
+        for (n in 0 until 1_000) {
+            assertEquals("leaked at frame $n", 0f, line.process(1f, 1_000f, 0f, 1f), 1e-6f)
+        }
+        // And on the very next frame the beginning of the recording comes round.
+        assertTrue(line.process(1f, 1_000f, 0f, 1f) > 0.5f)
+    }
+
+    @Test
     fun `the buffer is big enough for the longest repeat`() {
         for (rate in listOf(8_000, 44_100, 48_000, 96_000, 192_000)) {
             val frames = Echo.bufferFramesFor(rate)

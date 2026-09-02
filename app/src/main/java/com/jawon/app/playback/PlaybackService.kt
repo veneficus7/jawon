@@ -90,6 +90,12 @@ class PlaybackService : MediaSessionService() {
                 // Filter, then drive, then echo. Filter first means the drive is fed whatever the
                 // filter left, so the two interact as they do on a real chain; echo last means the
                 // repeats are echoes of the *driven* signal rather than clean copies underneath it.
+                //
+                // These were suspected of stalling the audio pipeline and taken out, and that was
+                // wrong: the stall reproduces with this array **empty**, so nothing here causes
+                // it. What does is repeatedly crossing the pitch control in and out of neutral,
+                // which adds and removes Media3's own time-stretcher from the pipeline — a full
+                // reconfiguration each way rather than a change of ratio. See `Varispeed`.
                 .setAudioProcessors(
                     arrayOf(
                         FilterAudioProcessor(rack),
@@ -133,6 +139,23 @@ class PlaybackService : MediaSessionService() {
         player.addListener(replayGain)
 
         player.addListener(object : Player.Listener {
+            /**
+             * Say what went wrong, loudly.
+             *
+             * Nothing was listening for this before, which is why a fault in the audio pipeline
+             * showed up only as a deck stuck at `0:00` and a phone getting hot: the player
+             * reported `ERROR` to its session and the actual throwable went nowhere. Media3 does
+             * not log every one of these itself, so an unhandled error in a processor was
+             * effectively invisible.
+             */
+            override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
+                android.util.Log.e(
+                    "JawonPlayer",
+                    "playback failed: ${error.errorCodeName} (${error.message})",
+                    error
+                )
+            }
+
             override fun onAudioSessionIdChanged(audioSessionId: Int) {
                 equalizer.attach(audioSessionId)
                 nativeEffects.attach(audioSessionId)

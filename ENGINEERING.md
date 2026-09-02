@@ -121,6 +121,36 @@ and a green build says nothing about it.
     ambiguous; `worldToScreenPoint` and a text log settle position questions
     outright. Reach for instrumentation first, not last.
 
+### The audio pipeline
+
+13. **Toggling `PlaybackParameters` in and out of neutral wedges the player.**
+    Setting a pitch or speed *away from* 1.0 is cheap at any amount — an octave
+    down measured 14 jiffies per six seconds against a baseline of 10. Crossing
+    back and forth through neutral is not: each crossing adds or removes Media3's
+    time-stretcher from the pipeline, which is a full reconfiguration, and doing it
+    a few dozen times a second leaves the `ExoPlayer:Playback` thread spinning at a
+    whole core with **no progress at all** — 607 against a healthy 8 — until
+    Media3's watchdog reports *"Player stuck playing with no progress for 10000
+    ms"*. The deck sits at `0:00`, refusing to play, and the phone reaches thermal
+    status 3. Throttling the call rate to 8/second did **not** help; it is the
+    crossing, not the frequency. The pitch control is withdrawn until there is a way
+    to change it that cannot thrash the pipeline.
+
+14. **Measure the playback thread, not the process.** `top` is useless here — the
+    whole process looked idle while one thread burned a core. Find the thread and
+    diff `utime+stime` from `/proc/<pid>/task/<tid>/stat` over a fixed interval;
+    600 jiffies per six seconds is one full core. `state=R` with an empty
+    `syscall` file proves a userspace spin rather than a block.
+
+15. **Nothing was listening for `onPlayerError`,** so a wedged pipeline surfaced
+    only as a stuck deck and a hot phone. `PlaybackService` now logs it. Without
+    that listener the exception genuinely goes nowhere — Media3 does not log every
+    one itself.
+
+16. **Bisect by deleting, not by reading.** Three separate wrong causes were
+    argued convincingly from the code before the empty-`setAudioProcessors` test
+    settled it in one run: the app's own DSP was innocent the whole time.
+
 ---
 
 ## Locked decisions — do not relitigate

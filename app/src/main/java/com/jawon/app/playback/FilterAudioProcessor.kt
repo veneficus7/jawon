@@ -69,8 +69,7 @@ class FilterAudioProcessor(private val rack: RackState) : BaseAudioProcessor() {
         // running a state-variable filter per sample to compute the identity.
         if (DjFilter.modeFor(target) == DjFilter.Mode.OFF && abs(smoothed) <= RESTED) {
             smoothed = target
-            output.put(inputBuffer)
-            output.flip()
+            copyWholeFrames(inputBuffer, output, frames * 2 * channelCount)
             // Ringing state left over from the last sweep would fire the moment the knob moved
             // again, so the filters are cleared while the effect is off rather than on re-entry.
             for (svf in channels) svf.reset()

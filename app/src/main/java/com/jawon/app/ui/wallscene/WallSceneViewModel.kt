@@ -198,6 +198,27 @@ class WallSceneViewModel @Inject constructor(
                         com.jawon.app.playback.Varispeed.speedFor(speed),
                         com.jawon.app.playback.Varispeed.pitchFor(pitch)
                     )
+                    // **The rate limit, and it has to be here rather than in a `debounce`.**
+                    //
+                    // `conflate` alone does not throttle anything: it only drops values while
+                    // the collector is busy, and `setPlaybackParameters` returns as soon as it
+                    // has posted its message, so the collector is never busy. A drag therefore
+                    // still delivered its full sixty to a hundred and twenty changes a second.
+                    //
+                    // That is enough to break the player. Each change reconfigures the audio
+                    // pipeline and rebuilds Media3's time-stretcher, and at that rate the
+                    // playback thread never finishes: measured spinning at a full core — 607
+                    // jiffies per six seconds against a healthy 8 — with playback stalling and
+                    // Media3's own watchdog eventually reporting *"Player stuck playing with no
+                    // progress for 10000 ms"*. Hot enough to throttle the phone. It reproduces
+                    // with Jawon's own effects removed entirely, so this is the player's
+                    // pipeline rather than anything in this app's DSP.
+                    //
+                    // Sleeping here is what makes `conflate` upstream do its job: the collector
+                    // is now busy for this long, so everything the finger does in the meantime
+                    // collapses to the newest value, and that value is still guaranteed to
+                    // arrive when the sleep ends.
+                    delay(SPEED_PITCH_SETTLE_MS)
                 }
         }
     }
@@ -407,5 +428,14 @@ class WallSceneViewModel @Inject constructor(
     private companion object {
         /** Within this of the end of the last track, the album counts as finished. */
         const val FINISHED_TAIL_MS = 5_000L
+
+        /**
+         * The shortest gap between two changes to playback speed or pitch.
+         *
+         * Eight or so updates a second: fast enough that a slider still feels live under the
+         * finger, slow enough that the player's pipeline can finish rebuilding itself between
+         * them. Sixty a second is what broke it.
+         */
+        const val SPEED_PITCH_SETTLE_MS = 120L
     }
 }

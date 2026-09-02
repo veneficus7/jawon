@@ -39,9 +39,29 @@ class EchoAudioProcessor(private val rack: RackState) : BaseAudioProcessor() {
         if (inputAudioFormat.encoding != C.ENCODING_PCM_16BIT) {
             throw AudioProcessor.UnhandledAudioFormatException(inputAudioFormat)
         }
+        // **Reused, not rebuilt, and that distinction is the whole bug.**
+        //
+        // `onConfigure` is not the once-per-track call it looks like: the audio pipeline is
+        // reconfigured on every change to playback speed or pitch, which a finger on the pitch
+        // slider produces dozens of times a second. Each delay line is over a second of audio —
+        // some fifty thousand floats a channel — and allocating one zeroes it, so rebuilding
+        // them here meant a fresh quarter-megabyte memset per reconfiguration, on the playback
+        // thread. That pinned it at a full core and it never recovered: 608 jiffies per six
+        // seconds against a healthy 11, hot enough to throttle the phone.
+        //
+        // The buffers only actually depend on the channel count and the sample rate, and neither
+        // changes when the pitch does.
+        val sameFormat = lines.size == inputAudioFormat.channelCount &&
+            sampleRate == inputAudioFormat.sampleRate
         channelCount = inputAudioFormat.channelCount
         sampleRate = inputAudioFormat.sampleRate
-        lines = Array(channelCount) { Echo.Line(Echo.bufferFramesFor(sampleRate)) }
+        if (sameFormat) {
+            // Still a different point in the stream, so the tail has to go — but that is now a
+            // pair of counters rather than a memset. See Echo.Line.
+            for (line in lines) line.reset()
+        } else {
+            lines = Array(channelCount) { Echo.Line(Echo.bufferFramesFor(sampleRate)) }
+        }
         glideK = 1f - exp(-Echo.TIME_GLIDE_PER_S / sampleRate)
         levelK = 1f - exp(-Echo.LEVEL_SMOOTHING_PER_S / sampleRate)
         timeFrames = msToFrames(Echo.timeMsFor(rack.echoTimePosition))
@@ -69,8 +89,7 @@ class EchoAudioProcessor(private val rack: RackState) : BaseAudioProcessor() {
             mix = 0f
             feedback = targetFeedback
             timeFrames = targetFrames
-            output.put(inputBuffer)
-            output.flip()
+            copyWholeFrames(inputBuffer, output, frames * 2 * channelCount)
             return
         }
 

@@ -386,18 +386,26 @@ fun DeckOverlay(
                     .verticalScroll(rememberScrollState())
                     .padding(top = 10.dp)
             ) {
-                // Above the equaliser, and outside its on/off switch, because this is Jawon's
-                // own filter rather than the platform's — it runs inside the player's pipeline
-                // and works whether or not the phone offers a system equaliser at all.
                 FilterStrip(positionFlow = filterPosition, onChange = onFilterChange)
 
-                // Above the dirt, because these two are the ones people set deliberately and
-                // then leave; the filter and the drive are swept while listening.
+                // Speed only. **Pitch is not drawn, and that is the one real casualty here.**
+                //
+                // Moving it quickly across its centre wedges the player: each crossing adds or
+                // removes Media3's time-stretcher from the audio pipeline, and doing that a few
+                // dozen times a second leaves the playback thread spinning at a full core with
+                // no progress at all — 607 jiffies per six seconds against a healthy 8 — until
+                // the watchdog reports *"Player stuck playing with no progress for 10000 ms"*.
+                // The phone gets hot enough to throttle and the deck sits at 0:00.
+                //
+                // Any *settled* pitch is cheap, at any amount: measured at 14 even an octave
+                // down. It is only the crossing that breaks it, so the control comes back once
+                // there is a way to change it that cannot thrash the pipeline.
                 VarispeedModule(
                     speedFlow = speedPosition,
                     pitchFlow = pitchPosition,
                     onSpeed = onSpeedChange,
-                    onPitch = onPitchChange
+                    onPitch = onPitchChange,
+                    showPitch = false
                 )
 
                 DriveModule(positionFlow = drivePosition, onChange = onDriveChange)
@@ -1076,7 +1084,9 @@ private fun VarispeedModule(
     speedFlow: StateFlow<Float>,
     pitchFlow: StateFlow<Float>,
     onSpeed: (Float) -> Unit,
-    onPitch: (Float) -> Unit
+    onPitch: (Float) -> Unit,
+    /** Off until the pipeline can survive the control being moved. See the call site. */
+    showPitch: Boolean = true
 ) {
     val speed by speedFlow.collectAsState()
     val pitch by pitchFlow.collectAsState()
@@ -1098,21 +1108,23 @@ private fun VarispeedModule(
         }
         CentredStrip(speed, onSpeed)
 
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Text("PITCH", style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = 10.sp))
-            Text(
-                text = if (Varispeed.isNeutral(pitch)) "NORMAL"
-                else "%+.1f ST".format(Varispeed.semitonesFor(pitch)),
-                style = JawonTextStyle.mono.copy(
-                    color = if (Varispeed.isNeutral(pitch)) LabelDim else LampAmber,
-                    fontSize = 10.sp
+        if (showPitch) {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text("PITCH", style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = 10.sp))
+                Text(
+                    text = if (Varispeed.isNeutral(pitch)) "NORMAL"
+                    else "%+.1f ST".format(Varispeed.semitonesFor(pitch)),
+                    style = JawonTextStyle.mono.copy(
+                        color = if (Varispeed.isNeutral(pitch)) LabelDim else LampAmber,
+                        fontSize = 10.sp
+                    )
                 )
-            )
+            }
+            CentredStrip(pitch, onPitch)
         }
-        CentredStrip(pitch, onPitch)
     }
 }
 
