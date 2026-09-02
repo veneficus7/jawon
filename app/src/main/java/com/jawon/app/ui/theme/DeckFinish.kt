@@ -104,7 +104,9 @@ data class DeckFinish(
     val plateEdge: Color,
     val plateInk: Color,
     val plateDim: Color,
-    val grain: Float,
+    val texture: SurfaceTexture,
+    val sheen: Float,
+    val glow: Float,
     val bevelled: Boolean,
     val plateOpacity: Float,
 
@@ -170,7 +172,9 @@ data class DeckFinish(
                 plateEdge = lerp(lit, Color.Black, 0.34f),
                 plateInk = ink,
                 plateDim = dim,
-                grain = plate.grain,
+                texture = scheme.palette.texture,
+                sheen = scheme.palette.sheen,
+                glow = scheme.palette.glow,
                 bevelled = plate.bevelled,
                 plateOpacity = plate.opacity,
 
@@ -186,7 +190,9 @@ data class DeckFinish(
                 keyEdge = lerp(lit, Color.Black, 0.55f).copy(alpha = KEY_EDGE_ALPHA),
                 keyInk = if (plate.pale) Color(0xFFE8ECEA) else scheme.palette.labelCream,
                 keyDim = if (plate.pale) Color(0xFF9AA2A0) else scheme.palette.labelDim,
-                keyRadius = plate.cornerRadius,
+                // The mode says how soft an edge is — neon is round, a workbench is square — and the
+                // plate only gets a say when it is a period object with corners of its own.
+                keyRadius = if (plate == DeckPlate.GLASS) scheme.palette.corner else plate.cornerRadius,
                 keyType = if (plate.bevelled) SilkscreenFamily else JetBrainsMonoFamily,
                 keyTypeSize = if (plate.bevelled) 6.sp else 8.sp,
                 groove = lerp(keyBase, Color.Black, 0.35f).copy(alpha = GROOVE_ALPHA),
@@ -229,18 +235,53 @@ fun Modifier.deckPlate(finish: DeckFinish, sheetFraction: Float): Modifier =
             1f to finish.plateLow.copy(alpha = finish.plateOpacity)
         )
     ).drawBehind {
-        // A machined front: fine vertical hairlines. Cheap, and most of what says "metal".
-        if (finish.grain > 0f) {
-            var x = 0f
-            while (x < size.width) {
-                drawLine(
-                    color = Color.White.copy(alpha = finish.grain * finish.plateOpacity),
-                    start = Offset(x, 0f),
-                    end = Offset(x, size.height),
-                    strokeWidth = 1f
-                )
-                x += GRAIN_SPACING_PX
+        when (finish.texture) {
+            // A machined front: fine vertical hairlines. Cheap, and most of what says "metal".
+            SurfaceTexture.GRAIN -> {
+                var x = 0f
+                while (x < size.width) {
+                    drawLine(
+                        color = Color.White.copy(alpha = GRAIN_ALPHA * finish.plateOpacity),
+                        start = Offset(x, 0f),
+                        end = Offset(x, size.height),
+                        strokeWidth = 1f
+                    )
+                    x += GRAIN_SPACING_PX
+                }
             }
+
+            // A printed dot grid. The workbench mode refuses to gleam, so its surface has to
+            // say something by being *printed* instead of by catching light.
+            SurfaceTexture.DOTS -> {
+                var y = DOT_SPACING_PX
+                while (y < size.height) {
+                    var x = DOT_SPACING_PX
+                    while (x < size.width) {
+                        drawCircle(
+                            color = Color.White.copy(alpha = DOT_ALPHA),
+                            radius = 1.2f,
+                            center = Offset(x, y)
+                        )
+                        x += DOT_SPACING_PX
+                    }
+                    y += DOT_SPACING_PX
+                }
+            }
+
+            SurfaceTexture.NONE -> Unit
+        }
+
+        // A raking band of light travelling down the plate. Only metal does this, so on every
+        // other mode the sheen is zero and this costs one comparison.
+        if (finish.sheen > 0f) {
+            drawRect(
+                brush = Brush.verticalGradient(
+                    0f to Color.White.copy(alpha = 0f),
+                    SHEEN_CENTRE to Color.White.copy(alpha = finish.sheen * SHEEN_PEAK),
+                    SHEEN_CENTRE + SHEEN_WIDTH to Color.White.copy(alpha = 0f),
+                    1f to Color.White.copy(alpha = 0f)
+                )
+            )
         }
     }
 
@@ -249,6 +290,16 @@ private const val SCRIM_FADE_FRACTION = 0.22f
 
 /** Hairline spacing on a brushed plate. Close enough to read as grain, far enough to stay cheap. */
 private const val GRAIN_SPACING_PX = 3f
+private const val GRAIN_ALPHA = 0.09f
+
+/** The printed grid on a workbench surface. Wide enough to read as paper, not as noise. */
+private const val DOT_SPACING_PX = 22f
+private const val DOT_ALPHA = 0.05f
+
+// Where the raking light crosses the plate, and how strong it is at its brightest.
+private const val SHEEN_CENTRE = 0.16f
+private const val SHEEN_WIDTH = 0.30f
+private const val SHEEN_PEAK = 0.11f
 
 /**
  * The finish in force, for everything the deck draws.

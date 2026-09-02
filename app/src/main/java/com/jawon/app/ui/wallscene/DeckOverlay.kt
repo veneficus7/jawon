@@ -105,6 +105,7 @@ import com.jawon.app.ui.theme.deckPlate
 import kotlinx.coroutines.flow.StateFlow
 import kotlin.math.abs
 import kotlin.math.roundToInt
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Color as ComposeColor
 
 /**
@@ -1092,6 +1093,37 @@ private fun DeckWindow(
             }
         }
 
+        Box(modifier = Modifier.fillMaxWidth()) {
+
+            // **The window bleeds onto the plate around it.**
+            //
+            // A lit sign in a dark room does not stop at its own frame, and how far it spills is
+            // most of what tells two modes apart: the bar mode bleeds all over the panel, the
+            // workbench does not bleed at all and its halo is simply absent. Drawn as a soft
+            // radial wash rather than a blur, because the only real blur Android offers needs
+            // API 31 and this app runs from 28.
+            if (finish.glow > 0f) {
+                Box(
+                    modifier = Modifier
+                        .matchParentSize()
+                        // Scaled rather than inset with a negative padding, which Compose
+                        // refuses outright — it throws "Padding must be non-negative" and takes
+                        // the whole app down on the first frame. Scaling spills the wash past
+                        // the window without moving anything around it.
+                        .graphicsLayer {
+                            scaleY = HALO_SPREAD_Y
+                            scaleX = HALO_SPREAD_X
+                        }
+                        .background(
+                            Brush.radialGradient(
+                                0f to finish.displayInk.copy(alpha = HALO_ALPHA * finish.glow),
+                                0.55f to finish.displayInk.copy(alpha = HALO_ALPHA * 0.35f * finish.glow),
+                                1f to Color.Transparent
+                            )
+                        )
+                )
+            }
+
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -1133,6 +1165,7 @@ private fun DeckWindow(
                 compact = compact,
                 rackStatus = rackStatus
             )
+        }
         }
 
         if (!compact) {
@@ -1229,5 +1262,10 @@ private fun DisplayText(
 
 /** How much smaller the second line in the window is than the first. */
 private const val SECONDARY_SCALE = 0.58f
+
+// How far the window's light spills past its own frame, and how strong it is at the centre.
+private const val HALO_SPREAD_Y = 2.4f
+private const val HALO_SPREAD_X = 1.08f
+private const val HALO_ALPHA = 0.30f
 private const val GLOW_SPREAD = 0.16f
 private const val GLOW_ALPHA = 0.28f
