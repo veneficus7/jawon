@@ -1452,14 +1452,14 @@ private fun RingParam(
             Text(
                 text = param.name,
                 fontFamily = finish.keyType,
-                fontSize = finish.keyTypeSize * 0.92f,
+                fontSize = finish.keyTypeSize * 1.15f,
                 color = finish.plateDim,
                 maxLines = 1
             )
             Text(
                 text = param.readout(v),
                 fontFamily = finish.keyType,
-                fontSize = finish.keyTypeSize * 0.92f,
+                fontSize = finish.keyTypeSize * 1.15f,
                 color = if (working) hue else finish.plateDim,
                 maxLines = 1
             )
@@ -1485,7 +1485,7 @@ private fun RingParam(
                 Modifier
                     .align(Alignment.CenterStart)
                     .fillMaxWidth()
-                    .height(3.dp)
+                    .height(4.dp)
                     .background(finish.keyEdge, RoundedCornerShape(2.dp))
             )
             // A bipolar control fills out from its centre, so "off" is a position rather than a
@@ -1512,8 +1512,8 @@ private fun RingParam(
 // The controls in the hole lie down, so the hole needs to be wider than it is tall — the ring
 // opens up and the studs move out to make room for them.
 private const val RING_PARAM_GAP = 7
-private const val RING_PARAM_TRACK = 20
-private const val RING_PARAM_KNOB = 14
+private const val RING_PARAM_TRACK = 40
+private const val RING_PARAM_KNOB = 22
 private const val RING_BLANK_ALPHA = 0.45f
 
 /**
@@ -1756,6 +1756,72 @@ private fun SegmentRing(
                         alpha = lit
                     )
                 }
+
+                // **The value, drawn around the outside of the band.**
+                //
+                // Turning the ring worked and felt broken, which is worse than not working: the
+                // only thing that moved was a small readout under the panel, so the ring itself
+                // sat there like a picture while the filter swept. A knob you turn has to show
+                // you the turn. This is a bright arc riding just outside the wedges, filling
+                // from the start of the arc to wherever the selected control is set — so the
+                // ring reads as a dial with a position rather than as eight lit buttons.
+                knob?.let { k ->
+                    val ind = outer + SEG_VALUE_OFFSET.dp.toPx()
+                    val rect = Rect(
+                        center.x - ind, center.y - ind,
+                        center.x + ind, center.y + ind
+                    )
+                    val hot = lerp(finish.accent, finish.accentB, 0.5f)
+                    // The empty travel first, so the arc has a scale to be read against.
+                    drawArc(
+                        color = finish.keyEdge,
+                        startAngle = SEG_START,
+                        sweepAngle = SEG_SWEEP,
+                        useCenter = false,
+                        topLeft = rect.topLeft,
+                        size = rect.size,
+                        style = Stroke(width = SEG_VALUE_TRACK, cap = StrokeCap.Round)
+                    )
+                    // A bipolar control fills out from the middle of the arc, so its rest
+                    // position is somewhere you can see rather than a number you have to read.
+                    val from = if (k.bipolar) SEG_START + SEG_SWEEP / 2f else SEG_START
+                    val to = SEG_START + SEG_SWEEP * k.value.coerceIn(0f, 1f)
+                    if (abs(to - from) > 0.5f) {
+                        if (finish.glow > 0f) {
+                            drawArc(
+                                color = hot.copy(alpha = SEG_VALUE_GLOW * finish.glow),
+                                startAngle = minOf(from, to),
+                                sweepAngle = abs(to - from),
+                                useCenter = false,
+                                topLeft = rect.topLeft,
+                                size = rect.size,
+                                style = Stroke(
+                                    width = SEG_VALUE_TRACK * 3.4f,
+                                    cap = StrokeCap.Round
+                                )
+                            )
+                        }
+                        drawArc(
+                            color = hot,
+                            startAngle = minOf(from, to),
+                            sweepAngle = abs(to - from),
+                            useCenter = false,
+                            topLeft = rect.topLeft,
+                            size = rect.size,
+                            style = Stroke(width = SEG_VALUE_TRACK, cap = StrokeCap.Round)
+                        )
+                    }
+                    // And a bead at the value, which is the thing the eye actually follows.
+                    val a = Math.toRadians(to.toDouble())
+                    drawCircle(
+                        color = hot,
+                        radius = SEG_VALUE_BEAD,
+                        center = Offset(
+                            center.x + ind * cos(a).toFloat(),
+                            center.y + ind * sin(a).toFloat()
+                        )
+                    )
+                }
             }
 
             // The hole holds the name and nothing else — a dial's window, set in the display
@@ -1783,14 +1849,20 @@ private fun SegmentRing(
                 modifier = Modifier.padding(top = SEG_CONTROL_GAP.dp)
             )
         } else {
-            // Knobs rather than sliders, because the whole layout is circular and three straight
-            // faders under a ring look like a different instrument bolted to the bottom of it.
-            Row(
+            // **Big, direct, and shaped like the equaliser.**
+            //
+            // The knobs here were 58dp of drawing with a 420px drag behind them, and the owner's
+            // verdict on the whole panel was that the equaliser curve was the only comfortable
+            // thing on it. That is the lesson: what works is a wide target you put your finger
+            // straight onto, with the number next to it, rather than a small dial you have to
+            // find and then stroke in some invented direction. So these are full-width bars with
+            // a touch row taller than a fingertip, drawn like the curve and read the same way.
+            Column(
                 modifier = Modifier.padding(top = SEG_CONTROL_GAP.dp).fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceEvenly
+                verticalArrangement = Arrangement.spacedBy(SEG_BAR_GAP.dp)
             ) {
                 repeat(FADER_SLOTS) { slot ->
-                    RingKnob(
+                    RingParam(
                         param = params.getOrNull(slot),
                         hue = selected?.let { s ->
                             val i = cells.indexOfFirst { it.channel == s }.coerceAtLeast(0)
@@ -1892,7 +1964,17 @@ private const val SEG_ENTRY_MS = 620
 private const val SEG_RING_HEIGHT = 214
 
 /** Air between the band and the controls under it. */
-private const val SEG_CONTROL_GAP = 12
+private const val SEG_CONTROL_GAP = 10
+
+/** Air between the control bars. */
+private const val SEG_BAR_GAP = 4
+
+// The value arc riding outside the band: how far out it sits, how thick it is, and the bead that
+// marks the position — which is the part the eye actually follows while turning.
+private const val SEG_VALUE_OFFSET = 7
+private const val SEG_VALUE_TRACK = 5f
+private const val SEG_VALUE_GLOW = 0.28f
+private const val SEG_VALUE_BEAD = 7f
 
 /**
  * A knob, turned by dragging straight up and down.
