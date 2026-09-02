@@ -188,27 +188,31 @@ val ColdPalette = Palette(
 )
 
 /**
- * A bar at two in the morning, in scarlet.
+ * Two in the morning, in the rain, in 1984.
  *
- * Not the dusty rose it used to be. A sign this saturated is the only light in the room, and the
- * surfaces under it go deep oxblood rather than plum — red on red, with nothing cool anywhere to
- * relieve it. The accent is the one thing that is genuinely bright.
+ * **Cyan and magenta on wet black.** Not scarlet on oxblood — that was one hue lighting one
+ * room, and cyberpunk is two hues fighting: a cold one you read by and a hot one that means
+ * something is happening. The ground goes almost to black so both of them can be the only light
+ * in the frame, which is the entire look.
+ *
+ * The second signal colour earns its keep here for the first time. Everywhere else it is a
+ * near-unused teal; here it is the magenta, and the two together are the mode.
  */
 val AfterHoursPalette = Palette(
-    crateBlack = Color(0xFF16090C),
-    crateRaised = Color(0xFF241016),
-    crateEdge = Color(0xFF3E1820),
-    labelCream = Color(0xFFF7DDE1),
-    labelDim = Color(0xFFA57680),
-    lampAmber = Color(0xFFFF2D46),
-    oxideTeal = Color(0xFF8C2F4A),
-    // All bleed, no surface. A sign is only light — nothing here is machined, nothing catches a
-    // raking beam, and every lit thing spills onto its neighbours. Round, because the layout
-    // this mode wears is built out of circles.
+    crateBlack = Color(0xFF05050A),
+    crateRaised = Color(0xFF0E0E1A),
+    crateEdge = Color(0xFF22223A),
+    labelCream = Color(0xFFE6E9F5),
+    labelDim = Color(0xFF7A7F9E),
+    lampAmber = Color(0xFF22E6FF),
+    oxideTeal = Color(0xFFFF2D95),
+    // All bleed, no surface. Neon is only light — nothing here is machined and every lit thing
+    // spills onto its neighbours. The corners go hard: a rounded rectangle is a nineties idea,
+    // and this decade cut its corners at forty-five degrees or left them square.
     glow = 1f,
     sheen = 0f,
     texture = SurfaceTexture.NONE,
-    corner = 14.dp,
+    corner = 2.dp,
     layout = RackLayout.RING
 )
 

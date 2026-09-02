@@ -102,8 +102,8 @@ enum class DeckWindowGlass(
     /** A neon bar sign behind glass — the one display that is not a machine readout. */
     // Enormous and close, bleeding into itself. Type at this size stops being a label and starts
     // being the light source, which is the whole idea of a sign seen through rain.
-    /** A scarlet sign, and the brightest thing in its room by a wide margin. */
-    ROSE(Color(0xFF12060A), Color(0xFF3E1820), 5.dp, Color(0xFFFF2D46), 3.dp, Vt323Family, 26.sp, 1.5.sp),
+    /** A cathode tube: cyan phosphor behind glass, set wide, with the scan still in it. */
+    CRT(Color(0xFF04070B), Color(0xFF22E6FF44), 2.dp, Color(0xFF22E6FF), 3.dp, Vt323Family, 25.sp, 2.5.sp),
 
     /** Four-pixel green on black: the desktop player, not the hi-fi. */
     /** Emerald phosphor on void — the window is the same black as everything around it. */
@@ -152,7 +152,16 @@ data class DeckFinish(
     val groove: Color,
     val cap: Color,
 
-    val accent: Color
+    val accent: Color,
+    /**
+     * The mode's second signal colour.
+     *
+     * Cyberpunk is two hues rather than one — a cold one you read by and a hot one that means
+     * something is happening — so the ring ramps its wedges between them instead of wearing the
+     * eight unrelated colours the grid uses. On the other modes this is a quiet second tone and
+     * the ramp is barely visible, which is correct: they are one-colour rooms.
+     */
+    val accentB: Color
 ) {
     companion object {
 
@@ -230,7 +239,8 @@ data class DeckFinish(
 
                 // The accent follows the glass, so the lit tab, the transport and the display
                 // are all one colour. Two accents on one panel is what "assembled" looks like.
-                accent = glass.ink
+                accent = glass.ink,
+                accentB = scheme.palette.oxideTeal
             )
         }
 

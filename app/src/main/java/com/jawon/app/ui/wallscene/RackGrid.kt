@@ -1,5 +1,6 @@
 package com.jawon.app.ui.wallscene
 
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
@@ -45,12 +46,20 @@ import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.drawText
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.DpOffset
@@ -71,7 +80,9 @@ import com.jawon.app.ui.theme.LampAmber
 import com.jawon.app.ui.theme.LocalDeckFinish
 import com.jawon.app.ui.theme.OxideTeal
 import java.util.Locale
+import kotlin.math.atan2
 import kotlin.math.cos
+import kotlin.math.hypot
 import kotlin.math.roundToInt
 import kotlin.math.sin
 
@@ -148,7 +159,7 @@ fun RackGrid(
     // a rack of modules whose widths say how complicated each effect is.
     when (finish.layout) {
         RackLayout.RING -> {
-            RingRack(
+            SegmentRing(
                 cells = cells,
                 engaged = engaged,
                 selected = selected,
@@ -1499,3 +1510,484 @@ private const val RING_PARAM_GAP = 7
 private const val RING_PARAM_TRACK = 20
 private const val RING_PARAM_KNOB = 14
 private const val RING_BLANK_ALPHA = 0.45f
+
+/**
+ * The ring as a band cut into eight wedges.
+ *
+ * **The gaps became the buttons.** Eight 46dp studs on a 240dp arc use about a third of the ring
+ * and leave the rest as air, which is what made the old ring feel both fiddly and empty. A
+ * segment is four or five times the area of the circle it replaces, there is nothing left over
+ * between them, and a band that lights up in eight places is a far better picture of what the
+ * rack does than eight separate lamps.
+ *
+ * **Drawn as one canvas, and hit-tested by angle.** Eight rotated nodes would each be a box with
+ * its own layer, which is exactly what kept clipping the glow into rectangles — three separate
+ * attempts. A wedge is not a rectangle and cannot be one, so it is a path; and once the whole
+ * band is a single node, a tap is answered by turning the touch point into polar coordinates and
+ * asking which slice it fell in. No per-button geometry anywhere, and nothing left to clip.
+ */
+@Composable
+private fun SegmentRing(
+    cells: List<RackCell>,
+    engaged: Set<RackChannel>,
+    selected: RackChannel?,
+    arrived: Boolean,
+    onToggle: (RackChannel) -> Unit,
+    onSelect: (RackChannel) -> Unit,
+    eqBands: List<EqBand>,
+    eqRangeMb: Pair<Int, Int>,
+    onEqBandChange: (Int, Int) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val finish = LocalDeckFinish.current
+    val measurer = rememberTextMeasurer()
+    val params = cells.firstOrNull { it.channel == selected }?.params.orEmpty()
+
+    // The band lights in sequence when the page opens, one wedge after the next round the arc.
+    val entry = animateFloatAsState(
+        targetValue = if (arrived) 1f else 0f,
+        animationSpec = tween(SEG_ENTRY_MS, easing = FastOutSlowInEasing),
+        label = "entry"
+    )
+    val pulse = rememberInfiniteTransition(label = "band").animateFloat(
+        initialValue = SELECT_PULSE_LOW,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            tween(SELECT_PULSE_MS, easing = FastOutSlowInEasing),
+            RepeatMode.Reverse
+        ),
+        label = "pulse"
+    )
+
+    // **The controls come out of the hole.**
+    //
+    // A ring's hole is small by definition, and five equaliser bands will not go in it — three
+    // sliders were already cramped there. So the middle keeps only the name of what is selected,
+    // which is what a hole in a dial is for, and the controls move to a full-width row beneath.
+    // That buys twice over: the sliders get the whole panel instead of half of it, and with
+    // nothing left to fit inside it the ring itself can grow to the full width.
+    Column(modifier = modifier.fillMaxWidth()) {
+
+    BoxWithConstraints(
+        modifier = Modifier.fillMaxWidth().height(SEG_RING_HEIGHT.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        val diameter = minOf(maxWidth, maxHeight)
+
+        Box(modifier = Modifier.size(diameter), contentAlignment = Alignment.Center) {
+
+            Canvas(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .pointerInput(cells, engaged, selected) {
+                        detectTapGestures { pos ->
+                            val hit = segmentAt(
+                                pos = pos,
+                                width = size.width.toFloat(),
+                                height = size.height.toFloat(),
+                                inner = minOf(size.width, size.height) / 2f - SEG_BAND.dp.toPx()
+                            )
+                            val cell = cells.getOrNull(hit) ?: return@detectTapGestures
+                            if (!cell.available) return@detectTapGestures
+                            val isIn = cell.channel in engaged
+                            when {
+                                !isIn -> { onToggle(cell.channel); onSelect(cell.channel) }
+                                cell.channel == selected -> onToggle(cell.channel)
+                                else -> onSelect(cell.channel)
+                            }
+                        }
+                    }
+            ) {
+                val outer = size.minDimension / 2f
+                val inner = outer - SEG_BAND.dp.toPx()
+                val step = SEG_SWEEP / cells.size
+
+                cells.forEachIndexed { i, cell ->
+                    // **The band wears the mode, not eight unrelated colours.**
+                    //
+                    // The grid gives every effect its own hue so a thumb can find the filter
+                    // without reading, which is right for a bank of keys and wrong here: eight
+                    // arbitrary colours in a continuous ring read as a rainbow laid over a room
+                    // that only owns two. So the wedges ramp between the mode's own pair, cold
+                    // at one end and hot at the other, which still tells them apart along the
+                    // arc while belonging to the scheme.
+                    val hue = lerp(
+                        finish.accent,
+                        finish.accentB,
+                        i / (cells.size - 1).coerceAtLeast(1).toFloat()
+                    )
+
+                    // Each wedge lights a beat after the one before it, so the band comes up
+                    // round the arc instead of all at once.
+                    val lit = ((entry.value * cells.size) - i).coerceIn(0f, 1f)
+                    if (lit <= 0f) return@forEachIndexed
+
+                    val isIn = cell.channel in engaged
+                    val isSel = cell.channel == selected
+                    val a0 = SEG_START + step * i + SEG_GAP_DEGREES
+                    val sweep = step - SEG_GAP_DEGREES * 2
+
+                    val wedge = wedgePath(center, outer, inner, a0, sweep)
+
+                    // Dark plate first, so a switched-out wedge still reads as a physical thing
+                    // rather than a hole in the band.
+                    drawPath(
+                        path = wedge,
+                        color = if (isIn) {
+                            hue.copy(alpha = SEG_FILL_ALPHA * lit)
+                        } else {
+                            finish.key.copy(alpha = SEG_OFF_ALPHA * lit)
+                        }
+                    )
+
+                    // The rim, and its bloom: three strokes of falling alpha and rising width
+                    // rather than a blur, because a blur needs API 31 and this app starts at 28.
+                    val rim = if (isIn) hue else finish.keyEdge
+                    val heat = if (isIn) finish.glow * lit * (if (isSel) pulse.value else 1f) else 0f
+                    if (heat > 0f) {
+                        listOf(
+                            SEG_BLOOM_WIDE to 0.10f,
+                            SEG_BLOOM_MID to 0.20f,
+                            SEG_BLOOM_TIGHT to 0.42f
+                        ).forEach { (w, a) ->
+                            drawPath(
+                                path = wedge,
+                                color = hue.copy(alpha = a * heat),
+                                style = Stroke(width = w.dp.toPx())
+                            )
+                        }
+                    }
+                    drawPath(
+                        path = wedge,
+                        color = rim.copy(alpha = lit),
+                        style = Stroke(width = if (isSel) 2.dp.toPx() else 1.dp.toPx())
+                    )
+
+                    // The name, level rather than curved: a label following the arc is a lovely
+                    // drawing and slower to read, and this one is read at a glance mid-track.
+                    val mid = Math.toRadians((a0 + sweep / 2).toDouble())
+                    val r = (outer + inner) / 2f
+                    val laid = measurer.measure(
+                        text = AnnotatedString(cell.channel.label),
+                        style = TextStyle(
+                            fontFamily = finish.keyType,
+                            fontSize = finish.keyTypeSize,
+                            fontWeight = FontWeight.Bold,
+                            color = if (isIn) finish.keyInk else finish.keyDim
+                        )
+                    )
+                    drawText(
+                        textLayoutResult = laid,
+                        topLeft = Offset(
+                            center.x + r * cos(mid).toFloat() - laid.size.width / 2f,
+                            center.y + r * sin(mid).toFloat() - laid.size.height / 2f
+                        ),
+                        alpha = lit
+                    )
+                }
+            }
+
+            // The hole holds the name and nothing else — a dial's window, set in the display
+            // face so it reads as part of the machine rather than as a caption.
+            Text(
+                text = selected?.label ?: "—",
+                fontFamily = finish.display,
+                fontSize = finish.displaySize,
+                color = finish.displayInk,
+                letterSpacing = finish.displayTracking,
+                maxLines = 1,
+                modifier = Modifier.align(Alignment.Center)
+            )
+        }
+    }
+
+        // The controls, across the whole panel. Five equaliser bands fit here and did not fit in
+        // the hole, which is the entire reason they moved.
+        val onEq = selected == RackChannel.EQ
+        if (onEq) {
+            EqBands(
+                bands = eqBands,
+                rangeMb = eqRangeMb,
+                onBandChange = onEqBandChange,
+                modifier = Modifier.padding(top = SEG_CONTROL_GAP.dp)
+            )
+        } else {
+            // Knobs rather than sliders, because the whole layout is circular and three straight
+            // faders under a ring look like a different instrument bolted to the bottom of it.
+            Row(
+                modifier = Modifier.padding(top = SEG_CONTROL_GAP.dp).fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceEvenly
+            ) {
+                repeat(FADER_SLOTS) { slot ->
+                    RingKnob(
+                        param = params.getOrNull(slot),
+                        hue = selected?.let { s ->
+                            val i = cells.indexOfFirst { it.channel == s }.coerceAtLeast(0)
+                            lerp(
+                                finish.accent,
+                                finish.accentB,
+                                i / (cells.size - 1).coerceAtLeast(1).toFloat()
+                            )
+                        } ?: finish.accent,
+                        live = selected != null && selected in engaged
+                    )
+                }
+            }
+        }
+    }
+}
+
+/** One wedge of the band: out along the outer arc, in, and back along the inner one. */
+private fun wedgePath(
+    centre: Offset,
+    outer: Float,
+    inner: Float,
+    startDeg: Float,
+    sweepDeg: Float
+): Path = Path().apply {
+    arcTo(
+        rect = Rect(centre.x - outer, centre.y - outer, centre.x + outer, centre.y + outer),
+        startAngleDegrees = startDeg,
+        sweepAngleDegrees = sweepDeg,
+        forceMoveTo = true
+    )
+    arcTo(
+        rect = Rect(centre.x - inner, centre.y - inner, centre.x + inner, centre.y + inner),
+        startAngleDegrees = startDeg + sweepDeg,
+        sweepAngleDegrees = -sweepDeg,
+        forceMoveTo = false
+    )
+    close()
+}
+
+/**
+ * Which wedge a tap landed in, or −1 for the hole and the air outside the band.
+ *
+ * The whole reason the band can be one node: a wedge is describable in polar coordinates and a
+ * touch point converts into them in three lines, so there is no need for eight hit areas.
+ */
+internal fun segmentAt(
+    pos: Offset,
+    width: Float,
+    height: Float,
+    /**
+     * The inner edge of the band, in pixels.
+     *
+     * **Passed in rather than derived.** It was a fraction of the radius here while the drawing
+     * used a fixed thickness in dp, so the two disagreed about where the band ended and a tap
+     * near the inner edge could hit nothing at all. One number, computed once, handed to both.
+     */
+    inner: Float,
+    count: Int = 8
+): Int {
+    val cx = width / 2f
+    val cy = height / 2f
+    val outer = minOf(width, height) / 2f
+
+    val dx = pos.x - cx
+    val dy = pos.y - cy
+    val r = hypot(dx, dy)
+    if (r < inner || r > outer) return -1
+
+    // Normalised so the band's own range is contiguous rather than wrapping through ±180°,
+    // which is where an off-by-one at the two ends of the arc would otherwise live.
+    var deg = Math.toDegrees(atan2(dy.toDouble(), dx.toDouble())).toFloat()
+    if (deg < SEG_START) deg += 360f
+
+    val into = deg - SEG_START
+    if (into < 0f || into > SEG_SWEEP) return -1
+    return (into / (SEG_SWEEP / count)).toInt().coerceIn(0, count - 1)
+}
+
+// The band runs from lower-left, round the bottom, to lower-right — open at the top so the record
+// above it is never behind a wedge. Canvas degrees, so zero is east and they increase downward.
+private const val SEG_START = -26f
+private const val SEG_SWEEP = 232f
+
+/** How thick the band is. The rest of the radius is the hole, and the hole holds the controls. */
+private const val SEG_BAND = 38
+
+/** A hairline of air between wedges, so eight buttons read as eight. */
+private const val SEG_GAP_DEGREES = 1.4f
+
+private const val SEG_FILL_ALPHA = 0.22f
+private const val SEG_OFF_ALPHA = 0.55f
+private const val SEG_BLOOM_WIDE = 9
+private const val SEG_BLOOM_MID = 5
+private const val SEG_BLOOM_TIGHT = 2
+private const val SEG_ENTRY_MS = 620
+
+/** How tall the ring itself is, now that nothing has to fit inside it but a word. */
+private const val SEG_RING_HEIGHT = 214
+
+/** Air between the band and the controls under it. */
+private const val SEG_CONTROL_GAP = 12
+
+/**
+ * A knob, turned by dragging straight up and down.
+ *
+ * **It looks rotary and it is not driven rotationally, and that is deliberate.** A control you
+ * turn by tracing an arc is the wrong thing on a touchscreen twice over: the arc is invisible, so
+ * there is nothing to follow, and your finger sits exactly on top of the pointer you are trying
+ * to read. Every audio application that ships a knob solves it the same way — the gesture is a
+ * vertical drag, the *drawing* is a rotation — and that is what this does.
+ *
+ * It earns its place next to the segmented band because the whole layout is circular: three
+ * straight sliders under a ring look like a different instrument bolted to the bottom of it,
+ * where three knobs read as the same machine.
+ */
+@Composable
+private fun RingKnob(
+    param: RackParam?,
+    hue: Color,
+    live: Boolean,
+    modifier: Modifier = Modifier
+) {
+    val finish = LocalDeckFinish.current
+
+    if (param == null) {
+        // An unused slot is an empty collar rather than a dead knob — a knob you cannot turn
+        // reads as broken, an empty ring reads as room this effect does not need.
+        Column(
+            modifier = modifier,
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(KNOB_SIZE.dp)
+                    .alpha(KNOB_BLANK_ALPHA)
+                    .border(1.dp, finish.keyEdge, CircleShape)
+            )
+        }
+        return
+    }
+
+    val v = param.value.coerceIn(0f, 1f)
+    val neutral = if (param.bipolar) 0.5f else 0f
+    val working = live && kotlin.math.abs(v - neutral) > NEUTRAL_SLOP
+
+    Column(
+        modifier = modifier,
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Canvas(
+            modifier = Modifier
+                .size(KNOB_SIZE.dp)
+                .pointerInput(param.name) {
+                    detectVerticalDragGestures(
+                        onDragEnd = { param.onCommit?.invoke() },
+                        onDragCancel = { param.onCommit?.invoke() }
+                    ) { change, dragAmount ->
+                        // Up is more. The travel is a fixed distance rather than the knob's own
+                        // size, so a small knob is not a twitchy one.
+                        param.onChange((param.value - dragAmount / KNOB_TRAVEL_PX).coerceIn(0f, 1f))
+                        change.consume()
+                    }
+                }
+        ) {
+            val r = size.minDimension / 2f
+            val ringR = r - KNOB_RING_INSET
+            val stroke = Stroke(width = KNOB_STROKE, cap = StrokeCap.Round)
+            val arcRect = Rect(
+                center.x - ringR, center.y - ringR,
+                center.x + ringR, center.y + ringR
+            )
+
+            // The empty travel, so the knob reads as a dial even at rest.
+            drawArc(
+                // Bright enough to see. This was `keyEdge`, which on a near-black cyberpunk
+                // ground is invisible — the knobs were drawing correctly and looked absent.
+                color = finish.plateDim.copy(alpha = KNOB_TRACK_ALPHA),
+                startAngle = KNOB_START,
+                sweepAngle = KNOB_SWEEP,
+                useCenter = false,
+                topLeft = arcRect.topLeft,
+                size = arcRect.size,
+                style = stroke
+            )
+
+            // A bipolar control fills from its centre, so "off" is a position rather than a
+            // number — the same rule every other control in the rack follows.
+            val from = if (param.bipolar) KNOB_START + KNOB_SWEEP / 2f else KNOB_START
+            val to = KNOB_START + KNOB_SWEEP * v
+            if (kotlin.math.abs(to - from) > 0.5f) {
+                val glow = finish.glow * (if (working) 1f else 0f)
+                if (glow > 0f) {
+                    drawArc(
+                        color = hue.copy(alpha = KNOB_BLOOM_ALPHA * glow),
+                        startAngle = minOf(from, to),
+                        sweepAngle = kotlin.math.abs(to - from),
+                        useCenter = false,
+                        topLeft = arcRect.topLeft,
+                        size = arcRect.size,
+                        style = Stroke(width = KNOB_STROKE * 3f, cap = StrokeCap.Round)
+                    )
+                }
+                drawArc(
+                    color = if (working) hue else finish.cap,
+                    startAngle = minOf(from, to),
+                    sweepAngle = kotlin.math.abs(to - from),
+                    useCenter = false,
+                    topLeft = arcRect.topLeft,
+                    size = arcRect.size,
+                    style = stroke
+                )
+            }
+
+            // The pointer: the one part that actually says which way the knob is facing.
+            val a = Math.toRadians((KNOB_START + KNOB_SWEEP * v).toDouble())
+            drawLine(
+                color = if (working) hue else finish.cap,
+                start = Offset(
+                    center.x + (ringR - KNOB_POINTER) * cos(a).toFloat(),
+                    center.y + (ringR - KNOB_POINTER) * sin(a).toFloat()
+                ),
+                end = Offset(
+                    center.x + (ringR - KNOB_STROKE) * cos(a).toFloat(),
+                    center.y + (ringR - KNOB_STROKE) * sin(a).toFloat()
+                ),
+                strokeWidth = KNOB_STROKE,
+                cap = StrokeCap.Round
+            )
+        }
+
+        Text(
+            text = param.name,
+            fontFamily = finish.keyType,
+            fontSize = finish.keyTypeSize * 0.9f,
+            color = finish.plateDim,
+            maxLines = 1,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.padding(top = 4.dp)
+        )
+        Text(
+            text = param.readout(v),
+            fontFamily = finish.keyType,
+            fontSize = finish.keyTypeSize * 0.9f,
+            color = if (working) hue else finish.plateDim,
+            maxLines = 1,
+            textAlign = TextAlign.Center
+        )
+    }
+}
+
+/** Classic three-quarter turn: seven o'clock round to five, with the gap at the bottom. */
+private const val KNOB_START = 135f
+private const val KNOB_SWEEP = 270f
+
+private const val KNOB_SIZE = 58
+private const val KNOB_STROKE = 5f
+private const val KNOB_RING_INSET = 5f
+private const val KNOB_POINTER = 16f
+private const val KNOB_BLOOM_ALPHA = 0.34f
+private const val KNOB_BLANK_ALPHA = 0.22f
+private const val KNOB_TRACK_ALPHA = 0.55f
+
+/**
+ * How far the finger travels for the knob's whole range, in pixels.
+ *
+ * Fixed rather than proportional to the knob: tying it to the drawing would make a small knob
+ * twitchy and a large one sluggish, when what the hand actually wants is the same distance every
+ * time.
+ */
+private const val KNOB_TRAVEL_PX = 420f

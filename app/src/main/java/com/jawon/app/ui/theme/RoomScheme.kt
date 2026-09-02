@@ -114,18 +114,19 @@ enum class RoomScheme(
      */
     AFTER_HOURS(
         displayName = "After Hours",
-        // The lamp stays pulled well back from the accent, for the reason kept below: a
-        // strongly coloured key light fights the artwork it is lighting. The scarlet lives in
-        // the rim and in everything 2D, where there is no album cover to ruin.
-        key = floatArrayOf(1.0f, 0.702f, 0.702f),
-        rim = floatArrayOf(1.0f, 0.176f, 0.275f),
-        ambient = floatArrayOf(0.220f, 0.110f, 0.130f),
-        void = floatArrayOf(0.063f, 0.024f, 0.031f),
-        wall = Color(0xFF16090C),
-        board = Color(0xFF2C1018),
-        accent = Color(0xFFFF2D46),
+        // A cold key and a hot bounce, which is the whole cyberpunk trick: you read the room by
+        // the cyan and you feel it by the magenta. The key stays near-white for the reason kept
+        // below — a strongly coloured lamp fights the artwork it is lighting — so the colour
+        // lives in the rim, where there is no album cover to ruin.
+        key = floatArrayOf(0.800f, 0.949f, 1.0f),
+        rim = floatArrayOf(1.0f, 0.176f, 0.584f),
+        ambient = floatArrayOf(0.043f, 0.055f, 0.110f),
+        void = floatArrayOf(0.020f, 0.020f, 0.039f),
+        wall = Color(0xFF05050A),
+        board = Color(0xFF12121F),
+        accent = Color(0xFF22E6FF),
         plate = DeckPlate.GLASS,
-        glass = DeckWindowGlass.ROSE,
+        glass = DeckWindowGlass.CRT,
         palette = AfterHoursPalette
     ),
 
