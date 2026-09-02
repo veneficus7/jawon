@@ -51,9 +51,26 @@ class LyricsRepository @Inject constructor(
             synchronized(cache) {
                 if (cache.containsKey(track.id)) return@withContext cache[track.id]
             }
-            val found = sidecarFor(track.fileUri)
-                ?: embeddedIn(track.fileUri)
-                ?: online(track, albumTitle)
+            // **Timing beats locality, and that is a change.**
+            //
+            // The order used to be sidecar, then tag, then network, with the first hit winning
+            // outright — which meant a file carrying plain-text lyrics in its tag was answered
+            // instantly and the network was never asked. That is correct for privacy and wrong
+            // for the user: those lyrics can never follow the music, a timed version usually
+            // exists online, and the page just sat there not scrolling. It is exactly what the
+            // owner reported, twice.
+            //
+            // So local still goes first and still wins whenever it is *timed*. It is only when
+            // the device's own answer has no timestamps that LRCLIB is asked, and only a synced
+            // result displaces it — an untimed answer from the network is no better than the
+            // untimed one already in hand, and the local copy is free and private, so it keeps
+            // the slot on a tie.
+            val local = sidecarFor(track.fileUri) ?: embeddedIn(track.fileUri)
+            val found = if (local != null && local.synced) {
+                local
+            } else {
+                online(track, albumTitle)?.takeIf { it.synced || local == null } ?: local
+            }
             synchronized(cache) { cache[track.id] = found }
             found
         }

@@ -2,6 +2,7 @@ package com.jawon.app.ui.wallscene
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Arrangement
@@ -895,7 +896,48 @@ private fun RingRack(
         val radius = diameter / 2
 
         Box(
-            modifier = Modifier.size(diameter),
+            modifier = Modifier
+                .size(diameter)
+                // **Every stud's glow is painted here, on the ring's own canvas.**
+                //
+                // Twice now the bloom has been drawn inside the stud and twice it has come out
+                // with a visible rectangle around it, because something in that node's modifier
+                // chain renders to an offscreen layer the size of the stud and clips whatever
+                // reaches past it. Moving the draw earlier in the chain was not enough.
+                //
+                // So it stops being the stud's business. The ring is one large node, the blooms
+                // are drawn into it at the same polar positions the studs are placed at, and
+                // there is no small box anywhere for them to be cut against. The glows land
+                // under the studs because this is `drawBehind` on their common parent.
+                .drawBehind {
+                    if (finish.glow <= 0f) return@drawBehind
+                    val r = size.minDimension / 2f
+                    val reach = RING_STUD.dp.toPx() * RING_BLOOM_REACH
+
+                    cells.forEachIndexed { i, cell ->
+                        if (cell.channel !in engaged) return@forEachIndexed
+                        val a = -90.0 - RING_SWEEP_DEGREES / 2.0 +
+                            RING_SWEEP_DEGREES * i / (cells.size - 1).coerceAtLeast(1)
+                        val rad = Math.toRadians(a + 180.0)
+                        val heart = Offset(
+                            size.width / 2f + r * cos(rad).toFloat(),
+                            size.height / 2f + r * sin(rad).toFloat()
+                        )
+                        drawCircle(
+                            brush = Brush.radialGradient(
+                                colors = listOf(
+                                    cell.hue.copy(alpha = RING_BLOOM_CORE * finish.glow),
+                                    cell.hue.copy(alpha = RING_BLOOM_CORE * 0.3f * finish.glow),
+                                    Color.Transparent
+                                ),
+                                center = heart,
+                                radius = reach
+                            ),
+                            radius = reach,
+                            center = heart
+                        )
+                    }
+                },
             contentAlignment = Alignment.Center
         ) {
             cells.forEachIndexed { i, cell ->
@@ -949,20 +991,19 @@ private fun RingRack(
                         modifier = Modifier.padding(top = 8.dp)
                     )
                 } else {
-                    Row(
-                        modifier = Modifier
-                            .padding(top = 10.dp)
-                            .fillMaxWidth()
-                            .height(RING_FADER_HEIGHT.dp),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    // Stacked rather than side by side: the inside of a circle is wide and
+                    // short, so each control gets the whole width of the hole for its travel
+                    // instead of a third of it.
+                    Column(
+                        modifier = Modifier.padding(top = 8.dp).fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(RING_PARAM_GAP.dp)
                     ) {
                         repeat(FADER_SLOTS) { slot ->
-                            Fader(
+                            RingParam(
                                 param = params.getOrNull(slot),
                                 hue = cells.firstOrNull { it.channel == selected }?.hue
                                     ?: finish.accent,
-                                live = selected != null && selected in engaged,
-                                modifier = Modifier.weight(1f)
+                                live = selected != null && selected in engaged
                             )
                         }
                     }
@@ -1025,27 +1066,6 @@ private fun RingStud(
                     scaleX = press.value * (0.6f + 0.4f * entry.value)
                     scaleY = press.value * (0.6f + 0.4f * entry.value)
                     alpha = entry.value
-                }
-                // The stud is the light: a filled disc of the effect's own colour, blooming.
-                .drawBehind {
-                    val g = finish.glow * lit.value
-                    if (g > 0f) {
-                        val spread = if (selected) pulse.value else 1f
-                        val r = size.minDimension * RING_BLOOM_REACH
-                        drawCircle(
-                            brush = Brush.radialGradient(
-                                colors = listOf(
-                                    cell.hue.copy(alpha = RING_BLOOM_CORE * g * spread),
-                                    cell.hue.copy(alpha = RING_BLOOM_CORE * 0.35f * g * spread),
-                                    Color.Transparent
-                                ),
-                                center = center,
-                                radius = r
-                            ),
-                            radius = r,
-                            center = center
-                        )
-                    }
                 }
                 .background(
                     if (engaged) cell.hue.copy(alpha = lit.value) else Color.Transparent,
@@ -1332,11 +1352,13 @@ private fun Screws(finish: DeckFinish) {
 
 // ---- the ring ------------------------------------------------------------------------
 /** How tall the ring's panel is. Taller than a grid, because a ring is round. */
-private const val RING_HEIGHT = 306
+private const val RING_HEIGHT = 284
 
 /** The studs sit this far from the centre, as a fraction of the panel's width. */
 /** The ring fills this much of the shorter side of its panel. */
-private const val RING_DIAMETER_FRACTION = 0.94f
+// Sized so the studs, which stick out half their own width past the arc, still clear the panel.
+// At 0.94 with 46dp studs the ring ran off both sides and collided with the progress bar.
+private const val RING_DIAMETER_FRACTION = 0.76f
 
 /** How much of a full circle the arc covers. Open at the top, so the disc stays visible. */
 private const val RING_SWEEP_DEGREES = 232.0
@@ -1346,10 +1368,10 @@ private const val RING_SWEEP_DEGREES = 232.0
 // touch target wants. The studs are the primary control on this layout, so they are the biggest
 // ones in the app.
 private const val RING_STUD = 46
-private const val RING_CORE_WIDTH = 0.44f
+private const val RING_CORE_WIDTH = 0.58f
 
 /** The hole opens up for the equaliser, which needs five columns where the rest need three. */
-private const val RING_CORE_WIDTH_EQ = 0.66f
+private const val RING_CORE_WIDTH_EQ = 0.72f
 
 /** A known height, so the core can be placed against the ring centre instead of guessed at. */
 private const val RING_CORE_HEIGHT = 96
@@ -1366,3 +1388,114 @@ private const val MODULE_MAX_JACKS = 3
 
 /** A one-knob module is still wide enough to hit, so widths have a floor. */
 private const val MODULE_MIN_UNITS = 1.15f
+
+/**
+ * One control inside the ring, lying down.
+ *
+ * **Vertical faders are the wrong shape for a hole in a circle.** Three of them side by side in
+ * the middle of a ring gives each about thirty points of width and a short throw, which looked
+ * fine in a screenshot and was genuinely unpleasant to use — the owner said so twice. The
+ * interior of a circle is *wide and short*, so the controls lie down to match it: each one gets
+ * the full width of the hole for its travel instead of a third of it, which is roughly four
+ * times the precision per control.
+ *
+ * The name and the value sit on the same line above the track, because a label under every row
+ * would spend the vertical room the ring does not have.
+ */
+@Composable
+private fun RingParam(
+    param: RackParam?,
+    hue: Color,
+    live: Boolean,
+    modifier: Modifier = Modifier
+) {
+    val finish = LocalDeckFinish.current
+    var width by remember { mutableFloatStateOf(1f) }
+
+    if (param == null) {
+        // A slot with nothing behind it is a hairline, not an empty control. The ring shows one
+        // to three of these and an empty groove would read as three broken sliders.
+        Box(
+            modifier = modifier
+                .fillMaxWidth()
+                .height(1.dp)
+                .background(finish.keyEdge.copy(alpha = RING_BLANK_ALPHA))
+        )
+        return
+    }
+
+    val v = param.value.coerceIn(0f, 1f)
+    val neutral = if (param.bipolar) 0.5f else 0f
+    val working = live && kotlin.math.abs(v - neutral) > NEUTRAL_SLOP
+
+    Column(modifier = modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text(
+                text = param.name,
+                fontFamily = finish.keyType,
+                fontSize = finish.keyTypeSize * 0.92f,
+                color = finish.plateDim,
+                maxLines = 1
+            )
+            Text(
+                text = param.readout(v),
+                fontFamily = finish.keyType,
+                fontSize = finish.keyTypeSize * 0.92f,
+                color = if (working) hue else finish.plateDim,
+                maxLines = 1
+            )
+        }
+
+        Box(
+            modifier = Modifier
+                .padding(top = 3.dp)
+                .fillMaxWidth()
+                .height(RING_PARAM_TRACK.dp)
+                .onSizeChanged { width = it.width.toFloat().coerceAtLeast(1f) }
+                .pointerInput(param.name) {
+                    detectHorizontalDragGestures(
+                        onDragStart = { param.onChange((it.x / width).coerceIn(0f, 1f)) },
+                        onDragEnd = { param.onCommit?.invoke() },
+                        onDragCancel = { param.onCommit?.invoke() }
+                    ) { change, _ ->
+                        param.onChange((change.position.x / width).coerceIn(0f, 1f))
+                    }
+                }
+        ) {
+            Box(
+                Modifier
+                    .align(Alignment.CenterStart)
+                    .fillMaxWidth()
+                    .height(3.dp)
+                    .background(finish.keyEdge, RoundedCornerShape(2.dp))
+            )
+            // A bipolar control fills out from its centre, so "off" is a position rather than a
+            // number — the same rule the vertical faders follow.
+            if (param.bipolar) {
+                Box(
+                    Modifier
+                        .align(BiasAlignment(horizontalBias = 0f, verticalBias = 0f))
+                        .width(1.dp)
+                        .height(RING_PARAM_TRACK.dp)
+                        .background(finish.keyEdge)
+                )
+            }
+            Box(
+                Modifier
+                    .align(BiasAlignment(horizontalBias = v * 2f - 1f, verticalBias = 0f))
+                    .size(RING_PARAM_KNOB.dp)
+                    .background(if (working) hue else finish.cap, CircleShape)
+            )
+        }
+    }
+}
+
+// The controls in the hole lie down, so the hole needs to be wider than it is tall — the ring
+// opens up and the studs move out to make room for them.
+private const val RING_PARAM_GAP = 7
+private const val RING_PARAM_TRACK = 20
+private const val RING_PARAM_KNOB = 14
+private const val RING_BLANK_ALPHA = 0.45f
