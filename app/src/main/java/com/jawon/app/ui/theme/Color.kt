@@ -8,6 +8,39 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 
 /**
+ * How a mode arranges its rack.
+ *
+ * **A mode is not a palette on one layout.** Two attempts at giving each mode its own look
+ * failed because they were rearrangements of the same grid — eight keys in a row is still eight
+ * keys, whichever way they are pushed around. These start from an object instead, and the
+ * controls fall out of it.
+ */
+enum class RackLayout {
+    /** Window across the top, a bank of keys, faders beneath. The shop counter. */
+    SHELF,
+
+    /** Turned on its side: a tall window down the left, keys stacked beside it. A component. */
+    RACK_UNIT,
+
+    /**
+     * The effects orbit the disc.
+     *
+     * No grid at all — eight lit studs in an arc, with the selected effect's controls in the
+     * middle. The only layout here that could not be any other app, and the only one that stops
+     * the panel covering the record.
+     */
+    RING,
+
+    /**
+     * A rack of modules, each as wide as it is complicated.
+     *
+     * The echo is wide because it has three knobs; the drive is a sliver because it has one. The
+     * panel shows you where the depth is instead of hiding it behind a uniform grid.
+     */
+    MODULAR
+}
+
+/**
  * What a mode's surfaces are *made of*, past their colour.
  *
  * **Four hex values is not a design.** The first cut of the modes changed the palette and nothing
@@ -80,7 +113,10 @@ data class Palette(
     val texture: SurfaceTexture,
 
     /** How soft the corners are. Neon is round; a workbench is square. */
-    val corner: Dp
+    val corner: Dp,
+
+    /** How this mode arranges its rack. See [RackLayout]. */
+    val layout: RackLayout
 )
 
 /**
@@ -121,7 +157,8 @@ val MidnightPalette = Palette(
     glow = 0.38f,
     sheen = 0.10f,
     texture = SurfaceTexture.NONE,
-    corner = 7.dp
+    corner = 7.dp,
+    layout = RackLayout.SHELF
 )
 
 /**
@@ -146,44 +183,62 @@ val ColdPalette = Palette(
     glow = 0.45f,
     sheen = 0.55f,
     texture = SurfaceTexture.GRAIN,
-    corner = 4.dp
-)
-
-/** A late-night bar back room: plum surfaces and a neon sign for an accent. */
-val AfterHoursPalette = Palette(
-    crateBlack = Color(0xFF1A1017),
-    crateRaised = Color(0xFF2A1A26),
-    crateEdge = Color(0xFF3A2430),
-    labelCream = Color(0xFFF0DCE4),
-    labelDim = Color(0xFF9C808C),
-    lampAmber = Color(0xFFFF5C8A),
-    oxideTeal = Color(0xFF7A4C8C),
-    // All bleed, no surface. A neon sign is only light — nothing here is machined, nothing
-    // catches a raking beam, and every lit thing spills onto its neighbours.
-    glow = 1f,
-    sheen = 0f,
-    texture = SurfaceTexture.NONE,
-    corner = 12.dp
+    corner = 4.dp,
+    layout = RackLayout.RACK_UNIT
 )
 
 /**
- * A bench under neutral daylight: concrete, steel, and a green terminal.
+ * A bar at two in the morning, in scarlet.
  *
- * The only mode with no colour cast at all, which is its entire reason for existing — every
- * sleeve reads exactly as printed, and the artwork becomes the only coloured thing on screen.
+ * Not the dusty rose it used to be. A sign this saturated is the only light in the room, and the
+ * surfaces under it go deep oxblood rather than plum — red on red, with nothing cool anywhere to
+ * relieve it. The accent is the one thing that is genuinely bright.
+ */
+val AfterHoursPalette = Palette(
+    crateBlack = Color(0xFF16090C),
+    crateRaised = Color(0xFF241016),
+    crateEdge = Color(0xFF3E1820),
+    labelCream = Color(0xFFF7DDE1),
+    labelDim = Color(0xFFA57680),
+    lampAmber = Color(0xFFFF2D46),
+    oxideTeal = Color(0xFF8C2F4A),
+    // All bleed, no surface. A sign is only light — nothing here is machined, nothing catches a
+    // raking beam, and every lit thing spills onto its neighbours. Round, because the layout
+    // this mode wears is built out of circles.
+    glow = 1f,
+    sheen = 0f,
+    texture = SurfaceTexture.NONE,
+    corner = 14.dp,
+    layout = RackLayout.RING
+)
+
+/**
+ * A terminal in the dark: absolute black, and emerald.
+ *
+ * **The one mode that uses true black, and the only place this app should.** Everywhere else
+ * `DESIGN.md` §2 is right that pure black flattens depth and hides elevation — but that rule is
+ * written for surfaces lit by something. Nothing here is lit. The ground is void, the only light
+ * in the frame is the phosphor, and on an OLED panel the black pixels are genuinely off, which
+ * is what makes the green look like it is floating rather than printed.
+ *
+ * Depth comes from the glow instead of from elevation, which is why this mode's glow is high
+ * where it used to be zero.
  */
 val WorkshopPalette = Palette(
-    crateBlack = Color(0xFF1C1C1F),
-    crateRaised = Color(0xFF26262A),
-    crateEdge = Color(0xFF38383E),
-    labelCream = Color(0xFFE8E8E6),
-    labelDim = Color(0xFF8A8A90),
-    lampAmber = Color(0xFF25F06A),
-    oxideTeal = Color(0xFF5A8A9A),
-    // The anti-glass mode. Nothing glows, nothing gleams, the corners are square and the
-    // surface is printed. Everything the other three do, this one refuses to do.
-    glow = 0f,
-    sheen = 0f,
-    texture = SurfaceTexture.DOTS,
-    corner = 1.dp
+    crateBlack = Color(0xFF000000),
+    crateRaised = Color(0xFF050C07),
+    crateEdge = Color(0xFF10331A),
+    labelCream = Color(0xFFB9FFC9),
+    labelDim = Color(0xFF3E8A50),
+    lampAmber = Color(0xFF00FF41),
+    oxideTeal = Color(0xFF00A82B),
+    // Phosphor on void. The glow went from zero to nearly full when this stopped being a
+    // concrete workbench and became a terminal: with a black ground and no elevation, the bleed
+    // is the only thing giving the panel any depth at all. Square corners, because a module is
+    // a milled aluminium panel and those have never been round.
+    glow = 0.9f,
+    sheen = 0.05f,
+    texture = SurfaceTexture.NONE,
+    corner = 0.dp,
+    layout = RackLayout.MODULAR
 )

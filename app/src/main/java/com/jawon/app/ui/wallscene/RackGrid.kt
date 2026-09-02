@@ -8,13 +8,17 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -48,6 +52,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.jawon.app.data.playback.EqBand
@@ -59,12 +64,15 @@ import com.jawon.app.playback.Echo
 import com.jawon.app.playback.RackChannel
 import com.jawon.app.playback.Varispeed
 import com.jawon.app.ui.theme.DeckFinish
+import com.jawon.app.ui.theme.RackLayout
 import com.jawon.app.ui.theme.LabelCream
 import com.jawon.app.ui.theme.LampAmber
 import com.jawon.app.ui.theme.LocalDeckFinish
 import com.jawon.app.ui.theme.OxideTeal
 import java.util.Locale
+import kotlin.math.cos
 import kotlin.math.roundToInt
+import kotlin.math.sin
 
 /**
  * One knob belonging to a cell — what the faders show when that cell is selected.
@@ -130,6 +138,47 @@ fun RackGrid(
     // transition, eight things moving in sequence is a sequence.
     var arrived by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { arrived = true }
+
+    // **Each mode gets its own machine, not its own palette.**
+    //
+    // Two attempts at giving the modes separate identities failed because they were
+    // rearrangements of this grid, and eight keys in a row is still eight keys whichever way
+    // they are pushed around. These are different objects: a ring of studs orbiting the record,
+    // a rack of modules whose widths say how complicated each effect is.
+    when (finish.layout) {
+        RackLayout.RING -> {
+            RingRack(
+                cells = cells,
+                engaged = engaged,
+                selected = selected,
+                arrived = arrived,
+                onToggle = onToggle,
+                onSelect = onSelect,
+                modifier = modifier
+            )
+            return
+        }
+
+        RackLayout.MODULAR -> {
+            ModularRack(
+                cells = cells,
+                engaged = engaged,
+                selected = selected,
+                arrived = arrived,
+                onToggle = onToggle,
+                onSelect = onSelect,
+                eqBands = eqBands,
+                eqRangeMb = eqRangeMb,
+                onEqBandChange = onEqBandChange,
+                modifier = modifier
+            )
+            return
+        }
+
+        // SHELF and RACK_UNIT both fall through to the grid below for now; the rack unit's own
+        // arrangement is the next one to be built.
+        else -> Unit
+    }
 
     Column(modifier = modifier.fillMaxWidth()) {
 
@@ -789,3 +838,496 @@ private const val EQ_GAP = 4
 
 /** Within this of zero, a band counts as flat and stops being drawn as a change. */
 private const val FLAT_SLOP_MB = 40
+
+/**
+ * The effects in orbit around the disc.
+ *
+ * **No grid, and that is the point.** Eight studs on an arc with the selected effect's controls
+ * in the middle of it — the only layout here that could not belong to any other app, because it
+ * is built around the record rather than around a screen. It is also the only one that leaves
+ * the disc uncovered: the arc opens upward, so the thing you came to look at stays visible
+ * through the gap.
+ *
+ * Laid out by hand rather than with a layout: a ring is polar and Compose's containers are not,
+ * so each stud is placed by angle at a radius measured from the panel's own width. Everything is
+ * a fraction of that width, so it holds together on any screen without a second set of numbers.
+ */
+@Composable
+private fun RingRack(
+    cells: List<RackCell>,
+    engaged: Set<RackChannel>,
+    selected: RackChannel?,
+    arrived: Boolean,
+    onToggle: (RackChannel) -> Unit,
+    onSelect: (RackChannel) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val finish = LocalDeckFinish.current
+    val params = cells.firstOrNull { it.channel == selected }?.params.orEmpty()
+
+    // **One box for the ring, and everything measured from its middle.**
+    //
+    // The first version placed the studs against the panel and centred the core against the
+    // panel *separately*, which is two frames of reference for one circle — the core came out
+    // sitting over the left-hand studs rather than in the hole. Giving the ring its own square
+    // box makes the maths local: the studs are offsets from this box's centre, and the core is
+    // simply centred in it, so the two cannot disagree.
+    BoxWithConstraints(
+        modifier = modifier.fillMaxWidth().height(RING_HEIGHT.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        val diameter = minOf(maxWidth, maxHeight) * RING_DIAMETER_FRACTION
+        val radius = diameter / 2
+
+        Box(
+            modifier = Modifier.size(diameter),
+            contentAlignment = Alignment.Center
+        ) {
+            cells.forEachIndexed { i, cell ->
+                // The arc runs from lower-left round the bottom to lower-right, leaving the top
+                // open so the record above is never behind a stud.
+                val sweep = RING_SWEEP_DEGREES
+                val angle = -90.0 - sweep / 2.0 + sweep * i / (cells.size - 1).coerceAtLeast(1)
+                val rad = Math.toRadians(angle + 180.0)
+
+                RingStud(
+                    cell = cell,
+                    order = i,
+                    arrived = arrived,
+                    engaged = cell.channel in engaged,
+                    selected = cell.channel == selected,
+                    onToggle = { onToggle(cell.channel) },
+                    onSelect = { onSelect(cell.channel) },
+                    modifier = Modifier.offset(
+                        x = radius * cos(rad).toFloat(),
+                        y = radius * sin(rad).toFloat()
+                    )
+                )
+            }
+
+            // The middle of the ring: what is selected, and its controls. Kept narrow so it
+            // never reaches the studs — the hole in a ring is the point of a ring. Centred in
+            // the ring's own box, so it lands in the hole by construction.
+            Column(
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .fillMaxWidth(RING_CORE_WIDTH),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+            Text(
+                text = selected?.label ?: "—",
+                fontFamily = finish.keyType,
+                fontSize = finish.keyTypeSize * 1.5f,
+                fontWeight = FontWeight.Bold,
+                color = finish.plateInk,
+                maxLines = 1
+            )
+            Row(
+                modifier = Modifier
+                    .padding(top = 10.dp)
+                    .fillMaxWidth()
+                    .height(RING_FADER_HEIGHT.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                    repeat(FADER_SLOTS) { slot ->
+                        Fader(
+                            param = params.getOrNull(slot),
+                            hue = cells.firstOrNull { it.channel == selected }?.hue
+                                ?: finish.accent,
+                            live = selected != null && selected in engaged,
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** One stud on the ring: a lit disc rather than a key, because a ring has no corners. */
+@Composable
+private fun RingStud(
+    cell: RackCell,
+    order: Int,
+    arrived: Boolean,
+    engaged: Boolean,
+    selected: Boolean,
+    onToggle: () -> Unit,
+    onSelect: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val finish = LocalDeckFinish.current
+
+    var pressed by remember { mutableStateOf(false) }
+    val press = animateFloatAsState(
+        targetValue = if (pressed) PRESS_SCALE else 1f,
+        animationSpec = spring(Spring.DampingRatioMediumBouncy, Spring.StiffnessMedium),
+        label = "press"
+    )
+    val lit = animateFloatAsState(
+        targetValue = if (engaged) 1f else 0f,
+        animationSpec = tween(CELL_FADE_MS),
+        label = "lit"
+    )
+    // The studs light in sequence around the arc, so the ring switches on like a sign rather
+    // than appearing all at once.
+    val entry = animateFloatAsState(
+        targetValue = if (arrived) 1f else 0f,
+        animationSpec = tween(ENTRY_MS, order * ENTRY_STAGGER_MS, FastOutSlowInEasing),
+        label = "entry"
+    )
+    val pulse = rememberInfiniteTransition(label = "stud").animateFloat(
+        initialValue = SELECT_PULSE_LOW,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            tween(SELECT_PULSE_MS, easing = FastOutSlowInEasing),
+            RepeatMode.Reverse
+        ),
+        label = "pulse"
+    )
+
+    Column(
+        modifier = modifier.width(RING_STUD.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Box(
+            modifier = Modifier
+                .size(RING_STUD.dp)
+                .graphicsLayer {
+                    scaleX = press.value * (0.6f + 0.4f * entry.value)
+                    scaleY = press.value * (0.6f + 0.4f * entry.value)
+                    alpha = entry.value
+                }
+                // The stud is the light: a filled disc of the effect's own colour, blooming.
+                .drawBehind {
+                    val g = finish.glow * lit.value
+                    if (g > 0f) {
+                        val spread = if (selected) pulse.value else 1f
+                        val r = size.minDimension * RING_BLOOM_REACH
+                        drawCircle(
+                            brush = Brush.radialGradient(
+                                colors = listOf(
+                                    cell.hue.copy(alpha = RING_BLOOM_CORE * g * spread),
+                                    cell.hue.copy(alpha = RING_BLOOM_CORE * 0.35f * g * spread),
+                                    Color.Transparent
+                                ),
+                                center = center,
+                                radius = r
+                            ),
+                            radius = r,
+                            center = center
+                        )
+                    }
+                }
+                .background(
+                    if (engaged) cell.hue.copy(alpha = lit.value) else Color.Transparent,
+                    CircleShape
+                )
+                .border(
+                    width = if (selected) 2.dp else 1.dp,
+                    color = when {
+                        selected -> finish.accent.copy(alpha = pulse.value)
+                        engaged -> Color.Transparent
+                        else -> finish.keyEdge
+                    },
+                    shape = CircleShape
+                )
+                .then(
+                    if (cell.available) {
+                        Modifier.pointerInput(cell.channel, engaged, selected) {
+                            detectTapGestures(
+                                onPress = {
+                                    pressed = true
+                                    tryAwaitRelease()
+                                    pressed = false
+                                },
+                                onTap = {
+                                    when {
+                                        !engaged -> { onToggle(); onSelect() }
+                                        selected -> onToggle()
+                                        else -> onSelect()
+                                    }
+                                }
+                            )
+                        }
+                    } else {
+                        Modifier
+                    }
+                )
+                .alpha(if (cell.available) 1f else UNAVAILABLE_ALPHA)
+        )
+        Text(
+            text = cell.channel.label,
+            fontFamily = finish.keyType,
+            fontSize = finish.keyTypeSize * 0.86f,
+            color = if (engaged) finish.plateInk else finish.plateDim,
+            maxLines = 1,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.padding(top = 3.dp).graphicsLayer { alpha = entry.value }
+        )
+    }
+}
+
+/**
+ * A rack of modules, each as wide as it is complicated.
+ *
+ * **The panel tells you where the depth is.** The echo is three times the width of the drive
+ * because it has three knobs and the drive has one — which is how a real rack looks, and the
+ * opposite of a uniform grid, where a one-knob effect and a three-knob effect occupy identical
+ * squares and the face tells you nothing.
+ *
+ * Widths come from the cell's own parameter count, so adding a ninth effect sizes itself.
+ */
+@Composable
+private fun ModularRack(
+    cells: List<RackCell>,
+    engaged: Set<RackChannel>,
+    selected: RackChannel?,
+    arrived: Boolean,
+    onToggle: (RackChannel) -> Unit,
+    onSelect: (RackChannel) -> Unit,
+    eqBands: List<EqBand>,
+    eqRangeMb: Pair<Int, Int>,
+    onEqBandChange: (Int, Int) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val finish = LocalDeckFinish.current
+
+    Column(modifier = modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier.fillMaxWidth().height(MODULE_HEIGHT.dp),
+            horizontalArrangement = Arrangement.spacedBy(MODULE_GAP.dp)
+        ) {
+            cells.forEachIndexed { i, cell ->
+                Module(
+                    cell = cell,
+                    order = i,
+                    arrived = arrived,
+                    engaged = cell.channel in engaged,
+                    selected = cell.channel == selected,
+                    onToggle = { onToggle(cell.channel) },
+                    onSelect = { onSelect(cell.channel) },
+                    // One horizontal unit per knob, with a floor so a single-knob module is a
+                    // sliver rather than a hairline.
+                    modifier = Modifier.weight(
+                        (cell.params.size.coerceAtLeast(1)).toFloat()
+                            .coerceAtLeast(MODULE_MIN_UNITS)
+                    )
+                )
+            }
+        }
+
+        // The selected module's controls, on the rail beneath the case.
+        if (selected == RackChannel.EQ) {
+            EqBands(
+                bands = eqBands,
+                rangeMb = eqRangeMb,
+                onBandChange = onEqBandChange,
+                modifier = Modifier.padding(top = MODULE_GAP.dp)
+            )
+        } else {
+            val params = cells.firstOrNull { it.channel == selected }?.params.orEmpty()
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = MODULE_GAP.dp)
+                    .height(FADER_HEIGHT.dp),
+                horizontalArrangement = Arrangement.spacedBy(MODULE_GAP.dp)
+            ) {
+                repeat(FADER_SLOTS) { slot ->
+                    Fader(
+                        param = params.getOrNull(slot),
+                        hue = cells.firstOrNull { it.channel == selected }?.hue ?: finish.accent,
+                        live = selected != null && selected in engaged,
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+            }
+        }
+    }
+}
+
+/** One module: a milled panel with screws, a lit strip, its name set vertically, and jacks. */
+@Composable
+private fun Module(
+    cell: RackCell,
+    order: Int,
+    arrived: Boolean,
+    engaged: Boolean,
+    selected: Boolean,
+    onToggle: () -> Unit,
+    onSelect: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val finish = LocalDeckFinish.current
+
+    var pressed by remember { mutableStateOf(false) }
+    val press = animateFloatAsState(
+        targetValue = if (pressed) PRESS_SCALE else 1f,
+        animationSpec = spring(Spring.DampingRatioMediumBouncy, Spring.StiffnessMedium),
+        label = "press"
+    )
+    val lit = animateFloatAsState(
+        targetValue = if (engaged) 1f else 0f,
+        animationSpec = tween(CELL_FADE_MS),
+        label = "lit"
+    )
+    val entry = animateFloatAsState(
+        targetValue = if (arrived) 1f else 0f,
+        animationSpec = tween(ENTRY_MS, order * ENTRY_STAGGER_MS, FastOutSlowInEasing),
+        label = "entry"
+    )
+    val pulse = rememberInfiniteTransition(label = "module").animateFloat(
+        initialValue = SELECT_PULSE_LOW,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            tween(SELECT_PULSE_MS, easing = FastOutSlowInEasing),
+            RepeatMode.Reverse
+        ),
+        label = "pulse"
+    )
+
+    Column(
+        modifier = modifier
+            .fillMaxHeight()
+            .graphicsLayer {
+                scaleY = press.value
+                alpha = entry.value
+                translationY = (1f - entry.value) * ENTRY_RISE_PX
+            }
+            .background(if (engaged) finish.key else Color.Transparent)
+            .border(
+                width = if (selected) 2.dp else 1.dp,
+                color = if (selected) finish.accent.copy(alpha = pulse.value) else finish.keyEdge
+            )
+            .alpha(if (cell.available) 1f else UNAVAILABLE_ALPHA)
+            .then(
+                if (cell.available) {
+                    Modifier.pointerInput(cell.channel, engaged, selected) {
+                        detectTapGestures(
+                            onPress = {
+                                pressed = true
+                                tryAwaitRelease()
+                                pressed = false
+                            },
+                            onTap = {
+                                when {
+                                    !engaged -> { onToggle(); onSelect() }
+                                    selected -> onToggle()
+                                    else -> onSelect()
+                                }
+                            }
+                        )
+                    }
+                } else {
+                    Modifier
+                }
+            )
+            .padding(vertical = 5.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.SpaceBetween
+    ) {
+        Screws(finish)
+
+        // The lit strip, the same beam every other layout uses.
+        Box(
+            modifier = Modifier
+                .fillMaxWidth(0.62f)
+                .height(BEAM_THICKNESS.dp)
+                .drawBehind {
+                    val g = finish.glow * lit.value
+                    if (g > 0f) {
+                        val heart = Offset(size.width / 2f, size.height / 2f)
+                        val reach = size.width * BEAM_BLOOM_REACH * 2f
+                        scale(scaleX = 1f, scaleY = BEAM_BLOOM_SQUASH * 2f, pivot = heart) {
+                            drawCircle(
+                                brush = Brush.radialGradient(
+                                    colors = listOf(
+                                        cell.hue.copy(alpha = BEAM_BLOOM_CORE * g),
+                                        Color.Transparent
+                                    ),
+                                    center = heart,
+                                    radius = reach
+                                ),
+                                radius = reach,
+                                center = heart
+                            )
+                        }
+                    }
+                }
+                .background(cell.hue.copy(alpha = lit.value))
+        )
+
+        Text(
+            text = cell.channel.label,
+            fontFamily = finish.keyType,
+            fontSize = finish.keyTypeSize * 0.9f,
+            fontWeight = FontWeight.Bold,
+            color = if (engaged) finish.keyInk else finish.keyDim,
+            maxLines = 1,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.fillMaxWidth()
+        )
+
+        // Patch jacks along the base — one per knob, because that is what the module carries.
+        Row(horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+            repeat(cell.params.size.coerceAtLeast(1).coerceAtMost(MODULE_MAX_JACKS)) {
+                Box(
+                    modifier = Modifier
+                        .size(MODULE_JACK.dp)
+                        .background(finish.groove, CircleShape)
+                        .border(1.dp, finish.keyEdge, CircleShape)
+                )
+            }
+        }
+
+        Screws(finish)
+    }
+}
+
+/** The two screws at each end of a module's panel. Free, and most of what says "rack". */
+@Composable
+private fun Screws(finish: DeckFinish) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 3.dp),
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        repeat(2) {
+            Box(
+                modifier = Modifier
+                    .size(MODULE_SCREW.dp)
+                    .background(finish.keyEdge, CircleShape)
+            )
+        }
+    }
+}
+
+// ---- the ring ------------------------------------------------------------------------
+/** How tall the ring's panel is. Taller than a grid, because a ring is round. */
+private const val RING_HEIGHT = 268
+
+/** The studs sit this far from the centre, as a fraction of the panel's width. */
+/** The ring fills this much of the shorter side of its panel. */
+private const val RING_DIAMETER_FRACTION = 0.82f
+
+/** How much of a full circle the arc covers. Open at the top, so the disc stays visible. */
+private const val RING_SWEEP_DEGREES = 232.0
+
+private const val RING_STUD = 30
+private const val RING_CORE_WIDTH = 0.40f
+
+/** A known height, so the core can be placed against the ring centre instead of guessed at. */
+private const val RING_CORE_HEIGHT = 96
+private const val RING_FADER_HEIGHT = 54
+private const val RING_BLOOM_REACH = 1.5f
+private const val RING_BLOOM_CORE = 0.75f
+
+// ---- the modular case ----------------------------------------------------------------
+private const val MODULE_HEIGHT = 132
+private const val MODULE_GAP = 3
+private const val MODULE_SCREW = 3
+private const val MODULE_JACK = 6
+private const val MODULE_MAX_JACKS = 3
+
+/** A one-knob module is still wide enough to hit, so widths have a floor. */
+private const val MODULE_MIN_UNITS = 1.15f

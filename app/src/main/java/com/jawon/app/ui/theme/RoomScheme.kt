@@ -114,35 +114,40 @@ enum class RoomScheme(
      */
     AFTER_HOURS(
         displayName = "After Hours",
-        key = floatArrayOf(1.0f, 0.706f, 0.784f),
-        rim = floatArrayOf(0.878f, 0.235f, 0.451f),
-        ambient = floatArrayOf(0.235f, 0.149f, 0.196f),
-        void = floatArrayOf(0.078f, 0.043f, 0.059f),
-        wall = Color(0xFF1A1015),
-        board = Color(0xFF2E1B26),
-        accent = Color(0xFFFF5C8A),
+        // The lamp stays pulled well back from the accent, for the reason kept below: a
+        // strongly coloured key light fights the artwork it is lighting. The scarlet lives in
+        // the rim and in everything 2D, where there is no album cover to ruin.
+        key = floatArrayOf(1.0f, 0.702f, 0.702f),
+        rim = floatArrayOf(1.0f, 0.176f, 0.275f),
+        ambient = floatArrayOf(0.220f, 0.110f, 0.130f),
+        void = floatArrayOf(0.063f, 0.024f, 0.031f),
+        wall = Color(0xFF16090C),
+        board = Color(0xFF2C1018),
+        accent = Color(0xFFFF2D46),
         plate = DeckPlate.GLASS,
         glass = DeckWindowGlass.ROSE,
         palette = AfterHoursPalette
     ),
 
     /**
-     * A bench under neutral daylight: concrete, steel shelving, and a green terminal.
+     * A terminal room: absolute black, emerald phosphor, and modules on a bench.
      *
-     * The only scheme with no colour cast at all, which is its whole reason for existing — every
-     * sleeve reads exactly as printed instead of being pushed warm or cold, and the artwork
-     * becomes the only coloured thing in the room. The deck to match is the bevelled grey one
-     * with four-pixel type: not the hi-fi, the machine it all got ripped onto.
+     * The one scheme that abandons the shop entirely. There is no lamp in the fiction here, only
+     * the light the equipment makes, which is why the void is true black and the bounce is pure
+     * green — and why this is the only place in the app where a pure black is correct rather
+     * than lazy.
      */
     WORKSHOP(
         displayName = "Workshop",
-        key = floatArrayOf(0.949f, 0.949f, 0.941f),
-        rim = floatArrayOf(0.400f, 0.420f, 0.443f),
-        ambient = floatArrayOf(0.196f, 0.196f, 0.208f),
-        void = floatArrayOf(0.047f, 0.047f, 0.055f),
-        wall = Color(0xFF26262A),
-        board = Color(0xFF3A3A3E),
-        accent = Color(0xFF25F06A),
+        // Phosphor, not daylight. The key is a cold green-white and the bounce is pure emerald,
+        // so a sleeve on the shelf reads the way a photograph does on a monitor in a dark room.
+        key = floatArrayOf(0.784f, 1.0f, 0.847f),
+        rim = floatArrayOf(0.0f, 0.902f, 0.294f),
+        ambient = floatArrayOf(0.055f, 0.129f, 0.078f),
+        void = floatArrayOf(0.0f, 0.0f, 0.0f),
+        wall = Color(0xFF000000),
+        board = Color(0xFF07140B),
+        accent = Color(0xFF00FF41),
         plate = DeckPlate.CHROME,
         glass = DeckWindowGlass.PIXEL,
         palette = WorkshopPalette

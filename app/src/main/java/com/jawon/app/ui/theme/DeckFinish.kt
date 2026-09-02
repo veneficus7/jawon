@@ -102,10 +102,12 @@ enum class DeckWindowGlass(
     /** A neon bar sign behind glass — the one display that is not a machine readout. */
     // Enormous and close, bleeding into itself. Type at this size stops being a label and starts
     // being the light source, which is the whole idea of a sign seen through rain.
-    ROSE(Color(0xFF150910), Color(0xFF3A1C2A), 5.dp, Color(0xFFFF3D7F), 3.dp, Vt323Family, 26.sp, 1.5.sp),
+    /** A scarlet sign, and the brightest thing in its room by a wide margin. */
+    ROSE(Color(0xFF12060A), Color(0xFF3E1820), 5.dp, Color(0xFFFF2D46), 3.dp, Vt323Family, 26.sp, 1.5.sp),
 
     /** Four-pixel green on black: the desktop player, not the hi-fi. */
-    PIXEL(Color(0xFF050805), Color(0xFF1A1A1A), 2.dp, Color(0xFF25F06A), 1.5.dp, SilkscreenFamily, 11.sp, 1.sp)
+    /** Emerald phosphor on void — the window is the same black as everything around it. */
+    PIXEL(Color(0xFF000000), Color(0xFF10331A), 0.dp, Color(0xFF00FF41), 2.dp, SilkscreenFamily, 11.sp, 1.sp)
 }
 
 
@@ -144,6 +146,7 @@ data class DeckFinish(
     val keyInk: Color,
     val keyDim: Color,
     val keyRadius: Dp,
+    val layout: RackLayout,
     val keyType: FontFamily,
     val keyTypeSize: TextUnit,
     val groove: Color,
@@ -219,6 +222,7 @@ data class DeckFinish(
                 // The mode says how soft an edge is — neon is round, a workbench is square — and the
                 // plate only gets a say when it is a period object with corners of its own.
                 keyRadius = if (plate == DeckPlate.GLASS) scheme.palette.corner else plate.cornerRadius,
+                layout = scheme.palette.layout,
                 keyType = if (plate.bevelled) SilkscreenFamily else JetBrainsMonoFamily,
                 keyTypeSize = if (plate.bevelled) 6.sp else 8.sp,
                 groove = lerp(keyBase, Color.Black, 0.35f).copy(alpha = GROOVE_ALPHA),
