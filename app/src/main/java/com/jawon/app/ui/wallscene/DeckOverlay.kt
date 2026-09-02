@@ -1098,21 +1098,20 @@ private fun DeckWindow(
             // radial wash rather than a blur, because the only real blur Android offers needs
             // API 31 and this app runs from 28.
             if (finish.glow > 0f) {
-                // **Breathing, and driven from the draw phase.**
+                // **This used to breathe, and it was measured out again.**
                 //
-                // A sign in a bar hums rather than sits still, and a glow that never moves
-                // reads as a gradient someone painted on. Read inside `graphicsLayer`, so the
-                // sixty-times-a-second value never recomposes anything — it only redraws one
-                // layer. ENGINEERING.md rule 3: high-frequency state must not drive recomposition.
-                val breath = rememberInfiniteTransition(label = "glow").animateFloat(
-                    initialValue = BREATH_LOW,
-                    targetValue = 1f,
-                    animationSpec = infiniteRepeatable(
-                        animation = tween(BREATH_MS, easing = FastOutSlowInEasing),
-                        repeatMode = RepeatMode.Reverse
-                    ),
-                    label = "breath"
-                )
+                // Animating its alpha was correct by the usual rules — read inside
+                // `graphicsLayer`, so it recomposed nothing and only touched one layer. It was
+                // still the single most expensive thing on the panel: the halo is a large
+                // scaled gradient, and changing its alpha every frame makes the compositor
+                // re-blend that whole translucent layer over the Filament surface underneath.
+                // Measured on the S25 Ultra, with the deck open, holding everything else still:
+                // 868 jiffies per ten seconds breathing, 576 static. A third of the panel's
+                // entire cost, for a 2.8-second pulse between 0.62 and 1.0 alpha that is close
+                // to invisible.
+                //
+                // The room stays alive without it: the name in the ring still breathes, and
+                // that is one short string in a small layer rather than a screen-wide wash.
                 Box(
                     modifier = Modifier
                         .matchParentSize()
@@ -1123,7 +1122,8 @@ private fun DeckWindow(
                         .graphicsLayer {
                             scaleY = HALO_SPREAD_Y
                             scaleX = HALO_SPREAD_X
-                            alpha = breath.value
+                            // Static. See the note above — this alpha used to be animated.
+                            alpha = 1f
                         }
                         .background(
                             Brush.radialGradient(
@@ -1283,9 +1283,5 @@ private const val HALO_SPREAD_Y = 3.1f
 private const val HALO_SPREAD_X = 1.16f
 private const val HALO_ALPHA = 0.80f
 
-// How far the glow breathes, and how long one breath takes. Slow enough to read as a sign
-// humming rather than as something blinking for attention.
-private const val BREATH_LOW = 0.62f
-private const val BREATH_MS = 2800
 private const val GLOW_SPREAD = 0.16f
 private const val GLOW_ALPHA = 0.28f

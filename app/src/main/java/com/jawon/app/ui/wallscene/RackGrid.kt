@@ -1551,20 +1551,27 @@ private fun SegmentRing(
     /** What turning the band actually turns: the selected effect's first control. */
     val knob = params.firstOrNull()
 
+    // Laid out once per set of labels rather than per frame. Only the typeface and size affect
+    // the layout, so switching an effect in or out does not rebuild these — the colour is
+    // applied when they are drawn.
+    val labels = remember(cells, finish.keyType, finish.keyTypeSize) {
+        cells.map { cell ->
+            measurer.measure(
+                text = AnnotatedString(cell.channel.label),
+                style = TextStyle(
+                    fontFamily = finish.keyType,
+                    fontSize = finish.keyTypeSize,
+                    fontWeight = FontWeight.Bold
+                )
+            )
+        }
+    }
+
     // The band lights in sequence when the page opens, one wedge after the next round the arc.
     val entry = animateFloatAsState(
         targetValue = if (arrived) 1f else 0f,
         animationSpec = tween(SEG_ENTRY_MS, easing = FastOutSlowInEasing),
         label = "entry"
-    )
-    val pulse = rememberInfiniteTransition(label = "band").animateFloat(
-        initialValue = SELECT_PULSE_LOW,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(
-            tween(SELECT_PULSE_MS, easing = FastOutSlowInEasing),
-            RepeatMode.Reverse
-        ),
-        label = "pulse"
     )
 
     // **The controls come out of the hole.**
@@ -1714,7 +1721,19 @@ private fun SegmentRing(
                     // The rim, and its bloom: three strokes of falling alpha and rising width
                     // rather than a blur, because a blur needs API 31 and this app starts at 28.
                     val rim = if (isIn) hue else finish.keyEdge
-                    val heat = if (isIn) finish.glow * lit * (if (isSel) pulse.value else 1f) else 0f
+                    // **No pulse in here, deliberately.**
+                    //
+                    // The selected wedge used to breathe, which meant reading an animated value
+                    // inside this draw — and that invalidates the whole band sixty or a hundred
+                    // and twenty times a second for ever, redrawing eight paths, their blooms
+                    // and their labels even when nothing is happening. It is the difference
+                    // between a panel that costs something while you use it and one that costs
+                    // something the entire time it is open.
+                    //
+                    // Selection is already unmistakable from the brighter rim and the name in
+                    // the hole; the breathing moved to that name, where it animates one small
+                    // layer instead of the whole instrument.
+                    val heat = if (isIn) finish.glow * lit else 0f
                     if (heat > 0f) {
                         listOf(
                             SEG_BLOOM_WIDE to 0.10f,
@@ -1738,17 +1757,16 @@ private fun SegmentRing(
                     // drawing and slower to read, and this one is read at a glance mid-track.
                     val mid = Math.toRadians((a0 + sweep / 2).toDouble())
                     val r = (outer + inner) / 2f
-                    val laid = measurer.measure(
-                        text = AnnotatedString(cell.channel.label),
-                        style = TextStyle(
-                            fontFamily = finish.keyType,
-                            fontSize = finish.keyTypeSize,
-                            fontWeight = FontWeight.Bold,
-                            color = if (isIn) finish.keyInk else finish.keyDim
-                        )
-                    )
+                    // Laid out once and reused, not measured here. Eight labels measured inside
+                    // a draw that runs every frame is around a thousand text layouts a second,
+                    // and text layout is one of the more expensive things in the toolkit — it
+                    // was most of what made this page cost two and a half times the wall.
+                    // The colour is applied at draw time so the cache does not have to be
+                    // rebuilt when an effect is switched in or out.
+                    val laid = labels[i]
                     drawText(
                         textLayoutResult = laid,
+                        color = if (isIn) finish.keyInk else finish.keyDim,
                         topLeft = Offset(
                             center.x + r * cos(mid).toFloat() - laid.size.width / 2f,
                             center.y + r * sin(mid).toFloat() - laid.size.height / 2f
@@ -1826,6 +1844,20 @@ private fun SegmentRing(
 
             // The hole holds the name and nothing else — a dial's window, set in the display
             // face so it reads as part of the machine rather than as a caption.
+            //
+            // This is where the breathing lives now. It is one short string in its own layer, so
+            // the animation costs a layer's alpha per frame instead of redrawing eight wedges,
+            // their blooms and their labels — and read inside `graphicsLayer` it recomposes
+            // nothing at all. Only while something is selected: an idle panel should be still.
+            val alive = rememberInfiniteTransition(label = "alive").animateFloat(
+                initialValue = SELECT_PULSE_LOW,
+                targetValue = 1f,
+                animationSpec = infiniteRepeatable(
+                    tween(SELECT_PULSE_MS, easing = FastOutSlowInEasing),
+                    RepeatMode.Reverse
+                ),
+                label = "alive"
+            )
             Text(
                 text = selected?.label ?: "—",
                 fontFamily = finish.display,
@@ -1833,7 +1865,9 @@ private fun SegmentRing(
                 color = finish.displayInk,
                 letterSpacing = finish.displayTracking,
                 maxLines = 1,
-                modifier = Modifier.align(Alignment.Center)
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .graphicsLayer { alpha = if (selected != null) alive.value else 1f }
             )
         }
     }
