@@ -55,6 +55,15 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.Spring
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.produceState
+import androidx.compose.runtime.withFrameMillis
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.BiasAlignment
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
@@ -483,7 +492,15 @@ fun DeckOverlay(
                 }
             }
         } else if (page == PAGE_LYRICS) {
-            LyricsPage(lyricsFlow = lyrics, positionFlow = positionFlow)
+            LyricsPage(
+                lyricsFlow = lyrics,
+                positionFlow = positionFlow,
+                // A pager composes its neighbours, so this page is alive while you are reading
+                // the tracklist next door — and its frame callback would be advancing a
+                // playhead for words nobody is looking at. Only the page you are actually on
+                // gets to hold a frame loop open.
+                isPlaying = deck.isPlaying && pagerState.currentPage == PAGE_LYRICS
+            )
         } else {
             LazyColumn(
                 modifier = Modifier
@@ -1326,7 +1343,8 @@ private fun NativeEffectsModule(
 @Composable
 private fun LyricsPage(
     lyricsFlow: StateFlow<Lyrics?>,
-    positionFlow: StateFlow<Long>
+    positionFlow: StateFlow<Long>,
+    isPlaying: Boolean
 ) {
     val lyrics by lyricsFlow.collectAsState()
     val words = lyrics
@@ -1341,12 +1359,22 @@ private fun LyricsPage(
         return
     }
 
-    val position by positionFlow.collectAsState()
-    val current = words.lineAt(position)
+    val sampled by positionFlow.collectAsState()
+    val position = rememberSmoothPosition(sampled, isPlaying && words.synced)
+
+    // **Derived, so the page recomposes once per line rather than once per frame.**
+    //
+    // The position underneath this advances every frame, and reading it directly in the body
+    // meant the entire lyric list recomposed sixty times a second to discover that the answer
+    // was usually the same integer — measured at about eight percent of a core, spent almost
+    // entirely on nothing. `derivedStateOf` reads the frame-rate value and publishes only the
+    // line index, so a recomposition happens when the sung line actually changes.
+    val current by remember(words) { derivedStateOf { words.lineAt(position.value) } }
     val listState = rememberLazyListState()
 
-    // Keep the sung line in view, a third of the way down rather than at the top: a lyric sheet
-    // reads better with what is coming next already on screen.
+    // Keep the sung line a third of the way down rather than at the top: a lyric sheet reads
+    // better with what is coming next already on screen. Two lines above it is close enough at
+    // every sheet height, and cheaper than measuring the viewport every frame.
     LaunchedEffect(current) {
         if (current >= 0) {
             runCatching { listState.animateScrollToItem((current - 2).coerceAtLeast(0)) }
@@ -1365,19 +1393,81 @@ private fun LyricsPage(
         LazyColumn(state = listState, modifier = Modifier.fillMaxWidth().fillMaxHeight()) {
             itemsIndexed(words.lines) { index, line ->
                 val sung = words.synced && index == current
+
+                // Animated rather than switched, and both at once: a line that only changes
+                // colour reads as a highlight moving down a list, while one that also grows
+                // reads as the words being *sung*. That is most of the difference between a
+                // lyric sheet and a karaoke machine.
+                val emphasis by animateFloatAsState(
+                    targetValue = if (sung) 1f else 0f,
+                    animationSpec = spring(
+                        dampingRatio = 0.85f,
+                        stiffness = Spring.StiffnessMediumLow
+                    ),
+                    label = "lyricEmphasis"
+                )
+
                 Text(
                     text = line.text,
                     style = MaterialTheme.typography.bodyLarge.copy(
-                        color = if (sung) LabelCream else LabelDim,
+                        // Interpolated rather than picked, so a line brightens as it grows
+                        // instead of snapping at the moment the scale animation starts.
+                        color = lerp(LabelDim, LabelCream, emphasis),
                         fontWeight = if (sung) FontWeight.Bold else FontWeight.Normal,
                         fontSize = if (words.synced) 17.sp else 15.sp
                     ),
-                    modifier = Modifier.padding(vertical = if (words.synced) 5.dp else 3.dp)
+                    modifier = Modifier
+                        .graphicsLayer {
+                            val scale = 1f + 0.07f * emphasis
+                            scaleX = scale
+                            scaleY = scale
+                            // Grown from the left edge. Scaling about the centre slides every
+                            // line sideways as it lights up, which reads as a wobble rather
+                            // than as emphasis.
+                            transformOrigin = TransformOrigin(0f, 0.5f)
+                        }
+                        .padding(vertical = if (words.synced) 5.dp else 3.dp)
                 )
             }
         }
     }
 }
+
+/**
+ * The playhead, interpolated between the twice-a-second samples the player actually publishes.
+ *
+ * **This is what stands between the lyrics and Apple Music, and no amount of animation fixes
+ * it.** `PlaybackRepository` polls the position every 500ms, which is right for a progress bar
+ * — it moves a pixel — and hopeless for lyrics, where it means a line can light up anywhere up
+ * to half a second after it is sung. On a fast verse that is one or two whole lines late.
+ *
+ * Polling faster is the wrong answer: it would cost an IPC per tick and recompose the deck at
+ * whatever rate was chosen. Instead each sample becomes an anchor, and the frame clock carries
+ * the position forward from it — free, because Compose is already ticking, and exact between
+ * anchors because a playhead advancing in real time is precisely what wall-clock milliseconds
+ * measure.
+ *
+ * Only while playing. Paused, the last sample *is* the position.
+ */
+@Composable
+private fun rememberSmoothPosition(sampled: Long, isPlaying: Boolean): State<Long> =
+    produceState(sampled, sampled, isPlaying) {
+        // Paused, or unsynced words that have nothing to follow: the sample *is* the position,
+        // and there is no reason to hold a frame callback open.
+        if (!isPlaying) {
+            value = sampled
+            return@produceState
+        }
+        var anchorFrame = 0L
+        withFrameMillis { anchorFrame = it }
+        while (true) {
+            withFrameMillis { frame ->
+                // Never allowed to run backwards: a new sample arriving slightly behind the
+                // extrapolation would otherwise make the highlight jump back a line.
+                value = maxOf(value, sampled + (frame - anchorFrame))
+            }
+        }
+    }
 
 private fun sourceLabel(source: LyricSource): String = when (source) {
     LyricSource.EMBEDDED -> "FROM THE FILE'S TAG"
