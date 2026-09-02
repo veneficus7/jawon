@@ -2248,6 +2248,7 @@ fun WallSceneScreen(
                 onSpeedChange = viewModel::onSpeedChange,
                 onPitchChange = viewModel::onPitchChange,
                 onPitchCommit = viewModel::onPitchCommit,
+                lyrics = viewModel.lyrics,
                 drivePosition = viewModel.drivePosition,
                 onDriveChange = viewModel::onDriveChange,
                 echoTime = viewModel.echoTime,

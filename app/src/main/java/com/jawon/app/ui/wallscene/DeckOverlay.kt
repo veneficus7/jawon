@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.runtime.LaunchedEffect
@@ -66,6 +67,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.jawon.app.data.local.Track
+import com.jawon.app.data.lyrics.Lyrics
+import com.jawon.app.data.lyrics.LyricSource
 import com.jawon.app.data.playback.EqBand
 import com.jawon.app.data.playback.NativeEffect
 import com.jawon.app.data.playback.NativeEffects
@@ -123,6 +126,8 @@ fun DeckOverlay(
     onSpeedChange: (Float) -> Unit,
     onPitchChange: (Float) -> Unit,
     onPitchCommit: () -> Unit,
+    /** The current track's words, for the third page. */
+    lyrics: StateFlow<Lyrics?>,
     /** Saturation, 0 clean … 1 broken. See [com.jawon.app.playback.Drive]. */
     drivePosition: StateFlow<Float>,
     onDriveChange: (Float) -> Unit,
@@ -334,6 +339,9 @@ fun DeckOverlay(
             DeckTab("SOUND", selected = pagerState.currentPage == PAGE_SOUND) {
                 scope.launch { pagerState.animateScrollToPage(PAGE_SOUND) }
             }
+            DeckTab("LYRICS", selected = pagerState.currentPage == PAGE_LYRICS) {
+                scope.launch { pagerState.animateScrollToPage(PAGE_LYRICS) }
+            }
 
             Box(Modifier.weight(1f))
 
@@ -474,6 +482,8 @@ fun DeckOverlay(
                     }
                 }
             }
+        } else if (page == PAGE_LYRICS) {
+            LyricsPage(lyricsFlow = lyrics, positionFlow = positionFlow)
         } else {
             LazyColumn(
                 modifier = Modifier
@@ -1077,7 +1087,8 @@ private const val COMPACT_BELOW = 0.44f
  */
 private const val PAGE_TRACKS = 0
 private const val PAGE_SOUND = 1
-private const val PAGE_COUNT = 2
+private const val PAGE_LYRICS = 2
+private const val PAGE_COUNT = 3
 
 /**
  * Tempo and key, as a pair of centre-detented strips.
@@ -1298,4 +1309,77 @@ private fun NativeEffectsModule(
         if (NativeEffect.WIDTH in available) RackSlider("WIDTH", width, onWidth)
         if (NativeEffect.LOUDNESS in available) RackSlider("LOUD", loudness, onLoudness)
     }
+}
+
+/**
+ * The words, as a page rather than a control.
+ *
+ * **Why lyrics get a page and not a panel.** Everything else in this deck is something you
+ * operate; this is something you read, and reading wants the whole width and as much height as
+ * the sheet has been dragged to. Cramming it in beside the tracklist would make both worse.
+ *
+ * Timed lyrics scroll themselves and light the current line. Untimed ones are a page you scroll
+ * yourself — which is the common case offline, because the tag format that carries timing is
+ * written by almost nothing. The source is named at the top for exactly that reason: it explains
+ * why one record follows along and the next does not.
+ */
+@Composable
+private fun LyricsPage(
+    lyricsFlow: StateFlow<Lyrics?>,
+    positionFlow: StateFlow<Long>
+) {
+    val lyrics by lyricsFlow.collectAsState()
+    val words = lyrics
+
+    if (words == null || words.isEmpty) {
+        Box(Modifier.fillMaxWidth().fillMaxHeight(), contentAlignment = Alignment.Center) {
+            Text(
+                "NO LYRICS FOR THIS TRACK",
+                style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = 11.sp)
+            )
+        }
+        return
+    }
+
+    val position by positionFlow.collectAsState()
+    val current = words.lineAt(position)
+    val listState = rememberLazyListState()
+
+    // Keep the sung line in view, a third of the way down rather than at the top: a lyric sheet
+    // reads better with what is coming next already on screen.
+    LaunchedEffect(current) {
+        if (current >= 0) {
+            runCatching { listState.animateScrollToItem((current - 2).coerceAtLeast(0)) }
+        }
+    }
+
+    Column(Modifier.fillMaxWidth().fillMaxHeight()) {
+        Text(
+            text = when {
+                words.synced -> "SYNCED · ${sourceLabel(words.source)}"
+                else -> sourceLabel(words.source)
+            },
+            style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = 9.sp),
+            modifier = Modifier.padding(top = 8.dp, bottom = 6.dp)
+        )
+        LazyColumn(state = listState, modifier = Modifier.fillMaxWidth().fillMaxHeight()) {
+            itemsIndexed(words.lines) { index, line ->
+                val sung = words.synced && index == current
+                Text(
+                    text = line.text,
+                    style = MaterialTheme.typography.bodyLarge.copy(
+                        color = if (sung) LabelCream else LabelDim,
+                        fontWeight = if (sung) FontWeight.Bold else FontWeight.Normal,
+                        fontSize = if (words.synced) 17.sp else 15.sp
+                    ),
+                    modifier = Modifier.padding(vertical = if (words.synced) 5.dp else 3.dp)
+                )
+            }
+        }
+    }
+}
+
+private fun sourceLabel(source: LyricSource): String = when (source) {
+    LyricSource.EMBEDDED -> "FROM THE FILE'S TAG"
+    LyricSource.SIDECAR -> "FROM AN .LRC BESIDE IT"
 }

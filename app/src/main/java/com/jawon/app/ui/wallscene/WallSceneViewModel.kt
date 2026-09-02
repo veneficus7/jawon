@@ -13,6 +13,7 @@ import com.jawon.app.data.playback.AudioRouteReader
 import com.jawon.app.data.playback.EqBand
 import com.jawon.app.data.playback.EqualizerController
 import com.jawon.app.data.playback.PlaybackRepository
+import com.jawon.app.data.lyrics.Lyrics
 import com.jawon.app.data.prefs.AppPreferences
 import com.jawon.app.playback.SleepTimer
 import com.jawon.app.ui.common.qualityReadoutSource
@@ -25,6 +26,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
@@ -64,6 +66,8 @@ class WallSceneViewModel @Inject constructor(
     private val equalizer: EqualizerController,
     /** Bass, width, reverb and loudness — whichever of them this phone has. */
     private val nativeEffects: com.jawon.app.data.playback.NativeEffects,
+    /** Finds the current track's words. See [com.jawon.app.data.lyrics.LyricsRepository]. */
+    private val lyricsRepository: com.jawon.app.data.lyrics.LyricsRepository,
     private val preferences: AppPreferences,
     private val audioRouteReader: AudioRouteReader,
     /**
@@ -281,6 +285,20 @@ class WallSceneViewModel @Inject constructor(
             )
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), DeckState())
+
+    /**
+     * The current track's words, or null when it has none.
+     *
+     * Keyed on the track rather than the album, and re-read only when the track actually
+     * changes — `deck` re-emits on every playback tick, and re-reading a megabyte of tag at
+     * that rate would be exactly the file I/O ENGINEERING.md rule 5 forbids. `LyricsRepository`
+     * caches what it finds, so returning to a track costs nothing.
+     */
+    val lyrics: StateFlow<Lyrics?> = deck
+        .map { it.currentTrack }
+        .distinctUntilChanged { a, b -> a?.id == b?.id }
+        .map { track -> track?.let { lyricsRepository.lyricsFor(it) } }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
     /**
      * Takes an album off the shelf.
