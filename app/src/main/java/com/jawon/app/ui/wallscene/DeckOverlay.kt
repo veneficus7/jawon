@@ -88,6 +88,7 @@ import com.jawon.app.ui.common.qualityReadoutSource
 import com.jawon.app.playback.DjFilter
 import com.jawon.app.playback.Drive
 import com.jawon.app.playback.Echo
+import com.jawon.app.playback.RackChannel
 import com.jawon.app.playback.SleepTimer
 import com.jawon.app.playback.Varispeed
 import com.jawon.app.ui.theme.CrateEdge
@@ -157,6 +158,9 @@ fun DeckOverlay(
     onWidthChange: (Float) -> Unit,
     onReverbChange: (Int) -> Unit,
     onLoudnessChange: (Float) -> Unit,
+    /** Which of the six channels on the rack's face are in circuit. See [RackFace]. */
+    engagedChannels: StateFlow<Set<RackChannel>>,
+    onChannelToggle: (RackChannel) -> Unit,
     onPlayPause: () -> Unit,
     onNext: () -> Unit,
     onPrevious: () -> Unit,
@@ -416,30 +420,40 @@ fun DeckOverlay(
                     .verticalScroll(rememberScrollState())
                     .padding(top = 10.dp)
             ) {
-                FilterStrip(positionFlow = filterPosition, onChange = onFilterChange)
-
-                // Speed only. **Pitch is not drawn, and that is the one real casualty here.**
+                // **The face: six pads over six faders, all live at once.**
                 //
-                // Moving it quickly across its centre wedges the player: each crossing adds or
-                // removes Media3's time-stretcher from the audio pipeline, and doing that a few
-                // dozen times a second leaves the playback thread spinning at a full core with
-                // no progress at all — 607 jiffies per six seconds against a healthy 8 — until
-                // the watchdog reports *"Player stuck playing with no progress for 10000 ms"*.
-                // The phone gets hot enough to throttle and the deck sits at 0:00.
+                // The pad says whether an effect is in, the fader says how much, and the two
+                // stay independent — a bypassed channel keeps its fader exactly where it was,
+                // so tapping it back in lands on the same amount instead of making you find it
+                // again by hand. Sweeping the filter while pushing the echo's feedback is one
+                // gesture with two thumbs here, which is the move this whole page exists for
+                // and the one thing a layout that shows a single module at a time cannot do.
                 //
-                // Any *settled* pitch is cheap, at any amount: measured at 14 even an octave
-                // down. It is only the crossing that breaks it, so the control comes back once
-                // there is a way to change it that cannot thrash the pipeline.
-                VarispeedModule(
-                    speedFlow = speedPosition,
-                    pitchFlow = pitchPosition,
-                    onSpeed = onSpeedChange,
-                    onPitch = onPitchChange,
-                    onPitchCommit = onPitchCommit
+                // What is *not* here is everything you set rather than play: pitch, the reverb
+                // room, loudness, the equaliser. See [RackFace] for why six is the ceiling.
+                RackFace(
+                    channels = rackChannels(
+                        filter = filterPosition.collectAsState().value,
+                        speed = speedPosition.collectAsState().value,
+                        drive = drivePosition.collectAsState().value,
+                        echoMix = echoMix.collectAsState().value,
+                        bass = bassStrength.collectAsState().value,
+                        width = stereoWidth.collectAsState().value,
+                        available = nativeAvailable.collectAsState().value,
+                        onFilterChange = onFilterChange,
+                        onSpeedChange = onSpeedChange,
+                        onDriveChange = onDriveChange,
+                        onEchoMix = onEchoMix,
+                        onBassChange = onBassChange,
+                        onWidthChange = onWidthChange
+                    ),
+                    engaged = engagedChannels.collectAsState().value,
+                    onToggle = onChannelToggle
                 )
 
-                DriveModule(positionFlow = drivePosition, onChange = onDriveChange)
-
+                // The echo's shape, under the face. Time and feedback are not presence — they
+                // are what the repeats sound like — and they keep working while the mix fader
+                // above decides whether any of it is audible.
                 EchoModule(
                     timeFlow = echoTime,
                     feedbackFlow = echoFeedback,
@@ -447,6 +461,16 @@ fun DeckOverlay(
                     onTime = onEchoTime,
                     onFeedback = onEchoFeedback,
                     onMix = onEchoMix
+                )
+
+                // Still the old stack below, until the drawer lands. Everything here is
+                // reachable and nothing has moved twice.
+                VarispeedModule(
+                    speedFlow = speedPosition,
+                    pitchFlow = pitchPosition,
+                    onSpeed = onSpeedChange,
+                    onPitch = onPitchChange,
+                    onPitchCommit = onPitchCommit
                 )
 
                 NativeEffectsModule(

@@ -15,6 +15,7 @@ import com.jawon.app.data.playback.EqualizerController
 import com.jawon.app.data.playback.PlaybackRepository
 import com.jawon.app.data.lyrics.Lyrics
 import com.jawon.app.data.prefs.AppPreferences
+import com.jawon.app.playback.RackChannel
 import com.jawon.app.playback.SleepTimer
 import com.jawon.app.ui.common.qualityReadoutSource
 import com.jawon.app.ui.theme.RoomScheme
@@ -208,7 +209,7 @@ class WallSceneViewModel @Inject constructor(
      */
     init {
         viewModelScope.launch {
-            combine(rack.speed, rack.pitchApplied) { speed, pitch -> speed to pitch }
+            combine(rack.speedApplied, rack.pitchApplied) { speed, pitch -> speed to pitch }
                 .conflate()
                 .collect { (speed, pitch) ->
                     playbackRepository.setSpeedAndPitch(
@@ -262,6 +263,26 @@ class WallSceneViewModel @Inject constructor(
     fun onWidthChange(value: Float) = nativeEffects.setStereoWidth(value)
     fun onReverbChange(preset: Int) = nativeEffects.setReverbPreset(preset)
     fun onLoudnessChange(value: Float) = nativeEffects.setLoudnessGain(value)
+
+    /** Which of the rack's six channels are in circuit. See [RackChannel]. */
+    val engagedChannels: StateFlow<Set<RackChannel>> = rack.engaged
+
+    /**
+     * A pad on the rack's face has been tapped: put that channel in, or take it out.
+     *
+     * Two of the six are the platform's own effects rather than this app's, and they are told
+     * separately — [RackState] is the single answer to "what is in circuit", but it does not own
+     * the hardware those two run on, so the toggle is passed along here rather than observed.
+     */
+    fun onChannelToggle(channel: RackChannel) {
+        rack.toggleEngaged(channel)
+        val engaged = rack.isEngaged(channel)
+        when (channel) {
+            RackChannel.BASS -> nativeEffects.setBassEngaged(engaged)
+            RackChannel.WIDTH -> nativeEffects.setWidthEngaged(engaged)
+            else -> Unit
+        }
+    }
 
     /** The echo's three knobs. See [com.jawon.app.playback.Echo]. */
     val echoTime: StateFlow<Float> = rack.echoTime

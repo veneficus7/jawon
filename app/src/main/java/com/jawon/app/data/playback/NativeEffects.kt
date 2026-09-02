@@ -115,6 +115,35 @@ class NativeEffects @Inject constructor(
         applyWidth()
     }
 
+    // ---- the rack's bypass ------------------------------------------------------------
+    //
+    // Two of the rack's six channels are these, and a bypassed channel has to go silent while
+    // its fader stays where the user left it. The stored strength is therefore untouched here
+    // and only [applyBass]/[applyWidth] consult these, which is why a bypass reads as a zero
+    // strength: that already means "released of duty" below, so switching a channel out also
+    // stops it costing anything.
+    //
+    // Held here rather than read from RackState so this class keeps no dependency on the rack —
+    // the caller that flips the channel tells us, in the same breath.
+
+    @Volatile
+    private var bassEngaged = true
+
+    @Volatile
+    private var widthEngaged = true
+
+    fun setBassEngaged(engaged: Boolean) {
+        if (bassEngaged == engaged) return
+        bassEngaged = engaged
+        applyBass()
+    }
+
+    fun setWidthEngaged(engaged: Boolean) {
+        if (widthEngaged == engaged) return
+        widthEngaged = engaged
+        applyWidth()
+    }
+
     fun setReverbPreset(preset: Int) {
         preferences.setReverbPreset(preset.coerceIn(0, REVERB_PRESETS.lastIndex))
         applyReverb()
@@ -131,7 +160,7 @@ class NativeEffects @Inject constructor(
 
     private fun applyBass() {
         val effect = bass ?: return
-        val value = preferences.bassStrength.value
+        val value = if (bassEngaged) preferences.bassStrength.value else 0f
         runCatching {
             // Off means *released of duty*, not zero strength: an enabled effect with a zero
             // setting still sits in the chain doing arithmetic on every sample.
@@ -142,7 +171,7 @@ class NativeEffects @Inject constructor(
 
     private fun applyWidth() {
         val effect = virtualizer ?: return
-        val value = preferences.stereoWidth.value
+        val value = if (widthEngaged) preferences.stereoWidth.value else 0f
         runCatching {
             effect.enabled = value > OFF
             if (value > OFF) effect.setStrength((value * MAX_STRENGTH).toInt().toShort())

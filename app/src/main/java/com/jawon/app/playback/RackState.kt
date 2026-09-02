@@ -7,6 +7,16 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 /**
+ * The six things the rack's face can put in or take out.
+ *
+ * Six because that is what fits across a phone at a thumb's width — 52dp a channel, and a
+ * seventh would take every one of them below the size a thumb can actually hit. Everything the
+ * rack can do that is *not* on this list is something you set rather than something you play,
+ * and those live in the drawer instead.
+ */
+enum class RackChannel { FILTER, SPEED, DRIVE, ECHO, BASS, WIDTH }
+
+/**
  * Where the effects rack's controls live, between the finger turning them and the audio thread
  * reading them.
  *
@@ -19,9 +29,71 @@ import javax.inject.Singleton
  * allocate and never wait on a lock — it reads the latest value and moves on. `@Volatile` is
  * exactly the right amount of synchronisation for that: the audio thread is guaranteed to see a
  * recent value, and a control that arrives one buffer late is inaudible.
+ *
+ * ## Target and effective
+ *
+ * Every channel now holds two numbers rather than one: where its fader is sitting, and what the
+ * audio is actually being given. They differ when the channel is bypassed, and keeping them
+ * apart is the entire reason the face works — a bypassed echo stays visibly set to the mix you
+ * chose, so tapping it back in returns *exactly* there rather than making you find it again by
+ * hand. Dragging a fader up from zero is not a musical gesture; throwing a switch is.
+ *
+ * The flows named after each control carry the **target**, because that is what the fader draws.
+ * The `@Volatile` fields carry the **effective** value, because that is what the audio wants.
  */
 @Singleton
 class RackState @Inject constructor() {
+
+    // ---- what is in and what is out ---------------------------------------------------
+
+    private val _engaged = MutableStateFlow(RackChannel.values().toSet())
+
+    /**
+     * Which channels are currently in circuit.
+     *
+     * Everything starts engaged, which changes nothing about how the rack behaves out of the
+     * box: every fader already rests at a neutral value, so an engaged channel doing nothing
+     * and a bypassed one sound identical until you move something.
+     *
+     * [RackChannel.BASS] and [RackChannel.WIDTH] are in this set even though their values live
+     * over in `NativeEffects` rather than here. That is deliberate: "what is in circuit" is one
+     * question with one answer, and splitting it across two owners so each could keep its own
+     * flags would mean the face had two places to ask.
+     */
+    val engaged: StateFlow<Set<RackChannel>> = _engaged.asStateFlow()
+
+    fun isEngaged(channel: RackChannel): Boolean = channel in _engaged.value
+
+    /** Put a channel in or take it out, keeping wherever its fader was set. */
+    fun setEngaged(channel: RackChannel, engaged: Boolean) {
+        val next = if (engaged) _engaged.value + channel else _engaged.value - channel
+        if (next == _engaged.value) return
+        _engaged.value = next
+        republish()
+    }
+
+    fun toggleEngaged(channel: RackChannel) = setEngaged(channel, channel !in _engaged.value)
+
+    /**
+     * Push every target back through the bypass, after the engaged set has changed.
+     *
+     * Cheap, and called only on a tap. Recomputing all of them rather than just the one that
+     * changed costs nothing and removes a class of bug where a channel is left holding a stale
+     * effective value — which is the same mistake the discard animation once made with a pooled
+     * node's scale, and it took an invisible album to find.
+     */
+    private fun republish() {
+        filterPosition = through(RackChannel.FILTER, _filter.value, CENTRE)
+        drivePosition = through(RackChannel.DRIVE, _drive.value, 0f)
+        echoMixPosition = through(RackChannel.ECHO, _echoMix.value, 0f)
+        _speedApplied.value = through(RackChannel.SPEED, _speed.value, CENTRE)
+    }
+
+    /** The value the audio should get: the target when the channel is in, neutral when it is out. */
+    private fun through(channel: RackChannel, target: Float, neutral: Float): Float =
+        if (channel in _engaged.value) target else neutral
+
+    // ---- the filter. See [DjFilter] ---------------------------------------------------
 
     private val _filter = MutableStateFlow(CENTRE)
 
@@ -34,8 +106,8 @@ class RackState @Inject constructor() {
 
     fun setFilter(position: Float) {
         val clamped = position.coerceIn(-1f, 1f)
-        filterPosition = clamped
         _filter.value = clamped
+        filterPosition = through(RackChannel.FILTER, clamped, CENTRE)
     }
 
     // ---- tempo and key. See [Varispeed] -----------------------------------------------
@@ -46,6 +118,18 @@ class RackState @Inject constructor() {
 
     private val _speed = MutableStateFlow(CENTRE)
     val speed: StateFlow<Float> = _speed.asStateFlow()
+
+    /**
+     * The speed the player is told about — the target, or neutral while the channel is out.
+     *
+     * Separate from [speed] for the same reason [pitchApplied] is separate from [pitch], though
+     * for a milder version of the same hazard: handing the player a rate is not a cheap setter,
+     * it reconfigures the audio pipeline. Bypassing is one crossing per tap rather than the
+     * dozens a second a dragging finger produces, and it reaches the player through the same
+     * conflated, rate-limited collector everything else does.
+     */
+    private val _speedApplied = MutableStateFlow(CENTRE)
+    val speedApplied: StateFlow<Float> = _speedApplied.asStateFlow()
 
     /**
      * Where the pitch control is, for the readout — updated continuously as it is dragged.
@@ -76,7 +160,9 @@ class RackState @Inject constructor() {
     val pitchApplied: StateFlow<Float> = _pitchApplied.asStateFlow()
 
     fun setSpeed(position: Float) {
-        _speed.value = position.coerceIn(-1f, 1f)
+        val clamped = position.coerceIn(-1f, 1f)
+        _speed.value = clamped
+        _speedApplied.value = through(RackChannel.SPEED, clamped, CENTRE)
     }
 
     fun setPitch(position: Float) {
@@ -101,8 +187,8 @@ class RackState @Inject constructor() {
 
     fun setDrive(position: Float) {
         val clamped = position.coerceIn(0f, 1f)
-        drivePosition = clamped
         _drive.value = clamped
+        drivePosition = through(RackChannel.DRIVE, clamped, 0f)
     }
 
     // ---- the echo. See [Echo] ---------------------------------------------------------
@@ -110,6 +196,10 @@ class RackState @Inject constructor() {
     // Three knobs, each 0..1, because that is what a delay you *play* needs: how long the
     // repeat is, how many there are, and how much of it you hear. Mix rests at zero — an
     // effect you throw in has to start out of the way.
+    //
+    // Only the mix answers to the bypass. Time and feedback are shape rather than presence:
+    // changing them while the echo is out is free, and silently resetting them would throw away
+    // a setting the user is in the middle of dialling in.
 
     private val _echoTime = MutableStateFlow(DEFAULT_ECHO_TIME)
     val echoTime: StateFlow<Float> = _echoTime.asStateFlow()
@@ -146,8 +236,8 @@ class RackState @Inject constructor() {
 
     fun setEchoMix(position: Float) {
         val clamped = position.coerceIn(0f, 1f)
-        echoMixPosition = clamped
         _echoMix.value = clamped
+        echoMixPosition = through(RackChannel.ECHO, clamped, 0f)
     }
 
     companion object {

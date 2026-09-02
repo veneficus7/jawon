@@ -2286,6 +2286,8 @@ fun WallSceneScreen(
                 onEqBandChange = viewModel::onEqBandChanged,
                 onEqPreset = viewModel::onEqPreset,
                 onEqReset = viewModel::onEqReset,
+                engagedChannels = viewModel.engagedChannels,
+                onChannelToggle = viewModel::onChannelToggle,
                 deckPage = deckPage,
                 onDeckPageChange = {
                     deckPage = it
