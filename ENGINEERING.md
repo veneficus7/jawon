@@ -105,26 +105,46 @@ and a green build says nothing about it.
 8. **Check the thermal state before believing any frame rate.**
    `adb shell dumpsys thermalservice | grep "Thermal Status"` must read 0. The same
    build measures 124fps cool and 88fps hot; a 22% "regression" was once recorded
-   on exactly this mistake.
+   on exactly this mistake. Charging counts too — the battery sat at 42.7°C after an
+   afternoon plugged in, which is most of a thermal 3 on its own.
 
-9. **Samsung's logcat is unusable for app logs** — telephony spam buries them.
+9. **`dumpsys gfxinfo` cannot see this app.** The room is rendered by Filament into its
+   own surface and never goes through the View system, so gfxinfo counts only the
+   Compose overlay: it reported *0 frames* with the deck closed and *43% jank* with it
+   open, neither of which meant anything. Measure CPU instead — fields 14+15 of
+   `/proc/<pid>/stat` over a fixed interval, and the same per thread under `task/<tid>/`
+   to see which part is burning it. With the deck open that separates cleanly into
+   `FEngine::loop` (the room, a flat ~0.39 of a core), `RenderThread` (Compose drawing)
+   and `main` (composition). Compare **back to back in one session**: absolutes move a
+   long way with thermal state, so an A/B a minute apart is trustworthy where two runs
+   an hour apart are not.
+
+10. **An animation that recomposes nothing can still be the most expensive thing on
+    screen.** Reading an animated value inside `graphicsLayer` is the standard advice and
+    it is right about *recomposition* — but a large translucent layer over the Filament
+    surface still has to be re-blended by the compositor every time its alpha changes.
+    The deck's window halo cost a third of the whole panel that way (868 → 576
+    jiffies/10s when made static) for a pulse that was close to invisible. Animate small
+    layers, not screen-wide washes.
+
+11. **Samsung's logcat is unusable for app logs** — telephony spam buries them.
    Write to `context.filesDir` and read it back with
    `adb shell run-as com.jawon.app cat files/<name>.log`.
 
-10. **`sqlite3` is not on the device.** Copy the database off instead:
+12. **`sqlite3` is not on the device.** Copy the database off instead:
     `adb shell "run-as com.jawon.app cat databases/javon.db" > out.db`.
 
-11. **A case vanishing from the wall proves nothing.** The library spans several
+13. **A case vanishing from the wall proves nothing.** The library spans several
     shelves and the camera frames about one row, so "it disappeared" usually means
     it scrolled. Verify against the database.
 
-12. **One log line beats three screenshots.** Screenshots are expensive and
+14. **One log line beats three screenshots.** Screenshots are expensive and
     ambiguous; `worldToScreenPoint` and a text log settle position questions
     outright. Reach for instrumentation first, not last.
 
 ### The audio pipeline
 
-13. **Toggling `PlaybackParameters` in and out of neutral wedges the player.**
+15. **Toggling `PlaybackParameters` in and out of neutral wedges the player.**
     Setting a pitch or speed *away from* 1.0 is cheap at any amount — an octave
     down measured 14 jiffies per six seconds against a baseline of 10. Crossing
     back and forth through neutral is not: each crossing adds or removes Media3's
@@ -137,18 +157,18 @@ and a green build says nothing about it.
     crossing, not the frequency. The pitch control is withdrawn until there is a way
     to change it that cannot thrash the pipeline.
 
-14. **Measure the playback thread, not the process.** `top` is useless here — the
+16. **Measure the playback thread, not the process.** `top` is useless here — the
     whole process looked idle while one thread burned a core. Find the thread and
     diff `utime+stime` from `/proc/<pid>/task/<tid>/stat` over a fixed interval;
     600 jiffies per six seconds is one full core. `state=R` with an empty
     `syscall` file proves a userspace spin rather than a block.
 
-15. **Nothing was listening for `onPlayerError`,** so a wedged pipeline surfaced
+17. **Nothing was listening for `onPlayerError`,** so a wedged pipeline surfaced
     only as a stuck deck and a hot phone. `PlaybackService` now logs it. Without
     that listener the exception genuinely goes nowhere — Media3 does not log every
     one itself.
 
-16. **Bisect by deleting, not by reading.** Three separate wrong causes were
+18. **Bisect by deleting, not by reading.** Three separate wrong causes were
     argued convincingly from the code before the empty-`setAudioProcessors` test
     settled it in one run: the app's own DSP was innocent the whole time.
 
