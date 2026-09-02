@@ -503,11 +503,11 @@ private const val MAX_LOUD_DB = 12f
 
 // The cell colours. Enough of a spread that a thumb finds a cell by its bar rather than by
 // reading it, and drawn from the palette the app already owns rather than a new set.
-private val HUE_FILTER = LampAmber
+private val HUE_FILTER = Color(0xFFF0A93C)
 private val HUE_SPEED = Color(0xFF7FB2E5)
 private val HUE_PITCH = Color(0xFF7FB2E5)
 private val HUE_DRIVE = Color(0xFFE84D7A)
-private val HUE_ECHO = OxideTeal
-private val HUE_SPACE = LampAmber
-private val HUE_TONE = LabelCream
-private val HUE_EQ = LabelCream
+private val HUE_ECHO = Color(0xFF2F7D71)
+private val HUE_SPACE = Color(0xFFF0A93C)
+private val HUE_TONE = Color(0xFFEFE3CC)
+private val HUE_EQ = Color(0xFFEFE3CC)

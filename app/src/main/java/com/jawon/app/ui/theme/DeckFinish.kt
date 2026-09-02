@@ -72,7 +72,7 @@ enum class DeckWindowGlass(
     val size: TextUnit
 ) {
     /** The shop's own: warm mono on near-black. */
-    AMBER(Color(0xFF0E0B09), Color(0xFF2A2119), 5.dp, LampAmber, 0.dp, JetBrainsMonoFamily, 13.sp),
+    AMBER(Color(0xFF0E0B09), Color(0xFF2A2119), 5.dp, MidnightPalette.lampAmber, 0.dp, JetBrainsMonoFamily, 13.sp),
 
     /**
      * A vacuum-fluorescent tube. Cyan-green, enormous, and legible at arm's length across a dark
@@ -81,48 +81,13 @@ enum class DeckWindowGlass(
      */
     TUBE(Color(0xFF0A100E), Color(0xFF2A302E), 4.dp, Color(0xFF5FF0E0), 7.dp, Vt323Family, 19.sp),
 
+    /** A neon bar sign behind glass — the one display that is not a machine readout. */
+    ROSE(Color(0xFF120A0E), Color(0xFF2E1A22), 5.dp, Color(0xFFFF5C8A), 6.dp, Vt323Family, 19.sp),
+
     /** Four-pixel green on black: the desktop player, not the hi-fi. */
     PIXEL(Color(0xFF050805), Color(0xFF1A1A1A), 2.dp, Color(0xFF25F06A), 5.dp, SilkscreenFamily, 11.sp)
 }
 
-/**
- * The decks you can actually choose between.
- *
- * **Four named machines, not a matrix.** A plate and a glass are separate ideas internally, and
- * that is what lets the era live in the window without dragging a metal front along with it —
- * but they are not two pickers. Nobody wants to assemble a deck out of parts; they want to pick
- * one, and these are the four combinations worth having.
- */
-enum class DeckStyle(
-    val displayName: String,
-    val plate: DeckPlate,
-    val glass: DeckWindowGlass,
-    val blurb: String
-) {
-    /** The deck as it has always been, and the default. Nothing happens to anyone by surprise. */
-    SHOP("Shop", DeckPlate.GLASS, DeckWindowGlass.AMBER, "The room's own, in amber."),
-
-    /**
-     * The era in the window and nowhere else.
-     *
-     * The owner's own observation, turned into a deck: the display was the one part of the
-     * period finish he liked, and the faceplate was the part that broke the room. This is that
-     * finding — a nineties tube glowing in a shop that still reads through the panel behind it.
-     */
-    TUBE("Tube", DeckPlate.GLASS, DeckWindowGlass.TUBE, "The room's own, with a 1996 tube."),
-
-    /** The full component: machined aluminium lit by the lamp, with the tube in it. */
-    SEPARATES("Separates", DeckPlate.BRUSHED, DeckWindowGlass.TUBE, "Brushed aluminium, lit by the room."),
-
-    /** The beige PC it all got ripped onto. */
-    SKIN("Skin", DeckPlate.CHROME, DeckWindowGlass.PIXEL, "Bevelled chrome and four-pixel type.");
-
-    companion object {
-        /** Tolerant of a stored name that no longer exists, e.g. after a rename. */
-        fun fromName(name: String?): DeckStyle =
-            entries.firstOrNull { it.name == name } ?: SHOP
-    }
-}
 
 /**
  * A style, resolved against the room that is lighting it.
@@ -177,9 +142,9 @@ data class DeckFinish(
          * The keys stay translucent in every combination. A key you can see the record through
          * is the difference between a panel in a room and a panel over a picture of one.
          */
-        fun of(style: DeckStyle, scheme: RoomScheme): DeckFinish {
-            val plate = style.plate
-            val glass = style.glass
+        fun of(scheme: RoomScheme): DeckFinish {
+            val plate = scheme.plate
+            val glass = scheme.glass
 
             val lamp = Color(scheme.key[0], scheme.key[1], scheme.key[2])
             val lit = lerp(plate.base, lamp, plate.litness)
@@ -187,8 +152,10 @@ data class DeckFinish(
             // The plate falls off toward the bottom, away from the lamp above it — the same
             // reason the room's own wall darkens toward the floor.
             val low = lerp(lit, Color.Black, if (plate.pale) 0.18f else 0.34f)
-            val ink = if (plate.pale) Color(0xFF1C201E) else LabelCream
-            val dim = if (plate.pale) Color(0xFF5A605E) else LabelDim
+            // On a dark plate the deck simply uses the mode's own lettering; a pale one has to
+            // invert, because cream on aluminium is unreadable.
+            val ink = if (plate.pale) Color(0xFF1C201E) else scheme.palette.labelCream
+            val dim = if (plate.pale) Color(0xFF5A605E) else scheme.palette.labelDim
 
             // Keys are wells cut into the plate: darker than it, and see-through, so the room
             // reads faintly through the whole rack.
@@ -217,8 +184,8 @@ data class DeckFinish(
 
                 key = keyBase.copy(alpha = KEY_ALPHA),
                 keyEdge = lerp(lit, Color.Black, 0.55f).copy(alpha = KEY_EDGE_ALPHA),
-                keyInk = if (plate.pale) Color(0xFFE8ECEA) else LabelCream,
-                keyDim = if (plate.pale) Color(0xFF9AA2A0) else LabelDim,
+                keyInk = if (plate.pale) Color(0xFFE8ECEA) else scheme.palette.labelCream,
+                keyDim = if (plate.pale) Color(0xFF9AA2A0) else scheme.palette.labelDim,
                 keyRadius = plate.cornerRadius,
                 keyType = if (plate.bevelled) SilkscreenFamily else JetBrainsMonoFamily,
                 keyTypeSize = if (plate.bevelled) 6.sp else 8.sp,
@@ -232,7 +199,7 @@ data class DeckFinish(
         }
 
         /** What the deck looks like before anyone has chosen anything. */
-        val Default: DeckFinish get() = of(DeckStyle.SHOP, RoomScheme.MIDNIGHT_SHOP)
+        val Default: DeckFinish get() = of(RoomScheme.MIDNIGHT_SHOP)
     }
 }
 

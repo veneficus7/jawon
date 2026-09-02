@@ -13,9 +13,11 @@ import androidx.compose.ui.graphics.Color
  * cassette modes are three more rooms before one is finished); it does not require the one
  * room to be exactly one colour forever.
  *
- * Three, because the tester who asked for this said three is enough, and because each one
- * has to be tuned against real artwork on a real screen — a dozen half-considered palettes
- * would be worth less than three that were looked at.
+ * Four, and each one is a whole look rather than a palette: the room, the light in it, and the
+ * machine you play the record on, chosen together. They were briefly two settings and the
+ * result was a deck that did not belong to its own room. Each has to be tuned against real
+ * artwork on a real screen, so a dozen half-considered ones would be worth less than four that
+ * were looked at.
  *
  * **Not everything can change while the app is running.** The lamp and rim colours are
  * written onto the live lights, and the wall and shelf materials rebuild with the scheme, so
@@ -40,7 +42,25 @@ enum class RoomScheme(
     /** The shelf boards themselves. */
     val board: Color,
     /** The 2D accent — labels, the version stamp, confirm buttons. */
-    val accent: Color
+    val accent: Color,
+    /**
+     * What the deck in this room is made of, and what glows in its window.
+     *
+     * **The deck is part of the scheme, not a second setting.** They were separate for exactly
+     * one release, and the result was a machine that did not belong to the room it was standing
+     * in — a cold grey front in a warm shop. A room and the thing you play records on in it are
+     * one design decision, so this is one choice.
+     */
+    val plate: DeckPlate,
+    val glass: DeckWindowGlass,
+    /**
+     * The whole app in this mode, not just the room.
+     *
+     * Settings, Add Album, the shelf manager and the deck all read from here, so picking a mode
+     * changes every screen rather than only the lamp. That was the gap: a scheme used to recolour
+     * the room and one accent and leave the rest of the app the same brown.
+     */
+    val palette: Palette
 ) {
     /**
      * The original, and the one everything else was tuned against: a warm tungsten spot in a
@@ -54,7 +74,10 @@ enum class RoomScheme(
         void = floatArrayOf(0.071f, 0.055f, 0.043f),
         wall = Color(0xFF1A1410),
         board = Color(0xFF2F2318),
-        accent = LampAmber
+        accent = MidnightPalette.lampAmber,
+        plate = DeckPlate.GLASS,
+        glass = DeckWindowGlass.AMBER,
+        palette = MidnightPalette
     ),
 
     /**
@@ -72,7 +95,13 @@ enum class RoomScheme(
         void = floatArrayOf(0.043f, 0.055f, 0.071f),
         wall = Color(0xFF10141A),
         board = Color(0xFF1E262F),
-        accent = Color(0xFF7FB2E5)
+        // The cyan of the tube, so the room and the machine in it agree about what colour
+        // the app is. A striplight over brushed aluminium is the one pairing here that is
+        // historically exact: this is what a hi-fi separate actually sat in.
+        accent = Color(0xFF5FF0E0),
+        plate = DeckPlate.BRUSHED,
+        glass = DeckWindowGlass.TUBE,
+        palette = ColdPalette
     ),
 
     /**
@@ -91,7 +120,32 @@ enum class RoomScheme(
         void = floatArrayOf(0.078f, 0.043f, 0.059f),
         wall = Color(0xFF1A1015),
         board = Color(0xFF2E1B26),
-        accent = Color(0xFFE84D7A)
+        accent = Color(0xFFFF5C8A),
+        plate = DeckPlate.GLASS,
+        glass = DeckWindowGlass.ROSE,
+        palette = AfterHoursPalette
+    ),
+
+    /**
+     * A bench under neutral daylight: concrete, steel shelving, and a green terminal.
+     *
+     * The only scheme with no colour cast at all, which is its whole reason for existing — every
+     * sleeve reads exactly as printed instead of being pushed warm or cold, and the artwork
+     * becomes the only coloured thing in the room. The deck to match is the bevelled grey one
+     * with four-pixel type: not the hi-fi, the machine it all got ripped onto.
+     */
+    WORKSHOP(
+        displayName = "Workshop",
+        key = floatArrayOf(0.949f, 0.949f, 0.941f),
+        rim = floatArrayOf(0.400f, 0.420f, 0.443f),
+        ambient = floatArrayOf(0.196f, 0.196f, 0.208f),
+        void = floatArrayOf(0.047f, 0.047f, 0.055f),
+        wall = Color(0xFF26262A),
+        board = Color(0xFF3A3A3E),
+        accent = Color(0xFF25F06A),
+        plate = DeckPlate.CHROME,
+        glass = DeckWindowGlass.PIXEL,
+        palette = WorkshopPalette
     );
 
     companion object {

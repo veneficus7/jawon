@@ -1,12 +1,114 @@
 package com.jawon.app.ui.theme
 
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.ReadOnlyComposable
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
 
-// DESIGN.md §2 — Midnight Shop token set. Never pure black/white.
-val CrateBlack = Color(0xFF17120F)
-val CrateRaised = Color(0xFF241C17)
-val CrateEdge = Color(0xFF33291F)
-val LabelCream = Color(0xFFEFE3CC)
-val LabelDim = Color(0xFF9A8B76)
-val LampAmber = Color(0xFFF0A93C)
-val OxideTeal = Color(0xFF2F7D71)
+/**
+ * Every colour the app's flat screens are built from.
+ *
+ * **This used to be seven constants, and that was the whole problem.** A scheme could recolour
+ * the room's lamp and one accent, and then Settings, Add Album, the shelf manager and the deck
+ * all stayed the same brown no matter which one you picked — so choosing a scheme changed the
+ * *room* and not the app. A mode is supposed to be a design, not a bulb.
+ *
+ * Never pure black or pure white in any of them, per `DESIGN.md` §2. A shop lit by one lamp has
+ * no true black in it and nothing in it is paper.
+ */
+data class Palette(
+    /** The ground everything sits on. */
+    val crateBlack: Color,
+    /** A surface lifted off that ground: cards, rows, wells. */
+    val crateRaised: Color,
+    /** Hairlines, borders, the edge of everything. */
+    val crateEdge: Color,
+    /** Lettering. */
+    val labelCream: Color,
+    /** Lettering that is not the point. */
+    val labelDim: Color,
+    /** The one colour that means *this*: a lit tab, a confirm, the lamp itself. */
+    val lampAmber: Color,
+    /** A second, cooler signal colour. Used sparingly — mostly the echo. */
+    val oxideTeal: Color
+)
+
+/**
+ * The palette in force.
+ *
+ * `static` because it changes when somebody opens Settings and picks another mode, which is
+ * roughly never — so the cheaper read everywhere else is worth far more than cheap invalidation.
+ */
+val LocalPalette = staticCompositionLocalOf { MidnightPalette }
+
+// The names below are read by about three hundred call sites across ten screens. They stay
+// spelled exactly as they always were, and are now *composable properties* that resolve against
+// the mode rather than top-level constants — which is what let the whole app become themeable
+// without touching those three hundred lines.
+
+val CrateBlack: Color @Composable @ReadOnlyComposable get() = LocalPalette.current.crateBlack
+val CrateRaised: Color @Composable @ReadOnlyComposable get() = LocalPalette.current.crateRaised
+val CrateEdge: Color @Composable @ReadOnlyComposable get() = LocalPalette.current.crateEdge
+val LabelCream: Color @Composable @ReadOnlyComposable get() = LocalPalette.current.labelCream
+val LabelDim: Color @Composable @ReadOnlyComposable get() = LocalPalette.current.labelDim
+val LampAmber: Color @Composable @ReadOnlyComposable get() = LocalPalette.current.lampAmber
+val OxideTeal: Color @Composable @ReadOnlyComposable get() = LocalPalette.current.oxideTeal
+
+/**
+ * A warm shop at midnight: tungsten on old brown shelving.
+ *
+ * `DESIGN.md` §3's palette exactly, and the one every other mode was tuned against.
+ */
+val MidnightPalette = Palette(
+    crateBlack = Color(0xFF17120F),
+    crateRaised = Color(0xFF241C17),
+    crateEdge = Color(0xFF33291F),
+    labelCream = Color(0xFFEFE3CC),
+    labelDim = Color(0xFF9A8B76),
+    lampAmber = Color(0xFFF0A93C),
+    oxideTeal = Color(0xFF2F7D71)
+)
+
+/**
+ * The same shop under a cold striplight, and the one mode where the app goes properly blue.
+ *
+ * Deliberately the least cosy: warm light flatters a sleeve by pushing it toward orange, and this
+ * leaves covers nearer their printed colours — which is what you want when you are actually
+ * looking at the artwork rather than sitting in the room.
+ */
+val ColdPalette = Palette(
+    crateBlack = Color(0xFF0E1216),
+    crateRaised = Color(0xFF18202A),
+    crateEdge = Color(0xFF26323E),
+    labelCream = Color(0xFFDCE6F0),
+    labelDim = Color(0xFF7F8C99),
+    lampAmber = Color(0xFF5FF0E0),
+    oxideTeal = Color(0xFF3E7F96)
+)
+
+/** A late-night bar back room: plum surfaces and a neon sign for an accent. */
+val AfterHoursPalette = Palette(
+    crateBlack = Color(0xFF150E12),
+    crateRaised = Color(0xFF241620),
+    crateEdge = Color(0xFF3A2430),
+    labelCream = Color(0xFFF0DCE4),
+    labelDim = Color(0xFF9C808C),
+    lampAmber = Color(0xFFFF5C8A),
+    oxideTeal = Color(0xFF7A4C8C)
+)
+
+/**
+ * A bench under neutral daylight: concrete, steel, and a green terminal.
+ *
+ * The only mode with no colour cast at all, which is its entire reason for existing — every
+ * sleeve reads exactly as printed, and the artwork becomes the only coloured thing on screen.
+ */
+val WorkshopPalette = Palette(
+    crateBlack = Color(0xFF1C1C1F),
+    crateRaised = Color(0xFF26262A),
+    crateEdge = Color(0xFF38383E),
+    labelCream = Color(0xFFE8E8E6),
+    labelDim = Color(0xFF8A8A90),
+    lampAmber = Color(0xFF25F06A),
+    oxideTeal = Color(0xFF5A8A9A)
+)

@@ -6,46 +6,47 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
 
-// Midnight Shop is the only room (ENGINEERING.md locked decision) and dynamic
-// color is a DESIGN.md anti-goal, so this is a single fixed dark scheme —
-// no light variant, no dynamicDarkColorScheme/dynamicLightColorScheme.
+// Dynamic colour is a DESIGN.md anti-goal, so this is never the phone's wallpaper palette —
+// it is whichever mode the owner chose, and all four are dark grounds with no light variant.
 //
-// The one thing that moves is the accent, which follows the room's colour scheme so the
-// 2D screens and the room agree about what colour the app is. Everything else — the dark
-// ground, the cream lettering — stays put in every scheme: those are what make the app
-// legible, and recolouring them would be retheming rather than changing a bulb.
-private fun schemeFor(accent: androidx.compose.ui.graphics.Color) = darkColorScheme(
-    primary = accent,
-    onPrimary = CrateBlack,
-    secondary = OxideTeal,
-    onSecondary = CrateBlack,
-    background = CrateBlack,
-    onBackground = LabelCream,
-    surface = CrateRaised,
-    onSurface = LabelCream,
-    surfaceVariant = CrateRaised,
-    onSurfaceVariant = LabelDim,
-    outline = CrateEdge,
+// **The whole scheme moves now, not only the accent.** It used to be a fixed dark brown with one
+// colour swapped in, on the reasoning that the ground and the lettering are what make the app
+// legible. That was true and beside the point: a mode is supposed to be a design, and leaving
+// every surface the same brown meant choosing one changed the room and not the app.
+private fun schemeFor(palette: Palette) = darkColorScheme(
+    primary = palette.lampAmber,
+    onPrimary = palette.crateBlack,
+    secondary = palette.oxideTeal,
+    onSecondary = palette.crateBlack,
+    background = palette.crateBlack,
+    onBackground = palette.labelCream,
+    surface = palette.crateRaised,
+    onSurface = palette.labelCream,
+    surfaceVariant = palette.crateRaised,
+    onSurfaceVariant = palette.labelDim,
+    outline = palette.crateEdge,
 )
 
 /**
  * @param roomScheme where you are standing — the lamp, the wall, the boards.
- * @param deckStyle what you are playing the disc on. Independent of the room on purpose: the
- *   two multiply rather than compete, and a brushed aluminium component belongs in a midnight
- *   shop just as happily as under a cold striplight.
+ *   The deck it contains, and the palette every flat screen uses, come with it — a mode is one
+ *   design, not a room plus a set of unrelated decisions.
  */
 @Composable
 fun JawonTheme(
     roomScheme: RoomScheme = RoomScheme.MIDNIGHT_SHOP,
-    deckStyle: DeckStyle = DeckStyle.SHOP,
     content: @Composable () -> Unit
 ) {
-    // Resolved here rather than stored: a plate takes part of its colour from the lamp that is
-    // lighting it, so the finish cannot be known until the room is.
-    val finish = remember(deckStyle, roomScheme) { DeckFinish.of(deckStyle, roomScheme) }
-    CompositionLocalProvider(LocalDeckFinish provides finish) {
+    // The deck belongs to the room rather than being chosen beside it: a plate takes part of its
+    // colour from the lamp lighting it, and the window's glow is the same colour the 2D screens
+    // use, so one choice settles the whole look.
+    val finish = remember(roomScheme) { DeckFinish.of(roomScheme) }
+    CompositionLocalProvider(
+        LocalPalette provides roomScheme.palette,
+        LocalDeckFinish provides finish
+    ) {
         MaterialTheme(
-            colorScheme = schemeFor(roomScheme.accent),
+            colorScheme = schemeFor(roomScheme.palette),
             typography = Typography,
             content = content
         )

@@ -67,7 +67,6 @@ import com.jawon.app.ui.theme.LabelCream
 import com.jawon.app.ui.theme.LabelDim
 import com.jawon.app.ui.theme.LampAmber
 import com.jawon.app.ui.theme.DeckFinish
-import com.jawon.app.ui.theme.DeckStyle
 import com.jawon.app.ui.theme.RoomScheme
 
 /**
@@ -243,79 +242,113 @@ private fun TextChip(text: String, onClick: () -> Unit) {
 }
 
 /**
- * The room's colour, as three swatches rather than three names in a list.
+ * The four looks, each previewed as what it actually is: a lit shelf with a machine under it.
  *
- * Each one is painted in its own scheme — the board colour behind, the lamp colour as the
- * light on it — so the choice is made by looking at the thing rather than by reading
- * "After Hours" and guessing. That matters more here than in most pickers: the difference
- * between these is entirely visual.
+ * **One picker, because they are one decision.** The deck used to be chosen separately, and the
+ * result was a cold grey front standing in a warm shop — a machine that did not belong to its own
+ * room. A room and the thing you play records on in it are a single design, so the swatch shows
+ * both: the board with the lamp pooled on it, and the deck's window glowing underneath.
+ *
+ * That matters more here than in most pickers, because the difference between these is entirely
+ * visual — no amount of naming tells you what "Workshop" looks like.
  */
 @Composable
 private fun SchemePicker(current: RoomScheme, onPick: (RoomScheme) -> Unit) {
     Column(
         modifier = Modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
+        verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        // No label of its own: the section rule above already says THE ROOM, and this is the
-        // only thing under it. Two headings stacked is how the old flat list read.
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            RoomScheme.entries.forEach { scheme ->
-                val selected = scheme == current
-                Column(
-                    modifier = Modifier
-                        .weight(1f)
-                        .border(
-                            width = if (selected) 2.dp else 1.dp,
-                            color = if (selected) scheme.accent else CrateEdge
-                        )
-                        .clickable { onPick(scheme) }
-                        .padding(1.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    // The board colour, with the lamp's own light pooled on it — a shrunk
-                    // version of what the shelf actually looks like in that scheme.
-                    Box(
+        RoomScheme.entries.chunked(2).forEach { row ->
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                row.forEach { scheme ->
+                    val finish = DeckFinish.of(scheme)
+                    val selected = scheme == current
+                    Column(
                         modifier = Modifier
-                            .fillMaxWidth()
-                            .height(56.dp)
-                            .background(scheme.board)
+                            .weight(1f)
+                            .border(
+                                width = if (selected) 2.dp else 1.dp,
+                                color = if (selected) scheme.accent else CrateEdge
+                            )
+                            .clickable { onPick(scheme) }
+                            .padding(1.dp)
                     ) {
+                        // The room: the wall, a shelf board, and the lamp's own light pooled
+                        // along it — a shrunk version of what you are actually looking at.
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(3.dp)
-                                .align(Alignment.BottomCenter)
-                                .background(
-                                    Brush.horizontalGradient(
-                                        0f to Color.Transparent,
-                                        0.5f to scheme.accent,
-                                        1f to Color.Transparent
+                                .height(52.dp)
+                                .background(scheme.wall)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(10.dp)
+                                    .align(Alignment.BottomCenter)
+                                    .background(scheme.board)
+                            )
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(3.dp)
+                                    .align(Alignment.BottomCenter)
+                                    .background(
+                                        Brush.horizontalGradient(
+                                            0f to Color.Transparent,
+                                            0.5f to scheme.accent,
+                                            1f to Color.Transparent
+                                        )
                                     )
+                            )
+                        }
+
+                        // The deck under it, drawn over the room's own dark so the plate's
+                        // translucency reads here too.
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(46.dp)
+                                .background(scheme.wall)
+                                .background(
+                                    Brush.verticalGradient(
+                                        listOf(
+                                            finish.plate.copy(alpha = finish.plateOpacity),
+                                            finish.plateLow.copy(alpha = finish.plateOpacity)
+                                        )
+                                    )
+                                ),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth(0.8f)
+                                    .height(26.dp)
+                                    .background(finish.window)
+                                    .border(1.dp, finish.windowEdge),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = "88:88",
+                                    fontFamily = finish.display,
+                                    fontSize = finish.displaySize,
+                                    color = finish.displayInk
                                 )
+                            }
+                        }
+
+                        Text(
+                            text = scheme.displayName.uppercase(),
+                            style = JawonTextStyle.mono.copy(
+                                color = if (selected) scheme.accent else LabelCream,
+                                fontSize = 10.sp
+                            ),
+                            modifier = Modifier.padding(start = 8.dp, top = 7.dp, bottom = 8.dp)
                         )
                     }
-                    Text(
-                        text = scheme.displayName.uppercase(),
-                        style = JawonTextStyle.mono.copy(
-                            color = if (selected) scheme.accent else LabelDim,
-                            fontSize = 9.sp
-                        ),
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier.padding(vertical = 8.dp, horizontal = 2.dp)
-                    )
                 }
             }
         }
-        Text(
-            // Said plainly rather than left to be discovered. The lamp and the shelving
-            // change as soon as you tap; the room's ambient fill is a cubemap baked before
-            // the first frame, and rebuilding it mid-session means destroying Filament
-            // resources in the one part of this app where that has repeatedly gone wrong.
-            text = "The lamp and shelves change straight away. The room's ambient light " +
-                "follows next time you open Jawon.",
-            style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = 10.sp),
-            lineHeight = 16.sp
-        )
     }
 }
 
@@ -688,7 +721,6 @@ fun SettingsScreen(
     val fetchCoverArt by viewModel.fetchCoverArt.collectAsStateWithLifecycle()
     val fetchLyrics by viewModel.fetchLyrics.collectAsStateWithLifecycle()
     val roomScheme by viewModel.roomScheme.collectAsStateWithLifecycle()
-    val deckStyle by viewModel.deckStyle.collectAsStateWithLifecycle()
     val eqAvailable by viewModel.eqAvailable.collectAsStateWithLifecycle()
     val eqEnabled by viewModel.eqEnabled.collectAsStateWithLifecycle()
     val eqBands by viewModel.eqBands.collectAsStateWithLifecycle()
@@ -816,15 +848,6 @@ fun SettingsScreen(
                 onPick = viewModel::onRoomSchemeChanged
             )
 
-            Box(Modifier.height(28.dp))
-
-            SectionHeader("THE DECK")
-
-            FinishPicker(
-                current = deckStyle,
-                scheme = roomScheme,
-                onPick = viewModel::onDeckStyleChanged
-            )
 
             Box(Modifier.height(28.dp))
 
@@ -987,96 +1010,3 @@ fun SettingsScreen(
     }
 }
 
-/**
- * Which deck, previewed as the thing itself.
- *
- * Each swatch is a scrap of the actual front with its own window lit on it, because the
- * difference between these is entirely material — a list of four names would tell you nothing,
- * and "Separates" means very little until you have seen a cyan tube glowing on brushed metal.
- *
- * Previewed **against the room that is currently chosen**, since a plate takes part of its colour
- * from the lamp lighting it. Change the room above and these change with it, which is the fastest
- * way to understand that the two settings are not independent decorations.
- */
-@Composable
-private fun FinishPicker(
-    current: DeckStyle,
-    scheme: RoomScheme,
-    onPick: (DeckStyle) -> Unit
-) {
-    Column(
-        modifier = Modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(10.dp)
-    ) {
-        DeckStyle.entries.chunked(2).forEach { row ->
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                row.forEach { style ->
-                    val finish = DeckFinish.of(style, scheme)
-                    val selected = style == current
-                    Column(
-                        modifier = Modifier
-                            .weight(1f)
-                            .border(
-                                width = if (selected) 2.dp else 1.dp,
-                                color = if (selected) finish.accent else CrateEdge
-                            )
-                            .clickable { onPick(style) }
-                            .padding(1.dp)
-                    ) {
-                        // A slice of the front, with the window sitting on it. The plate is
-                        // drawn over the crate's own dark so its translucency reads here too.
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(64.dp)
-                                .background(CrateBlack)
-                                .background(
-                                    Brush.verticalGradient(
-                                        listOf(
-                                            finish.plate.copy(alpha = finish.plateOpacity),
-                                            finish.plateLow.copy(alpha = finish.plateOpacity)
-                                        )
-                                    )
-                                ),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth(0.82f)
-                                    .height(30.dp)
-                                    .background(finish.window)
-                                    .border(1.dp, finish.windowEdge),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(
-                                    text = "88:88",
-                                    fontFamily = finish.display,
-                                    fontSize = finish.displaySize,
-                                    color = finish.displayInk
-                                )
-                            }
-                        }
-                        Text(
-                            text = style.displayName.uppercase(),
-                            style = JawonTextStyle.mono.copy(
-                                color = if (selected) finish.accent else LabelCream,
-                                fontSize = 10.sp
-                            ),
-                            modifier = Modifier.padding(start = 8.dp, top = 7.dp)
-                        )
-                        Text(
-                            text = style.blurb,
-                            style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = 9.sp),
-                            modifier = Modifier.padding(start = 8.dp, end = 8.dp, bottom = 8.dp)
-                        )
-                    }
-                }
-            }
-        }
-        Text(
-            text = "The room and the deck are separate settings, but not separate worlds: " +
-                "a metal front is lit by whichever lamp the room is using.",
-            style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = 10.sp)
-        )
-    }
-}
