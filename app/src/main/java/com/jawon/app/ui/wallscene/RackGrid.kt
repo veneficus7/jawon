@@ -258,49 +258,6 @@ private fun Cell(
                 alpha = entry.value
                 translationY = (1f - entry.value) * ENTRY_RISE_PX
             }
-            // **An underlight, not a halo.**
-            //
-            // The first version washed colour evenly behind the key, which is not what light
-            // does and not what the owner meant: a lit case on a shelf throws a *pool onto the
-            // board beneath it*. So the wash is anchored to the bottom edge, brightest where the
-            // key meets the plate and falling off upward and outward, and it is allowed to spill
-            // past the key by scaling rather than by taking any layout room.
-            .drawBehind {
-                val g = finish.glow * lit.value
-                if (g > 0f) {
-                    val spread = if (selected) pulse.value else 1f
-
-                    // **A pool, not a rectangle.**
-                    //
-                    // The first version drew a rect with a gradient that only faded downward,
-                    // so its left, right and bottom edges were hard cuts — the owner could see
-                    // the boundary of the glow as a box around every key, which is the one thing
-                    // light never has.
-                    //
-                    // A radial brush drawn at exactly its own radius reaches zero alpha at the
-                    // boundary, so there is no edge anywhere. Squashed vertically and centred on
-                    // the key's bottom edge, which is what the room's own case beam does to the
-                    // shelf board underneath it: brightest where the object meets the surface,
-                    // falling away in every direction.
-                    val heart = Offset(size.width / 2f, size.height)
-                    val reach = size.width * UNDERLIGHT_REACH
-                    scale(scaleX = 1f, scaleY = UNDERLIGHT_SQUASH, pivot = heart) {
-                        drawCircle(
-                            brush = Brush.radialGradient(
-                                colors = listOf(
-                                    cell.hue.copy(alpha = UNDERLIGHT_CORE * g * spread),
-                                    cell.hue.copy(alpha = UNDERLIGHT_CORE * 0.45f * g * spread),
-                                    Color.Transparent
-                                ),
-                                center = heart,
-                                radius = reach
-                            ),
-                            radius = reach,
-                            center = heart
-                        )
-                    }
-                }
-            }
             .background(
                 if (engaged) finish.key else Color.Transparent,
                 shape
@@ -348,12 +305,47 @@ private fun Cell(
         Box(
             modifier = Modifier
                 .align(Alignment.TopCenter)
-                .padding(horizontal = 4.dp, vertical = 3.dp)
+                .padding(horizontal = 4.dp, vertical = 4.dp)
                 .fillMaxWidth()
-                .height(2.dp)
+                .height(BEAM_THICKNESS.dp)
+                // **The beam, and this is the thing that took four attempts to get right.**
+                //
+                // The reference was always the room's own case underlight: bright, fully
+                // saturated, and bleeding into the air around it. What was here instead was a
+                // flat strip at reduced alpha — a drawn line, not a light. In between I built
+                // two things that were not asked for: a wash behind the key, then a pool of
+                // light on the plate below it.
+                //
+                // A light source is bright *and* it bleeds. So the strip goes to full colour,
+                // and the bleed is an elongated radial centred on it, squashed flat so it hugs
+                // the bar rather than ballooning into a circle. Drawn at exactly its own radius,
+                // so it reaches zero alpha at the edge and has no boundary anywhere.
+                .drawBehind {
+                    val g = finish.glow * lit.value
+                    if (g > 0f) {
+                        val heart = Offset(size.width / 2f, size.height / 2f)
+                        val reach = size.width * BEAM_BLOOM_REACH
+                        scale(scaleX = 1f, scaleY = BEAM_BLOOM_SQUASH, pivot = heart) {
+                            drawCircle(
+                                brush = Brush.radialGradient(
+                                    colors = listOf(
+                                        cell.hue.copy(alpha = BEAM_BLOOM_CORE * g),
+                                        cell.hue.copy(alpha = BEAM_BLOOM_CORE * 0.4f * g),
+                                        Color.Transparent
+                                    ),
+                                    center = heart,
+                                    radius = reach
+                                ),
+                                radius = reach,
+                                center = heart
+                            )
+                        }
+                    }
+                }
                 .background(
-                    cell.hue.copy(alpha = HUE_ALPHA * lit.value),
-                    RoundedCornerShape(1.dp)
+                    // Full colour when it is in. A light that is 85% on is a line.
+                    cell.hue.copy(alpha = lit.value),
+                    RoundedCornerShape(BEAM_THICKNESS.dp / 2)
                 )
         )
         Text(
@@ -494,9 +486,13 @@ private const val SELECT_PULSE_MS = 1900
 // The pool of light under a switched-in key. Reach is a fraction of the key's width, so the
 // light spills well past it on both sides; the squash turns the circle into the ellipse a beam
 // makes where it lands on a flat surface.
-private const val UNDERLIGHT_REACH = 1.05f
-private const val UNDERLIGHT_SQUASH = 0.52f
-private const val UNDERLIGHT_CORE = 0.62f
+// The beam on a switched-in key: a bar of full colour, and the light it bleeds. Reach is a
+// multiple of the key's width so the bloom spills past both ends; the squash flattens the
+// circle so it hugs the bar instead of ballooning into a disc.
+private const val BEAM_THICKNESS = 3
+private const val BEAM_BLOOM_REACH = 0.78f
+private const val BEAM_BLOOM_SQUASH = 0.14f
+private const val BEAM_BLOOM_CORE = 0.85f
 
 private const val GLOW_SPREAD = 0.16f
 private const val GLOW_ALPHA = 0.30f
