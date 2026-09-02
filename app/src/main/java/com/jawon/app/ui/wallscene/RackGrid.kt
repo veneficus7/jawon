@@ -3,6 +3,7 @@ package com.jawon.app.ui.wallscene
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
@@ -1705,7 +1706,7 @@ private fun SegmentRing(
         // the hole, which is the entire reason they moved.
         val onEq = selected == RackChannel.EQ
         if (onEq) {
-            EqBands(
+            EqCurve(
                 bands = eqBands,
                 rangeMb = eqRangeMb,
                 onBandChange = onEqBandChange,
@@ -1991,3 +1992,145 @@ private const val KNOB_TRACK_ALPHA = 0.55f
  * time.
  */
 private const val KNOB_TRAVEL_PX = 420f
+
+/**
+ * The equaliser as a response curve.
+ *
+ * **Five vertical bands were never the right picture of an equaliser.** They show five separate
+ * numbers when what an equaliser actually is is one shape — the line the sound is bent along —
+ * and that shape is the thing you are listening for. A curve says "scooped mids" or "lifted top"
+ * at a glance, where five bars say five numbers you have to read and assemble yourself.
+ *
+ * It also fits where the bands did not. A ring's hole cannot hold five columns, and a full-width
+ * row of five is a lot of panel; a curve is happy at any width, gets wider rather than more
+ * cramped as the phone grows, and looks like the instrument it belongs to rather than like a
+ * settings screen.
+ *
+ * Dragged directly: the finger picks up the nearest band and moves it, so the gesture is "bend
+ * the line here" rather than "find the slider for 910Hz".
+ */
+@Composable
+private fun EqCurve(
+    bands: List<EqBand>,
+    rangeMb: Pair<Int, Int>,
+    onBandChange: (Int, Int) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val finish = LocalDeckFinish.current
+    val measurer = rememberTextMeasurer()
+    val (minMb, maxMb) = rangeMb
+    val span = (maxMb - minMb).coerceAtLeast(1)
+
+    if (bands.isEmpty()) return
+
+    Column(modifier = modifier.fillMaxWidth()) {
+        Canvas(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(EQ_CURVE_HEIGHT.dp)
+                .pointerInput(bands.size) {
+                    detectDragGestures(
+                        onDragStart = { }
+                    ) { change, _ ->
+                        val w = size.width.toFloat()
+                        val h = size.height.toFloat()
+                        // Whichever band's column the finger is nearest, so the curve is bent
+                        // where it is touched rather than where a hit area happens to be.
+                        val i = ((change.position.x / w) * (bands.size - 1))
+                            .roundToInt()
+                            .coerceIn(0, bands.lastIndex)
+                        val unit = (1f - (change.position.y / h)).coerceIn(0f, 1f)
+                        onBandChange(bands[i].index, (minMb + unit * span).roundToInt())
+                        change.consume()
+                    }
+                }
+        ) {
+            val w = size.width
+            val h = size.height
+            val pts = bands.mapIndexed { i, band ->
+                val x = w * i / (bands.size - 1).coerceAtLeast(1)
+                val unit = ((band.levelMb - minMb).toFloat() / span).coerceIn(0f, 1f)
+                Offset(x, h - unit * h)
+            }
+
+            // Flat, drawn so the curve has something to be measured against.
+            drawLine(
+                color = finish.keyEdge,
+                start = Offset(0f, h / 2f),
+                end = Offset(w, h / 2f),
+                strokeWidth = 1f
+            )
+
+            // A smooth line through the points rather than a dot-to-dot: the ear hears a curve,
+            // and straight segments between five samples imply corners that are not there.
+            val curve = Path().apply {
+                moveTo(pts.first().x, pts.first().y)
+                for (i in 0 until pts.size - 1) {
+                    val a = pts[i]
+                    val b = pts[i + 1]
+                    val midX = (a.x + b.x) / 2f
+                    cubicTo(midX, a.y, midX, b.y, b.x, b.y)
+                }
+            }
+
+            // Filled down to the flat line, so a lift reads as a hill and a cut as a trough.
+            val under = Path().apply {
+                addPath(curve)
+                lineTo(w, h / 2f)
+                lineTo(0f, h / 2f)
+                close()
+            }
+            drawPath(
+                path = under,
+                brush = Brush.verticalGradient(
+                    listOf(
+                        finish.accent.copy(alpha = EQ_FILL_ALPHA),
+                        finish.accent.copy(alpha = 0f)
+                    )
+                )
+            )
+
+            if (finish.glow > 0f) {
+                drawPath(
+                    path = curve,
+                    color = finish.accent.copy(alpha = EQ_GLOW_ALPHA * finish.glow),
+                    style = Stroke(width = EQ_GLOW_WIDTH, cap = StrokeCap.Round)
+                )
+            }
+            drawPath(
+                path = curve,
+                color = finish.accent,
+                style = Stroke(width = EQ_LINE_WIDTH, cap = StrokeCap.Round)
+            )
+
+            // A handle on each band, so it is obvious the line can be grabbed.
+            pts.forEachIndexed { i, p ->
+                drawCircle(color = finish.window, radius = EQ_HANDLE + 1.5f, center = p)
+                drawCircle(color = finish.accent, radius = EQ_HANDLE, center = p)
+
+                val laid = measurer.measure(
+                    text = AnnotatedString(shortHz(bands[i].centerHz)),
+                    style = TextStyle(
+                        fontFamily = finish.keyType,
+                        fontSize = finish.keyTypeSize * 0.86f,
+                        color = finish.plateDim
+                    )
+                )
+                drawText(
+                    textLayoutResult = laid,
+                    topLeft = Offset(
+                        (p.x - laid.size.width / 2f).coerceIn(0f, w - laid.size.width),
+                        h - laid.size.height
+                    )
+                )
+            }
+        }
+    }
+}
+
+private const val EQ_CURVE_HEIGHT = 92
+private const val EQ_LINE_WIDTH = 3f
+private const val EQ_GLOW_WIDTH = 10f
+private const val EQ_GLOW_ALPHA = 0.30f
+private const val EQ_FILL_ALPHA = 0.22f
+private const val EQ_HANDLE = 5f
