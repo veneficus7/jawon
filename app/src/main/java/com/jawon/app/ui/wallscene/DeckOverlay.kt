@@ -181,8 +181,17 @@ fun DeckOverlay(
     onSheetRelease: () -> Unit,
     /** How tall the panel currently is, as a fraction of the screen. See [DeckDetent]. */
     sheetFraction: Float,
-    showEqualiser: Boolean,
-    onShowEqualiser: (Boolean) -> Unit,
+    /**
+     * Which page the deck is on, hoisted so the panel's height can react to it.
+     *
+     * **An index rather than the boolean this used to be.** While there were two pages, "is the
+     * rack showing" held all the state there was. A third page broke it in a way that looked
+     * like a haunting: landing on LYRICS made the flag read false — because false meant "not
+     * SOUND" — which the effect below then obeyed by driving the pager back to TRACKS. The page
+     * opened and bounced. Two-state flags cannot count to three.
+     */
+    deckPage: Int,
+    onDeckPageChange: (Int) -> Unit,
     modifier: Modifier = Modifier
 ) {
     // Short enough that the fixed rows no longer fit, so the optional ones come out. Sits above
@@ -191,21 +200,18 @@ fun DeckOverlay(
     val compact = sheetFraction < COMPACT_BELOW
 
     val scope = rememberCoroutineScope()
-    val pagerState = rememberPagerState(
-        initialPage = if (showEqualiser) PAGE_SOUND else PAGE_TRACKS
-    ) { PAGE_COUNT }
+    val pagerState = rememberPagerState(initialPage = deckPage) { PAGE_COUNT }
 
-    // The pager and the hoisted flag have to agree without chasing each other. The flag drives
-    // the pager only when they actually differ, and the pager reports back on `settledPage`
-    // rather than `currentPage` — reporting mid-drag would write the destination before the
-    // finger had committed to it, and the panel would resize under a gesture the user had not
-    // finished making.
-    LaunchedEffect(showEqualiser) {
-        val target = if (showEqualiser) PAGE_SOUND else PAGE_TRACKS
-        if (pagerState.currentPage != target) pagerState.animateScrollToPage(target)
+    // The pager and the hoisted page have to agree without chasing each other. The hoisted value
+    // drives the pager only when they actually differ, and the pager reports back on
+    // `settledPage` rather than `currentPage` — reporting mid-drag would write the destination
+    // before the finger had committed to it, and the panel would resize under a gesture the user
+    // had not finished making.
+    LaunchedEffect(deckPage) {
+        if (pagerState.currentPage != deckPage) pagerState.animateScrollToPage(deckPage)
     }
     LaunchedEffect(pagerState.settledPage) {
-        onShowEqualiser(pagerState.settledPage == PAGE_SOUND)
+        onDeckPageChange(pagerState.settledPage)
     }
 
     Column(
@@ -1099,13 +1105,16 @@ private const val COMPACT_BELOW = 0.44f
 /**
  * The deck's pages.
  *
- * Two for now. Lyrics are the third, and are a *view* rather than a control — which is why they
- * belong here and not as another module crammed into the rack.
+ * Three: the tracklist, the rack, and the lyrics — a *view* rather than a control, which is why
+ * they are a page here and not another module crammed into the rack.
+ *
+ * `internal` rather than private because the screen hoists the current page, and the panel's
+ * height depends on which one it is.
  */
-private const val PAGE_TRACKS = 0
-private const val PAGE_SOUND = 1
-private const val PAGE_LYRICS = 2
-private const val PAGE_COUNT = 3
+internal const val PAGE_TRACKS = 0
+internal const val PAGE_SOUND = 1
+internal const val PAGE_LYRICS = 2
+internal const val PAGE_COUNT = 3
 
 /**
  * Tempo and key, as a pair of centre-detented strips.

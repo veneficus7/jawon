@@ -811,11 +811,11 @@ fun WallSceneScreen(
         /** The album a long press has proposed removing, until it is confirmed or dismissed. */
         var pendingDelete by remember { mutableStateOf<CaseLayout?>(null) }
 
-        // Which half of the deck is showing. Held here rather than inside DeckOverlay because
+        // Which page of the deck is showing. Held here rather than inside DeckOverlay because
         // the panel's height depends on it. Reset when the deck closes, so opening the next
-        // record lands on its tracklist rather than on the equaliser.
-        var showEqualiser by remember { mutableStateOf(false) }
-        LaunchedEffect(selectedAlbumId) { if (selectedAlbumId == null) showEqualiser = false }
+        // record lands on its tracklist rather than wherever the last one was left.
+        var deckPage by remember { mutableIntStateOf(PAGE_TRACKS) }
+        LaunchedEffect(selectedAlbumId) { if (selectedAlbumId == null) deckPage = PAGE_TRACKS }
 
         // How tall the deck panel is: three stops, dragged by its header. See DeckDetent.
         var detent by remember { mutableStateOf(DeckDetent.DECK) }
@@ -2286,12 +2286,13 @@ fun WallSceneScreen(
                 onEqBandChange = viewModel::onEqBandChanged,
                 onEqPreset = viewModel::onEqPreset,
                 onEqReset = viewModel::onEqReset,
-                showEqualiser = showEqualiser,
-                onShowEqualiser = {
-                    showEqualiser = it
-                    // Opening the rack from the smallest stop would show about one control.
-                    // Anything the user dragged to themselves is left alone.
-                    if (it && detent == DeckDetent.PEEK) detent = DeckDetent.DECK
+                deckPage = deckPage,
+                onDeckPageChange = {
+                    deckPage = it
+                    // Arriving at the rack or the lyrics from the smallest stop would show about
+                    // one control, or one line. Anything the user dragged to themselves is left
+                    // alone.
+                    if (it != PAGE_TRACKS && detent == DeckDetent.PEEK) detent = DeckDetent.DECK
                 },
                 onSheetDrag = { dy ->
                     // Up is negative on screen and taller here, hence the sign. Dragged live
