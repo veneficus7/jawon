@@ -4,6 +4,7 @@ import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.draggable
 import androidx.compose.foundation.gestures.rememberDraggableState
+import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
@@ -218,13 +219,18 @@ fun DeckOverlay(
             .padding(top = 16.dp, bottom = 8.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        // Everything down to the readout is the grab area, and only this much of it.
+        // The header is the deck's neutral surface: both gestures live here and nowhere else.
         //
-        // The tracklist and the rack below both scroll vertically. A sheet that claimed vertical
-        // drags anywhere on its surface would be arguing with them over every gesture, and the
-        // loser of that argument changes depending on which one gets the pointer first — which
-        // is the ordering ENGINEERING.md's trap 6 warns is not guaranteed. Confining the drag to the
-        // header means the two never meet.
+        // *Vertically* it drags the sheet. The tracklist and the rack below both scroll
+        // vertically, and a sheet claiming vertical drags anywhere on its surface would argue
+        // with them over every gesture — with the winner depending on which handler gets the
+        // pointer first, the ordering ENGINEERING.md's trap 6 warns is not guaranteed.
+        //
+        // *Horizontally* it turns the page, and that had to be added. The pager works on its own
+        // content, which on the SOUND side is wall-to-wall horizontal sliders — and those quite
+        // correctly win the gesture, so swiping back to the tracklist only worked from the thin
+        // gaps between them. Two dots were advertising a swipe that mostly did not happen. Here
+        // there is nothing to compete with, so there is always somewhere to swipe from.
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
             modifier = Modifier
@@ -233,6 +239,18 @@ fun DeckOverlay(
                     orientation = Orientation.Vertical,
                     state = rememberDraggableState { onSheetDrag(it) },
                     onDragStopped = { onSheetRelease() }
+                )
+                .draggable(
+                    orientation = Orientation.Horizontal,
+                    // Negated: dragging left moves the content left, which is the *next* page.
+                    state = rememberDraggableState { delta ->
+                        scope.launch { pagerState.scrollBy(-delta) }
+                    },
+                    // Settle to whichever page is nearest. `currentPage` already tracks that as
+                    // the scroll moves, so this is the snap rather than a decision.
+                    onDragStopped = {
+                        scope.launch { pagerState.animateScrollToPage(pagerState.currentPage) }
+                    }
                 )
         ) {
             // The grab handle. Small, and the only affordance saying the panel moves at all.

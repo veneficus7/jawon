@@ -3,6 +3,7 @@ package com.jawon.app.playback
 import android.app.PendingIntent
 import android.content.Intent
 import androidx.media3.common.AudioAttributes
+import androidx.media3.common.AuxEffectInfo
 import androidx.media3.common.C
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.DefaultRenderersFactory
@@ -18,6 +19,8 @@ import com.jawon.app.data.playback.EqualizerController
 import com.jawon.app.data.playback.NativeEffects
 import com.jawon.app.data.prefs.AppPreferences
 import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 /**
@@ -56,13 +59,26 @@ class PlaybackService : MediaSessionService() {
     private var crossfadeEngine: CrossfadeEngine? = null
     private var replayGainReader: ReplayGainReader? = null
 
+    /**
+     * Lives as long as the service; routing the player into the reverb tank is the only thing
+     * on it.
+     *
+     * An auxiliary effect cannot be attached the way the others are — it is a shared tank that
+     * a *player* sends into, and this service holds the only ExoPlayer. So the effect is built
+     * in [NativeEffects] and its id arrives here.
+     */
+    private val serviceScope = kotlinx.coroutines.CoroutineScope(
+        kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.Main.immediate
+    )
+
     override fun onCreate() {
         super.onCreate()
         // Jawon's own effects go here, between the decoder and the sink.
         //
-        // The platform's effects (equaliser, reverb, compressor) attach to the audio *session* and
-        // need none of this. A filter is not among them, so anything the app invents has to live
-        // inside the player's own pipeline — and this is the seam the rest of the rack will use.
+        // The platform's effects need none of this: the equaliser, bass boost, width and loudness
+        // attach to the audio *session*, and reverb is routed to as an auxiliary send. A filter is
+        // not among them at all, so anything the app invents has to live inside the player's own
+        // pipeline — and this is the seam the rest of the rack uses.
         val renderersFactory = object : DefaultRenderersFactory(this) {
             override fun buildAudioSink(
                 context: android.content.Context,
@@ -131,6 +147,22 @@ class PlaybackService : MediaSessionService() {
         })
         equalizer.attach(player.audioSessionId)
         nativeEffects.attach(player.audioSessionId)
+
+        // Point the player at the reverb tank, and adjust how much it sends.
+        //
+        // `combine` rather than two collectors because both halves describe one routing
+        // decision, and setting them separately would briefly send a full level into an effect
+        // id of zero. Wrapped, because a released player throws and a reverb send is never worth
+        // taking the service down for.
+        serviceScope.launch {
+            kotlinx.coroutines.flow.combine(
+                nativeEffects.auxEffectId,
+                nativeEffects.auxSendLevel
+            ) { id, level -> id to level }.collect { (id, level) ->
+                runCatching { player.setAuxEffectInfo(AuxEffectInfo(id, level)) }
+            }
+        }
+
         crossfade.start()
 
         // Jawon's own mark in the status bar and on the lock screen, in place of Media3's
@@ -174,6 +206,7 @@ class PlaybackService : MediaSessionService() {
     override fun onDestroy() {
         // Before the player goes: the effect is attached to that player's session, and one
         // left behind holds an audio effect slot the next player may need.
+        serviceScope.cancel()
         crossfadeEngine?.release()
         crossfadeEngine = null
         equalizer.release()

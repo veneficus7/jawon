@@ -45,6 +45,20 @@ class NativeEffects @Inject constructor(
     private val _available = MutableStateFlow(emptySet<NativeEffect>())
     val available: StateFlow<Set<NativeEffect>> = _available.asStateFlow()
 
+    /**
+     * The reverb tank's id, and how much of the player to send into it.
+     *
+     * Read by `PlaybackService`, which is the only thing holding an ExoPlayer and therefore the
+     * only thing that can route to an auxiliary effect. Zero means "no reverb" — that is
+     * Media3's own sentinel for an absent aux effect, so the off case needs no special handling
+     * at the far end.
+     */
+    private val _auxEffectId = MutableStateFlow(0)
+    val auxEffectId: StateFlow<Int> = _auxEffectId.asStateFlow()
+
+    private val _auxSendLevel = MutableStateFlow(0f)
+    val auxSendLevel: StateFlow<Float> = _auxSendLevel.asStateFlow()
+
     val bassStrength: StateFlow<Float> = preferences.bassStrength
     val stereoWidth: StateFlow<Float> = preferences.stereoWidth
     val reverbPreset: StateFlow<Int> = preferences.reverbPreset
@@ -74,8 +88,15 @@ class NativeEffects @Inject constructor(
             ?.takeIf { runCatching { it.strengthSupported }.getOrDefault(false) }
             ?.also { found += NativeEffect.WIDTH }
 
-        reverb = build("reverb") { PresetReverb(EFFECT_PRIORITY, newSessionId) }
+        // Reverb is the odd one out, and the device said so on the first run: attaching it to a
+        // session like the others fails outright — *"Cannot initialize effect engine ...
+        // Error: -3"*. Reverb is an **auxiliary** effect. It is not an insert in one stream's
+        // chain; it is a shared tank that streams are routed *to*, so it is created against the
+        // output mix (session 0, which is what MODIFY_AUDIO_SETTINGS is declared for) and the
+        // player is then pointed at it by id. See [auxEffectId].
+        reverb = build("reverb") { PresetReverb(EFFECT_PRIORITY, AUX_SESSION) }
             ?.also { found += NativeEffect.REVERB }
+        _auxEffectId.value = runCatching { reverb?.id ?: 0 }.getOrDefault(0)
 
         loudness = build("loudness") { LoudnessEnhancer(newSessionId) }
             ?.also { found += NativeEffect.LOUDNESS }
@@ -135,6 +156,10 @@ class NativeEffects @Inject constructor(
             effect.enabled = preset > 0
             effect.preset = preset.toShort()
         }.onFailure { Log.w(TAG, "reverb refused a preset", it) }
+        // The preset picks the room; the send level decides how much of the record goes into it.
+        // Off is a send of zero rather than a disabled effect, because the tank is shared and
+        // the player is what stops feeding it.
+        _auxSendLevel.value = if (preset > 0) REVERB_SEND else 0f
     }
 
     private fun applyLoudness() {
@@ -160,6 +185,10 @@ class NativeEffects @Inject constructor(
         loudness = null
         sessionId = 0
         _available.value = emptySet()
+        // Zero is Media3's sentinel for "no aux effect", so the player stops routing to a tank
+        // that no longer exists rather than holding a dangling id.
+        _auxEffectId.value = 0
+        _auxSendLevel.value = 0f
     }
 
     /**
@@ -183,6 +212,19 @@ class NativeEffects @Inject constructor(
 
         private const val TAG = "JawonEffects"
         private const val EFFECT_PRIORITY = 0
+
+        /** Session 0 is the output mix, which is where an auxiliary effect lives. */
+        private const val AUX_SESSION = 0
+
+        /**
+         * How much of the record is sent into the reverb when it is on.
+         *
+         * Not 1: an auxiliary send is *added* to the dry signal rather than replacing it, so a
+         * full send is a record with as much reverb as music. Two thirds leaves the room
+         * audible behind the track rather than in front of it.
+         */
+        private const val REVERB_SEND = 0.66f
+
         private const val MAX_STRENGTH = 1000f
         private const val MAX_LOUDNESS_MB = 1200f
         private const val OFF = 0.001f
