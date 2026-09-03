@@ -395,6 +395,7 @@ private fun MultiPreviewContent(
                     artist = album.suggestedArtist,
                     trackCount = album.tracks.size,
                     hasCover = album.embeddedCoverUri != null,
+                    alreadyInLibrary = album.alreadyInLibrary,
                     checked = index in state.selected,
                     onToggle = { onToggle(index) }
                 )
@@ -456,6 +457,8 @@ private fun AlbumChoice(
     artist: String,
     trackCount: Int,
     hasCover: Boolean,
+    /** The library already holds this title and artist. See [ImportPreview.alreadyInLibrary]. */
+    alreadyInLibrary: Boolean,
     checked: Boolean,
     onToggle: () -> Unit
 ) {
@@ -494,10 +497,16 @@ private fun AlbumChoice(
                 overflow = TextOverflow.Ellipsis
             )
             Text(
-                text = artist.uppercase() + " · " + trackCount +
+                // The duplicate note goes first, because it is the one thing here that would
+                // change someone's mind about the row.
+                text = (if (alreadyInLibrary) "ALREADY ON A SHELF · " else "") +
+                    artist.uppercase() + " · " + trackCount +
                     (if (trackCount == 1) " TRACK" else " TRACKS") +
                     (if (hasCover) " · COVER" else ""),
-                style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = 10.sp),
+                style = JawonTextStyle.mono.copy(
+                    color = if (alreadyInLibrary) LampAmber else LabelDim,
+                    fontSize = 10.sp
+                ),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )

@@ -79,6 +79,7 @@ import androidx.compose.ui.unit.sp
 import com.jawon.app.data.local.Track
 import com.jawon.app.data.lyrics.Lyrics
 import com.jawon.app.data.lyrics.LyricSource
+import com.jawon.app.data.lyrics.LyricsState
 import com.jawon.app.data.playback.EqBand
 import com.jawon.app.data.playback.NativeEffect
 import com.jawon.app.data.playback.NativeEffects
@@ -133,7 +134,7 @@ fun DeckOverlay(
     onPitchChange: (Float) -> Unit,
     onPitchCommit: () -> Unit,
     /** The current track's words, for the third page. */
-    lyrics: StateFlow<Lyrics?>,
+    lyrics: StateFlow<LyricsState>,
     /** Saturation, 0 clean … 1 broken. See [com.jawon.app.playback.Drive]. */
     drivePosition: StateFlow<Float>,
     onDriveChange: (Float) -> Unit,
@@ -1042,18 +1043,28 @@ internal const val PAGE_COUNT = 3
  */
 @Composable
 private fun LyricsPage(
-    lyricsFlow: StateFlow<Lyrics?>,
+    lyricsFlow: StateFlow<LyricsState>,
     positionFlow: StateFlow<Long>,
     isPlaying: Boolean
 ) {
     val finish = LocalDeckFinish.current
-    val lyrics by lyricsFlow.collectAsState()
-    val words = lyrics
+    val state by lyricsFlow.collectAsState()
+
+    // Three answers, not two. Saying "no lyrics" while a request is still out is the app
+    // contradicting itself a second later; see [LyricsState].
+    val words = when (val s = state) {
+        is LyricsState.Ready -> s.lyrics
+        else -> null
+    }
 
     if (words == null || words.isEmpty) {
         Box(Modifier.fillMaxWidth().fillMaxHeight(), contentAlignment = Alignment.Center) {
             Text(
-                "NO LYRICS FOR THIS TRACK",
+                text = when (state) {
+                    is LyricsState.Looking -> "LOOKING FOR LYRICS…"
+                    is LyricsState.Idle -> ""
+                    else -> "NO LYRICS FOR THIS TRACK"
+                },
                 style = JawonTextStyle.mono.copy(color = finish.plateDim, fontSize = 11.sp)
             )
         }

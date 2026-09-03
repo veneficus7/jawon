@@ -8,6 +8,28 @@ data class LyricLine(val timeMs: Long, val text: String) {
 }
 
 /** Where a set of lyrics came from. Shown to the user, because it explains what to expect. */
+/**
+ * Where a lookup has got to.
+ *
+ * **"Not found yet" and "there are none" are different answers and were being given the same
+ * words.** The third tier of the search is a network request to LRCLIB, so opening the page for a
+ * track the device cannot answer meant a second or two of the panel stating flatly that the track
+ * has no lyrics — and then the lyrics arriving, which makes the app look like it was lying rather
+ * than working. The page has to be able to say it is still looking.
+ */
+sealed interface LyricsState {
+    /** No track, or nothing to look for. */
+    data object Idle : LyricsState
+
+    /** A lookup is running. Only ever reached when the file itself did not answer. */
+    data object Looking : LyricsState
+
+    /** Everywhere has been asked and nobody had them. */
+    data object None : LyricsState
+
+    data class Ready(val lyrics: Lyrics) : LyricsState
+}
+
 enum class LyricSource {
     /** The file's own tag. Always there, never times anything. */
     EMBEDDED,

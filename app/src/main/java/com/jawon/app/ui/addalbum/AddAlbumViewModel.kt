@@ -30,9 +30,16 @@ class AddAlbumViewModel @Inject constructor(
                         AddAlbumUiState.Error("No audio files in that folder")
             // More than one album under the picked folder — offer the batch, since
             // nobody is going to fill in a form forty times.
+                    // Everything is ticked by default except what the library already has.
+                    // Pointing at a folder you have imported before is the ordinary way to end
+                    // up with two copies of a record, and the two are indistinguishable
+                    // afterwards. Still listed and still tickable — the user asked for this
+                    // folder specifically, and the match is a heuristic that can be wrong.
                     found.size > 1 -> AddAlbumUiState.MultiPreview(
                         albums = found,
-                        selected = found.indices.toSet(),
+                        selected = found.indices
+                            .filterNot { found[it].alreadyInLibrary }
+                            .toSet(),
                         coversToLookUp = repository.coversToLookUp(found)
                     )
                     else -> singlePreview(found.first())

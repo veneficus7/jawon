@@ -204,7 +204,13 @@ class AlbumImportRepository @Inject constructor(
         }
 
         grouped.entries.mapNotNull { (key, tracks) ->
-            val ordered = tracks.sortedWith(
+            // One row per file. A track reaching this list twice -- the same document surfaced by two
+
+            // nested folders, or one file matched by two passes -- became two rows in the album, and
+
+            // the tracklist showed the song twice with no way to tell which was which.
+
+            val ordered = tracks.distinctBy { it.fileUri }.sortedWith(
                 compareBy({ it.trackNumber ?: Int.MAX_VALUE }, { it.displayName })
             )
             val (album, artist) = albumNames[key] ?: (null to null)
@@ -264,23 +270,32 @@ class AlbumImportRepository @Inject constructor(
             }
         }
 
-        val ordered = read.sortedWith(
+        val ordered = read.distinctBy { it.fileUri }.sortedWith(
             compareBy({ it.trackNumber ?: Int.MAX_VALUE }, { it.displayName })
         )
         // This group's own folder, not the picked root — with nested folders they differ, and
         // the containing folder is what names the album when the tags do not.
         val folderName = files.firstOrNull()?.parentFile?.name ?: rootName
 
+        val title = mostCommon(ordered.mapNotNull { it.album })
+            ?: folderName
+            ?: "Untitled Album"
+        val artist = mostCommon(ordered.mapNotNull { it.artist }) ?: "Unknown Artist"
+
+        // The same identity check the scan makes, which this route never made. See
+        // [ImportPreview.alreadyInLibrary] for why it flags rather than filters.
+        val shelved = albumDao.getAll().first()
+            .mapTo(HashSet()) { albumKey(it.title, it.artist) }
+
         return ImportPreview(
             treeUri = treeUri,
             tracks = ordered,
-            suggestedTitle = mostCommon(ordered.mapNotNull { it.album })
-                ?: folderName
-                ?: "Untitled Album",
-            suggestedArtist = mostCommon(ordered.mapNotNull { it.artist }) ?: "Unknown Artist",
+            suggestedTitle = title,
+            suggestedArtist = artist,
             suggestedYear = mostCommon(ordered.mapNotNull { it.year }),
             failedCount = failedCount,
-            embeddedCoverUri = extractEmbeddedCover(files.map { it.uri })
+            embeddedCoverUri = extractEmbeddedCover(files.map { it.uri }),
+            alreadyInLibrary = albumKey(title, artist) in shelved
         )
     }
 

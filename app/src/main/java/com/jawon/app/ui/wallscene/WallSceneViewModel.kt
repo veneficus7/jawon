@@ -349,14 +349,38 @@ class WallSceneViewModel @Inject constructor(
      * that rate would be exactly the file I/O ENGINEERING.md rule 5 forbids. `LyricsRepository`
      * caches what it finds, so returning to a track costs nothing.
      */
-    val lyrics: StateFlow<Lyrics?> = deck
+    val lyrics: StateFlow<com.jawon.app.data.lyrics.LyricsState> = deck
         .map { it.currentTrack }
         .distinctUntilChanged { a, b -> a?.id == b?.id }
-        .map { track -> track?.let { lyricsRepository.lyricsFor(it, albumTitleNow()) } }
-        // The lookup can take a network round trip, so it must not block the page from drawing.
-        // `null` while it runs is the same state as "no lyrics", which is what the page already
-        // shows and is honest either way.
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+        // **Says it is looking, rather than saying there are none.**
+        //
+        // This used to be a plain `map` to a nullable, with null standing for both "the lookup
+        // has not finished" and "there are no words" — which the page renders identically. The
+        // third tier of the search is a request to LRCLIB, so for any track the file itself
+        // cannot answer, opening the page asserted that the track has no lyrics and then
+        // produced them a second later. That reads as the app having been wrong, not busy.
+        //
+        // `flatMapLatest` so a track change abandons a lookup already in flight: the answer to
+        // the previous track is not merely late by then, it is wrong.
+        .flatMapLatest { track ->
+            flow {
+                if (track == null) {
+                    emit(com.jawon.app.data.lyrics.LyricsState.Idle)
+                    return@flow
+                }
+                emit(com.jawon.app.data.lyrics.LyricsState.Looking)
+                val found = lyricsRepository.lyricsFor(track, albumTitleNow())
+                emit(
+                    if (found == null) com.jawon.app.data.lyrics.LyricsState.None
+                    else com.jawon.app.data.lyrics.LyricsState.Ready(found)
+                )
+            }
+        }
+        .stateIn(
+            viewModelScope,
+            SharingStarted.WhileSubscribed(5_000),
+            com.jawon.app.data.lyrics.LyricsState.Idle
+        )
 
     /**
      * Takes an album off the shelf.
