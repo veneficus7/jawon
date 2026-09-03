@@ -111,7 +111,10 @@ enum class DeckWindowGlass(
      * Which makes it exactly right for a mode whose entire idea is one hot process in a cold
      * room: the display is not lit *by* the room, it is the thing doing the burning.
      */
-    PLASMA(Color(0xFF0B0906), Color(0xFF2A1E14), 4.dp, Color(0xFFFF7A2E), 2.5.dp, Vt323Family, 24.sp, 2.sp),
+    // The glow runs hotter than the tube's. Orange sits where the eye is most sensitive and a
+    // plasma cell genuinely bleeds into its neighbours — the panels were famous for it — so the
+    // number that looked right on cyan reads as underexposed here.
+    PLASMA(Color(0xFF0B0906), Color(0xFF2A1E14), 4.dp, Color(0xFFFF7A2E), 3.5.dp, Vt323Family, 24.sp, 2.sp),
 
     /** A neon bar sign behind glass — the one display that is not a machine readout. */
     // Enormous and close, bleeding into itself. Type at this size stops being a label and starts

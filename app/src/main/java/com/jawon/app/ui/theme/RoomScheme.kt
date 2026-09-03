@@ -109,7 +109,11 @@ enum class RoomScheme(
         ambient = floatArrayOf(0.114f, 0.133f, 0.157f),
         void = floatArrayOf(0.031f, 0.039f, 0.051f),
         wall = Color(0xFF0C0E11),
-        board = Color(0xFF161B21),
+        // The board is the one surface the hot rim actually grazes, and at the wall's own value
+        // it had nothing to catch the light with — a rim light needs something to land on or it
+        // is only a colour in the air. Lifted just far enough off the wall behind it that the
+        // shelf edge reads as a lit surface rather than as a line.
+        board = Color(0xFF1A2028),
         // Molten orange, so the room and the machine in it agree about what colour the app is.
         accent = Color(0xFFFF6B1A),
         plate = DeckPlate.BRUSHED,

@@ -187,7 +187,17 @@ val ColdPalette = Palette(
     crateRaised = Color(0xFF161B21),
     crateEdge = Color(0xFF1E242B),
     labelCream = Color(0xFFB8C2CE),
-    labelDim = Color(0xFF5A6674),
+    // **Lifted, because the first value did not have the contrast to be read.**
+    //
+    // Measured against this mode's own ground rather than guessed at. On `#0C0E11`, the
+    // original `#5A6674` came out at 3.3:1 — under the 4.5:1 that ordinary text needs, and this
+    // colour carries the explanatory lines under every setting, which is exactly the text
+    // somebody is reading carefully when they read it at all. `#6E7C8C` lands at 4.5:1 and is
+    // still clearly secondary to `labelCream`, which sits at 10.6:1.
+    //
+    // The other two were already fine and are left alone: the amber is 6.7:1 on the same
+    // ground, and the cream 10.6:1.
+    labelDim = Color(0xFF6E7C8C),
     lampAmber = Color(0xFFFF6B1A),
     oxideTeal = Color(0xFF8A5A3C),
     // Hotter than it was. The old 0.45 was a striplight travelling across brushed metal; this is

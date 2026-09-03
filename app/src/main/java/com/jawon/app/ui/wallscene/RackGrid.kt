@@ -13,6 +13,7 @@ import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.aspectRatio
@@ -48,12 +49,14 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.keyframes
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
@@ -1736,12 +1739,19 @@ private fun RackUnit(
     val params = cells.firstOrNull { it.channel == selected }?.params.orEmpty()
     val hue = cells.firstOrNull { it.channel == selected }?.hue ?: finish.accent
 
+    // **`IntrinsicSize.Min`, and the ears do not work without it.**
+    //
+    // They ask for `fillMaxHeight`, which resolves against the incoming maximum — and inside a
+    // wrap-content Row that maximum is unbounded, so the request means nothing and the flanges
+    // collapse to whatever their two screws need. Measuring the row's intrinsic height first
+    // gives them a real number to fill, and the ears then run the full depth of the panel the
+    // way a mounting flange has to.
     Row(
         modifier = modifier
             .fillMaxWidth()
+            .height(IntrinsicSize.Min)
             .background(finish.plateLow)
-            .border(1.dp, finish.plateEdge),
-        verticalAlignment = Alignment.CenterVertically
+            .border(1.dp, finish.plateEdge)
     ) {
         RackEar(finish)
 
@@ -1838,11 +1848,21 @@ private fun RackEar(finish: DeckFinish) {
         verticalArrangement = Arrangement.SpaceBetween
     ) {
         repeat(2) {
-            Box(
-                modifier = Modifier
-                    .size(UNIT_SCREW.dp)
-                    .background(finish.plateEdge, CircleShape)
-            )
+            // A slotted head, not a dot. One line across a five-point circle is almost nothing
+            // to draw and it is the difference between a screw and a hole — the eye reads the
+            // slot as a fastener without ever being asked to look at it, which is the whole
+            // point of detail at this size.
+            Canvas(modifier = Modifier.size(UNIT_SCREW.dp)) {
+                val r = size.minDimension / 2f
+                val c = Offset(size.width / 2f, size.height / 2f)
+                drawCircle(color = finish.plateEdge, radius = r, center = c)
+                drawLine(
+                    color = finish.plateLow,
+                    start = Offset(c.x - r * 0.55f, c.y),
+                    end = Offset(c.x + r * 0.55f, c.y),
+                    strokeWidth = SCREW_SLOT.toPx()
+                )
+            }
         }
     }
 }
@@ -1885,12 +1905,23 @@ private fun UnitSwitch(
             }
             // A lamp behind the legend, which is how a switched-in channel announces itself on
             // real gear: the button does not change colour, the light behind it comes on.
+            //
+            // A gradient rather than a block of flat alpha. The first version filled the bottom
+            // 55% at a constant strength, which draws a hard horizontal line straight across the
+            // middle of every lit switch — the same mistake the patchbay's first bloom made, and
+            // just as visible once you know to look. A lamp sitting under the legend falls off
+            // upward and has no edge anywhere.
             .drawBehind {
                 if (engaged && finish.glow > 0f) {
                     drawRect(
-                        color = cell.hue.copy(alpha = UNIT_LAMP_ALPHA * finish.glow),
-                        topLeft = Offset(0f, size.height * 0.45f),
-                        size = Size(size.width, size.height * 0.55f)
+                        brush = Brush.verticalGradient(
+                            colors = listOf(
+                                Color.Transparent,
+                                cell.hue.copy(alpha = UNIT_LAMP_ALPHA * finish.glow)
+                            ),
+                            startY = size.height * 0.25f,
+                            endY = size.height
+                        )
                     )
                 }
             }
@@ -2029,15 +2060,22 @@ private fun UnitParam(param: RackParam?, hue: Color, live: Boolean) {
                     )
                 }
 
+                // The cap, with the moulded line across it that every fader knob has. It is the
+                // detail that says which way the control travels, and without it the cap is a
+                // rectangle that happens to be sitting on a groove.
                 val capW = UNIT_CAP_W.toPx()
                 val capH = UNIT_CAP_H.toPx()
+                val capX = (x - capW / 2f).coerceIn(0f, size.width - capW)
                 drawRect(
                     color = if (live) finish.cap else finish.keyEdge,
-                    topLeft = Offset(
-                        (x - capW / 2f).coerceIn(0f, size.width - capW),
-                        midY - capH / 2f
-                    ),
+                    topLeft = Offset(capX, midY - capH / 2f),
                     size = Size(capW, capH)
+                )
+                drawLine(
+                    color = finish.plateLow,
+                    start = Offset(capX, midY),
+                    end = Offset(capX + capW, midY),
+                    strokeWidth = CAP_LINE.toPx()
                 )
             }
         }
@@ -2050,13 +2088,15 @@ private const val UNIT_SCREW = 5
 private const val UNIT_PAD = 12
 private const val UNIT_GAP = 4
 private const val UNIT_SWITCH_H = 42
-private const val UNIT_PARAM_H = 46
+private const val UNIT_PARAM_H = 52
 private const val UNIT_TRACK_TOUCH = 30
 private const val UNIT_PARAM_SLOTS = 3
 private val UNIT_MARK_SIZE = 8.sp
 private val UNIT_TRACK = 4.dp
 private val UNIT_CAP_W = 5.dp
 private val UNIT_CAP_H = 18.dp
+private val CAP_LINE = 1.dp
+private val SCREW_SLOT = 1.dp
 private const val UNIT_LAMP_ALPHA = 0.30f
 private const val UNIT_TRACK_BLOOM = 0.20f
 
@@ -2138,23 +2178,59 @@ private fun PatchbayRack(
         )
 
         cells.chunked(4).forEachIndexed { rowIndex, row ->
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(bottom = PATCH_ROW_GAP.dp),
-                horizontalArrangement = Arrangement.spacedBy(PATCH_GAP.dp)
-            ) {
-                row.forEachIndexed { colIndex, c ->
-                    val order = rowIndex * 4 + colIndex
-                    Socket(
-                        cell = c,
-                        hue = hueAt(order),
-                        order = order,
-                        arrived = arrived,
-                        engaged = c.channel in engaged,
-                        selected = c.channel == selected,
-                        onToggle = { onToggle(c.channel) },
-                        onSelect = { onSelect(c.channel) },
-                        modifier = Modifier.weight(1f)
-                    )
+            // **Every bloom in the row is drawn on one canvas behind all of them.**
+            //
+            // Drawing a socket's glow inside the socket's own 46dp canvas is what put the hard
+            // vertical edges down the left and right of the bank: a Canvas clips to its bounds,
+            // and a halo two and a half times the rim's radius is simply cut off where its cell
+            // ends. Widening the cell only moves the edge.
+            //
+            // This project has solved this before — the ring's studs had the identical fault and
+            // the answer was the same one: light belongs to the panel, not to the control, so it
+            // is drawn on a surface the size of the panel. The sockets on top then draw only the
+            // things that really are theirs, the rim and the hole.
+            Box(modifier = Modifier.fillMaxWidth().padding(bottom = PATCH_ROW_GAP.dp)) {
+
+                Canvas(modifier = Modifier.matchParentSize()) {
+                    if (finish.glow <= 0f) return@Canvas
+                    val gap = PATCH_GAP.dp.toPx()
+                    val cellW = (size.width - gap * (row.size - 1)) / row.size
+                    val r = PATCH_SOCKET.dp.toPx() / 2f
+
+                    row.forEachIndexed { colIndex, c ->
+                        if (c.channel !in engaged) return@forEachIndexed
+                        val centre = Offset(
+                            colIndex * (cellW + gap) + cellW / 2f,
+                            // The socket sits at the top of its column, above its legend.
+                            r
+                        )
+                        drawNeon(
+                            centre = centre,
+                            radius = r,
+                            hue = hueAt(rowIndex * 4 + colIndex),
+                            strength = finish.glow
+                        )
+                    }
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(PATCH_GAP.dp)
+                ) {
+                    row.forEachIndexed { colIndex, c ->
+                        val order = rowIndex * 4 + colIndex
+                        Socket(
+                            cell = c,
+                            hue = hueAt(order),
+                            order = order,
+                            arrived = arrived,
+                            engaged = c.channel in engaged,
+                            selected = c.channel == selected,
+                            onToggle = { onToggle(c.channel) },
+                            onSelect = { onSelect(c.channel) },
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
                 }
             }
         }
@@ -2240,10 +2316,36 @@ private fun Socket(
         animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy),
         label = "press"
     )
+    // **Workshop's own entry, rather than the one the other modes use.**
+    //
+    // Every other layout arrives by rising a few points and fading in, which is a *physical*
+    // gesture: an object being set down. It is right for a shop and a rack unit, and it is
+    // wrong here, because nothing in this room is an object. There is no lamp in the fiction of
+    // Workshop and no daylight — only equipment making its own light — so the honest entry is
+    // not something being placed, it is a channel being energised.
+    //
+    // So the sockets do not move at all. They come up as phosphor comes up: a hard strike, a
+    // gutter, then the settle, staggered down the bank so it reads as eight channels coming
+    // online in sequence rather than a panel appearing. Same language as the intro's byline,
+    // which is deliberate — this app has exactly one idea about how light switches on and it
+    // should be recognisable wherever it happens.
+    //
+    // `keyframes` rather than a chain of `animateTo`, because this is declarative state rather
+    // than a coroutine: `arrived` can go false again and the animation has to be able to run
+    // backwards without a script half-finished somewhere.
     val entry = animateFloatAsState(
         targetValue = if (arrived) 1f else 0f,
-        animationSpec = tween(ENTRY_MS, order * ENTRY_STAGGER_MS, FastOutSlowInEasing),
-        label = "entry"
+        animationSpec = keyframes {
+            durationMillis = STRIKE_MS
+            0f at 0
+            0.9f at 70
+            0.15f at 110
+            1f at 165
+            0.45f at 200
+            1f at STRIKE_MS
+            delayMillis = order * STRIKE_STAGGER_MS
+        },
+        label = "strike"
     )
     val pulse = selectionPulse(selected)
 
@@ -2253,7 +2355,7 @@ private fun Socket(
                 scaleX = press.value
                 scaleY = press.value
                 alpha = entry.value
-                translationY = (1f - entry.value) * ENTRY_RISE_PX
+                // No rise. See the note above: this panel switches on, it does not arrive.
             }
             .alpha(if (cell.available) 1f else UNAVAILABLE_ALPHA)
             .then(
@@ -2282,50 +2384,12 @@ private fun Socket(
             val c = Offset(size.width / 2f, size.height / 2f)
             val outer = size.minDimension / 2f - PATCH_RING.toPx() / 2f
 
-            // **A falloff, not a disc.**
-            //
-            // The first version stacked two flat circles of low alpha, which is not what light
-            // does: a constant-alpha disc has a hard edge wherever it stops, so it reads as a
-            // translucent washer laid on the panel rather than as glow. Real light falls off
-            // continuously, and the underlight on the wall — the thing this is supposed to look
-            // like — is a radial ramp to nothing.
-            //
-            // Two ramps rather than one, because a single gradient wide enough to spread nicely
-            // is too weak at the rim to look hot: a tight bright core sitting inside a wide soft
-            // halo is what gives a small light its intensity *and* its reach.
-            //
-            // Nothing is clipped to the socket. A glow drawn into its own layer stops at that
-            // layer's bounds, which is what put visible rectangles around the ring's studs.
-            if (engaged && finish.glow > 0f) {
-                val halo = outer * PATCH_BLOOM_SPREAD
-                drawCircle(
-                    brush = Brush.radialGradient(
-                        colors = listOf(
-                            hue.copy(alpha = PATCH_BLOOM_ALPHA * finish.glow),
-                            Color.Transparent
-                        ),
-                        center = c,
-                        radius = halo
-                    ),
-                    radius = halo,
-                    center = c
-                )
-                val core = outer * PATCH_BLOOM_CORE_R
-                drawCircle(
-                    brush = Brush.radialGradient(
-                        colors = listOf(
-                            hue.copy(alpha = PATCH_BLOOM_CORE * finish.glow),
-                            Color.Transparent
-                        ),
-                        center = c,
-                        radius = core
-                    ),
-                    radius = core,
-                    center = c
-                )
-            }
+            // The bloom is not drawn here — it belongs to the panel behind the whole bank, so a
+            // halo wider than one cell is not sliced off at that cell's edge. See the parent
+            // canvas in [PatchbayRack].
 
-            // The hole itself.
+            // The hole itself. Lit from inside when patched, because a socket with a glow around
+            // it and a dead black centre reads as a ring rather than as a light source.
             drawCircle(color = finish.groove, radius = outer, center = c)
             drawCircle(
                 color = if (engaged) hue.copy(alpha = PATCH_HOLE_ALPHA) else finish.plateLow,
@@ -2498,11 +2562,6 @@ private const val PATCH_ROW_GAP = 10
 private val PATCH_RING = 2.dp
 private val PATCH_TYPE = 10.sp
 
-/** How far past its own rim a patched socket throws light, as a multiple of the rim radius. */
-private const val PATCH_BLOOM_SPREAD = 2.6f
-private const val PATCH_BLOOM_ALPHA = 0.30f
-private const val PATCH_BLOOM_CORE = 0.55f
-private const val PATCH_BLOOM_CORE_R = 1.35f
 private const val PATCH_HOLE = 0.52f
 private const val PATCH_HOLE_ALPHA = 0.30f
 
@@ -2519,3 +2578,112 @@ private const val CONSOLE_GLOW_RADIUS = 11f
 
 private const val PATCH_HEADER = "PATCH - 8 POINT"
 private const val PATCH_IDLE = "  no point selected"
+
+/**
+ * A lit tube, in four layers.
+ *
+ * **The thing that was missing is the white.** Two radial ramps of the effect's own colour is a
+ * better glow than two flat discs, but it is still not neon, and the reason is physical: a tube
+ * bright enough to throw light is *over* the display's range at its centre, so the middle of it
+ * clips to white and only the falloff carries the hue. A glow that is the same green all the way
+ * to its centre reads as a green sticker no matter how nicely it fades — the eye takes
+ * desaturation-toward-white as the signal for "very bright", and nothing else substitutes.
+ *
+ * So, outward from the middle:
+ *
+ * 1. a small near-white core, which is the part that is blowing out,
+ * 2. the saturated hue at full strength around it, which is the tube's own colour,
+ * 3. a wide halo ramping to nothing, which is the light in the air,
+ * 4. and a faint outer bloom far past all of it, which is what stops the halo having an end.
+ *
+ * They are drawn back to front and translucent, so the overlaps accumulate the way real light
+ * does — brightest where every layer coincides, and falling away in steps too soft to count.
+ */
+private fun DrawScope.drawNeon(
+    centre: Offset,
+    radius: Float,
+    hue: Color,
+    strength: Float
+) {
+    // The outer air. Very faint and very wide, so the glow has no edge anywhere.
+    val outer = radius * NEON_OUTER
+    drawCircle(
+        brush = Brush.radialGradient(
+            colors = listOf(hue.copy(alpha = NEON_OUTER_A * strength), Color.Transparent),
+            center = centre,
+            radius = outer
+        ),
+        radius = outer,
+        center = centre
+    )
+
+    // The halo. This is the layer doing most of the visible work.
+    val halo = radius * NEON_HALO
+    drawCircle(
+        brush = Brush.radialGradient(
+            colors = listOf(hue.copy(alpha = NEON_HALO_A * strength), Color.Transparent),
+            center = centre,
+            radius = halo
+        ),
+        radius = halo,
+        center = centre
+    )
+
+    // The tube's own colour, at its own strength, close in.
+    val body = radius * NEON_BODY
+    drawCircle(
+        brush = Brush.radialGradient(
+            colors = listOf(hue.copy(alpha = NEON_BODY_A * strength), Color.Transparent),
+            center = centre,
+            radius = body
+        ),
+        radius = body,
+        center = centre
+    )
+
+    // The blown-out centre. Mixed toward white rather than set to it, so a green tube still
+    // reads as green at its heart and merely as *too bright to have a colour* at the very middle.
+    val core = radius * NEON_CORE
+    drawCircle(
+        brush = Brush.radialGradient(
+            colors = listOf(
+                lerp(hue, Color.White, NEON_WHITEOUT).copy(alpha = NEON_CORE_A * strength),
+                hue.copy(alpha = NEON_CORE_A * 0.5f * strength),
+                Color.Transparent
+            ),
+            center = centre,
+            radius = core
+        ),
+        radius = core,
+        center = centre
+    )
+}
+
+/** Radii, as multiples of the socket's own. */
+private const val NEON_OUTER = 3.4f
+private const val NEON_HALO = 2.0f
+private const val NEON_BODY = 1.25f
+private const val NEON_CORE = 0.72f
+
+/**
+ * Alphas. Low individually and cumulative in practice: four translucent layers over one another
+ * is what builds the ramp, and any single one of them at a strength that looked right alone
+ * would flatten the others out.
+ */
+private const val NEON_OUTER_A = 0.10f
+private const val NEON_HALO_A = 0.22f
+private const val NEON_BODY_A = 0.34f
+private const val NEON_CORE_A = 0.85f
+
+/** How far the core is pulled toward white. Most of the way, but not all — see [drawNeon]. */
+private const val NEON_WHITEOUT = 0.62f
+
+/**
+ * How a Workshop channel strikes on, and how far apart the eight of them are.
+ *
+ * The stagger is wide enough that the bank reads as a sequence rather than a shimmer — eight
+ * channels coming online one after another, which is what the whole layout is pretending to be —
+ * and the total for the last of them still lands under a second.
+ */
+private const val STRIKE_MS = 260
+private const val STRIKE_STAGGER_MS = 55
