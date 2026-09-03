@@ -31,6 +31,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -1276,6 +1277,29 @@ private fun SegmentRing(
         label = "entry"
     )
 
+    // **What the gesture reads, without the gesture being restarted to deliver it.**
+    //
+    // The handler below used to be keyed on `cells`, `engaged`, `selected` and `params`, which
+    // looks like the careful thing to do and is the opposite. [RackParam] is a data class
+    // holding lambdas, and lambdas allocated fresh each composition never compare equal — so
+    // `params` was a new key on *every* recomposition, and turning the band recomposes this on
+    // every pointer move by design, since the value being turned is what the wedges are drawn
+    // from.
+    //
+    // A `pointerInput` whose keys change is cancelled and relaunched. Mid-turn that throws away
+    // the `awaitEachGesture` currently tracking the finger, and the replacement waits on
+    // `awaitFirstDown` — which a finger already touching the glass will never send again. The
+    // turn dies and only a fresh press revives it.
+    //
+    // Keyed on `Unit` and read through `rememberUpdatedState`, the handler is set up once, lives
+    // for as long as the ring is on screen, and still sees the newest value on every move.
+    val liveKnob = rememberUpdatedState(knob)
+    val liveCells = rememberUpdatedState(cells)
+    val liveEngaged = rememberUpdatedState(engaged)
+    val liveSelected = rememberUpdatedState(selected)
+    val liveToggle = rememberUpdatedState(onToggle)
+    val liveSelect = rememberUpdatedState(onSelect)
+
     // **The controls come out of the hole.**
     //
     // A ring's hole is small by definition, and five equaliser bands will not go in it — three
@@ -1296,7 +1320,7 @@ private fun SegmentRing(
             Canvas(
                 modifier = Modifier
                     .fillMaxSize()
-                    .pointerInput(cells, engaged, selected, params) {
+                    .pointerInput(Unit) {
                         // **One detector for both gestures, deliberately.**
                         //
                         // The band is a bank of switches you tap *and* a wheel you turn, on the
@@ -1347,7 +1371,7 @@ private fun SegmentRing(
                                     // A full sweep of the band is the control's full range, so
                                     // the mapping is the arc itself rather than an invented
                                     // sensitivity.
-                                    knob?.let {
+                                    liveKnob.value?.let {
                                         it.onChange(
                                             (it.value + step / SEG_SWEEP).coerceIn(0f, 1f)
                                         )
@@ -1356,7 +1380,7 @@ private fun SegmentRing(
                             }
 
                             if (turning) {
-                                knob?.onCommit?.invoke()
+                                liveKnob.value?.onCommit?.invoke()
                             } else {
                                 // Never travelled far enough to be a turn, so it was a press.
                                 val hit = segmentAt(
@@ -1365,13 +1389,15 @@ private fun SegmentRing(
                                     height = size.height.toFloat(),
                                     inner = inner
                                 )
-                                val cell = cells.getOrNull(hit)
+                                val cell = liveCells.value.getOrNull(hit)
                                 if (cell != null && cell.available) {
-                                    val isIn = cell.channel in engaged
+                                    val isIn = cell.channel in liveEngaged.value
+                                    val toggle = liveToggle.value
+                                    val select = liveSelect.value
                                     when {
-                                        !isIn -> { onToggle(cell.channel); onSelect(cell.channel) }
-                                        cell.channel == selected -> onToggle(cell.channel)
-                                        else -> onSelect(cell.channel)
+                                        !isIn -> { toggle(cell.channel); select(cell.channel) }
+                                        cell.channel == liveSelected.value -> toggle(cell.channel)
+                                        else -> select(cell.channel)
                                     }
                                 }
                             }

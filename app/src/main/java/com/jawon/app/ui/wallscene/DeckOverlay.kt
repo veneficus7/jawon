@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.height
@@ -39,8 +40,6 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Slider
-import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.State
@@ -62,6 +61,13 @@ import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.drag
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.platform.LocalDensity
@@ -555,7 +561,10 @@ private fun ScrubOrQuality(scrubReadout: State<ScrubReadout?>, deck: DeckState) 
             text = (if (scrub.forward) "▶▶  " else "◀◀  ") +
                 formatDuration(scrub.positionMs) + " / " +
                 formatDuration(track?.durationMs ?: 0L),
-            style = JawonTextStyle.mono,
+            // Live, and the only thing on the plate that is. Tabular, because this counts
+            // through every digit at about twelve updates a second while the disc is turning
+            // and proportional figures make the whole line shuffle as it goes.
+            style = JawonTextStyle.mono.copy(fontFeatureSettings = "tnum"),
             modifier = Modifier.padding(top = 10.dp)
         )
         Text(
@@ -568,20 +577,53 @@ private fun ScrubOrQuality(scrubReadout: State<ScrubReadout?>, deck: DeckState) 
         return
     }
     deck.currentTrack?.let { track ->
-        Text(
+        // **Printed on the plate, not shown in the display.**
+        //
+        // These two lines are a specification — what the file is and where it is going — and a
+        // specification on real gear is silkscreened next to the socket in the smallest type
+        // the process will hold. Set at reading size they carried the same weight as the track
+        // title in the glass above and pulled the eye down to the least important thing on the
+        // panel. At silkscreen size they say the same words and stop competing.
+        //
+        // Same treatment as the brand and model marks at the top of the window, deliberately:
+        // one printing process for everything printed.
+        Silkscreen(
             text = qualityReadoutSource(track).uppercase(),
-            style = JawonTextStyle.mono.copy(color = finish.plateDim),
-            modifier = Modifier.padding(top = 10.dp)
+            modifier = Modifier.padding(top = 12.dp)
         )
-        Text(
+        Silkscreen(
             text = qualityReadoutOutput(
                 track, deck.routeLabel, deck.outputSampleRateHz
             ).uppercase(),
-            style = JawonTextStyle.mono.copy(color = finish.plateDim),
-            modifier = Modifier.padding(top = 2.dp)
+            modifier = Modifier.padding(top = 3.dp)
         )
     }
 }
+
+/**
+ * Small print on the plate: the marks a machine wears that nobody reads and everybody expects.
+ *
+ * A single definition so every printed thing on the panel comes off the same screen — the
+ * brand, the model and the format spec were three slightly different sizes and trackings, which
+ * is the sort of difference that reads as carelessness without ever being noticed directly.
+ */
+@Composable
+private fun Silkscreen(text: String, modifier: Modifier = Modifier) {
+    Text(
+        text = text,
+        fontFamily = JetBrainsMonoFamily,
+        fontSize = SILKSCREEN_SIZE,
+        fontWeight = FontWeight.Bold,
+        letterSpacing = SILKSCREEN_TRACKING,
+        color = LocalDeckFinish.current.plateDim,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+        modifier = modifier
+    )
+}
+
+private val SILKSCREEN_SIZE = 8.sp
+private val SILKSCREEN_TRACKING = 2.sp
 
 /**
  * Isolated so the 2Hz position tick recomposes only the bar and its two labels — the
@@ -624,40 +666,163 @@ private fun ProgressRow(
     }
 
     Column(modifier = Modifier.fillMaxWidth()) {
-        Slider(
-            value = shown,
-            onValueChange = {
+        TransportGroove(
+            fraction = (shown / range).coerceIn(0f, 1f),
+            onScrubTo = { f ->
                 isDragging = true
-                dragValue = it
+                dragValue = f * range
             },
-            onValueChangeFinished = {
+            onRelease = {
                 isDragging = false
                 onSeek(dragValue.toLong())
-            },
-            valueRange = 0f..range,
-            colors = SliderDefaults.colors(
-                thumbColor = finish.accent,
-                activeTrackColor = finish.accent,
-                inactiveTrackColor = finish.plateEdge
-            )
+            }
         )
         Row(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.fillMaxWidth().padding(top = 2.dp),
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
             // Quiet, because the window above already carries the live time in the glass —
             // this row is the scale for the bar, not the readout.
+            //
+            // Tabular figures, so the elapsed time does not jitter sideways as the digits
+            // change underneath it. A proportional 1 is narrower than a 0 in most faces, which
+            // makes a running clock twitch on every tick — invisible until you notice it, and
+            // impossible to stop noticing afterwards.
             Text(
                 formatDuration(shown.toLong()),
-                style = JawonTextStyle.mono.copy(color = finish.plateDim)
+                style = JawonTextStyle.mono.copy(
+                    color = finish.plateDim,
+                    fontFeatureSettings = "tnum"
+                )
             )
             Text(
                 formatDuration(durationMs),
-                style = JawonTextStyle.mono.copy(color = finish.plateDim)
+                style = JawonTextStyle.mono.copy(
+                    color = finish.plateDim,
+                    fontFeatureSettings = "tnum"
+                )
             )
         }
     }
 }
+
+/**
+ * The transport, drawn as a groove with a cap running along it.
+ *
+ * **This was a stock Material slider with its colours swapped**, and it was the one part of the
+ * deck that looked like a phone rather than a machine: a pill-shaped track, Material 3's tall
+ * lozenge thumb, and the little stop dot the component draws at the far end whether or not it
+ * means anything here. Every other control on this panel is drawn by hand against the mode's
+ * finish, and the eye picks the stranger out immediately even when it cannot say why.
+ *
+ * So it uses the same two parts the faders do — [DeckFinish.groove] and [DeckFinish.cap]. A
+ * recessed channel with a marker travelling in it is what a transport looks like on real gear,
+ * and reusing the vocabulary is what makes the panel read as one object built by one hand.
+ *
+ * Two things it does that the Material component could not:
+ *
+ * - **The travelled part glows.** Same underlight the cases have on the wall, scaled by the
+ *   mode's own `glow`, so the workbench stays matte and the bar mode bleeds. It is a small
+ *   layer, so this is nothing like the screen-wide wash that had to be taken out of the window.
+ * - **Touch is separated from drawing.** The groove is 5dp because that is what looks right;
+ *   the target is [TRANSPORT_TOUCH] tall because that is what a thumb needs. A press anywhere
+ *   seeks there directly rather than requiring the marker to be caught first.
+ *
+ * One gesture handler, deliberately — trap 6 in ENGINEERING.md is two of them fighting over the same
+ * value, and a press-then-drag written as a single `awaitEachGesture` cannot get into that
+ * argument with itself.
+ */
+@Composable
+private fun TransportGroove(
+    fraction: Float,
+    onScrubTo: (Float) -> Unit,
+    onRelease: () -> Unit
+) {
+    val finish = LocalDeckFinish.current
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(TRANSPORT_TOUCH)
+            .pointerInput(Unit) {
+                awaitEachGesture {
+                    val down = awaitFirstDown()
+                    val width = size.width.toFloat().coerceAtLeast(1f)
+                    onScrubTo((down.position.x / width).coerceIn(0f, 1f))
+                    down.consume()
+                    drag(down.id) { change ->
+                        onScrubTo((change.position.x / width).coerceIn(0f, 1f))
+                        change.consume()
+                    }
+                    onRelease()
+                }
+            }
+    ) {
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            val midY = size.height / 2f
+            val grooveH = TRANSPORT_GROOVE.toPx()
+            val travelled = size.width * fraction
+
+            // The channel. Full width, so the whole track is visible as a distance to cover
+            // rather than only the part already played.
+            drawRoundRect(
+                color = finish.groove,
+                topLeft = Offset(0f, midY - grooveH / 2f),
+                size = Size(size.width, grooveH),
+                cornerRadius = CornerRadius(grooveH / 2f)
+            )
+
+            // The bloom under the travelled part, drawn first so the fill sits on top of its own
+            // light rather than under it. Skipped entirely on a matte mode.
+            if (finish.glow > 0f && travelled > 0f) {
+                drawRoundRect(
+                    color = finish.accent.copy(alpha = TRANSPORT_BLOOM_ALPHA * finish.glow),
+                    topLeft = Offset(0f, midY - grooveH * TRANSPORT_BLOOM_SPREAD / 2f),
+                    size = Size(travelled, grooveH * TRANSPORT_BLOOM_SPREAD),
+                    cornerRadius = CornerRadius(grooveH)
+                )
+            }
+
+            drawRoundRect(
+                color = finish.accent,
+                topLeft = Offset(0f, midY - grooveH / 2f),
+                size = Size(travelled, grooveH),
+                cornerRadius = CornerRadius(grooveH / 2f)
+            )
+
+            // The cap. A narrow upright marker rather than a circle: a circle is a handle you
+            // drag, and this is a position you read.
+            val capW = TRANSPORT_CAP_W.toPx()
+            val capH = TRANSPORT_CAP_H.toPx()
+            val capX = (travelled - capW / 2f).coerceIn(0f, size.width - capW)
+            if (finish.glow > 0f) {
+                drawRoundRect(
+                    color = finish.accent.copy(alpha = TRANSPORT_CAP_BLOOM * finish.glow),
+                    topLeft = Offset(capX - capW, midY - capH * 0.75f),
+                    size = Size(capW * 3f, capH * 1.5f),
+                    cornerRadius = CornerRadius(capW)
+                )
+            }
+            drawRoundRect(
+                color = finish.cap,
+                topLeft = Offset(capX, midY - capH / 2f),
+                size = Size(capW, capH),
+                cornerRadius = CornerRadius(capW / 2f)
+            )
+        }
+    }
+}
+
+/** Big enough for a thumb, whatever the groove inside it is drawn at. */
+private val TRANSPORT_TOUCH = 40.dp
+private val TRANSPORT_GROOVE = 5.dp
+private val TRANSPORT_CAP_W = 4.dp
+private val TRANSPORT_CAP_H = 17.dp
+
+/** How far the travelled light spreads past the groove, as a multiple of its height. */
+private const val TRANSPORT_BLOOM_SPREAD = 3.2f
+private const val TRANSPORT_BLOOM_ALPHA = 0.22f
+private const val TRANSPORT_CAP_BLOOM = 0.30f
 
 @Composable
 private fun TrackRow(track: Track, isCurrent: Boolean, onClick: () -> Unit) {
@@ -1043,22 +1208,9 @@ private fun DeckWindow(
                 modifier = Modifier.fillMaxWidth().padding(bottom = 6.dp),
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Text(
-                    text = finish.brand,
-                    fontFamily = JetBrainsMonoFamily,
-                    fontSize = 8.sp,
-                    fontWeight = FontWeight.Bold,
-                    letterSpacing = 3.sp,
-                    color = finish.plateDim
-                )
+                Silkscreen(text = finish.brand)
                 if (finish.model.isNotBlank()) {
-                    Text(
-                        text = finish.model,
-                        fontFamily = JetBrainsMonoFamily,
-                        fontSize = 8.sp,
-                        letterSpacing = 2.sp,
-                        color = finish.plateDim
-                    )
+                    Silkscreen(text = finish.model)
                 }
             }
         }
