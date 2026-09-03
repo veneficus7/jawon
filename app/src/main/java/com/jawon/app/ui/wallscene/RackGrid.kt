@@ -2103,8 +2103,28 @@ private fun PatchbayRack(
     val finish = LocalDeckFinish.current
     val cell = cells.firstOrNull { it.channel == selected }
     val params = cell?.params.orEmpty()
-    val hue = cell?.hue ?: finish.accent
     val live = selected != null && selected in engaged
+
+    // **The mode's colours, not the grid's eight.**
+    //
+    // `RackCell.hue` is the palette the original grid used — eight unrelated colours, one per
+    // effect — and reading it here is what made Workshop's sockets come out orange and blue and
+    // violet in a room whose entire premise is that the only light in it is phosphor. The ring
+    // solved this already: ramp between the mode's own two accents across the bank, so the
+    // channels stay distinguishable without any of them leaving the mode.
+    //
+    // On Workshop those two are `#00FF41` and `#00A82B`, so the whole patchbay is green and only
+    // its brightness varies — which is what a rack of identical jacks lit by one phosphor
+    // actually looks like.
+    fun hueAt(index: Int): Color = lerp(
+        finish.accent,
+        finish.accentB,
+        index / (cells.size - 1).coerceAtLeast(1).toFloat()
+    )
+
+    val hue = selected
+        ?.let { s -> hueAt(cells.indexOfFirst { it.channel == s }.coerceAtLeast(0)) }
+        ?: finish.accent
 
     Column(modifier = modifier.fillMaxWidth()) {
 
@@ -2123,9 +2143,11 @@ private fun PatchbayRack(
                 horizontalArrangement = Arrangement.spacedBy(PATCH_GAP.dp)
             ) {
                 row.forEachIndexed { colIndex, c ->
+                    val order = rowIndex * 4 + colIndex
                     Socket(
                         cell = c,
-                        order = rowIndex * 4 + colIndex,
+                        hue = hueAt(order),
+                        order = order,
                         arrived = arrived,
                         engaged = c.channel in engaged,
                         selected = c.channel == selected,
@@ -2202,6 +2224,7 @@ private fun PatchbayRack(
 @Composable
 private fun Socket(
     cell: RackCell,
+    hue: Color,
     order: Int,
     arrived: Boolean,
     engaged: Boolean,
@@ -2259,18 +2282,45 @@ private fun Socket(
             val c = Offset(size.width / 2f, size.height / 2f)
             val outer = size.minDimension / 2f - PATCH_RING.toPx() / 2f
 
-            // The bloom, drawn first and well outside the ring. Nothing here is clipped to the
-            // socket, which is the mistake that put visible rectangles around the ring's studs:
-            // a glow drawn into its own layer stops at that layer's bounds.
+            // **A falloff, not a disc.**
+            //
+            // The first version stacked two flat circles of low alpha, which is not what light
+            // does: a constant-alpha disc has a hard edge wherever it stops, so it reads as a
+            // translucent washer laid on the panel rather than as glow. Real light falls off
+            // continuously, and the underlight on the wall — the thing this is supposed to look
+            // like — is a radial ramp to nothing.
+            //
+            // Two ramps rather than one, because a single gradient wide enough to spread nicely
+            // is too weak at the rim to look hot: a tight bright core sitting inside a wide soft
+            // halo is what gives a small light its intensity *and* its reach.
+            //
+            // Nothing is clipped to the socket. A glow drawn into its own layer stops at that
+            // layer's bounds, which is what put visible rectangles around the ring's studs.
             if (engaged && finish.glow > 0f) {
+                val halo = outer * PATCH_BLOOM_SPREAD
                 drawCircle(
-                    color = cell.hue.copy(alpha = PATCH_BLOOM_ALPHA * finish.glow),
-                    radius = outer * PATCH_BLOOM_SPREAD,
+                    brush = Brush.radialGradient(
+                        colors = listOf(
+                            hue.copy(alpha = PATCH_BLOOM_ALPHA * finish.glow),
+                            Color.Transparent
+                        ),
+                        center = c,
+                        radius = halo
+                    ),
+                    radius = halo,
                     center = c
                 )
+                val core = outer * PATCH_BLOOM_CORE_R
                 drawCircle(
-                    color = cell.hue.copy(alpha = PATCH_BLOOM_CORE * finish.glow),
-                    radius = outer * 1.18f,
+                    brush = Brush.radialGradient(
+                        colors = listOf(
+                            hue.copy(alpha = PATCH_BLOOM_CORE * finish.glow),
+                            Color.Transparent
+                        ),
+                        center = c,
+                        radius = core
+                    ),
+                    radius = core,
                     center = c
                 )
             }
@@ -2278,7 +2328,7 @@ private fun Socket(
             // The hole itself.
             drawCircle(color = finish.groove, radius = outer, center = c)
             drawCircle(
-                color = if (engaged) cell.hue.copy(alpha = PATCH_HOLE_ALPHA) else finish.plateLow,
+                color = if (engaged) hue.copy(alpha = PATCH_HOLE_ALPHA) else finish.plateLow,
                 radius = outer * PATCH_HOLE,
                 center = c
             )
@@ -2286,8 +2336,8 @@ private fun Socket(
             // The rim. Thicker and breathing when this is the one being worked on.
             drawCircle(
                 color = when {
-                    selected -> cell.hue.copy(alpha = pulse)
-                    engaged -> cell.hue
+                    selected -> hue.copy(alpha = pulse)
+                    engaged -> hue
                     else -> finish.keyEdge
                 },
                 radius = outer,
@@ -2313,7 +2363,12 @@ private fun Socket(
 
 /** A line of console output, in the mode's display face. */
 @Composable
-private fun ConsoleLine(text: String, color: Color, glow: Boolean = false) {
+private fun ConsoleLine(
+    text: String,
+    color: Color,
+    glow: Boolean = false,
+    modifier: Modifier = Modifier
+) {
     val finish = LocalDeckFinish.current
     Text(
         text = text,
@@ -2322,6 +2377,7 @@ private fun ConsoleLine(text: String, color: Color, glow: Boolean = false) {
         letterSpacing = 1.sp,
         color = color,
         maxLines = 1,
+        modifier = modifier,
         style = if (glow && finish.glow > 0f) {
             TextStyle(
                 shadow = Shadow(
@@ -2350,18 +2406,29 @@ private fun ConsoleParam(param: RackParam, hue: Color, live: Boolean) {
     val liveParam = rememberUpdatedState(param)
     val ink = if (live) hue else finish.plateDim
 
-    Column(modifier = Modifier.fillMaxWidth().padding(top = CONSOLE_ROW_GAP.dp)) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
+    // **One line, which is both the point and the fix.**
+    //
+    // A console prints a control as a single row — name, bar, value — and the first version
+    // stacked them, which cost twenty-two points of height per control for no gain in
+    // legibility. Three controls of that is sixty-six points, and this page does not scroll:
+    // `RackGrid` sits in a centred column with no overflow handling, so anything taller than
+    // the page bleeds out of both ends and the bottom control ends up under the transport.
+    // That is the overlap, and this is the reason it is gone.
+    //
+    // The name and value are fixed widths so every row's bar starts and ends on the same two
+    // columns. Ragged bars would undo the whole illusion — a console is monospaced all the way
+    // down or it is not a console.
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(top = CONSOLE_ROW_GAP.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(modifier = Modifier.width(CONSOLE_NAME_W.dp)) {
             ConsoleLine(text = param.name.uppercase(), color = finish.plateDim)
-            ConsoleLine(text = param.readout(param.value), color = ink, glow = live)
         }
 
         Box(
             modifier = Modifier
-                .fillMaxWidth()
+                .weight(1f)
                 .height(CONSOLE_TOUCH.dp)
                 .pointerInput(Unit) {
                     awaitEachGesture {
@@ -2411,6 +2478,17 @@ private fun ConsoleParam(param: RackParam, hue: Color, live: Boolean) {
                 }
             }
         }
+
+        // Right-aligned in a fixed column, so the numbers form a straight edge down the panel
+        // however many digits each of them happens to need.
+        Box(modifier = Modifier.width(CONSOLE_VALUE_W.dp)) {
+            ConsoleLine(
+                text = param.readout(param.value),
+                color = ink,
+                glow = live,
+                modifier = Modifier.align(Alignment.CenterEnd)
+            )
+        }
     }
 }
 
@@ -2421,9 +2499,10 @@ private val PATCH_RING = 2.dp
 private val PATCH_TYPE = 10.sp
 
 /** How far past its own rim a patched socket throws light, as a multiple of the rim radius. */
-private const val PATCH_BLOOM_SPREAD = 1.9f
-private const val PATCH_BLOOM_ALPHA = 0.16f
-private const val PATCH_BLOOM_CORE = 0.22f
+private const val PATCH_BLOOM_SPREAD = 2.6f
+private const val PATCH_BLOOM_ALPHA = 0.30f
+private const val PATCH_BLOOM_CORE = 0.55f
+private const val PATCH_BLOOM_CORE_R = 1.35f
 private const val PATCH_HOLE = 0.52f
 private const val PATCH_HOLE_ALPHA = 0.30f
 
@@ -2431,7 +2510,9 @@ private const val CONSOLE_CELLS = 24
 private val CONSOLE_CELL_GAP = 2.dp
 private val CONSOLE_BAR = 9.dp
 private const val CONSOLE_TOUCH = 30
-private const val CONSOLE_ROW_GAP = 8
+private const val CONSOLE_ROW_GAP = 6
+private const val CONSOLE_NAME_W = 62
+private const val CONSOLE_VALUE_W = 52
 private const val CONSOLE_BLOOM = 0.20f
 private const val CONSOLE_GLOW_ALPHA = 0.7f
 private const val CONSOLE_GLOW_RADIUS = 11f
