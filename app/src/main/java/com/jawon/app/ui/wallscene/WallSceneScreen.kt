@@ -1630,10 +1630,15 @@ fun WallSceneScreen(
 
                 // Depth of field exists only while a case is open — on the flat wall it
                 // erased the spines outright. One write per crossing, not per frame.
+                //
+                // Ambient occlusion rides the same crossing, for a different reason: it is not
+                // invisible on the wall, it is merely not worth 29% of the room's CPU there.
+                // See RoomAtmosphere.setAmbientOcclusion for the measurement.
                 val wantsDof = frame.selected != null
                 if (wantsDof != sequence.dofEnabled) {
                     sequence.dofEnabled = wantsDof
                     RoomAtmosphere.setDepthOfField(filamentView, wantsDof, tier)
+                    RoomAtmosphere.setAmbientOcclusion(filamentView, wantsDof, tier)
                 }
 
                 // Focus follows the subject, eased rather than snapped so opening a case

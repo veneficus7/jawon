@@ -22,12 +22,15 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.jawon.app.ui.theme.ArchivoFamily
-import com.jawon.app.ui.theme.CrateBlack
 import com.jawon.app.ui.theme.JetBrainsMonoFamily
 import com.jawon.app.ui.theme.LabelCream
 import com.jawon.app.ui.theme.LampAmber
@@ -81,7 +84,15 @@ fun IntroOverlay(onFinished: () -> Unit) {
         modifier = Modifier
             .fillMaxSize()
             .graphicsLayer { alpha = card.value }
-            .background(CrateBlack)
+            // **Pure black, not the crate's black.**
+            //
+            // Everywhere else in the app a near-black is the right answer — it keeps a surface
+            // reading as a lit object in a room rather than as a hole. The title card is the one
+            // place that logic reverses: there is no room yet, nothing is lit, and on this OLED
+            // panel true black is not a colour at all but pixels that never come on. The
+            // wordmark then appears to be floating in front of the phone rather than printed on
+            // it, and the bloom below has something to bloom into.
+            .background(Color.Black)
             // No ripple and no indication: this is a title card, not a button, and it should
             // end without acknowledging that it was tapped.
             .clickable(
@@ -101,6 +112,25 @@ fun IntroOverlay(onFinished: () -> Unit) {
                 fontSize = 52.sp,
                 letterSpacing = 6.sp,
                 color = LabelCream,
+                // **The name comes on like the underlight does.**
+                //
+                // A shadow at zero offset, which is this project's one reliable way to bloom
+                // text: drawing blurred copies behind a crisp one is the obvious approach and
+                // it is what produced the doubled, smeared wordmark in the deck window, because
+                // any copy that fails to line up exactly reads as a second word rather than as
+                // light. A shadow cannot drift, because it is the same glyphs.
+                //
+                // The radius grows with the entry rather than sitting at full strength, so the
+                // name does not merely fade up — it warms up, the way a sign does. Recomposing
+                // a single line of text for the six hundred milliseconds this runs is not a
+                // cost worth avoiding; the card is gone before anything else has started.
+                style = TextStyle(
+                    shadow = Shadow(
+                        color = LampAmber.copy(alpha = WORDMARK_BLOOM_ALPHA * wordmark.value),
+                        offset = Offset.Zero,
+                        blurRadius = WORDMARK_BLOOM_RADIUS * wordmark.value
+                    )
+                ),
                 modifier = Modifier.graphicsLayer {
                     alpha = wordmark.value
                     // Settles down onto the line rather than appearing on it. Small enough
@@ -152,3 +182,12 @@ private const val BYLINE_MS = 340
 private const val HOLD_MS = 520L
 
 private const val EXIT_MS = 520
+
+/**
+ * How far the name's light spreads, in pixels, once it is fully up.
+ *
+ * Generous. This is the one screen with nothing else on it to compete with, and a timid glow on
+ * a title card reads as a rendering artefact rather than as a decision.
+ */
+private const val WORDMARK_BLOOM_RADIUS = 34f
+private const val WORDMARK_BLOOM_ALPHA = 0.85f

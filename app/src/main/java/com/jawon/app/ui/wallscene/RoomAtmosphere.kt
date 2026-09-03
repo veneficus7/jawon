@@ -276,32 +276,9 @@ object RoomAtmosphere {
             quality = View.QualityLevel.LOW
         }
 
-        // Contact shading. Unlike the effects above this one is not mood — it is the thing
-        // that makes a rendered object look like it is resting on something.
-        view.ambientOcclusionOptions = View.AmbientOcclusionOptions().apply {
-            enabled = tier.ambientOcclusion
-            radius = AO_RADIUS
-            intensity = AO_INTENSITY
-            power = AO_POWER
-            bias = AO_BIAS
-            quality = if (tier == QualityTier.HIGH) View.QualityLevel.HIGH else View.QualityLevel.MEDIUM
-            // Full-resolution AO at HIGH. At the half resolution Filament defaults to, the
-            // occlusion line where the lid meets the tray — a 1mm seam — lands between
-            // samples and disappears. That is a real loss, and it is still the right trade
-            // below HIGH: the shading survives as shading, just without the crisp seam.
-            resolution = tier.aoResolution
-            upsampling = if (tier == QualityTier.HIGH) View.QualityLevel.HIGH else View.QualityLevel.LOW
-            lowPassFilter = View.QualityLevel.MEDIUM
-            // Feeds occluded directions back into the indirect light, so the IBL arrives
-            // from where it can actually reach rather than uniformly.
-            bentNormals = tier == QualityTier.HIGH
-
-            ssctEnabled = tier.ssct
-            ssctIntensity = SSCT_INTENSITY
-            ssctShadowDistance = SSCT_SHADOW_DISTANCE
-            ssctContactDistanceMax = SSCT_CONTACT_DISTANCE_MAX
-            ssctLightDirection = RoomLighting.KEY_DIRECTION.copyOf()
-        }
+        // Off to begin with, and switched on only while a case is open — the same treatment,
+        // and for the same reason, as the depth of field. See [setAmbientOcclusion].
+        setAmbientOcclusion(view, false, tier)
 
         view.screenSpaceReflectionsOptions = View.ScreenSpaceReflectionsOptions().apply {
             enabled = SSR_ENABLED
@@ -366,6 +343,62 @@ object RoomAtmosphere {
      * sharp background. Nobody who has not seen the other version misses it; a dropped
      * frame during the one moment the user is watching an animation is noticed by everyone.
      */
+    /**
+     * Contact shading, on only while a case is open.
+     *
+     * **It is what makes an object look like it is resting on something** — the dark line where
+     * the lid meets the tray, the well of the tray, the seat of a case on its board — and its
+     * absence was most of why the room read as pasted together rather than assembled. None of
+     * that is in question. What is in question is paying for it on the flat wall.
+     *
+     * At HIGH this is the most expensive configuration Filament's AO offers: full resolution,
+     * high quality, high upsampling and bent normals, over every pixel of a 1440x3120 panel,
+     * every frame, forever. Measured back to back on the S25 Ultra at thermal 2, summed across
+     * the FEngine and JobSystem threads over ten seconds on the wall with nothing happening:
+     *
+     *     AO on    309 jiffies
+     *     AO off   218
+     *
+     * Ninety-one jiffies — **twenty-nine percent of everything the room costs** — for shading
+     * whose finest detail is a one-millimetre seam. On the wall a case is a few hundred pixels
+     * tall and canted away from the lens; the seam is not resolvable and the broad shading it
+     * does contribute is doing a fraction of what the underlight and the fog already do. Open a
+     * case and it flies to within a fifth of a metre of the lens, filling the frame, and every
+     * one of those arguments reverses.
+     *
+     * So it follows the depth of field exactly: off while browsing, on the moment a case comes
+     * out. Written once per crossing rather than per frame — this reallocates render targets.
+     *
+     * Browsing is also where the phone spends most of its life, which is what makes this worth
+     * more than the number alone suggests.
+     */
+    fun setAmbientOcclusion(view: View, enabled: Boolean, tier: QualityTier) {
+        view.ambientOcclusionOptions = View.AmbientOcclusionOptions().apply {
+            this.enabled = enabled && tier.ambientOcclusion
+            radius = AO_RADIUS
+            intensity = AO_INTENSITY
+            power = AO_POWER
+            bias = AO_BIAS
+            quality = if (tier == QualityTier.HIGH) View.QualityLevel.HIGH else View.QualityLevel.MEDIUM
+            // Full-resolution AO at HIGH. At the half resolution Filament defaults to, the
+            // occlusion line where the lid meets the tray — a 1mm seam — lands between
+            // samples and disappears. That is a real loss, and it is still the right trade
+            // below HIGH: the shading survives as shading, just without the crisp seam.
+            resolution = tier.aoResolution
+            upsampling = if (tier == QualityTier.HIGH) View.QualityLevel.HIGH else View.QualityLevel.LOW
+            lowPassFilter = View.QualityLevel.MEDIUM
+            // Feeds occluded directions back into the indirect light, so the IBL arrives
+            // from where it can actually reach rather than uniformly.
+            bentNormals = tier == QualityTier.HIGH
+
+            ssctEnabled = tier.ssct
+            ssctIntensity = SSCT_INTENSITY
+            ssctShadowDistance = SSCT_SHADOW_DISTANCE
+            ssctContactDistanceMax = SSCT_CONTACT_DISTANCE_MAX
+            ssctLightDirection = RoomLighting.KEY_DIRECTION.copyOf()
+        }
+    }
+
     fun setDepthOfField(view: View, enabled: Boolean, tier: QualityTier) {
         view.depthOfFieldOptions = View.DepthOfFieldOptions().apply {
             this.enabled = enabled && tier.depthOfField
