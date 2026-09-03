@@ -127,6 +127,22 @@ object DjFilter {
         }
 
         fun process(input: Float, g: Float, q: Float, highPass: Boolean): Float {
+            // **Nothing that is not a number may reach the state.**
+            //
+            // This filter is recursive: the state is its memory and it feeds itself every
+            // sample. A single NaN written into it is therefore not a glitch that passes —
+            // `NaN` propagates through every subsequent multiply, `coerceIn` does not rescue it
+            // (every comparison against NaN is false, so the clamp returns it untouched), and
+            // the channel outputs NaN for the rest of the session. Through track changes,
+            // through seeks, until something calls `reset`, and nothing upstream promises to.
+            // To a listener that is the music dying and never coming back.
+            //
+            // A dropped sample is inaudible; returning silence for one and leaving the state
+            // alone is the cheapest possible way to survive a bad value from a decoder or from
+            // a coefficient that arrived mid-recalculation. [Drive] already takes the same
+            // position on its own parameter.
+            if (!input.isFinite() || !g.isFinite() || !q.isFinite()) return 0f
+
             val k = 1f / q.coerceAtLeast(0.05f)
             val a1 = 1f / (1f + g * (g + k))
             val a2 = g * a1
@@ -138,6 +154,30 @@ object DjFilter {
             ic1eq = 2f * v1 - ic1eq
             ic2eq = 2f * v2 - ic2eq
 
+            // **Land on zero instead of creeping toward it.**
+            //
+            // With the music stopped the input is zeros and the state decays exponentially,
+            // which means it never actually arrives — it just gets smaller, and on the way it
+            // passes into the denormal range, where some CPUs leave the fast path and handle
+            // the arithmetic in microcode at tens of times the cost. The room is already
+            // rendering every frame; audio quietly becoming an order of magnitude more
+            // expensive a few seconds after a track ends is precisely the shape of a phone that
+            // starts stuttering for no visible reason.
+            //
+            // The floor is thirteen orders of magnitude below the quietest thing 24-bit audio
+            // can represent and still far above where denormals begin, so this is inaudible by
+            // an enormous margin and the state never reaches the slow range at all.
+            if (abs(ic1eq) < STATE_FLOOR) ic1eq = 0f
+            if (abs(ic2eq) < STATE_FLOOR) ic2eq = 0f
+
+            // Belt and braces for a state that went bad by some route this function did not
+            // guard — a coefficient that was finite but absurd, or a filter constructed before
+            // the guard above existed. Cheaper to check than to explain.
+            if (!ic1eq.isFinite() || !ic2eq.isFinite()) {
+                reset()
+                return 0f
+            }
+
             val out = if (highPass) input - k * v1 - v2 else v2
             // A resonant filter can ring past full scale on a transient even when its input did
             // not, and letting that wrap in the conversion back to 16-bit is a click rather than
@@ -145,6 +185,15 @@ object DjFilter {
             return out.coerceIn(-1f, 1f)
         }
     }
+
+    /**
+     * Below this, the filter's state counts as silence and is flushed to true zero.
+     *
+     * `1e-25` sits far under the quietest representable 24-bit sample (about `6e-8`) and far
+     * over the top of the denormal range (about `1.2e-38`), so it removes the slow arithmetic
+     * without ever removing anything a person could hear. See [Svf.process].
+     */
+    private const val STATE_FLOOR = 1e-25f
 
     /**
      * How fast the knob position is allowed to reach the filter, per second of audio.
