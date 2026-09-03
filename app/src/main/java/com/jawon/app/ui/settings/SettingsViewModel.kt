@@ -5,8 +5,6 @@ import androidx.lifecycle.viewModelScope
 import android.content.Context
 import android.net.Uri
 import com.jawon.app.data.backup.LibraryBackup
-import com.jawon.app.data.playback.EqBand
-import com.jawon.app.data.playback.EqualizerController
 import com.jawon.app.data.prefs.AppPreferences
 import com.jawon.app.data.update.AvailableUpdate
 import com.jawon.app.data.update.UpdateChecker
@@ -23,7 +21,6 @@ import javax.inject.Inject
 @HiltViewModel
 class SettingsViewModel @Inject constructor(
     private val preferences: AppPreferences,
-    private val equalizer: EqualizerController,
     private val updateChecker: UpdateChecker,
     private val backup: LibraryBackup,
     private val diagnostics: com.jawon.app.ui.wallscene.RoomDiagnostics
@@ -48,22 +45,10 @@ class SettingsViewModel @Inject constructor(
     fun onCaseSpinChanged(fraction: Float) =
         preferences.setCaseSpin((Math.round(fraction * 20f) / 20f))
 
-    // ---- Equaliser -----------------------------------------------------------------
-    //
-    // Read straight off the controller rather than mirrored into this ViewModel: the bands
-    // and their range are the *device's* answer, discovered when an effect is created, and
-    // copying them here would only add a second version that can disagree.
-
-    val eqAvailable: StateFlow<Boolean> = equalizer.available
-    val eqEnabled: StateFlow<Boolean> = equalizer.enabled
-    val eqBands: StateFlow<List<EqBand>> = equalizer.bands
-    val eqRangeMb: StateFlow<Pair<Int, Int>> = equalizer.rangeMb
-    val eqPresets: StateFlow<List<String>> = equalizer.presets
-
-    fun onEqEnabledChanged(on: Boolean) = equalizer.setEnabled(on)
-    fun onEqBandChanged(index: Int, levelMb: Int) = equalizer.setBand(index, levelMb)
-    fun onEqPreset(index: Int) = equalizer.usePreset(index)
-    fun onEqReset() = equalizer.reset()
+    // The equaliser used to be exposed here too, for a panel in Settings. It has moved to the
+    // deck's SOUND page, where it sits with the rest of the rack and belongs to the record being
+    // played rather than to the app's preferences. The equaliser controller itself is unchanged and
+    // still shared — the deck's ViewModel drives it now.
 
     val crossfadeMs: StateFlow<Int> = preferences.crossfadeMs
 

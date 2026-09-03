@@ -49,8 +49,6 @@ import androidx.core.content.FileProvider
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.jawon.app.R
-import com.jawon.app.data.playback.EqBand
-import com.jawon.app.ui.common.EqualizerPanel
 import com.jawon.app.data.update.AvailableUpdate
 import com.jawon.app.data.update.UpdateState
 import com.jawon.app.playback.Crossfade
@@ -614,55 +612,6 @@ private fun BackupButton(text: String, enabled: Boolean, onClick: () -> Unit) {
     }
 }
 
-@Composable
-private fun EqualizerSection(
-    available: Boolean,
-    enabled: Boolean,
-    bands: List<EqBand>,
-    rangeMb: Pair<Int, Int>,
-    presets: List<String>,
-    onEnabledChange: (Boolean) -> Unit,
-    onBandChange: (Int, Int) -> Unit,
-    onPreset: (Int) -> Unit,
-    onReset: () -> Unit
-) {
-
-    Column(
-        modifier = Modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(14.dp)
-    ) {
-        SettingRow(
-            title = "EQUALISER",
-            // Three states, not two. "Unavailable" and "nothing has played yet" look the
-            // same from here and mean opposite things — the first version said the phone had
-            // no equaliser to anyone who opened Settings before playing anything, which was
-            // both wrong and unfixable-looking.
-            detail = when {
-                available ->
-                    "Shapes the sound coming out. Off leaves the audio exactly as it was " +
-                        "recorded."
-                else ->
-                    "Play something first — the equaliser attaches to the audio and there " +
-                        "is nothing to attach to yet."
-            },
-            checked = enabled && available,
-            onCheckedChange = onEnabledChange,
-            enabled = available
-        )
-
-        if (available && enabled && bands.isNotEmpty()) {
-            EqualizerPanel(
-                bands = bands,
-                rangeMb = rangeMb,
-                presets = presets,
-                onBandChange = onBandChange,
-                onPreset = onPreset,
-                onReset = onReset
-            )
-        }
-    }
-}
-
 /** One switchable setting: what it is, what it actually does, and the switch. */
 @Composable
 private fun SettingRow(
@@ -718,11 +667,6 @@ fun SettingsScreen(
     val fetchCoverArt by viewModel.fetchCoverArt.collectAsStateWithLifecycle()
     val fetchLyrics by viewModel.fetchLyrics.collectAsStateWithLifecycle()
     val roomScheme by viewModel.roomScheme.collectAsStateWithLifecycle()
-    val eqAvailable by viewModel.eqAvailable.collectAsStateWithLifecycle()
-    val eqEnabled by viewModel.eqEnabled.collectAsStateWithLifecycle()
-    val eqBands by viewModel.eqBands.collectAsStateWithLifecycle()
-    val eqRangeMb by viewModel.eqRangeMb.collectAsStateWithLifecycle()
-    val eqPresets by viewModel.eqPresets.collectAsStateWithLifecycle()
     val crossfadeMs by viewModel.crossfadeMs.collectAsStateWithLifecycle()
     val updateState by viewModel.updateState.collectAsStateWithLifecycle()
     val caseSpin by viewModel.caseSpin.collectAsStateWithLifecycle()
@@ -893,18 +837,6 @@ fun SettingsScreen(
             }
 
             SectionHeader("SOUND")
-
-            EqualizerSection(
-                available = eqAvailable,
-                enabled = eqEnabled,
-                bands = eqBands,
-                rangeMb = eqRangeMb,
-                presets = eqPresets,
-                onEnabledChange = viewModel::onEqEnabledChanged,
-                onBandChange = viewModel::onEqBandChanged,
-                onPreset = viewModel::onEqPreset,
-                onReset = viewModel::onEqReset
-            )
 
             Column(
                 modifier = Modifier
