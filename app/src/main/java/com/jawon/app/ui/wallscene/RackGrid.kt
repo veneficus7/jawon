@@ -56,6 +56,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.input.pointer.pointerInput
@@ -67,6 +68,7 @@ import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.jawon.app.data.playback.EqBand
 import com.jawon.app.data.playback.NativeEffect
 import com.jawon.app.data.playback.NativeEffects
@@ -77,6 +79,7 @@ import com.jawon.app.playback.RackChannel
 import com.jawon.app.playback.Varispeed
 import com.jawon.app.ui.theme.DeckFinish
 import com.jawon.app.ui.theme.RackLayout
+import com.jawon.app.ui.theme.JetBrainsMonoFamily
 import com.jawon.app.ui.theme.LocalDeckFinish
 import java.util.Locale
 import kotlin.math.abs
@@ -190,8 +193,23 @@ fun RackGrid(
             return
         }
 
-        // SHELF and RACK_UNIT both fall through to the grid below for now; the rack unit's own
-        // arrangement is the next one to be built.
+        RackLayout.RACK_UNIT -> {
+            RackUnit(
+                cells = cells,
+                engaged = engaged,
+                selected = selected,
+                arrived = arrived,
+                onToggle = onToggle,
+                onSelect = onSelect,
+                eqBands = eqBands,
+                eqRangeMb = eqRangeMb,
+                onEqBandChange = onEqBandChange,
+                modifier = modifier
+            )
+            return
+        }
+
+        // SHELF is the grid below — the original, and still Midnight Shop's.
         else -> Unit
     }
 
@@ -1911,3 +1929,368 @@ internal fun angleDelta(from: Float, to: Float): Float {
 
 /** How far round the arc a press has to travel before it counts as a turn rather than a tap. */
 private const val SEG_TURN_SLOP_DEGREES = 4f
+
+// ---- the rack unit -------------------------------------------------------------------
+
+/**
+ * One wide machine, bolted into a frame.
+ *
+ * **This layout was specified and never built.** The dispatcher only had cases for the ring and
+ * the modular, so Cold Storage asked for `RACK_UNIT` and silently got Midnight Shop's grid — it
+ * has been wearing another mode's face for its whole life, which is the real reason it read as
+ * the least cared-for of the four.
+ *
+ * Where the ring is round and the modular is a row of tall narrow boxes, this is a single piece
+ * of studio outboard: ears and screws at both ends, the maker's marks silkscreened across the
+ * top, switches banked in the middle and the selected effect's parameters as *horizontal* travel
+ * underneath. Horizontal is the whole tell — every other layout in this app runs its faders up
+ * and down, and a rack unit is the one machine shape where they lie flat.
+ *
+ * **Two rows of four rather than one row of eight**, which is the one place the drawing lost an
+ * argument with the hand. Eight across a phone leaves each switch under 40dp, and this project
+ * has already made the controls-too-small mistake once, on the ring. A 2U unit with two banks is
+ * just as real a piece of gear and keeps every switch at a thumb's width.
+ */
+@Composable
+private fun RackUnit(
+    cells: List<RackCell>,
+    engaged: Set<RackChannel>,
+    selected: RackChannel?,
+    arrived: Boolean,
+    onToggle: (RackChannel) -> Unit,
+    onSelect: (RackChannel) -> Unit,
+    eqBands: List<EqBand>,
+    eqRangeMb: Pair<Int, Int>,
+    onEqBandChange: (Int, Int) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val finish = LocalDeckFinish.current
+    val params = cells.firstOrNull { it.channel == selected }?.params.orEmpty()
+    val hue = cells.firstOrNull { it.channel == selected }?.hue ?: finish.accent
+
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .background(finish.plateLow)
+            .border(1.dp, finish.plateEdge),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        RackEar(finish)
+
+        Column(modifier = Modifier.weight(1f).padding(vertical = UNIT_PAD.dp)) {
+
+            // The maker's marks. A rack unit is the one piece of gear whose front panel is
+            // mostly print, and putting the model number where a real one carries it does more
+            // for the illusion than any amount of shading.
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(bottom = 9.dp),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text(
+                    text = finish.brand,
+                    fontFamily = JetBrainsMonoFamily,
+                    fontSize = UNIT_MARK_SIZE,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 2.sp,
+                    color = finish.plateDim
+                )
+                Text(
+                    text = UNIT_MODEL,
+                    fontFamily = JetBrainsMonoFamily,
+                    fontSize = UNIT_MARK_SIZE,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 2.sp,
+                    color = finish.plateDim
+                )
+            }
+
+            cells.chunked(4).forEachIndexed { rowIndex, row ->
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(bottom = UNIT_GAP.dp),
+                    horizontalArrangement = Arrangement.spacedBy(UNIT_GAP.dp)
+                ) {
+                    row.forEachIndexed { colIndex, cell ->
+                        UnitSwitch(
+                            cell = cell,
+                            order = rowIndex * 4 + colIndex,
+                            arrived = arrived,
+                            engaged = cell.channel in engaged,
+                            selected = cell.channel == selected,
+                            onToggle = { onToggle(cell.channel) },
+                            onSelect = { onSelect(cell.channel) },
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                }
+            }
+
+            // A rule under the switches, the way a panel is divided into a switching section and
+            // a setting section. One line, and it does the work a gap of twice the size would.
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 3.dp, bottom = 10.dp)
+                    .height(1.dp)
+                    .background(finish.plateEdge)
+            )
+
+            if (selected == RackChannel.EQ) {
+                // The equaliser is a shape, not three numbers — same argument as everywhere else
+                // it appears, and the curve is already built.
+                EqCurve(
+                    bands = eqBands,
+                    rangeMb = eqRangeMb,
+                    onBandChange = onEqBandChange
+                )
+            } else {
+                repeat(UNIT_PARAM_SLOTS) { i ->
+                    UnitParam(
+                        param = params.getOrNull(i),
+                        hue = hue,
+                        live = selected != null && selected in engaged
+                    )
+                }
+            }
+        }
+
+        RackEar(finish)
+    }
+}
+
+/** The mounting flange: a narrow strip with a screw top and bottom, at both ends of the unit. */
+@Composable
+private fun RackEar(finish: DeckFinish) {
+    Column(
+        modifier = Modifier
+            .width(UNIT_EAR.dp)
+            .fillMaxHeight()
+            .background(finish.plate)
+            .padding(vertical = 10.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.SpaceBetween
+    ) {
+        repeat(2) {
+            Box(
+                modifier = Modifier
+                    .size(UNIT_SCREW.dp)
+                    .background(finish.plateEdge, CircleShape)
+            )
+        }
+    }
+}
+
+/**
+ * One channel switch. Flatter and harder than the grid's key, because this panel is metal.
+ */
+@Composable
+private fun UnitSwitch(
+    cell: RackCell,
+    order: Int,
+    arrived: Boolean,
+    engaged: Boolean,
+    selected: Boolean,
+    onToggle: () -> Unit,
+    onSelect: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val finish = LocalDeckFinish.current
+    var pressed by remember { mutableStateOf(false) }
+    val press = animateFloatAsState(
+        targetValue = if (pressed) 0.94f else 1f,
+        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy),
+        label = "press"
+    )
+    val entry = animateFloatAsState(
+        targetValue = if (arrived) 1f else 0f,
+        animationSpec = tween(ENTRY_MS, order * ENTRY_STAGGER_MS, FastOutSlowInEasing),
+        label = "entry"
+    )
+    val pulse = selectionPulse(selected)
+
+    Box(
+        modifier = modifier
+            .height(UNIT_SWITCH_H.dp)
+            .graphicsLayer {
+                scaleY = press.value
+                alpha = entry.value
+                translationY = (1f - entry.value) * ENTRY_RISE_PX
+            }
+            // A lamp behind the legend, which is how a switched-in channel announces itself on
+            // real gear: the button does not change colour, the light behind it comes on.
+            .drawBehind {
+                if (engaged && finish.glow > 0f) {
+                    drawRect(
+                        color = cell.hue.copy(alpha = UNIT_LAMP_ALPHA * finish.glow),
+                        topLeft = Offset(0f, size.height * 0.45f),
+                        size = Size(size.width, size.height * 0.55f)
+                    )
+                }
+            }
+            .background(if (engaged) finish.key else finish.plateLow)
+            .border(
+                width = if (selected) 2.dp else 1.dp,
+                color = if (selected) cell.hue.copy(alpha = pulse) else finish.keyEdge
+            )
+            .alpha(if (cell.available) 1f else UNAVAILABLE_ALPHA)
+            .then(
+                if (cell.available) {
+                    Modifier.pointerInput(cell.channel, engaged, selected) {
+                        detectTapGestures(
+                            onPress = {
+                                pressed = true
+                                tryAwaitRelease()
+                                pressed = false
+                            },
+                            onTap = {
+                                when {
+                                    !engaged -> { onToggle(); onSelect() }
+                                    selected -> onToggle()
+                                    else -> onSelect()
+                                }
+                            }
+                        )
+                    }
+                } else Modifier
+            ),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = cell.channel.label,
+            fontFamily = finish.keyType,
+            fontSize = finish.keyTypeSize,
+            fontWeight = FontWeight.Bold,
+            color = if (engaged) finish.keyInk else finish.keyDim,
+            maxLines = 1
+        )
+    }
+}
+
+/**
+ * One parameter, lying flat.
+ *
+ * The horizontal travel is the rack unit's signature — everything else in this app runs its
+ * faders vertically — and it is also the most comfortable control in the app by a distance,
+ * because it gets the full width of the panel for its throw instead of a third of it.
+ *
+ * One gesture handler for press and drag together, so a tap sets the value where you touched
+ * rather than requiring the cap to be picked up first. Same shape as the transport groove.
+ */
+@Composable
+private fun UnitParam(param: RackParam?, hue: Color, live: Boolean) {
+    val finish = LocalDeckFinish.current
+
+    if (param == null) {
+        // A blank slot still occupies its height, so selecting an effect with fewer controls
+        // does not make the whole panel jump up the screen.
+        Box(modifier = Modifier.fillMaxWidth().height(UNIT_PARAM_H.dp))
+        return
+    }
+
+    val liveParam = rememberUpdatedState(param)
+
+    Column(modifier = Modifier.fillMaxWidth().height(UNIT_PARAM_H.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text(
+                text = param.name.uppercase(),
+                fontFamily = JetBrainsMonoFamily,
+                fontSize = UNIT_MARK_SIZE,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 1.5.sp,
+                color = finish.plateDim
+            )
+            Text(
+                text = param.readout(param.value),
+                fontFamily = JetBrainsMonoFamily,
+                fontSize = UNIT_MARK_SIZE,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 1.sp,
+                color = if (live) hue else finish.plateDim
+            )
+        }
+
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(UNIT_TRACK_TOUCH.dp)
+                .pointerInput(Unit) {
+                    awaitEachGesture {
+                        val down = awaitFirstDown()
+                        val width = size.width.toFloat().coerceAtLeast(1f)
+                        liveParam.value.onChange((down.position.x / width).coerceIn(0f, 1f))
+                        down.consume()
+                        drag(down.id) { change ->
+                            liveParam.value.onChange(
+                                (change.position.x / width).coerceIn(0f, 1f)
+                            )
+                            change.consume()
+                        }
+                        liveParam.value.onCommit?.invoke()
+                    }
+                }
+        ) {
+            Canvas(modifier = Modifier.fillMaxSize()) {
+                val midY = size.height / 2f
+                val h = UNIT_TRACK.toPx()
+                val x = size.width * param.value.coerceIn(0f, 1f)
+
+                drawRect(
+                    color = finish.groove,
+                    topLeft = Offset(0f, midY - h / 2f),
+                    size = Size(size.width, h)
+                )
+
+                // Bipolar controls fill out from the middle rather than from the left, because
+                // that is where their zero is and a bar growing from the wrong end lies about
+                // what the control is doing.
+                val from = if (param.bipolar) size.width / 2f else 0f
+                if (live) {
+                    if (finish.glow > 0f) {
+                        drawRect(
+                            color = hue.copy(alpha = UNIT_TRACK_BLOOM * finish.glow),
+                            topLeft = Offset(minOf(from, x), midY - h * 1.9f),
+                            size = Size(abs(x - from), h * 3.8f)
+                        )
+                    }
+                    drawRect(
+                        color = hue,
+                        topLeft = Offset(minOf(from, x), midY - h / 2f),
+                        size = Size(abs(x - from), h)
+                    )
+                }
+
+                val capW = UNIT_CAP_W.toPx()
+                val capH = UNIT_CAP_H.toPx()
+                drawRect(
+                    color = if (live) finish.cap else finish.keyEdge,
+                    topLeft = Offset(
+                        (x - capW / 2f).coerceIn(0f, size.width - capW),
+                        midY - capH / 2f
+                    ),
+                    size = Size(capW, capH)
+                )
+            }
+        }
+    }
+}
+
+/** Square, because a rack panel is punched and folded rather than moulded. */
+private const val UNIT_EAR = 16
+private const val UNIT_SCREW = 5
+private const val UNIT_PAD = 12
+private const val UNIT_GAP = 4
+private const val UNIT_SWITCH_H = 42
+private const val UNIT_PARAM_H = 46
+private const val UNIT_TRACK_TOUCH = 30
+private const val UNIT_PARAM_SLOTS = 3
+private val UNIT_MARK_SIZE = 8.sp
+private val UNIT_TRACK = 4.dp
+private val UNIT_CAP_W = 5.dp
+private val UNIT_CAP_H = 18.dp
+private const val UNIT_LAMP_ALPHA = 0.30f
+private const val UNIT_TRACK_BLOOM = 0.20f
+
+/** Printed where a real unit carries its part number. Eight channels, one rack space. */
+private const val UNIT_MODEL = "CS-8 EIGHT CHANNEL"

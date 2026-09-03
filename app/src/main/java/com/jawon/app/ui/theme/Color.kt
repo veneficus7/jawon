@@ -162,25 +162,37 @@ val MidnightPalette = Palette(
 )
 
 /**
- * The same shop under a cold striplight, and the one mode where the app goes properly blue.
+ * Carbonite: cold slate, and the only warmth in the room coming off the process itself.
  *
- * Deliberately the least cosy: warm light flatters a sleeve by pushing it toward orange, and this
- * leaves covers nearer their printed colours — which is what you want when you are actually
- * looking at the artwork rather than sitting in the room.
+ * **It used to be blue, and that was the problem.** This mode ran a bright cyan signal at
+ * `#5FF0E0` while After Hours runs one at `#22E6FF` — two cyans a few degrees apart, which does
+ * not read as two rooms. It reads as one idea at two brightnesses, and it wasted the fact that
+ * these are supposed to be four different places.
+ *
+ * So it stays cold and stops being blue *about* it. The ground is a near-black blue-grey — the
+ * temperature of the room is in the slate, where a cold room's temperature actually lives — and
+ * everything that means something is molten orange, which is the furthest hue on the wheel from
+ * both of After Hours' two and the one that blooms best on an OLED panel.
+ *
+ * Deliberately still the least cosy of the four: warm *light* flatters a sleeve by pushing it
+ * toward orange, and here the light is not warm, only the readouts are. Covers stay near their
+ * printed colours, which is what you want when you are looking at the artwork rather than
+ * sitting in the room.
  */
 val ColdPalette = Palette(
-    // Lifted off near-black on purpose: pure black flattens depth and hides the elevation
-    // between a ground and the things standing on it, which is the one thing this mode has.
-    crateBlack = Color(0xFF121820),
-    crateRaised = Color(0xFF1C2632),
-    crateEdge = Color(0xFF26323E),
-    labelCream = Color(0xFFDCE6F0),
-    labelDim = Color(0xFF7F8C99),
-    lampAmber = Color(0xFF5FF0E0),
-    oxideTeal = Color(0xFF3E7F96),
-    // Cold and hard: a striplight travels right across brushed metal, and the machining is
-    // visible. The most *material* of the four, and the least atmospheric.
-    glow = 0.45f,
+    // Lifted off pure black, though less than it was: pure black flattens the elevation between
+    // a ground and the things standing on it, and that elevation is the one thing this mode has
+    // instead of atmosphere.
+    crateBlack = Color(0xFF0C0E11),
+    crateRaised = Color(0xFF161B21),
+    crateEdge = Color(0xFF1E242B),
+    labelCream = Color(0xFFB8C2CE),
+    labelDim = Color(0xFF5A6674),
+    lampAmber = Color(0xFFFF6B1A),
+    oxideTeal = Color(0xFF8A5A3C),
+    // Hotter than it was. The old 0.45 was a striplight travelling across brushed metal; this is
+    // a single hot process in a cold room, and the one warm thing in shot has to actually burn.
+    glow = 0.7f,
     sheen = 0.55f,
     texture = SurfaceTexture.GRAIN,
     corner = 4.dp,

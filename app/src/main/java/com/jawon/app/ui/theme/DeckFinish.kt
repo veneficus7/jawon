@@ -99,6 +99,20 @@ enum class DeckWindowGlass(
     // than a readout — the look of a slow, enormous, confident piece of hardware.
     TUBE(Color(0xFF060C0A), Color(0xFF2A302E), 4.dp, Color(0xFF6FFFF0), 2.5.dp, Vt323Family, 24.sp, 2.sp),
 
+    /**
+     * An orange gas-plasma panel — the industrial readout, not the hi-fi one.
+     *
+     * Carbonite needed the tube's *format* (big, wide, legible across a dark room, unhurried)
+     * without the tube's cyan, and rather than inventing something this is a real display that
+     * really looked like this: the orange plasma panels on plant controllers, machine tools and
+     * the luggable computers of the late eighties. Amber-orange on near-black, and no other
+     * colour available at all, because the physics only produced the one.
+     *
+     * Which makes it exactly right for a mode whose entire idea is one hot process in a cold
+     * room: the display is not lit *by* the room, it is the thing doing the burning.
+     */
+    PLASMA(Color(0xFF0B0906), Color(0xFF2A1E14), 4.dp, Color(0xFFFF7A2E), 2.5.dp, Vt323Family, 24.sp, 2.sp),
+
     /** A neon bar sign behind glass — the one display that is not a machine readout. */
     // Enormous and close, bleeding into itself. Type at this size stops being a label and starts
     // being the light source, which is the whole idea of a sign seen through rain.

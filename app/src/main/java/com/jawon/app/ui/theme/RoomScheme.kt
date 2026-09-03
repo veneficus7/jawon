@@ -81,26 +81,39 @@ enum class RoomScheme(
     ),
 
     /**
-     * The same shop under a cold striplight — pale blue-white, grey-blue shelving.
+     * Carbonite: a cold slate room with one hot process running in it.
      *
-     * Deliberately the least *cosy* of the three. Warm light flatters artwork by pushing
-     * everything toward orange; this one leaves covers closer to their printed colours, which
-     * some people prefer for actually looking at a sleeve.
+     * **This was blue and it should not have been.** It ran a bright cyan against After Hours'
+     * bright cyan, a few degrees apart, so the two modes read as one idea at two brightnesses
+     * rather than as two different places. Cold is a *temperature*, and a room can be cold in
+     * its slate while everything that means something in it burns orange — which also happens
+     * to be the furthest hue from both of After Hours' two.
+     *
+     * Still deliberately the least *cosy* of the four. Warm light flatters artwork by pushing
+     * everything toward orange; here the light is not warm, only the readouts are, so covers
+     * stay closer to their printed colours.
      */
     COLD_STORAGE(
         displayName = "Cold Storage",
-        key = floatArrayOf(0.784f, 0.878f, 1.0f),
-        rim = floatArrayOf(0.353f, 0.588f, 0.788f),
-        ambient = floatArrayOf(0.157f, 0.192f, 0.235f),
-        void = floatArrayOf(0.043f, 0.055f, 0.071f),
-        wall = Color(0xFF10141A),
-        board = Color(0xFF1E262F),
-        // The cyan of the tube, so the room and the machine in it agree about what colour
-        // the app is. A striplight over brushed aluminium is the one pairing here that is
-        // historically exact: this is what a hi-fi separate actually sat in.
-        accent = Color(0xFF5FF0E0),
+        // **A cold key and a hot rim, and no cyan anywhere.**
+        //
+        // The key stays a near-white with the faintest blue in it, which is what a cold room
+        // actually looks like and what leaves a sleeve nearest its printed colours. The warmth
+        // is entirely in the rim, where there is no artwork to ruin — so a case is lit cold from
+        // the front and caught orange down one edge, which is the whole carbonite idea in one
+        // object: something cold with a hot process running through it.
+        //
+        // Same discipline as After Hours, opposite temperatures.
+        key = floatArrayOf(0.878f, 0.906f, 0.949f),
+        rim = floatArrayOf(0.800f, 0.376f, 0.118f),
+        ambient = floatArrayOf(0.114f, 0.133f, 0.157f),
+        void = floatArrayOf(0.031f, 0.039f, 0.051f),
+        wall = Color(0xFF0C0E11),
+        board = Color(0xFF161B21),
+        // Molten orange, so the room and the machine in it agree about what colour the app is.
+        accent = Color(0xFFFF6B1A),
         plate = DeckPlate.BRUSHED,
-        glass = DeckWindowGlass.TUBE,
+        glass = DeckWindowGlass.PLASMA,
         palette = ColdPalette
     ),
 
