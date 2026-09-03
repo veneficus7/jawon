@@ -32,7 +32,6 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.lerp
 import androidx.compose.ui.unit.sp
 import com.jawon.app.ui.theme.ArchivoFamily
 import com.jawon.app.ui.theme.JetBrainsMonoFamily
@@ -206,11 +205,17 @@ fun IntroOverlay(onFinished: () -> Unit) {
                 fontFamily = JetBrainsMonoFamily,
                 fontWeight = FontWeight.Medium,
                 fontSize = 11.sp,
-                // Opens out as it strikes, from tight to its resting track. A tube that comes
-                // on does not arrive at its final size, and a line of small caps spreading by a
-                // point and a half over a third of a second is the difference between text
-                // appearing and something switching on.
-                letterSpacing = lerp(BYLINE_TRACK_TIGHT, BYLINE_TRACK, byline.value),
+                // **Fixed, and it must not be animated from the strike.**
+                //
+                // This was tracked open as the byline came up, reading `byline.value` — which is
+                // the flicker. So the letter-spacing followed the gutter: 0.85, 0.10, 1.0, 0.35,
+                // 1.0, and the line visibly snapped wider and narrower on every step, jumping
+                // its own width four times in a third of a second. That is the bug, and it is a
+                // good argument for keeping a flicker to the one property that can carry it.
+                //
+                // Alpha can flicker because a light that is out is simply not there. Layout
+                // cannot: geometry moving in steps is a fault, never an effect.
+                letterSpacing = BYLINE_TRACK,
                 color = LampAmber,
                 // The glow rides the strike, so the gutter is visible in the light around the
                 // letters and not only in the letters themselves.
@@ -288,5 +293,4 @@ private const val WASH_ALPHA = 0.22f
 /** The byline's own glow, and how far its tracking opens as it strikes. */
 private const val BYLINE_GLOW_RADIUS = 10f
 private const val BYLINE_GLOW_ALPHA = 0.75f
-private val BYLINE_TRACK_TIGHT = 2.5.sp
 private val BYLINE_TRACK = 4.sp

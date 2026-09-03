@@ -615,15 +615,31 @@ private fun Silkscreen(text: String, modifier: Modifier = Modifier) {
         fontSize = SILKSCREEN_SIZE,
         fontWeight = FontWeight.Bold,
         letterSpacing = SILKSCREEN_TRACKING,
-        color = LocalDeckFinish.current.plateDim,
+        // **The plate's own ink, turned down — not the plate's dim colour.**
+        //
+        // `plateDim` is a *hue* chosen per mode rather than a contrast level, and on Workshop it
+        // resolves to `#3E8A50`, a mid green sitting on a grey-green plate. Two mid tones of the
+        // same hue is the definition of hard to read, and at silkscreen size there is no weight
+        // left to compensate with — the format line was genuinely uncomfortable to make out.
+        //
+        // Taking the ink and dropping its alpha instead means this is always the same *distance*
+        // below body text, whatever colour a mode paints its body text: quieter than the title
+        // in the glass, never competing with it, and never disappearing into the panel either.
+        color = LocalDeckFinish.current.plateInk.copy(alpha = SILKSCREEN_ALPHA),
         maxLines = 1,
         overflow = TextOverflow.Ellipsis,
         modifier = modifier
     )
 }
 
-private val SILKSCREEN_SIZE = 8.sp
-private val SILKSCREEN_TRACKING = 2.sp
+/**
+ * Small print, but print. Eight points was the size of the marks nobody is meant to read; the
+ * format line *is* read, by anyone who cares what they are listening to, so it gets the point
+ * and a half that makes that possible without it turning into a heading.
+ */
+private val SILKSCREEN_SIZE = 9.5.sp
+private val SILKSCREEN_TRACKING = 1.8.sp
+private const val SILKSCREEN_ALPHA = 0.72f
 
 /**
  * Isolated so the 2Hz position tick recomposes only the bar and its two labels — the

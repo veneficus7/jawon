@@ -31,6 +31,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
@@ -64,6 +65,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.text.AnnotatedString
@@ -2166,7 +2169,41 @@ private fun PatchbayRack(
         ?.let { s -> hueAt(cells.indexOfFirst { it.channel == s }.coerceAtLeast(0)) }
         ?: finish.accent
 
-    Column(modifier = modifier.fillMaxWidth()) {
+    // **Where the light is drawn, settled once and for all.**
+    //
+    // Three attempts failed the same way. A bloom drawn inside the socket's own canvas is cut at
+    // the socket's edge; moved to the row's canvas it is cut at the row's edge, which is worse
+    // vertically than horizontally because a row is only about seventy points tall and the halo
+    // is nearly eighty. Padding the row buys room at a cost this page cannot pay — it does not
+    // scroll, and the third control of a three-knob effect was already going over the side.
+    //
+    // So the geometry is measured instead of assumed. Each socket reports where it actually
+    // landed, and every bloom is drawn on one canvas spanning the entire rack — header, both
+    // banks and the console. The light then has the whole panel to fall off in, spills across
+    // the divider and under the console text the way light in a dark box does, and the nearest
+    // edge is far enough away that the shaped ramp has nothing left when it arrives.
+    //
+    // It also costs no layout height at all, which is what every previous attempt got wrong.
+    val bank = remember { mutableStateMapOf<RackChannel, Offset>() }
+    var origin by remember { mutableStateOf(Offset.Zero) }
+
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .onGloballyPositioned { origin = it.positionInRoot() }
+    ) {
+
+    Canvas(modifier = Modifier.matchParentSize()) {
+        if (finish.glow <= 0f) return@Canvas
+        val r = PATCH_SOCKET.dp.toPx() / 2f
+        cells.forEachIndexed { index, c ->
+            if (c.channel !in engaged) return@forEachIndexed
+            val centre = bank[c.channel] ?: return@forEachIndexed
+            drawNeon(centre = centre, radius = r, hue = hueAt(index), strength = finish.glow)
+        }
+    }
+
+    Column(modifier = Modifier.fillMaxWidth()) {
 
         Text(
             text = PATCH_HEADER,
@@ -2174,7 +2211,7 @@ private fun PatchbayRack(
             fontSize = PATCH_TYPE,
             color = finish.plateDim,
             letterSpacing = 1.sp,
-            modifier = Modifier.padding(bottom = 8.dp)
+            modifier = Modifier.padding(bottom = 5.dp)
         )
 
         cells.chunked(4).forEachIndexed { rowIndex, row ->
@@ -2189,48 +2226,29 @@ private fun PatchbayRack(
             // the answer was the same one: light belongs to the panel, not to the control, so it
             // is drawn on a surface the size of the panel. The sockets on top then draw only the
             // things that really are theirs, the rim and the hole.
-            Box(modifier = Modifier.fillMaxWidth().padding(bottom = PATCH_ROW_GAP.dp)) {
-
-                Canvas(modifier = Modifier.matchParentSize()) {
-                    if (finish.glow <= 0f) return@Canvas
-                    val gap = PATCH_GAP.dp.toPx()
-                    val cellW = (size.width - gap * (row.size - 1)) / row.size
-                    val r = PATCH_SOCKET.dp.toPx() / 2f
-
-                    row.forEachIndexed { colIndex, c ->
-                        if (c.channel !in engaged) return@forEachIndexed
-                        val centre = Offset(
-                            colIndex * (cellW + gap) + cellW / 2f,
-                            // The socket sits at the top of its column, above its legend.
-                            r
-                        )
-                        drawNeon(
-                            centre = centre,
-                            radius = r,
-                            hue = hueAt(rowIndex * 4 + colIndex),
-                            strength = finish.glow
-                        )
-                    }
-                }
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(PATCH_GAP.dp)
-                ) {
-                    row.forEachIndexed { colIndex, c ->
-                        val order = rowIndex * 4 + colIndex
-                        Socket(
-                            cell = c,
-                            hue = hueAt(order),
-                            order = order,
-                            arrived = arrived,
-                            engaged = c.channel in engaged,
-                            selected = c.channel == selected,
-                            onToggle = { onToggle(c.channel) },
-                            onSelect = { onSelect(c.channel) },
-                            modifier = Modifier.weight(1f)
-                        )
-                    }
+            // Sideways inset only: left and right is where a socket is genuinely against the
+            // edge of the panel. Vertically there is now the whole rack to spill into.
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = PATCH_INSET.dp)
+                    .padding(bottom = PATCH_ROW_GAP.dp),
+                horizontalArrangement = Arrangement.spacedBy(PATCH_GAP.dp)
+            ) {
+                row.forEachIndexed { colIndex, c ->
+                    val order = rowIndex * 4 + colIndex
+                    Socket(
+                        cell = c,
+                        hue = hueAt(order),
+                        order = order,
+                        arrived = arrived,
+                        engaged = c.channel in engaged,
+                        selected = c.channel == selected,
+                        onToggle = { onToggle(c.channel) },
+                        onSelect = { onSelect(c.channel) },
+                        onCentre = { bank[c.channel] = it - origin },
+                        modifier = Modifier.weight(1f)
+                    )
                 }
             }
         }
@@ -2284,6 +2302,8 @@ private fun PatchbayRack(
             }
         }
     }
+
+    }
 }
 
 /**
@@ -2307,6 +2327,8 @@ private fun Socket(
     selected: Boolean,
     onToggle: () -> Unit,
     onSelect: () -> Unit,
+    /** Reports this jack's centre in root coordinates, so the panel can light it. */
+    onCentre: (Offset) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val finish = LocalDeckFinish.current
@@ -2380,7 +2402,16 @@ private fun Socket(
             ),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Canvas(modifier = Modifier.size(PATCH_SOCKET.dp)) {
+        Canvas(
+            modifier = Modifier
+                .size(PATCH_SOCKET.dp)
+                .onGloballyPositioned {
+                    onCentre(
+                        it.positionInRoot() +
+                            Offset(it.size.width / 2f, it.size.height / 2f)
+                    )
+                }
+        ) {
             val c = Offset(size.width / 2f, size.height / 2f)
             val outer = size.minDimension / 2f - PATCH_RING.toPx() / 2f
 
@@ -2558,7 +2589,10 @@ private fun ConsoleParam(param: RackParam, hue: Color, live: Boolean) {
 
 private const val PATCH_SOCKET = 46
 private const val PATCH_GAP = 6
-private const val PATCH_ROW_GAP = 10
+private const val PATCH_ROW_GAP = 2
+
+/** Room around the socket bank for its light to fall off in, before any edge. */
+private const val PATCH_INSET = 14
 private val PATCH_RING = 2.dp
 private val PATCH_TYPE = 10.sp
 
@@ -2605,41 +2639,41 @@ private fun DrawScope.drawNeon(
     hue: Color,
     strength: Float
 ) {
+    // **The falloff is shaped, not linear, and that is what kills the visible edge.**
+    //
+    // A two-stop radial gradient ramps straight from full to nothing, so at three quarters of
+    // its radius it is still at a quarter of its strength — and wherever the drawing surface
+    // ends, that quarter becomes a hard line. Insetting the sockets and widening the canvas only
+    // moves where the line falls; it cannot remove it, because there is always an edge somewhere
+    // and the light is still bright when it arrives there.
+    //
+    // Extra stops bend the ramp so almost all of the light is spent near the middle and the tail
+    // is imperceptible long before the radius runs out. That is also closer to what light does —
+    // intensity falls off with the square of distance, not linearly — so it reads better *and*
+    // it cannot be clipped visibly, whatever it is drawn on.
+    fun ramp(r: Float, a: Float) = Brush.radialGradient(
+        colorStops = arrayOf(
+            0.00f to hue.copy(alpha = a),
+            0.30f to hue.copy(alpha = a * 0.34f),
+            0.60f to hue.copy(alpha = a * 0.08f),
+            0.82f to hue.copy(alpha = a * 0.015f),
+            1.00f to Color.Transparent
+        ),
+        center = centre,
+        radius = r
+    )
+
     // The outer air. Very faint and very wide, so the glow has no edge anywhere.
     val outer = radius * NEON_OUTER
-    drawCircle(
-        brush = Brush.radialGradient(
-            colors = listOf(hue.copy(alpha = NEON_OUTER_A * strength), Color.Transparent),
-            center = centre,
-            radius = outer
-        ),
-        radius = outer,
-        center = centre
-    )
+    drawCircle(brush = ramp(outer, NEON_OUTER_A * strength), radius = outer, center = centre)
 
     // The halo. This is the layer doing most of the visible work.
     val halo = radius * NEON_HALO
-    drawCircle(
-        brush = Brush.radialGradient(
-            colors = listOf(hue.copy(alpha = NEON_HALO_A * strength), Color.Transparent),
-            center = centre,
-            radius = halo
-        ),
-        radius = halo,
-        center = centre
-    )
+    drawCircle(brush = ramp(halo, NEON_HALO_A * strength), radius = halo, center = centre)
 
     // The tube's own colour, at its own strength, close in.
     val body = radius * NEON_BODY
-    drawCircle(
-        brush = Brush.radialGradient(
-            colors = listOf(hue.copy(alpha = NEON_BODY_A * strength), Color.Transparent),
-            center = centre,
-            radius = body
-        ),
-        radius = body,
-        center = centre
-    )
+    drawCircle(brush = ramp(body, NEON_BODY_A * strength), radius = body, center = centre)
 
     // The blown-out centre. Mixed toward white rather than set to it, so a green tube still
     // reads as green at its heart and merely as *too bright to have a colour* at the very middle.
@@ -2661,7 +2695,7 @@ private fun DrawScope.drawNeon(
 
 /** Radii, as multiples of the socket's own. */
 private const val NEON_OUTER = 3.4f
-private const val NEON_HALO = 2.0f
+private const val NEON_HALO = 2.3f
 private const val NEON_BODY = 1.25f
 private const val NEON_CORE = 0.72f
 
@@ -2670,9 +2704,9 @@ private const val NEON_CORE = 0.72f
  * is what builds the ramp, and any single one of them at a strength that looked right alone
  * would flatten the others out.
  */
-private const val NEON_OUTER_A = 0.10f
-private const val NEON_HALO_A = 0.22f
-private const val NEON_BODY_A = 0.34f
+private const val NEON_OUTER_A = 0.17f
+private const val NEON_HALO_A = 0.36f
+private const val NEON_BODY_A = 0.44f
 private const val NEON_CORE_A = 0.85f
 
 /** How far the core is pulled toward white. Most of the way, but not all — see [drawNeon]. */

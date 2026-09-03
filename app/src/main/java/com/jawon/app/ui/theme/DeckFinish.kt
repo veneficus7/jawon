@@ -51,7 +51,24 @@ enum class DeckPlate(
     BRUSHED(model = "CDP-700", base = Color(0xFFBEC2C0), opacity = 0.80f, litness = 0.34f, grain = 0.09f, bevelled = false, pale = true, cornerRadius = 5.dp),
 
     /** Bevelled grey, and almost no radius at all. */
-    CHROME(model = "v2.95", base = Color(0xFF3E3E3E), opacity = 0.86f, litness = 0.16f, grain = 0f, bevelled = true, pale = false, cornerRadius = 2.dp)
+    // **Near-black and nearly opaque, which is not what "chrome" suggests and is what Workshop
+    // needs.**
+    //
+    // This was a mid grey at `#3E3E3E` and 0.86 opacity, and on device that is the single thing
+    // wrong with the mode. Every other room has a lamp in it, so a translucent panel picks up
+    // the light and reads as a lit object standing in the room. Workshop has no lamp at all —
+    // its whole premise is that the only light is what the equipment makes — so the same
+    // treatment turns the panel into a pale green wash with the wall's album covers legible
+    // straight through it.
+    //
+    // Two things follow, and both were reported. Phosphor cannot glow when there is nothing dark
+    // to glow against, so the sockets came out as flat discs however carefully their falloff was
+    // built; and the silkscreen loses its contrast against a ground that is now lighter than the
+    // ink, so the format line stopped being comfortably readable.
+    //
+    // A terminal is a dark object. Its front is not lit, it is *emitting*, and everything that
+    // is not emitting is black.
+    CHROME(model = "v2.95", base = Color(0xFF080B08), opacity = 0.96f, litness = 0.05f, grain = 0f, bevelled = true, pale = false, cornerRadius = 2.dp)
 }
 
 /**
