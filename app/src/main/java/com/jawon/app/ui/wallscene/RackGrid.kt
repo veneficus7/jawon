@@ -24,6 +24,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -38,6 +39,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.BiasAlignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
@@ -62,7 +64,9 @@ import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.font.FontWeight
@@ -178,7 +182,7 @@ fun RackGrid(
         }
 
         RackLayout.MODULAR -> {
-            ModularRack(
+            PatchbayRack(
                 cells = cells,
                 engaged = engaged,
                 selected = selected,
@@ -889,242 +893,6 @@ private const val EQ_GAP = 4
 
 /** Within this of zero, a band counts as flat and stops being drawn as a change. */
 private const val FLAT_SLOP_MB = 40
-
-/**
- * A rack of modules, each as wide as it is complicated.
- *
- * **The panel tells you where the depth is.** The echo is three times the width of the drive
- * because it has three knobs and the drive has one — which is how a real rack looks, and the
- * opposite of a uniform grid, where a one-knob effect and a three-knob effect occupy identical
- * squares and the face tells you nothing.
- *
- * Widths come from the cell's own parameter count, so adding a ninth effect sizes itself.
- */
-@Composable
-private fun ModularRack(
-    cells: List<RackCell>,
-    engaged: Set<RackChannel>,
-    selected: RackChannel?,
-    arrived: Boolean,
-    onToggle: (RackChannel) -> Unit,
-    onSelect: (RackChannel) -> Unit,
-    eqBands: List<EqBand>,
-    eqRangeMb: Pair<Int, Int>,
-    onEqBandChange: (Int, Int) -> Unit,
-    modifier: Modifier = Modifier
-) {
-    val finish = LocalDeckFinish.current
-
-    Column(modifier = modifier.fillMaxWidth()) {
-        Row(
-            modifier = Modifier.fillMaxWidth().height(MODULE_HEIGHT.dp),
-            horizontalArrangement = Arrangement.spacedBy(MODULE_GAP.dp)
-        ) {
-            cells.forEachIndexed { i, cell ->
-                Module(
-                    cell = cell,
-                    order = i,
-                    arrived = arrived,
-                    engaged = cell.channel in engaged,
-                    selected = cell.channel == selected,
-                    onToggle = { onToggle(cell.channel) },
-                    onSelect = { onSelect(cell.channel) },
-                    // One horizontal unit per knob, with a floor so a single-knob module is a
-                    // sliver rather than a hairline.
-                    modifier = Modifier.weight(
-                        (cell.params.size.coerceAtLeast(1)).toFloat()
-                            .coerceAtLeast(MODULE_MIN_UNITS)
-                    )
-                )
-            }
-        }
-
-        // The selected module's controls, on the rail beneath the case.
-        if (selected == RackChannel.EQ) {
-            EqBands(
-                bands = eqBands,
-                rangeMb = eqRangeMb,
-                onBandChange = onEqBandChange,
-                modifier = Modifier.padding(top = MODULE_GAP.dp)
-            )
-        } else {
-            val params = cells.firstOrNull { it.channel == selected }?.params.orEmpty()
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = MODULE_GAP.dp)
-                    .height(FADER_HEIGHT.dp),
-                horizontalArrangement = Arrangement.spacedBy(MODULE_GAP.dp)
-            ) {
-                repeat(FADER_SLOTS) { slot ->
-                    Fader(
-                        param = params.getOrNull(slot),
-                        hue = cells.firstOrNull { it.channel == selected }?.hue ?: finish.accent,
-                        live = selected != null && selected in engaged,
-                        modifier = Modifier.weight(1f)
-                    )
-                }
-            }
-        }
-    }
-}
-
-/** One module: a milled panel with screws, a lit strip, its name set vertically, and jacks. */
-@Composable
-private fun Module(
-    cell: RackCell,
-    order: Int,
-    arrived: Boolean,
-    engaged: Boolean,
-    selected: Boolean,
-    onToggle: () -> Unit,
-    onSelect: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    val finish = LocalDeckFinish.current
-
-    var pressed by remember { mutableStateOf(false) }
-    val press = animateFloatAsState(
-        targetValue = if (pressed) PRESS_SCALE else 1f,
-        animationSpec = spring(Spring.DampingRatioMediumBouncy, Spring.StiffnessMedium),
-        label = "press"
-    )
-    val lit = animateFloatAsState(
-        targetValue = if (engaged) 1f else 0f,
-        animationSpec = tween(CELL_FADE_MS),
-        label = "lit"
-    )
-    val entry = animateFloatAsState(
-        targetValue = if (arrived) 1f else 0f,
-        animationSpec = tween(ENTRY_MS, order * ENTRY_STAGGER_MS, FastOutSlowInEasing),
-        label = "entry"
-    )
-    val pulse = selectionPulse(selected)
-
-    Column(
-        modifier = modifier
-            .fillMaxHeight()
-            .graphicsLayer {
-                scaleY = press.value
-                alpha = entry.value
-                translationY = (1f - entry.value) * ENTRY_RISE_PX
-            }
-            .background(if (engaged) finish.key else Color.Transparent)
-            .border(
-                width = if (selected) 2.dp else 1.dp,
-                color = if (selected) finish.accent.copy(alpha = pulse) else finish.keyEdge
-            )
-            .alpha(if (cell.available) 1f else UNAVAILABLE_ALPHA)
-            .then(
-                if (cell.available) {
-                    Modifier.pointerInput(cell.channel, engaged, selected) {
-                        detectTapGestures(
-                            onPress = {
-                                pressed = true
-                                tryAwaitRelease()
-                                pressed = false
-                            },
-                            onTap = {
-                                when {
-                                    !engaged -> { onToggle(); onSelect() }
-                                    selected -> onToggle()
-                                    else -> onSelect()
-                                }
-                            }
-                        )
-                    }
-                } else {
-                    Modifier
-                }
-            )
-            .padding(vertical = 5.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.SpaceBetween
-    ) {
-        Screws(finish)
-
-        // The lit strip, the same beam every other layout uses.
-        Box(
-            modifier = Modifier
-                .fillMaxWidth(0.62f)
-                .height(BEAM_THICKNESS.dp)
-                .drawBehind {
-                    val g = finish.glow * lit.value
-                    if (g > 0f) {
-                        val heart = Offset(size.width / 2f, size.height / 2f)
-                        val reach = size.width * BEAM_BLOOM_REACH * 2f
-                        scale(scaleX = 1f, scaleY = BEAM_BLOOM_SQUASH * 2f, pivot = heart) {
-                            drawCircle(
-                                brush = Brush.radialGradient(
-                                    colors = listOf(
-                                        cell.hue.copy(alpha = BEAM_BLOOM_CORE * g),
-                                        Color.Transparent
-                                    ),
-                                    center = heart,
-                                    radius = reach
-                                ),
-                                radius = reach,
-                                center = heart
-                            )
-                        }
-                    }
-                }
-                .background(cell.hue.copy(alpha = lit.value))
-        )
-
-        Text(
-            text = cell.channel.label,
-            fontFamily = finish.keyType,
-            fontSize = finish.keyTypeSize * 0.9f,
-            fontWeight = FontWeight.Bold,
-            color = if (engaged) finish.keyInk else finish.keyDim,
-            maxLines = 1,
-            textAlign = TextAlign.Center,
-            modifier = Modifier.fillMaxWidth()
-        )
-
-        // Patch jacks along the base — one per knob, because that is what the module carries.
-        Row(horizontalArrangement = Arrangement.spacedBy(3.dp)) {
-            repeat(cell.params.size.coerceAtLeast(1).coerceAtMost(MODULE_MAX_JACKS)) {
-                Box(
-                    modifier = Modifier
-                        .size(MODULE_JACK.dp)
-                        .background(finish.groove, CircleShape)
-                        .border(1.dp, finish.keyEdge, CircleShape)
-                )
-            }
-        }
-
-        Screws(finish)
-    }
-}
-
-/** The two screws at each end of a module's panel. Free, and most of what says "rack". */
-@Composable
-private fun Screws(finish: DeckFinish) {
-    Row(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 3.dp),
-        horizontalArrangement = Arrangement.SpaceBetween
-    ) {
-        repeat(2) {
-            Box(
-                modifier = Modifier
-                    .size(MODULE_SCREW.dp)
-                    .background(finish.keyEdge, CircleShape)
-            )
-        }
-    }
-}
-
-// ---- the modular case ----------------------------------------------------------------
-private const val MODULE_HEIGHT = 132
-private const val MODULE_GAP = 3
-private const val MODULE_SCREW = 3
-private const val MODULE_JACK = 6
-private const val MODULE_MAX_JACKS = 3
-
-/** A one-knob module is still wide enough to hit, so widths have a floor. */
-private const val MODULE_MIN_UNITS = 1.15f
 
 /**
  * One control inside the ring, lying down.
@@ -2294,3 +2062,379 @@ private const val UNIT_TRACK_BLOOM = 0.20f
 
 /** Printed where a real unit carries its part number. Eight channels, one rack space. */
 private const val UNIT_MODEL = "CS-8 EIGHT CHANNEL"
+
+// ---- the patchbay --------------------------------------------------------------------
+
+/**
+ * Sockets on top, a console underneath.
+ *
+ * **The modular was replaced rather than tuned.** Eurorack modules of differing widths is a good
+ * idea on a rack and a bad one on a phone: the widths that were supposed to say how complicated
+ * each effect is came out as a row of narrow boxes, all of them too small to say anything, and
+ * on absolute black with square corners there was nothing left but outlines.
+ *
+ * This is two ideas that each work at phone size, doing separate jobs. Eight jack points choose
+ * what you are working on — a socket is a *hole*, which is the one shape that reads instantly on
+ * a black panel, and a patched one lights its ring and blooms, which is exactly what a mode with
+ * `glow` at 0.9 is built to do. Underneath, the selected effect prints itself as terminal
+ * output: its state, then a line per control with a bar made of discrete cells.
+ *
+ * Discrete is the point. Every other layout in this app slides continuously; a console steps,
+ * character by character, because that is what a console can do — and it is the one place where
+ * a coarse control is *more* satisfying rather than less, because the stepping is the machine
+ * showing its resolution rather than failing to have any.
+ *
+ * The equaliser is the stated exception and stays a curve. Five numbers printed as five bars is
+ * the least useful possible view of a filter shape, and the curve already exists.
+ */
+@Composable
+private fun PatchbayRack(
+    cells: List<RackCell>,
+    engaged: Set<RackChannel>,
+    selected: RackChannel?,
+    arrived: Boolean,
+    onToggle: (RackChannel) -> Unit,
+    onSelect: (RackChannel) -> Unit,
+    eqBands: List<EqBand>,
+    eqRangeMb: Pair<Int, Int>,
+    onEqBandChange: (Int, Int) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val finish = LocalDeckFinish.current
+    val cell = cells.firstOrNull { it.channel == selected }
+    val params = cell?.params.orEmpty()
+    val hue = cell?.hue ?: finish.accent
+    val live = selected != null && selected in engaged
+
+    Column(modifier = modifier.fillMaxWidth()) {
+
+        Text(
+            text = PATCH_HEADER,
+            fontFamily = finish.display,
+            fontSize = PATCH_TYPE,
+            color = finish.plateDim,
+            letterSpacing = 1.sp,
+            modifier = Modifier.padding(bottom = 8.dp)
+        )
+
+        cells.chunked(4).forEachIndexed { rowIndex, row ->
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(bottom = PATCH_ROW_GAP.dp),
+                horizontalArrangement = Arrangement.spacedBy(PATCH_GAP.dp)
+            ) {
+                row.forEachIndexed { colIndex, c ->
+                    Socket(
+                        cell = c,
+                        order = rowIndex * 4 + colIndex,
+                        arrived = arrived,
+                        engaged = c.channel in engaged,
+                        selected = c.channel == selected,
+                        onToggle = { onToggle(c.channel) },
+                        onSelect = { onSelect(c.channel) },
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+            }
+        }
+
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 4.dp, bottom = 9.dp)
+                .height(1.dp)
+                .background(finish.keyEdge)
+        )
+
+        if (selected == null) {
+            ConsoleLine(text = PATCH_IDLE, color = finish.plateDim)
+            return@Column
+        }
+
+        // The status line, and the on/off switch. Printed the way a console prints state, and
+        // tappable, so the thing that says whether an effect is in circuit is also the thing
+        // that puts it there.
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(2.dp))
+                .clickable { onToggle(selected) }
+                .padding(vertical = 5.dp),
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            ConsoleLine(
+                text = "> " + selected.label.uppercase(),
+                color = if (live) hue else finish.plateDim,
+                glow = live
+            )
+            ConsoleLine(
+                text = if (live) "[ ON  ]" else "[ OFF ]",
+                color = if (live) hue else finish.plateDim,
+                glow = live
+            )
+        }
+
+        if (selected == RackChannel.EQ) {
+            EqCurve(
+                bands = eqBands,
+                rangeMb = eqRangeMb,
+                onBandChange = onEqBandChange,
+                modifier = Modifier.padding(top = 6.dp)
+            )
+        } else {
+            params.forEach { param ->
+                ConsoleParam(param = param, hue = hue, live = live)
+            }
+        }
+    }
+}
+
+/**
+ * One jack point.
+ *
+ * A ring, a hole, and a legend under it. Unpatched it is a dark circle with a dim rim — a hole
+ * in the panel. Patched, the rim lights and throws a bloom past itself, which on absolute black
+ * is the entire difference between a socket and a lamp, and is why this layout belongs to the
+ * mode whose glow is turned nearly all the way up.
+ *
+ * Round holes against square corners is also the contrast the modular never had: that panel was
+ * rectangles inside rectangles, so nothing on it had a silhouette.
+ */
+@Composable
+private fun Socket(
+    cell: RackCell,
+    order: Int,
+    arrived: Boolean,
+    engaged: Boolean,
+    selected: Boolean,
+    onToggle: () -> Unit,
+    onSelect: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val finish = LocalDeckFinish.current
+    var pressed by remember { mutableStateOf(false) }
+    val press = animateFloatAsState(
+        targetValue = if (pressed) 0.9f else 1f,
+        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy),
+        label = "press"
+    )
+    val entry = animateFloatAsState(
+        targetValue = if (arrived) 1f else 0f,
+        animationSpec = tween(ENTRY_MS, order * ENTRY_STAGGER_MS, FastOutSlowInEasing),
+        label = "entry"
+    )
+    val pulse = selectionPulse(selected)
+
+    Column(
+        modifier = modifier
+            .graphicsLayer {
+                scaleX = press.value
+                scaleY = press.value
+                alpha = entry.value
+                translationY = (1f - entry.value) * ENTRY_RISE_PX
+            }
+            .alpha(if (cell.available) 1f else UNAVAILABLE_ALPHA)
+            .then(
+                if (cell.available) {
+                    Modifier.pointerInput(cell.channel, engaged, selected) {
+                        detectTapGestures(
+                            onPress = {
+                                pressed = true
+                                tryAwaitRelease()
+                                pressed = false
+                            },
+                            onTap = {
+                                when {
+                                    !engaged -> { onToggle(); onSelect() }
+                                    selected -> onToggle()
+                                    else -> onSelect()
+                                }
+                            }
+                        )
+                    }
+                } else Modifier
+            ),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Canvas(modifier = Modifier.size(PATCH_SOCKET.dp)) {
+            val c = Offset(size.width / 2f, size.height / 2f)
+            val outer = size.minDimension / 2f - PATCH_RING.toPx() / 2f
+
+            // The bloom, drawn first and well outside the ring. Nothing here is clipped to the
+            // socket, which is the mistake that put visible rectangles around the ring's studs:
+            // a glow drawn into its own layer stops at that layer's bounds.
+            if (engaged && finish.glow > 0f) {
+                drawCircle(
+                    color = cell.hue.copy(alpha = PATCH_BLOOM_ALPHA * finish.glow),
+                    radius = outer * PATCH_BLOOM_SPREAD,
+                    center = c
+                )
+                drawCircle(
+                    color = cell.hue.copy(alpha = PATCH_BLOOM_CORE * finish.glow),
+                    radius = outer * 1.18f,
+                    center = c
+                )
+            }
+
+            // The hole itself.
+            drawCircle(color = finish.groove, radius = outer, center = c)
+            drawCircle(
+                color = if (engaged) cell.hue.copy(alpha = PATCH_HOLE_ALPHA) else finish.plateLow,
+                radius = outer * PATCH_HOLE,
+                center = c
+            )
+
+            // The rim. Thicker and breathing when this is the one being worked on.
+            drawCircle(
+                color = when {
+                    selected -> cell.hue.copy(alpha = pulse)
+                    engaged -> cell.hue
+                    else -> finish.keyEdge
+                },
+                radius = outer,
+                center = c,
+                style = Stroke(
+                    width = if (selected) PATCH_RING.toPx() * 1.7f else PATCH_RING.toPx()
+                )
+            )
+        }
+
+        Text(
+            text = cell.channel.label,
+            fontFamily = finish.keyType,
+            fontSize = PATCH_TYPE,
+            fontWeight = FontWeight.Bold,
+            color = if (engaged) finish.keyInk else finish.keyDim,
+            maxLines = 1,
+            overflow = TextOverflow.Clip,
+            modifier = Modifier.padding(top = 5.dp)
+        )
+    }
+}
+
+/** A line of console output, in the mode's display face. */
+@Composable
+private fun ConsoleLine(text: String, color: Color, glow: Boolean = false) {
+    val finish = LocalDeckFinish.current
+    Text(
+        text = text,
+        fontFamily = finish.display,
+        fontSize = PATCH_TYPE,
+        letterSpacing = 1.sp,
+        color = color,
+        maxLines = 1,
+        style = if (glow && finish.glow > 0f) {
+            TextStyle(
+                shadow = Shadow(
+                    color = color.copy(alpha = CONSOLE_GLOW_ALPHA * finish.glow),
+                    offset = Offset.Zero,
+                    blurRadius = CONSOLE_GLOW_RADIUS
+                )
+            )
+        } else TextStyle()
+    )
+}
+
+/**
+ * One control, printed as a console bar.
+ *
+ * The bar is [CONSOLE_CELLS] discrete cells rather than a continuous fill, which is what makes
+ * this read as output from a machine instead of as a slider wearing a costume. Dragging still
+ * maps to the whole width — the value underneath is continuous and only the drawing steps — so
+ * this is no coarser to *use* than any other control in the app.
+ *
+ * One gesture handler taking press and drag together, so a tap lands the value where you touched.
+ */
+@Composable
+private fun ConsoleParam(param: RackParam, hue: Color, live: Boolean) {
+    val finish = LocalDeckFinish.current
+    val liveParam = rememberUpdatedState(param)
+    val ink = if (live) hue else finish.plateDim
+
+    Column(modifier = Modifier.fillMaxWidth().padding(top = CONSOLE_ROW_GAP.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            ConsoleLine(text = param.name.uppercase(), color = finish.plateDim)
+            ConsoleLine(text = param.readout(param.value), color = ink, glow = live)
+        }
+
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(CONSOLE_TOUCH.dp)
+                .pointerInput(Unit) {
+                    awaitEachGesture {
+                        val down = awaitFirstDown()
+                        val width = size.width.toFloat().coerceAtLeast(1f)
+                        liveParam.value.onChange((down.position.x / width).coerceIn(0f, 1f))
+                        down.consume()
+                        drag(down.id) { change ->
+                            liveParam.value.onChange(
+                                (change.position.x / width).coerceIn(0f, 1f)
+                            )
+                            change.consume()
+                        }
+                        liveParam.value.onCommit?.invoke()
+                    }
+                }
+        ) {
+            Canvas(modifier = Modifier.fillMaxSize()) {
+                val gap = CONSOLE_CELL_GAP.toPx()
+                val cellW = (size.width - gap * (CONSOLE_CELLS - 1)) / CONSOLE_CELLS
+                val h = CONSOLE_BAR.toPx()
+                val midY = size.height / 2f
+                val value = param.value.coerceIn(0f, 1f)
+
+                // Bipolar controls fill from the middle out, because that is where their zero is.
+                val lit = (value * CONSOLE_CELLS).toInt().coerceIn(0, CONSOLE_CELLS)
+                val centre = CONSOLE_CELLS / 2
+                for (i in 0 until CONSOLE_CELLS) {
+                    val on = if (param.bipolar) {
+                        if (lit >= centre) i in centre until lit else i in lit until centre
+                    } else {
+                        i < lit
+                    }
+                    val x = i * (cellW + gap)
+                    if (on && live && finish.glow > 0f) {
+                        drawRect(
+                            color = hue.copy(alpha = CONSOLE_BLOOM * finish.glow),
+                            topLeft = Offset(x - gap, midY - h * 1.6f),
+                            size = Size(cellW + gap * 2f, h * 3.2f)
+                        )
+                    }
+                    drawRect(
+                        color = if (on) ink else finish.groove,
+                        topLeft = Offset(x, midY - h / 2f),
+                        size = Size(cellW, h)
+                    )
+                }
+            }
+        }
+    }
+}
+
+private const val PATCH_SOCKET = 46
+private const val PATCH_GAP = 6
+private const val PATCH_ROW_GAP = 10
+private val PATCH_RING = 2.dp
+private val PATCH_TYPE = 10.sp
+
+/** How far past its own rim a patched socket throws light, as a multiple of the rim radius. */
+private const val PATCH_BLOOM_SPREAD = 1.9f
+private const val PATCH_BLOOM_ALPHA = 0.16f
+private const val PATCH_BLOOM_CORE = 0.22f
+private const val PATCH_HOLE = 0.52f
+private const val PATCH_HOLE_ALPHA = 0.30f
+
+private const val CONSOLE_CELLS = 24
+private val CONSOLE_CELL_GAP = 2.dp
+private val CONSOLE_BAR = 9.dp
+private const val CONSOLE_TOUCH = 30
+private const val CONSOLE_ROW_GAP = 8
+private const val CONSOLE_BLOOM = 0.20f
+private const val CONSOLE_GLOW_ALPHA = 0.7f
+private const val CONSOLE_GLOW_RADIUS = 11f
+
+private const val PATCH_HEADER = "PATCH - 8 POINT"
+private const val PATCH_IDLE = "  no point selected"
