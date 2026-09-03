@@ -41,9 +41,36 @@ class RoomDiagnostics @Inject constructor() {
     @Volatile var stepDowns: Int = 0
         private set
 
+    /**
+     * The fraction of the surface the room last actually drew itself at.
+     *
+     * Filament moves this between [QualityTier.minRenderScale] and [QualityTier.maxRenderScale]
+     * on its own, so unlike everything else here it is a reading rather than a setting — and it
+     * is the only way to tell a device that is comfortably at its ceiling from one that has
+     * quietly been scaling down to hold its frame rate. Pushed in from the frame driver rather
+     * than read here: the getter is a JNI call and this class is deliberately free of Filament
+     * types.
+     */
+    @Volatile var renderScale: Float = 1f
+        private set
+
+    fun onRenderScale(scale: Float) {
+        renderScale = scale
+    }
+
     private var frames = 0L
     private var totalMs = 0.0
     private var worstMs = 0.0
+
+    /**
+     * Of those frames, how many were actually rasterised rather than skipped by [RoomCadence].
+     *
+     * The one number that says whether the cadence is doing anything. A room that is genuinely
+     * idle should sit far below [frames]; one that never drops below it is either being touched
+     * the whole time or has something reporting motion that has in fact stopped — which is the
+     * failure mode worth being able to see, because it costs nothing visible and saves nothing.
+     */
+    private var drawnFrames = 0L
 
     /** Frames slower than 20ms — the same threshold [FrameWatch] calls a miss. */
     private var slowFrames = 0L
@@ -70,19 +97,34 @@ class RoomDiagnostics @Inject constructor() {
         totalMs += ms
     }
 
+    /**
+     * Whether the frame the driver has just finished preparing was drawn.
+     *
+     * Separate from [onFrame] rather than an argument to it because the two are known at
+     * different points: the frame time is the first thing the driver has and the draw decision
+     * is the last, and moving [onFrame] to the tail would delay [FrameWatch]'s own reading by a
+     * frame for no reason.
+     */
+    fun onFrameDrawn(drew: Boolean) {
+        if (drew) drawnFrames++
+    }
+
     /** Start again — for the button that lets a tester measure one specific thing. */
     fun reset() {
         frames = 0
         totalMs = 0.0
         worstMs = 0.0
         slowFrames = 0
+        drawnFrames = 0
     }
 
     fun snapshot(): Snapshot = Snapshot(
         detectedTier = detectedTier,
         currentTier = currentTier,
         stepDowns = stepDowns,
+        renderScale = renderScale,
         frames = frames,
+        drawnFrames = drawnFrames,
         averageMs = if (frames > 0) totalMs / frames else 0.0,
         worstMs = worstMs,
         slowPercent = if (frames > 0) (slowFrames * 100.0 / frames) else 0.0
@@ -92,13 +134,31 @@ class RoomDiagnostics @Inject constructor() {
         val detectedTier: QualityTier?,
         val currentTier: QualityTier?,
         val stepDowns: Int,
+        val renderScale: Float,
         val frames: Long,
+        val drawnFrames: Long,
         val averageMs: Double,
         val worstMs: Double,
         val slowPercent: Double
     ) {
         /** The number people recognise. Derived from the mean, not counted separately. */
         val averageFps: Int get() = if (averageMs > 0) (1000.0 / averageMs).roundToInt() else 0
+
+        /**
+         * What fraction of the vsyncs offered were actually rendered.
+         *
+         * The saving, in one number: 100 means the room drew everything it was asked to, which
+         * is what it did before [RoomCadence] existed.
+         */
+        val drawnPercent: Double
+            get() = if (frames > 0) (drawnFrames * 100.0 / frames) else 0.0
+
+        /**
+         * Frames per second actually rasterised, as opposed to [averageFps], which is the rate
+         * the driver ran at. The gap between the two is the whole point.
+         */
+        val drawnFps: Int
+            get() = if (averageMs > 0) (drawnPercent * 10.0 / averageMs).roundToInt() else 0
 
         /** Whether the room has been on screen long enough for the numbers to mean anything. */
         val hasData: Boolean get() = frames > 120

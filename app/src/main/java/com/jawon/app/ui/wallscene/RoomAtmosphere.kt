@@ -50,7 +50,11 @@ object RoomAtmosphere {
      * turns to soup. M9 part 1's IBL puts the lamp above 1.0, so there is a real highlight
      * for this to find.
      */
-    private const val BLOOM_STRENGTH = 0.28f
+    /**
+     * Not private, because it doubles as the sentinel [isApplied] reads. See that function for
+     * why the room has to be able to ask whether its own settings are still in force.
+     */
+    const val BLOOM_STRENGTH = 0.28f
 
     /**
      * Depth of field.
@@ -208,6 +212,30 @@ object RoomAtmosphere {
      * surface, softening as it lifts away. The room's shadows were plain PCF at whatever map
      * size Filament defaults to, which gives a shadow of one uniform softness everywhere and
      * reads as a decal.
+     *
+     * **Measured against PCF and left on, unlike ambient occlusion.** The obvious question
+     * once dynamic resolution exposed a live GPU-timer readout ([QualityTier.maxRenderScale])
+     * was whether PCSS was the reason the wall sits at its render-scale floor rather than its
+     * ceiling — it was the next-costliest-sounding thing still running while browsing, and it
+     * is the reason `setAmbientOcclusion` came off the wall in the first place.
+     *
+     * It measured as nothing. Two methods, back to back on a cooled Galaxy S25 Ultra,
+     * PCSS against PCF forced on with nothing else changed:
+     *
+     * | | CPU jiffies/10s (FEngine + JobSystem) | live render scale |
+     * |---|---|---|
+     * | PCSS | 117, 118, 113 | 60% (floor) |
+     * | PCF | 113, 117, 116 | 60% (floor) |
+     *
+     * Both landed inside run-to-run noise, on both signals. The CPU number was expected to be
+     * uninformative — PCSS and PCF differ only in the shadow map's *sampling pattern* inside
+     * an existing fragment shader, not in the number of passes or draw calls Filament's
+     * command generation submits, so there was never going to be a CPU-side story here the way
+     * there was for AO's extra render targets. The render-scale number is the one that
+     * mattered, because it reads Filament's own GPU timer query rather than anything this app
+     * computes — and it did not move either. On a room lit by one spot, over a handful of
+     * shadow-casting cases, at the resolution the wall is already drawn at, PCSS's per-pixel
+     * cost over PCF's fixed kernel is too small to find. Left on at HIGH; not worth a crossing.
      */
     private const val PENUMBRA_SCALE = 1.0f
     private const val PENUMBRA_RATIO_SCALE = 1.0f
@@ -276,6 +304,46 @@ object RoomAtmosphere {
             quality = View.QualityLevel.LOW
         }
 
+        // **Draw the room smaller than the screen, and let Filament put it back.**
+        //
+        // Every full-screen pass in this file — the fog, the bloom chain, the vignette, the
+        // tone map, the FXAA, and the ambient occlusion and depth of field once a case is
+        // open — costs one multiply per pixel of render target. On the test device that
+        // target is 1440x3120: four and a half million pixels, a hundred and twenty times a
+        // second. It is the largest single number in the room's whole cost and nothing had
+        // ever touched it.
+        //
+        // `minScale`/`maxScale` carry the reasoning; see [QualityTier.maxRenderScale]. What
+        // belongs here is the choice of upscaler, because it is not the obvious one.
+        //
+        // **LOW, deliberately, and not FSR1.** Filament offers a bilinear blit at LOW,
+        // Qualcomm's SGSR at MEDIUM and AMD's FSR1 above that, and the better-sounding ones
+        // are the wrong choice for this room. `Options.h` is explicit: *"FSR1 and SGSR
+        // require a well anti-aliased (MSAA or TAA), noise free scene. Avoid FXAA and
+        // dithering."* This room runs FXAA. Both are sharpening reconstruction filters, and
+        // what they would reconstruct is FXAA's own smearing, amplified. A bilinear blit does
+        // not sharpen and cannot amplify anything — the caveat is scoped to the two that do.
+        //
+        // Switching the room to MSAA or TAA to unlock them was investigated and rejected:
+        // TAA is barely bound on Android — `nSetTemporalAntiAliasingOptions` forwards three
+        // of its sixteen fields, the upscaling factor is not among them, and one of the three
+        // is deprecated as having no effect — and MSAA antialiases geometry edges, which is
+        // not what aliases here. The spine lettering, the cover art and the printed disc face
+        // are *textures*, and the lids are glossy clearcoat; MSAA addresses neither, would
+        // need `customResolve` to resolve this room's above-1.0 highlights correctly, and
+        // multiplies tile memory on a 1440p tiler. FXAA stays.
+        //
+        // `homogeneousScaling` so the room never stretches: an anisotropic drop is visible in
+        // a way a uniform one is not. Sharpness is Filament's own default and applies only at
+        // MEDIUM and above, so it is inert here and left alone.
+        view.dynamicResolutionOptions = View.DynamicResolutionOptions().apply {
+            enabled = true
+            homogeneousScaling = true
+            quality = View.QualityLevel.LOW
+            minScale = tier.minRenderScale
+            maxScale = tier.maxRenderScale
+        }
+
         // Off to begin with, and switched on only while a case is open — the same treatment,
         // and for the same reason, as the depth of field. See [setAmbientOcclusion].
         setAmbientOcclusion(view, false, tier)
@@ -323,6 +391,41 @@ object RoomAtmosphere {
             color = floatArrayOf(0f, 0f, 0f, 1f)
         }
     }
+
+    /**
+     * Whether [apply]'s settings are still the ones on [view] — **and they are not, by default.**
+     *
+     * SceneView applies a `RenderQuality` preset of its own to whichever `View` it is handed:
+     *
+     * ```kotlin
+     * LaunchedEffect(view, renderQuality) { view.applyRenderQuality(renderQuality) }
+     * ```
+     *
+     * Its own KDoc states the contract — *"Apply additional View tweaks AFTER calling this — they
+     * will not be undone"* — and the room breaks it, through no fault of its own. [apply] runs
+     * from a `remember`, which is *during* composition; a `LaunchedEffect` body runs *after* the
+     * composition commits. So the preset always lands second and wins, and it writes two fields
+     * the room cares about very much:
+     *
+     * | field | room | `RenderQuality.Default` |
+     * |---|---|---|
+     * | `bloomOptions.strength` | [BLOOM_STRENGTH] | 0.1 |
+     * | `ambientOcclusionOptions.enabled` | `false` while browsing | `true` |
+     *
+     * The second is the expensive one. [setAmbientOcclusion]'s measurement — 309 jiffies against
+     * 218 — is the whole argument for keeping contact shading off the flat wall, and the preset
+     * quietly switched it back on for every session from launch until the first case was closed,
+     * which is the first moment the frame driver's crossing writes the field at all. The first is
+     * merely a lie: the underlight has been glowing at 0.1 while this file said 0.28.
+     *
+     * **Tested rather than counted.** The obvious fix is to re-apply for the first frame or three
+     * and trust that the effect has landed by then. That is an ordering assumption, and an
+     * ordering assumption is exactly what caused this. `strength` is the right sentinel because
+     * it is written once by [apply] and by nothing else afterwards — unlike the ambient
+     * occlusion flag, which the frame driver legitimately toggles on every open and close. The
+     * read is free: Filament's getter hands back the Java struct it already holds.
+     */
+    fun isApplied(view: View): Boolean = view.bloomOptions.strength == BLOOM_STRENGTH
 
     /**
      * Depth of field, on only while a case is open.

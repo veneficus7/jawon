@@ -399,6 +399,18 @@ private fun DiagnosticsSection(
         DiagnosticRow("AVERAGE", "${snapshot.averageFps} FPS  ·  %.1f MS".format(snapshot.averageMs))
         DiagnosticRow("WORST FRAME", "%.1f MS".format(snapshot.worstMs))
         DiagnosticRow("SLOW FRAMES", "%.1f%%".format(snapshot.slowPercent))
+        // What the room actually rasterised, against what it was offered. See RoomCadence:
+        // the room draws at the rate the fastest thing on screen justifies, so a figure well
+        // under 100% while nothing is being touched is the saving working.
+        DiagnosticRow(
+            "DRAWN",
+            "${snapshot.drawnFps} FPS  ·  %.0f%%".format(snapshot.drawnPercent)
+        )
+        // The room's own render target, as a fraction of the screen — Filament moves this on
+        // its own to hold a frame time. Sitting at the tier's ceiling means the device is
+        // comfortable; below it means it is scaling down to keep up. The 2D interface is
+        // unaffected either way; see QualityTier.maxRenderScale.
+        DiagnosticRow("ROOM SCALE", "%.0f%%".format(snapshot.renderScale * 100f))
         DiagnosticRow("FRAMES SEEN", snapshot.frames.toString())
 
         Text(

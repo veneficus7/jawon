@@ -116,6 +116,50 @@ enum class QualityTier {
         }
 
     /**
+     * How large the room's own render target is, as a fraction of the surface, at rest and
+     * under load. Filament scales between the two to hold a GPU frame-time target; see
+     * [RoomAtmosphere.apply].
+     *
+     * **Only the room scales.** The deck, the tracklist, the lyrics and every flat screen are
+     * Compose, drawn into a separate layer over the Filament surface at whatever the panel is
+     * running. Nothing anyone reads gets softer.
+     *
+     * **Why 0.75 is the ceiling and not 1.0.** The test device runs its panel at 1440x3120 on
+     * 6.9 inches — about 498 pixels per inch, where the eye at arm's length resolves somewhere
+     * near 330. Three quarters of that is 1080x2340, which is still above acuity, and is also
+     * *exactly* the FHD+ mode Samsung ships as this phone's factory default. So the room draws
+     * at the resolution the manufacturer considers correct for the screen, and the interface
+     * stays at the one the owner chose. Half the pixels of the wall, for a difference that has
+     * to be looked for on a scene that is deliberately dark, fogged and bloomed.
+     *
+     * **This is a look decision, and it is the one number to turn.** Raise the ceiling toward
+     * 1.0 if the wall's spines read soft; the saving falls off as the square.
+     */
+    val maxRenderScale: Float
+        get() = when (this) {
+            HIGH -> 0.75f
+            MEDIUM -> 0.68f
+            LOW -> 0.60f
+        }
+
+    /**
+     * The floor the same scaling may fall to when the GPU cannot keep up — which on a phone
+     * mostly means when it is hot.
+     *
+     * This is the half of the tier system that was missing. Stepping a tier is coarse, one-way
+     * and visible: it removes contact shading, or depth of field, permanently for the session.
+     * Resolution is continuous, reversible, and recovers on its own once the device cools. A
+     * thermally throttled phone should get a slightly softer room for a minute, not a
+     * permanently plainer one.
+     */
+    val minRenderScale: Float
+        get() = when (this) {
+            HIGH -> 0.60f
+            MEDIUM -> 0.55f
+            LOW -> 0.50f
+        }
+
+    /**
      * Dust motes per square metre of wall.
      *
      * Never zero, and thinned rather than cut. Every mote is a blended quad, so the cost is

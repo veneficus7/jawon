@@ -129,6 +129,7 @@ import io.github.sceneview.rememberMaterialLoader
 import io.github.sceneview.rememberModelInstance
 import io.github.sceneview.rememberModelLoader
 import io.github.sceneview.rememberOnGestureListener
+import io.github.sceneview.rememberRenderer
 import io.github.sceneview.rememberView
 import io.github.sceneview.rememberViewNodeManager
 import dev.romainguy.kotlin.math.Float4
@@ -220,6 +221,23 @@ private const val ZOOM_GAIN = 0.65f
  * touch sample's worth of noise.
  */
 private const val ZOOM_EASE_RATE = 6f
+
+/**
+ * How close the camera has to be to its zoom target before the room stops calling itself busy.
+ *
+ * Only [RoomCadence] reads this — it does not stop the easing, which is deliberate. `WallZoom`
+ * approaches exponentially and never quite arrives, and giving it a snap would change a tuned
+ * gesture to save a float multiply. This just decides when the difference has stopped being
+ * something worth spending a frame on: a hundredth of a millimetre of dolly, against a room
+ * 400mm across and a camera standing 780mm back.
+ */
+private const val ZOOM_SETTLED_EPS = 1e-5f
+
+/**
+ * The same, for the focal plane. Rate-limited rather than eased, so it does land exactly and
+ * this only has to survive the last step landing a ulp short of the target.
+ */
+private const val FOCUS_SETTLED_EPS = 1e-5f
 
 /**
  * The camera's orientation: square on to the wall, always.
@@ -383,7 +401,19 @@ private class SequenceDriver {
      * must be sharp — was blurred along with everything else.
      */
     var focusDistance = RoomAtmosphere.FOCUS_BROWSING
+
+    /** Drawn frames left before the render scale is sampled again. See [SCALE_SAMPLE_FRAMES]. */
+    var scaleSampleIn = 0
 }
+
+/**
+ * How many drawn frames between samples of Filament's live render scale.
+ *
+ * About a second at any of [RoomCadence]'s cadences, which is far finer than the value moves:
+ * Filament ramps the scale at its own `scaleRate` over several frames, and this only feeds a
+ * readout somebody has to open Settings to look at.
+ */
+private const val SCALE_SAMPLE_FRAMES = 60
 
 /**
  * What the frame driver needs to read from composition. Held in a mutable box and refreshed
@@ -713,6 +743,18 @@ fun WallSceneScreen(
         // Fog, bloom, depth of field and vignette all live on Filament's View. Named to
         // keep it apart from the Android View that LocalView supplies for haptics.
         val filamentView = rememberView(engine)
+
+        // The renderer, held here rather than left to SceneView's own default, for one reason:
+        // the frame driver needs a handle on it to decide whether a given vsync is drawn at all.
+        // See RoomCadence, and the tail of `onFrame` where the two meet. Constructed exactly as
+        // SceneView would construct it, and disposed by the same `remember`.
+        val renderer = rememberRenderer(engine)
+        val cadence = remember { RoomCadence() }
+
+        // Filament writes the room's last render scale into this rather than returning it, so
+        // it is allocated once and reused — the frame driver must not allocate. Two entries,
+        // x and y; `homogeneousScaling` keeps them equal, so only [0] is ever read.
+        val renderScaleOut = remember { FloatArray(2) }
         // Applied during composition, NOT from a LaunchedEffect.
         //
         // A LaunchedEffect runs after composition commits, so the first frames rendered with
@@ -1499,6 +1541,7 @@ fun WallSceneScreen(
             materialLoader = materialLoader,
             environmentLoader = environmentLoader,
             view = filamentView,
+            renderer = renderer,
             // Replaces SceneView's default main and fill lights. Those are a neutral studio
             // rig — exactly the "flatly-lit scene" DESIGN.md's Do-not list ends on.
             environment = environment,
@@ -1527,7 +1570,18 @@ fun WallSceneScreen(
             // it too is harmless.
             onTouchEvent = { motionEvent, _ ->
                 when (motionEvent.actionMasked) {
+                    // A hand on the glass, from the only stream that reliably reports one.
+                    // The frame driver reads it to hold the room at full rate for as long as
+                    // it is down — including a press that never becomes a gesture, which is
+                    // exactly what holding the platter to pause is. See RoomCadence.
+                    //
+                    // ACTION_DOWN only, not ACTION_POINTER_DOWN: the first finger arms it and
+                    // the last release below disarms it, so a pinch neither re-arms nor leaves
+                    // it stuck when its second finger lifts.
+                    MotionEvent.ACTION_DOWN -> cadence.pointerDown = true
+
                     MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                        cadence.pointerDown = false
                         caseDrag.slot = null
                         endScratch()
 
@@ -1598,10 +1652,20 @@ fun WallSceneScreen(
                 sequence.lastFrameNanos = frameNanos
                 sequence.clock += dt
 
+                // Nothing is known to be moving until something in this pass says so. Read
+                // once at the tail, where it decides whether this vsync is drawn at all.
+                cadence.beginFrame()
+
                 // Walk the browse camera toward wherever the pinch left it. Every frame,
                 // whether or not anything is pinching � it is a no-op once it has arrived,
                 // and this is also what carries the camera home when a case opens.
                 zoom.advance(dt)
+                // `advance` eases exponentially and so never quite arrives — unlike
+                // `CaseSlot.settleTowardTarget`, which snaps when it gets close. So this
+                // needs a threshold of its own rather than an equality test, or the room
+                // would count itself as moving forever after the first pinch. A hundredth of
+                // a millimetre of camera dolly is not motion.
+                if (abs(zoom.target - zoom.current) > ZOOM_SETTLED_EPS) cadence.moving = true
 
                 // Was the opening guess about this device optimistic? `dt` is clamped above
                 // at 1/24s, which is fine here � anything at the clamp is already far past
@@ -1628,6 +1692,26 @@ fun WallSceneScreen(
                 // per mote, which is what DESIGN.md asks for.
                 if (!reduceMotion) dustMaterial.setParameter("time", sequence.clock)
 
+                // Take the room's own atmosphere back off SceneView.
+                //
+                // SceneView writes a `RenderQuality` preset over this View from a
+                // `LaunchedEffect`, which lands after the `remember` above that applied ours —
+                // so the room has been browsing with contact shading switched back on, at the
+                // cost RoomAtmosphere.setAmbientOcclusion measured, and with the underlight
+                // glowing at a third of its tuned strength. See RoomAtmosphere.isApplied.
+                //
+                // A predicate rather than "re-apply for the first few frames", because the bug
+                // being fixed *is* an ordering assumption and there is no reason to replace it
+                // with a shorter one. Costs a float compare per frame and self-heals if
+                // SceneView ever writes the preset again.
+                if (!RoomAtmosphere.isApplied(filamentView)) {
+                    RoomAtmosphere.apply(filamentView, tier)
+                    // `apply` leaves depth of field and contact shading in their browsing
+                    // state. Clearing the latch makes the crossing below re-decide rather than
+                    // assuming no case can be open at the moment this fires.
+                    sequence.dofEnabled = false
+                }
+
                 // Depth of field exists only while a case is open — on the flat wall it
                 // erased the spines outright. One write per crossing, not per frame.
                 //
@@ -1648,6 +1732,13 @@ fun WallSceneScreen(
                 val focusTarget =
                     if (wantsDof) RoomAtmosphere.FOCUS_DISC
                     else RoomAtmosphere.FOCUS_BROWSING
+                // Pulling focus is a change to every pixel of the frame, so it counts as
+                // motion even though nothing has moved. This one is a rate-limited walk
+                // rather than an exponential, so it does arrive exactly and an equality test
+                // would do — the epsilon is only there to survive the float landing a ulp out.
+                if (abs(focusTarget - sequence.focusDistance) > FOCUS_SETTLED_EPS) {
+                    cadence.moving = true
+                }
                 sequence.focusDistance += (focusTarget - sequence.focusDistance).coerceIn(
                     -RoomAtmosphere.FOCUS_RATE * dt,
                     RoomAtmosphere.FOCUS_RATE * dt
@@ -1658,6 +1749,9 @@ fun WallSceneScreen(
                 cameraNode.camera.setFocusDistance(sequence.focusDistance)
 
                 if (sequence.direction != 0) {
+                    // The five beats. The one animation everybody watches, so it is never
+                    // drawn at anything but full rate.
+                    cadence.moving = true
                     sequence.progress = (
                         sequence.progress +
                             sequence.direction * dt * (1000f / OpenSequence.DURATION_MS)
@@ -1733,6 +1827,16 @@ fun WallSceneScreen(
                         // two are equal unless a shelf has just repacked around a deletion
                         // or the now-playing album changed, and `bind` snaps them together
                         // whenever a pooled slot changes hands. See CaseSlot.targetX.
+                        //
+                        // Asked before the step, not after: `settleTowardTarget` snaps when it
+                        // gets within SETTLE_EPS, so testing afterwards would miss the last
+                        // frame of a repack — the one that puts the case in its final place.
+                        if (slot.baseX != slot.targetX ||
+                            slot.baseY != slot.targetY ||
+                            slot.baseZ != slot.targetZ
+                        ) {
+                            cadence.moving = true
+                        }
                         slot.settleTowardTarget(dt)
                         // The beam stands on the board and never turns, so it only needs
                         // placing � at the foot of the bay, under wherever the case is
@@ -1769,6 +1873,9 @@ fun WallSceneScreen(
                             // about a second. Skipped while the finger is down, because
                             // onMove is already writing manualTurn directly.
                             if (slot !== caseDrag.slot && slot.spinVelocity != 0f) {
+                                // A case still carrying a throw. Shedding over about a second,
+                                // and fast enough at the start to need every frame of it.
+                                cadence.moving = true
                                 slot.manualTurn += slot.spinVelocity * dt
                                 slot.spinVelocity *= ShelfHover.SPIN_RETAIN_PER_S.pow(dt)
                                 if (abs(slot.spinVelocity) < 1f) slot.spinVelocity = 0f
@@ -1790,6 +1897,8 @@ fun WallSceneScreen(
                 // loop: it moves the *held* case, which is not any slot's node, and the slot
                 // it came from is only parked.
                 if (discardNodes.isRunning) {
+                    // A disc breaking and being thrown. Full rate for the whole sequence.
+                    cadence.moving = true
                     if (driveDiscard(discardNodes, actNodes, dt, panX.value, panY.value, reduceMotion, haptics)) {
                         // The slot is free the moment the case is gone. `driveDiscard` has
                         // already put the held case back to a neutral transform � see its
@@ -1866,6 +1975,54 @@ fun WallSceneScreen(
                         }
                         disc.rotation = Rotation(0f, 0f, sequence.spinAngle)
                     }
+                }
+
+                // ---- Is this vsync worth drawing? -------------------------------------
+                //
+                // Everything above has already run: the room's whole state is current, on
+                // every frame, exactly as it was before this existed. All that is decided
+                // here is whether Filament rasterises it.
+                //
+                // `skipNextFrames(1)` sets a counter that the very next `beginFrame` reads and
+                // clears — and `beginFrame` is the next thing SceneView does after this
+                // callback returns, so the two cannot drift apart. When it returns false
+                // SceneView skips `render` and `endFrame` entirely: no culling, no draw
+                // submission, no post chain, no present. Verified against Filament 1.72.1
+                // (`FrameSkipper::shouldRenderFrame` short-circuits on `mFrameToSkip`) rather
+                // than assumed — trap 2's lesson applies to `Renderer` as much as to
+                // materials. The one caveat is that Filament's header describes
+                // `skipNextFrames` as being for debugging; it is a plain counter feeding the
+                // same skip path the fence-based skipper uses on every frame the GPU is
+                // behind, but it is the reason this wants a look on device rather than only
+                // a green build.
+                //
+                // The springs are asked here rather than tracked through the pass above
+                // because they are Compose `Animatable`s and already know: `isRunning` is
+                // true from `animateTo` until the spring settles, which is precisely the
+                // window in which the magnet is carrying the wall somewhere.
+                if (panX.isRunning || panY.isRunning) cadence.moving = true
+                val divisor = cadence.divisorFor(
+                    // The disc turns under its own power only while an album is actually
+                    // playing and no finger is on it — the same three conditions the spin
+                    // itself is written under, a few lines up.
+                    discTurning = frame.selected != null &&
+                        frame.isPlaying &&
+                        !scratch.active &&
+                        !reduceMotion,
+                    ambientMotion = !reduceMotion
+                )
+                val draw = cadence.shouldDraw(divisor)
+                if (!draw) renderer.skipNextFrames(1)
+                diagnostics.onFrameDrawn(draw)
+
+                // What the room actually drew itself at, for the Settings readout. Sampled
+                // about once a second rather than per frame: it is a JNI call, and the value
+                // it reports moves at Filament's own `scaleRate` over several frames, so
+                // reading it 120 times a second would cost something to learn nothing.
+                if (draw && sequence.scaleSampleIn-- <= 0) {
+                    sequence.scaleSampleIn = SCALE_SAMPLE_FRAMES
+                    filamentView.getLastDynamicResolutionScale(renderScaleOut)
+                    diagnostics.onRenderScale(renderScaleOut[0])
                 }
             }
         ) {
