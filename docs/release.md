@@ -249,7 +249,7 @@ Honest list, in the order they matter:
    "nothing loaded yet" from "nothing in the library" — one `WallLayout.loaded`
    flag, previously conflated, which is why an empty library could never render
    anything.
-3. ~~**Almost no tests.**~~ **325, across 29 files.** `CrossfadeTest` is long
+3. ~~**Almost no tests.**~~ **334, across 30 files.** `CrossfadeTest` is long
    past being alone: the wear curve, the shelf-bounds maths, the animation
    curves, the scrub cursor, the volume levelling, the whole rack DSP, the
    scratch tone, the lyrics parsers and the LRCLIB client, the wall's sort and
@@ -266,7 +266,25 @@ Honest list, in the order they matter:
    What is still untested is everything touching Android or Filament, which is
    most of the app: the scene, the DAOs, the importer, the backup writer. Those
    need instrumentation or Robolectric, and neither is set up.
-4. **Play listing assets**: a 512×512 icon, a feature graphic, screenshots, and a
+4. ~~**No way to hear about a crash.**~~ **Built — `data/diagnostics/CrashLog.kt`.**
+   An uncaught-exception handler writes to `filesDir/diagnostics/crash.log`, and
+   Settings → **PROBLEMS** shows the log and offers to share it.
+
+   This was the largest hole in the tester loop and it is worth being clear about
+   why. Fifteen-odd people have run Jawon, and the total signal that ever came back
+   was three of them saying it was "not that smooth". A crash on any of those phones
+   would have been *completely silent*: there is no analytics by design, testers are
+   not going to run `adb`, and logcat is unusable on Samsung anyway (trap 11).
+
+   Non-fatals go through the same file. `onPlayerError` is the motivating case —
+   the wedged pipeline in trap 15 presents as a deck stuck at `0:00` and a hot
+   phone, and the throwable behind it previously reached only `Log.e`.
+
+   **Still needs one check on a device**, and no unit test can supply it: force a
+   crash, confirm the section fills in, confirm SEND opens a share sheet with a
+   readable file. Only the string handling is covered by tests.
+
+5. **Play listing assets**: a 512×512 icon, a feature graphic, screenshots, and a
    privacy policy.
 
    **The policy is no longer the short one.** Until 0.2 this said Jawon "collects
@@ -296,7 +314,7 @@ Honest list, in the order they matter:
    Also declare, or remove, `REQUEST_INSTALL_PACKAGES` — Play restricts it to
    apps whose core purpose is installing others, which Jawon's is not. §4 says to
    drop the whole self-update mechanism for a Play build.
-5. **Permissions to account for on the form**, all added since 0.2:
+6. **Permissions to account for on the form**, all added since 0.2:
    `READ_MEDIA_AUDIO` / `READ_EXTERNAL_STORAGE` (the device scan),
    `MODIFY_AUDIO_SETTINGS` (the equaliser), `INTERNET`, and
    `REQUEST_INSTALL_PACKAGES`.

@@ -1,6 +1,7 @@
 package com.jawon.app
 
 import android.app.Application
+import com.jawon.app.data.diagnostics.CrashLog
 import com.jawon.app.data.importer.TrackArtistBackfill
 import dagger.hilt.android.HiltAndroidApp
 import kotlinx.coroutines.CoroutineScope
@@ -20,11 +21,26 @@ class JawonApplication : Application() {
     @Inject
     lateinit var trackArtistBackfill: TrackArtistBackfill
 
+    /**
+     * The uncaught-exception handler, installed before anything else runs.
+     *
+     * Injected rather than constructed here so the same instance serves the non-fatal path —
+     * `PlaybackService` records `onPlayerError` through it.
+     */
+    @Inject
+    lateinit var crashLog: CrashLog
+
     /** Lives as long as the process, which is the honest lifetime for a one-shot at launch. */
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
     override fun onCreate() {
         super.onCreate()
+
+        // First, and deliberately before the backfill below: the backfill opens every file in
+        // the library, which makes it one of the more plausible things in here to throw on a
+        // stranger's phone. Installing after it would miss exactly the crash worth catching.
+        crashLog.install()
+
         // Off the main thread and unawaited: this opens every file in the library, and
         // ENGINEERING.md rule 5 has no exception for "only on the first launch after an update".
         scope.launch { trackArtistBackfill.runOnce() }

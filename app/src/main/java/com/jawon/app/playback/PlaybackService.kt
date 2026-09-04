@@ -56,6 +56,10 @@ class PlaybackService : MediaSessionService() {
     @Inject
     lateinit var rack: RackState
 
+    /** Where onPlayerError goes, so a wedged pipeline is readable after the fact. */
+    @Inject
+    lateinit var crashLog: com.jawon.app.data.diagnostics.CrashLog
+
     private var crossfadeEngine: CrossfadeEngine? = null
     private var replayGainReader: ReplayGainReader? = null
 
@@ -154,6 +158,12 @@ class PlaybackService : MediaSessionService() {
                     "playback failed: ${error.errorCodeName} (${error.message})",
                     error
                 )
+                // And to a file, because the line above reaches nobody. On the test hardware
+                // logcat is buried by telephony spam (trap 11), and on a tester's phone there
+                // is no logcat at all — this is the only route by which a wedged pipeline
+                // becomes something the owner can read. The error code name is in the message
+                // because it is the part that identifies the failure at a glance.
+                crashLog.record("playback:${error.errorCodeName}", error)
             }
 
             override fun onAudioSessionIdChanged(audioSessionId: Int) {

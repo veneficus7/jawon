@@ -33,6 +33,7 @@ import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -449,6 +450,104 @@ private fun DiagnosticsSection(
     }
 }
 
+/**
+ * Hands the crash log to whatever the user wants to send it with.
+ *
+ * `ACTION_SEND` rather than anything Jawon owns: the app has no server, no account and no
+ * analytics, so the only route from a tester's phone to the owner is one the user picks and
+ * can see the contents of. Through the same FileProvider the updater uses — `file_paths.xml`
+ * exposes `diagnostics/` and nothing else under filesDir.
+ */
+private fun shareCrashReport(context: Context, uri: android.net.Uri) {
+    val intent = Intent(Intent.ACTION_SEND).apply {
+        type = "text/plain"
+        putExtra(Intent.EXTRA_STREAM, uri)
+        putExtra(Intent.EXTRA_SUBJECT, "Jawon crash report")
+        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+    }
+    runCatching { context.startActivity(Intent.createChooser(intent, "Send crash report")) }
+}
+
+/**
+ * What went wrong, and a way to send it.
+ *
+ * **This section exists because the app has no other way of telling anyone.** No analytics by
+ * design, and logcat is unreachable on a tester's phone — see trap 11. Without this, a crash on
+ * someone else's device is simply never heard about, which is roughly where the project has
+ * been for fifteen-odd installs.
+ *
+ * The report is shown in full rather than only offered for sending. Asking someone to send a
+ * file they cannot read would be a strange thing to do in an app whose entire pitch is that
+ * nothing leaves the phone.
+ */
+@Composable
+private fun CrashReportSection(
+    report: String?,
+    onShare: () -> Unit,
+    onClear: () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 28.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Text(
+            text = "PROBLEMS",
+            fontFamily = JetBrainsMonoFamily,
+            fontWeight = FontWeight.Bold,
+            fontSize = 10.sp,
+            letterSpacing = 1.5.sp,
+            color = LabelCream
+        )
+
+        if (report == null) {
+            // The overwhelmingly common case, and it should read as reassurance rather than as
+            // an empty panel that looks broken.
+            Text(
+                text = "Nothing has gone wrong since you last cleared this.",
+                style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = 10.sp),
+                lineHeight = 16.sp
+            )
+            return@Column
+        }
+
+        Text(
+            text = "Jawon recorded something that went wrong. Sending this helps it get " +
+                "fixed — it holds the fault, the version and the phone model, and nothing " +
+                "about you or your library.",
+            style = JawonTextStyle.mono.copy(color = LampAmber, fontSize = 10.sp),
+            lineHeight = 16.sp
+        )
+
+        // The log itself, in a fixed-height scroller. Height-capped because a stack trace is
+        // taller than a phone and this section must not push the rest of Settings off screen.
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 4.dp)
+                .border(1.dp, CrateEdge)
+                .height(180.dp)
+                .verticalScroll(rememberScrollState())
+                .padding(10.dp)
+        ) {
+            Text(
+                text = report,
+                style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = 9.sp),
+                lineHeight = 13.sp
+            )
+        }
+
+        Row(
+            modifier = Modifier.padding(top = 6.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            TextChip(text = "SEND", onClick = onShare)
+            TextChip(text = "CLEAR", onClick = onClear)
+        }
+    }
+}
+
 @Composable
 private fun DiagnosticRow(label: String, value: String) {
     Row(
@@ -696,6 +795,11 @@ fun SettingsScreen(
     val readBackupLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocument()
     ) { uri -> uri?.let { viewModel.onReadBackup(context, it) } }
+    // Read once when the screen opens, and held so "CLEAR" can empty the section without a
+    // second trip to disk. A crash cannot happen while this screen is in front of you — the
+    // process would be gone — so there is nothing to keep watching for.
+    var crashReport by remember { mutableStateOf(viewModel.crashReport()) }
+
     // Not remembered: the user can leave to grant the permission and come straight back,
     // and a cached "no" would leave them looking at a button that says to do what they just did.
     val canInstall = viewModel.canRequestInstall()
@@ -940,6 +1044,17 @@ fun SettingsScreen(
                 device = viewModel.deviceLine(),
                 snapshot = viewModel.diagnosticsSnapshot(),
                 onReset = viewModel::onResetDiagnostics
+            )
+
+            CrashReportSection(
+                report = crashReport,
+                onShare = {
+                    viewModel.crashReportUri()?.let { shareCrashReport(context, it) }
+                },
+                onClear = {
+                    viewModel.onClearCrashReport()
+                    crashReport = null
+                }
             )
 
             Text(

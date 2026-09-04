@@ -9,4 +9,11 @@
         listening history, all of which live elsewhere under filesDir.
     -->
     <cache-path name="updates" path="updates/" />
+
+    <!--
+        And the crash log, for the share sheet — its own directory under filesDir for exactly
+        the reason above. `diagnostics/` holds nothing but crash.log; the covers, the database
+        and the listening history sit beside it in filesDir and stay unreachable.
+    -->
+    <files-path name="diagnostics" path="diagnostics/" />
 </paths>

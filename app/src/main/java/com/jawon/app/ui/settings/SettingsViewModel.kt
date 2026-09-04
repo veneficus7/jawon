@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import android.content.Context
 import android.net.Uri
 import com.jawon.app.data.backup.LibraryBackup
+import com.jawon.app.data.diagnostics.CrashLog
 import com.jawon.app.data.prefs.AppPreferences
 import com.jawon.app.data.update.AvailableUpdate
 import com.jawon.app.data.update.UpdateChecker
@@ -23,7 +24,8 @@ class SettingsViewModel @Inject constructor(
     private val preferences: AppPreferences,
     private val updateChecker: UpdateChecker,
     private val backup: LibraryBackup,
-    private val diagnostics: com.jawon.app.ui.wallscene.RoomDiagnostics
+    private val diagnostics: com.jawon.app.ui.wallscene.RoomDiagnostics,
+    private val crashLog: CrashLog
 ) : ViewModel() {
 
     val fetchCoverArt: StateFlow<Boolean> = preferences.fetchCoverArt
@@ -145,6 +147,29 @@ class SettingsViewModel @Inject constructor(
     fun deviceLine(): String =
         "${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL} · " +
             "ANDROID ${android.os.Build.VERSION.RELEASE} (API ${android.os.Build.VERSION.SDK_INT})"
+
+    // ---- the crash log -------------------------------------------------------------------
+    //
+    // Read on demand rather than held in a StateFlow. Crashes are rare, the file is small, and
+    // a flow would mean watching a file that changes at most once per process death — for a
+    // section most people will never see say anything but "nothing to report".
+
+    /** Whether there is anything at all. Drives whether the section offers any buttons. */
+    fun hasCrashReport(): Boolean = crashLog.hasReport()
+
+    /**
+     * The whole log, for the preview.
+     *
+     * Shown rather than merely offered for sending, deliberately: someone about to hand over a
+     * file is entitled to see what is in it first, and here that is the honest demonstration
+     * that it contains a stack trace and a device model and nothing about them.
+     */
+    fun crashReport(): String? = crashLog.report()
+
+    /** For the share sheet. Null when there is nothing to share. */
+    fun crashReportUri(): Uri? = crashLog.shareUri()
+
+    fun onClearCrashReport() = crashLog.clear()
 
     /** "1 shelf", "2 shelves". A backup of one shelf reporting "1 shelves" reads as a stub. */
     private fun plural(count: Int, one: String, many: String = one + "s") =
