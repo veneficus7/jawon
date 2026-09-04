@@ -7,6 +7,15 @@ reconciliation — do not silently rewrite working logic.
 **One room. Committed.** The prototype offered three; we ship one, done
 excellently.
 
+> **Still true, and worth saying precisely.** The room has since gained four
+> *modes* — **Midnight Shop · Cold Storage · After Hours · Workshop** — and that
+> is not a reversal of this line. The geometry, the lamp position, the shelving,
+> the dust and the open sequence are identical in all four; a mode changes the
+> light, the 2D palette every flat screen reads (`Palette` in
+> `ui/theme/Color.kt`), the deck's material and the glass in its window. One room,
+> lit four ways. §1 below describes Midnight Shop, which is the default and the
+> one the rest of this document is written against.
+
 ---
 
 ## 1. The room: Midnight Shop

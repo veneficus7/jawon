@@ -1,7 +1,9 @@
 # The code, and where things live
 
-A map, so a reader can find the right file without reading the tree. 51 Kotlin
-files; the 3D room is about 6,100 lines of them and everything else is small.
+A map, so a reader can find the right file without reading the tree. 99 Kotlin
+files in `main`, about 26,000 lines. The 3D room is 13,561 of them — more than half
+— and the audio pipeline in `playback/` is another 2,737. "Everything else is
+small" was true when this file was written and is not any more.
 
 `ENGINEERING.md` holds the traps and the locked decisions. This is only *where things
 are*.
@@ -13,7 +15,9 @@ are*.
 ```
 MainActivity → JawonNavHost ─┬─ WallSceneScreen   the room: browse + play
                              ├─ AddAlbumScreen    import
+                             ├─ EditAlbumScreen   fix an album after import
                              ├─ ShelfManagerScreen
+                             ├─ ListeningScreen   the play record, from PlayEvent
                              └─ SettingsScreen
 
 WallSceneViewModel ── Room DAOs (library)
@@ -40,12 +44,21 @@ can be reasoned about, and tested, without a device.
 | `Scratch.kt` | Turning a finger's rotation about the disc into a position in the album, plus the haptic accumulator. |
 | `CaseDiscard.kt` | The crack-and-throw curves for a removed album. |
 | `RoomQuality.kt` | `QualityTier` and `FrameWatch` — how much rendering a device gets, guessed then corrected by measuring real frame times. |
+| `Patina.kt` | The wear a case shows for how much it has been played. Shared with `ui/listening`, so the shelf and the record can never disagree. |
+| `RoomCadence.kt` | How often the room redraws, and how much of it. The 0.5.1 work. |
+| `WallSort.kt` | The wall's ordering and its search. |
+| `Playhead.kt`, `DeckSheet.kt` | The deck's scrub cursor and its resizable sheet. |
+
+All ten have test files. That is not a coincidence — it is what "pure" is *for*
+here, and the way to keep a change testable is to find the value it computes and
+move that into this list first.
 
 ### The scene
 
 | File | Owns |
 |---|---|
-| `WallSceneScreen.kt` | **2,000 lines, and the one to be careful in.** The scene graph, every gesture, and the per-frame driver that writes node transforms. Also the browse camera, the zoom, the magnet settle, and the deck's chrome. If a change is about *when* something happens, it is probably here. |
+| `WallSceneScreen.kt` | **3,087 lines, and the one to be careful in** — one composable runs from line 608 to 2496. The scene graph, every gesture, and the per-frame driver that writes node transforms. Also the browse camera, the zoom, the magnet settle, and the deck's chrome. If a change is about *when* something happens, it is probably here. |
+| `RackGrid.kt` | **2,723 lines**, the second file that outgrew being read in one sitting. The effects rack's whole UI: the pad grid, the faders, the segmented ring, the EQ curve editor, the patchbay sockets and the console line. Drawn by hand rather than composed from Material, which is why it is this size. Pairs with `playback/RackState.kt`, which holds what the controls mean. |
 | `CaseSlots.kt` | The wall's pool of shelved cases, keyed **by index and never by album** — see trap 1. `bind()` points slot *i* at whichever album is visible there; the frame driver then hovers, turns and tilts it. Also the per-album underlight colour. |
 | `ActiveCase.kt` | The single case that comes off the shelf: tray, lid, disc, and the nodes the open sequence moves. |
 | `DeckOverlay.kt` | The in-room deck — tracklist, transport, seek bar, quality readout. Compose, drawn over the scene. |
@@ -69,8 +82,9 @@ can be reasoned about, and tested, without a device.
 
 | File | Owns |
 |---|---|
-| `local/JawonDatabase.kt` + entities | Room. `Shelf`, `Album`, `Track`, and their DAOs. **Version 1 with no migrations** — see below. |
-| `importer/AlbumImportRepository.kt` | Scanning a picked folder into one preview *per album found in it*, and committing them. Grouping is by containing folder. |
+| `local/JawonDatabase.kt` + entities | Room. `Shelf`, `Album`, `Track`, `PlayEvent`, and their DAOs. **Version 4, with three hand-written migrations** — see below. |
+| `local/Migrations.kt` | `MIGRATION_1_2` (resume position, and the `PlayEvent` table), `MIGRATION_2_3` (`Track.artist`, for compilations), `MIGRATION_3_4` (`Track.fetchedLyrics`). Read its KDoc before adding a fourth: there is deliberately no destructive fallback. |
+| `importer/AlbumImportRepository.kt` | Two ways in, both producing one preview *per album found*: `scanTree` walks a picked SAF folder, `scanDevice` queries MediaStore for what the phone already indexed. Grouping is by containing folder. Also `commit`/`commitAll`, and the cover-art lookup for records that carry none. |
 | `importer/AudioScanner.kt` | Walks a SAF tree for audio. **It recurses** — that is deliberate now, and used to be a trap. |
 | `importer/TrackMetadataReader.kt` | Tags via `MediaMetadataRetriever`, technical detail via `MediaExtractor`. Also pulls embedded cover art. |
 | `importer/CoverImageStore.kt` | Copies chosen images into private storage, and removes them when an album goes. |
@@ -81,12 +95,62 @@ can be reasoned about, and tested, without a device.
 `MediaSessionService` — the only place ExoPlayer and the `MediaSession` are
 constructed.
 
-### The database is at version 1 and has no migrations
+### `playback` — the audio pipeline
 
-Fine today, because nobody has shipped. **The moment real users exist, any schema
-change needs a migration or their libraries vanish on update.** The pending work
-that touches the schema — play history for stats, and anything per-album — is
-worth doing *before* launch for exactly this reason.
+Eighteen files, 2,737 lines, and the part of the project with the best test
+coverage: everything here is pure enough to run on the JVM, and most of it does.
+Split the same way `ui/wallscene` is — the maths is separate from the plumbing.
+
+| File | Owns |
+|---|---|
+| `ScratchAudio.kt`, `ScratchTone.kt` | The scratch you can *hear*. Resampling a real record rather than a chipmunk, which took two attempts; `ScratchToneTest` is the largest test file in the project at 27 cases. |
+| `DjFilter.kt`, `Echo.kt`, `Drive.kt`, `Varispeed.kt` | The rack's DSP, each a pure function over a buffer with its own test file. |
+| `*AudioProcessor.kt`, `FrameCopy.kt` | The Media3 `AudioProcessor` wrappers that put the above into ExoPlayer's chain. The thin, untestable half. |
+| `CrossfadeEngine.kt`, `Crossfade.kt` | Album-internal crossfade. |
+| `ReplayGain.kt`, `ReplayGainReader.kt` | Tag-driven level matching, clamped at −15 dB. |
+| `RackState.kt` | What every rack control currently means. The bridge to `ui/wallscene/RackGrid.kt`. |
+| `SleepTimer.kt`, `PlayerVolume.kt` | Small, and exactly what they say. |
+
+**Read trap 15 in `ENGINEERING.md` before touching anything that sets
+`PlaybackParameters`.** The pitch control was withdrawn because crossing 1.0
+repeatedly reconfigures Media3's time-stretcher and wedges the playback thread at
+a full core with no progress at all. That is the most expensive lesson in this
+package and it is not obvious from the code.
+
+### The database is at version 4, and the migrations are the riskiest code here
+
+This section used to say version 1 with no migrations, and to warn that shipping
+without them would lose people's libraries. The migrations now exist —
+`MIGRATION_1_2`, `MIGRATION_2_3`, `MIGRATION_3_4` — and the warning has simply
+moved along one step rather than gone away.
+
+**There is deliberately no `fallbackToDestructiveMigration`.** That is the right
+call: a shelf someone built and the colours they picked cannot be recovered from
+their audio files, so a wrong migration should crash loudly in testing rather than
+wipe a stranger's collection quietly. The consequence is that a wrong migration
+*ships as a crash loop*, on a phone that cannot downgrade.
+
+**They are now tested** — `app/src/test/.../data/local/MigrationTest.kt`, six cases,
+on the JVM under Robolectric.
+
+It does **not** use `MigrationTestHelper`, and the reason is worth knowing before
+anyone "fixes" that. The helper needs the exported schema JSON for the *starting*
+version, and `app/schemas` holds only 2, 3 and 4 — **`1.json` does not exist and
+never did**: `exportSchema` was switched on in the same commit that introduced
+version 2 (`88a7936`), so there is nothing in git history to recover. Room computes
+a schema's `identityHash` itself, and a hand-written `1.json` would carry an
+invented one, which is a worse foundation for a safety net than none.
+
+So the test builds version 1 from raw DDL instead — v2's exported `createSql` minus
+exactly what `MIGRATION_1_2` adds — and then opens the migrated result through
+**Room's own production path**, which is the code that really validates a migrated
+schema against the entities. That last test is the one that matters: it reproduces
+the exact failure a user would hit.
+
+**The net was checked rather than assumed.** Breaking `MIGRATION_2_3` on purpose
+(making `artist` `NOT NULL DEFAULT ''` instead of nullable) fails three of the six,
+including Room's own `Migration didn't properly handle: Track`. A migration test
+that only asserts "it did not throw" would have passed that.
 
 ---
 
@@ -94,7 +158,7 @@ worth doing *before* launch for exactly this reason.
 
 | | |
 |---|---|
-| `assets/models/*.glb` | `case_tray`, `case_lid`, `disc` for the open case; `case_closed` for the wall (simpler — a shut case shows no interior, and the wall draws hundreds); `beam` for the underlight. All generated by `tools/models/build_models.py`. See `docs/models.md`. |
+| `assets/models/*.glb` | `case_tray`, `case_lid`, `disc` for the open case; `case_closed` for the wall (simpler — a shut case shows no interior, and the wall draws hundreds); `beam` for the underlight; `disc_shards`, the disc pre-cracked into 27 wedges for the discard animation, and at 451 KB the largest asset in the app. All generated by `tools/models/build_models.py`. See `docs/models.md`. |
 | `assets/materials/dust.filamat` | The only hand-written material, compiled by hand. See `docs/materials.md`. |
 | `javon-shelf-prototype.html` | The original interaction prototype. Still the source of truth for timing and feel. |
 

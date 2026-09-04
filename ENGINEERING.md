@@ -31,13 +31,15 @@ real rather than merely rendered.
 
 ### Working, and checked on a device
 
-The wall and its browsing; the five-beat open/close sequence; the in-room deck;
-the disc, including scratch-to-seek, haptics and press-and-hold-to-pause; playback
-with a proper media notification; importing albums, both by folder and by scanning
-the phone, with cover art looked up for the records that carry none; removing them,
-including the shelf packing back up around the gap; resuming an album where it was
-left; editing an album after import; the shelf list; the first-run screen;
-adaptive quality tiers.
+The wall and its browsing, sorting and search; the five-beat open/close sequence;
+the in-room deck and its three pages, `TRACKS · SOUND · LYRICS`; the disc,
+including scratch-to-seek, haptics and press-and-hold-to-pause; playback with a
+proper media notification, crossfade, ReplayGain levelling, the equaliser and the
+effects rack; importing albums, both by folder and by scanning the phone, with
+cover art looked up for the records that carry none; removing them, including the
+shelf packing back up around the gap; resuming an album where it was left; editing
+an album after import; the shelf list; the listening record; library backup; the
+self-updater; the first-run screen; the four room modes; adaptive quality tiers.
 
 **The R8 release build has been run on a device**, not just built — the room
 renders, a case opens, playback starts. That check matters more here than in most
@@ -48,12 +50,12 @@ and a green build says nothing about it.
 
 | | |
 |---|---|
-| **Deletion animation** | Works, but reads as weak. The owner wants the disc visibly *breaking* and being thrown away, which needs fracture geometry and something to throw it into — a modelling job in `tools/models/build_models.py`, not tuning. Plan it before coding. |
-| **Quality tiers** | Written and adaptive, but only ever run on a Galaxy S25 Ultra. Three of five testers on S23-class hardware reported stutter; that is what the tiers exist for and none of it is confirmed. |
+| **Deletion animation** | **The fracture geometry exists** — `disc_shards.glb` holds the disc pre-cracked into 27 pieces, and `DiscardScene.kt` drives them. What is still open is whether it *reads* as breaking and being thrown away, which is a tuning and staging question now rather than a modelling one. Judge it on a device before touching `tools/models/build_models.py` again. |
+| **Quality tiers** | Written and adaptive. **No longer the open question it was**: the app has since run on 15+ devices with no reported lag, down to a Redmi 9 and a Galaxy Note 8 — well below the S23-class hardware whose stutter reports the tiers were built for. Treat the tiers as working until something contradicts that, and note the corollary: the floor is now much lower than the code assumes, so the *lowest* tier has never been the one anybody needed. |
 | **Slot reuse after a delete** | The discard animation's one previous bug was leaving a pool slot at zero scale forever. Fixed in two places, but the reuse path itself is still unverified — provoking it means deleting a real album. |
-| **Stats screens** | The data is no longer the problem: `PlayEvent` is live and filling, written by `PlaybackRepository` so background listening counts too, and `PlayEventDao.albumTotals()` is the query they will be built on. Only the screens are missing. |
-| **Tests** | **108, and all four named pure files are covered.** `Patina`, `WallLayout` (the crate flip), `CaseDiscard`, `Scratch`, `ShelfHover`, `OpenSequence` and `ReplayGain` alongside the original `CrossfadeTest`. Two of them caught real mistakes while being written. Still untested: everything touching Android or Filament, which is most of the app. |
-| **Not started** | crossfade · equaliser · stats screens (the `PlayEvent` table they read is live and collecting) |
+| **Stats screens — built** | Shipped as `ui/listening/`, reached from the room's chrome and routed as `JawonDestination.Listening`. `PlayEvent` is live and filling, written by `PlaybackRepository` so background listening counts too, and `PlayEventDao.albumTotals()` is the query behind it. The rows wear the same `Patina` value the wall wears the cases by, so the two can never disagree. |
+| **Tests** | **325, across 29 files, all passing on the JVM.** Well past the four pure files this row used to name: the scratch tone and render, the DSP (`DjFilter`, `Echo`, `Drive`, `Varispeed`, a stress test), `RackState`, the lyrics parsers and the LRCLIB client, `LibraryBackup`, the wall's sort and search, and the room's cadence, alongside the original `CrossfadeTest`. Two caught real mistakes while being written. **The three migrations are now covered** — `MigrationTest` builds a v1 database from raw DDL and walks it to 4, and the net was proved by deliberately breaking `MIGRATION_2_3` and watching three tests catch it. **The remaining gap is `data/importer`**: 8 files, zero tests, and it is the code that touches a stranger's library. |
+| **Not started** | Nothing on the original list. Crossfade, the equaliser and the stats screens are all built — the equaliser now lives in the rack rather than in Settings. What is genuinely absent is the release work: no migration tests, no CI, no crash reporting, no privacy policy, and `REQUEST_INSTALL_PACKAGES` still in the manifest. See `docs/release.md` §5. |
 | **Lyrics — built, all three tiers** | Shipped as the third deck page, `TRACKS · SOUND · LYRICS`. **1.** Embedded `USLT`, parsed by hand — `MediaMetadataRetriever` does not expose lyrics and Media3 hands the frame back as raw bytes anyway. **2.** A `.lrc` sidecar, which needs *two* lookups because a library arrives two ways: a sibling document in a granted SAF tree, or the indexed path of a MediaStore-scanned file read off disk. The document route alone found nothing on a real library — everything here came from the scan. **3.** LRCLIB, behind a Settings switch, asked only when the page is opened for a track the device could not answer, cached in `Track.fetchedLyrics` (schema 4) with an empty string meaning "asked, none" so nothing is looked up twice. Verified live: synced lyrics, correct line highlighted. The original decision is below. |
 | **Lyrics — the original decision** | Three tiers, in this order. **1.** Embedded `USLT` out of the file's own ID3 tag: offline, free, and the import already opens every file to read its other tags. **2.** A `.lrc` sidecar beside the audio — the embedded *synced* tag (`SYLT`) exists but almost nothing writes or reads it, while `.lrc` is what every tool actually produces. **3.** **LRCLIB** (`lrclib.net`) when neither exists: no API key, no registration, no rate limit, MIT, and built explicitly for open-source players. Not Musixmatch or Genius — this is a licensing question before a technical one, and LyricFind quotes $10k. **The wrinkle:** every file here is a content URI, never a path, so "the `.lrc` next to it" is a `DocumentFile` traversal of a granted SAF tree, and for MediaStore-scanned files there may be no reachable sibling at all. Tier 2 will work for some libraries and not others; design for that rather than discover it. Lyrics are a *view*, not a control, so they belong as a third page — `TRACKS · SOUND · LYRICS` — not as another thing crammed into the deck. |
 | **Needs a decision first** | Vinyl/cassette/iPod modes — three more rooms before one is finished. |
@@ -190,7 +192,7 @@ and a green build says nothing about it.
 | Monetization | **Design toward a pay-once rack unlock.** Free: the room, playback, the scratch, the equaliser, import, backup. Paid: the full effects rack, badges, colour schemes. One-time purchase, never a subscription — Poweramp, Musicolet, AIMP and Vox have already settled that argument in this category, and a subscription on a player that touches no server reads as insulting. **No paywall plumbing ships until there is a listing to sell through**; this is a direction for what goes in which tier, not a feature to build now. |
 | Library discovery | **MediaStore scan and SAF, both.** The scan is the default route and needs `READ_MEDIA_AUDIO` (33+) / `READ_EXTERNAL_STORAGE` (28–32). The folder picker is not a fallback for the stubborn: MediaStore only indexes what the media scanner has seen, so cloud and USB storage are reachable only through SAF. |
 | Database · DI | Room · Hilt |
-| Custom materials | `materials/dust.mat` is the only hand-written one, compiled by hand with a version-matched `matc` — see `docs/materials.md`. Model materials arrive via glTF `KHR_materials_*`, so no new `.mat` is expected. |
+| Custom materials | `app/src/main/materials/dust.mat` is the only hand-written one, compiled by hand with a version-matched `matc` — see `docs/materials.md`. Model materials arrive via glTF `KHR_materials_*`, so no new `.mat` is expected. |
 | Screen-space reflections | **Off.** Measured at a 7× cost with a case open (124fps → 17). Constants are kept beside the switch in `RoomAtmosphere`; turning them back on is a tier decision, not a default. |
 | Shelf bounds | Derived from content, never unbounded: occupied slots plus one empty slot of margin. The user physically cannot pan past the last album. |
 
@@ -222,7 +224,7 @@ and a green build says nothing about it.
   time the feature was actually exercised.
 - **Plan before coding** anything touching the 3D scene, gestures or animation
   timing.
-- **Instrument before guessing.** See trap 12.
+- **Instrument before guessing.** See traps 14 and 18.
 - **Read SceneView's source** for API questions rather than guessing at signatures.
 - Values exported from `javon-shelf-prototype.html` are **starting points for
   tuning**, not requirements.

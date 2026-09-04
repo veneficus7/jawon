@@ -235,11 +235,12 @@ Honest list, in the order they matter:
    "nothing loaded yet" from "nothing in the library" — one `WallLayout.loaded`
    flag, previously conflated, which is why an empty library could never render
    anything.
-3. ~~**Almost no tests.**~~ **108, covering every pure file.** `CrossfadeTest` is
-   no longer alone: `Patina`, `WallLayout`'s crate flip, `CaseDiscard`, `Scratch`,
-   `ShelfHover`, `OpenSequence` and `ReplayGain` are all covered — the wear curve,
-   the shelf-bounds maths, the animation curves, the scrub cursor and the volume
-   levelling.
+3. ~~**Almost no tests.**~~ **325, across 29 files.** `CrossfadeTest` is long
+   past being alone: the wear curve, the shelf-bounds maths, the animation
+   curves, the scrub cursor, the volume levelling, the whole rack DSP, the
+   scratch tone, the lyrics parsers and the LRCLIB client, the wall's sort and
+   search, and `LibraryBackup` — which this section used to name as untested and
+   is not any more.
 
    **Two of them found real mistakes while being written**, both in the test
    rather than the code, which is its own kind of useful: an assertion that
@@ -257,19 +258,26 @@ Honest list, in the order they matter:
    **The policy is no longer the short one.** Until 0.2 this said Jawon "collects
    nothing and has no network access", and writing a policy from that sentence
    today would be writing a false one. Since then the app has gained `INTERNET`,
-   and two things leave the device:
+   and **three** things leave the device:
 
    - **Cover art lookup.** An album title and artist go to MusicBrainz, and an
      image comes back from the Cover Art Archive — only for albums whose own
      files carry no artwork, and only while the Settings switch is on. No id, no
      account, no listing of the library. See `data/importer/CoverArtFetcher.kt`.
+   - **Lyrics lookup.** A title, an artist, an album and a duration go to
+     **LRCLIB** for tracks whose own file carries no words and which have no
+     `.lrc` sidecar. Asked only when the lyrics page is actually opened, and
+     cached so a track is never looked up twice. See `data/lyrics/LrclibClient.kt`.
+     **Note for the form: this switch defaults to *on*** — `KEY_FETCH_LYRICS` in
+     `AppPreferences` is `true` — so it is opt-*out*, not opt-in, and the policy
+     has to describe it that way.
    - **The update check.** A request to `raw.githubusercontent.com` for a version
      manifest, and a download from GitHub if the user asks for one. No data of
      the user's is sent. See `data/update/UpdateChecker.kt`.
 
-   Both are user-initiated or switchable, neither is analytics, and nothing is
+   All three are user-initiated or switchable, none is analytics, and nothing is
    collected or retained by Jawon. But the **Play data-safety form has to say so**
-   rather than claiming no network use, and the policy has to describe both.
+   rather than claiming no network use, and the policy has to describe all three.
 
    Also declare, or remove, `REQUEST_INSTALL_PACKAGES` — Play restricts it to
    apps whose core purpose is installing others, which Jawon's is not. §4 says to
@@ -281,13 +289,33 @@ Honest list, in the order they matter:
 
 ## 6. Devices it has actually run on
 
-Five, all Samsung, all recent:
+**Over fifteen now**, and no longer all Samsung or all recent. This section used to
+read "five, all Samsung, all recent" and it was the biggest open risk in the
+project; it is not any more.
 
 | device | result |
 |---|---|
-| Galaxy S23 ×2, S23 Ultra | runs; reported "not that smooth" |
-| Galaxy S25 Ultra ×2 | runs; every number in `ENGINEERING.md` comes from these |
-| Galaxy Note 9 | **would not install at minSdk 29.** Fixed in 0.2 beta; still not run — and until 0.4.2 it would have crashed on launch if it had been. |
+| Galaxy S25 Ultra ×2 | runs; every measured number in `ENGINEERING.md` comes from these |
+| Galaxy S23 ×2, S23 Ultra | ran, and reported "not that smooth" — the reports that caused the quality tiers to be built |
+| Galaxy Note 8 | **runs with no reported lag.** Android 9 class hardware, 2017. |
+| Redmi 9 | **runs with no reported lag.** Budget hardware, Helio G80. |
+| ~8 more | run; no lag reported |
+
+**What this changes.** The tiers were built because three of five testers on
+S23-class hardware reported stutter, and the honest position afterwards was that
+nothing below an S25 Ultra had been confirmed. That has now been answered from the
+other end: the app runs on a Note 8 and a Redmi 9, both far below anything the
+tiers were designed to rescue. Two consequences worth writing down —
+
+- The "unverified below a Galaxy S23" caveat throughout these documents is spent.
+  Stop repeating it.
+- The *lowest* tier has still never been the one anybody needed, which means it is
+  the least-exercised code path in `RoomQuality.kt` rather than the most. If a
+  device ever does drop to it, treat it as untested.
+
+The one thing this does **not** establish is what the S23 reports were actually
+about, since those devices sit above the ones now running smoothly. Thermal state
+(trap 8) is the obvious candidate and was never ruled out.
 
 ### The Note 9 did not crash — it was refused
 
@@ -403,8 +431,9 @@ worthless. These are behavioural checks only.
 | Underlight per album | Coloured pools under each case, blooming |
 
 **Not yet verified:** zoom limits, the empty/first-run screen (the test library has
-albums), quality tiers on anything but this device, and the delete dialog's full
-path now that the discard animation is reverted.
+albums), and the delete dialog's full path. Quality tiers are no longer on this
+list: the app has since run on 15+ devices with no reported lag, down to a Redmi 9
+and a Galaxy Note 8.
 
 **One unexplained observation.** On the first open of a session the case opened
 and then closed itself about two seconds later, with no second input. It did not
@@ -444,7 +473,7 @@ only works on a debuggable build, so a release APK cannot be inspected this way.
 | Import from scan | landed on the shelf and played with a real `MP3 44.1 KHZ` readout |
 | Cover art lookup | correct sleeves fetched for two albums, checked by eye against the artwork |
 | Editing an album | underlight and the baked back inlay both changed on the wall with no restart, and reverted |
-| Colour schemes | all three, each after a relaunch, artwork still legible |
+| Colour schemes | all four — Midnight Shop, Cold Storage, After Hours, Workshop — each after a relaunch, artwork still legible |
 | Equaliser | five bands read off the device, presets, FLAT, settings persisted |
 | Crossfade | confirmed by ear by the owner |
 
