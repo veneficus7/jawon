@@ -25,6 +25,9 @@ class EchoAudioProcessor(private val rack: RackState) : BaseAudioProcessor() {
     private var sampleRate = 44_100
     private var lines: Array<Echo.Line> = emptyArray()
 
+    /** The period the last flush belonged to. See [FlushPolicy]. */
+    private var lastPeriodUid: Any? = null
+
     private var timeFrames = 0f
     private var feedback = 0f
     private var mix = 0f
@@ -55,19 +58,27 @@ class EchoAudioProcessor(private val rack: RackState) : BaseAudioProcessor() {
             sampleRate == inputAudioFormat.sampleRate
         channelCount = inputAudioFormat.channelCount
         sampleRate = inputAudioFormat.sampleRate
-        if (sameFormat) {
-            // Still a different point in the stream, so the tail has to go — but that is now a
-            // pair of counters rather than a memset. See Echo.Line.
-            for (line in lines) line.reset()
-        } else {
+
+        // **The tail is no longer cleared here, and that is the other half of the boundary
+        // click.** This used to reset the lines whenever the format was unchanged, on the
+        // reasoning that a reconfiguration meant "a different point in the stream". It does
+        // not: `onConfigure` runs on every media-item transition *and* on every pitch change,
+        // and in both of those the audio either side is continuous. Clearing there cut every
+        // repeat dead at each track boundary, which is not what a delay does.
+        //
+        // The division is now clean. `onConfigure` handles a change of *format*, where the
+        // buffers genuinely have to be rebuilt and there is no old tail worth keeping.
+        // `onFlush` handles a change of *position*, and it is the one that knows — from the
+        // period — whether the listener actually heard what came before. See [FlushPolicy].
+        if (!sameFormat) {
             lines = Array(channelCount) { Echo.Line(Echo.bufferFramesFor(sampleRate)) }
+            mix = 0f
+            idle = true
         }
         glideK = 1f - exp(-Echo.TIME_GLIDE_PER_S / sampleRate)
         levelK = 1f - exp(-Echo.LEVEL_SMOOTHING_PER_S / sampleRate)
         timeFrames = msToFrames(Echo.timeMsFor(rack.echoTimePosition))
         feedback = Echo.feedbackFor(rack.echoFeedbackPosition)
-        mix = 0f
-        idle = true
         return inputAudioFormat
     }
 
@@ -114,18 +125,28 @@ class EchoAudioProcessor(private val rack: RackState) : BaseAudioProcessor() {
         idle = targetMix <= SILENT && mix <= SILENT
     }
 
-    override fun onFlush() {
-        // A seek hands the delay a completely unrelated piece of audio, and a tail from the old
-        // position arriving over the new one is the single most obvious way this could sound
-        // broken.
-        for (line in lines) line.reset()
-        mix = 0f
-        idle = true
+    /**
+     * **A seek clears the tail; a track boundary lets it ring on.**
+     *
+     * A seek hands the delay a completely unrelated piece of audio, and a tail from the old
+     * position arriving over the new one is the single most obvious way this could sound
+     * broken. But the pipeline also flushes at every media-item transition, and clearing there
+     * cut every repeat dead the moment a track changed — which is not what a delay does. A
+     * tail carrying over a track boundary is the effect working. See [FlushPolicy].
+     */
+    override fun onFlush(streamMetadata: AudioProcessor.StreamMetadata) {
+        if (FlushPolicy.shouldResetState(lastPeriodUid, streamMetadata.periodUid)) {
+            for (line in lines) line.reset()
+            mix = 0f
+            idle = true
+        }
+        lastPeriodUid = streamMetadata.periodUid
     }
 
     override fun onReset() {
         lines = emptyArray()
         idle = true
+        lastPeriodUid = null
     }
 
     private fun msToFrames(ms: Float): Float = ms / 1000f * sampleRate

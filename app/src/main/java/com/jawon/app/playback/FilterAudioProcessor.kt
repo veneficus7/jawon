@@ -28,6 +28,9 @@ class FilterAudioProcessor(private val rack: RackState) : BaseAudioProcessor() {
     private var sampleRate = 44_100
     private var channels: Array<DjFilter.Svf> = emptyArray()
 
+    /** The period the last flush belonged to. See [FlushPolicy]. */
+    private var lastPeriodUid: Any? = null
+
     /** The knob as the filter has actually reached it, which trails the finger. */
     private var smoothed = RackState.CENTRE
 
@@ -101,15 +104,29 @@ class FilterAudioProcessor(private val rack: RackState) : BaseAudioProcessor() {
         output.flip()
     }
 
-    override fun onFlush() {
-        // A seek hands the filter a completely unrelated piece of audio. Whatever was ringing
-        // belongs to the old position and would arrive as a click at the new one.
-        for (svf in channels) svf.reset()
+    /**
+     * **A seek clears the filter; a track boundary does not.**
+     *
+     * A seek hands the filter a completely unrelated piece of audio — whatever was ringing
+     * belongs to the old position and would arrive as a click at the new one. That was the
+     * whole of the original reasoning here, and it was right about seeks and wrong about
+     * everything else, because the pipeline also flushes on every media-item transition.
+     *
+     * Zeroing the integrators while the knob stays put is a step in the output, so an album
+     * played straight through clicked at every track boundary with the filter off centre. See
+     * [FlushPolicy].
+     */
+    override fun onFlush(streamMetadata: AudioProcessor.StreamMetadata) {
+        if (FlushPolicy.shouldResetState(lastPeriodUid, streamMetadata.periodUid)) {
+            for (svf in channels) svf.reset()
+        }
+        lastPeriodUid = streamMetadata.periodUid
     }
 
     override fun onReset() {
         channels = emptyArray()
         smoothed = RackState.CENTRE
+        lastPeriodUid = null
     }
 
     private companion object {
