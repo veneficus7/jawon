@@ -105,6 +105,20 @@ would make a sentence in it untrue, the policy changes in the same commit.
 
 ---
 
+## Licence
+
+**Copyright © 2026 Bakhodirjon Murodillaev. All rights reserved.** See [`LICENSE`](LICENSE).
+This is not open source: no permission is granted to copy, modify or distribute any part of
+it without written permission.
+
+Jawon is *built on* open source, and every component keeps its own licence —
+[`NOTICE.md`](NOTICE.md) lists them, with the full texts in [`licenses/`](licenses).
+That file is an obligation rather than a courtesy: all five typefaces in the app are under
+the SIL Open Font License, which requires the licence to travel with the font, and the
+Apache-licensed libraries require attribution in any distribution.
+
+---
+
 ## Working on it
 
 - **One thing at a time, checked on a device between changes.** This was ignored once —
