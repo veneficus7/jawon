@@ -68,6 +68,7 @@ class WallSceneViewModel @Inject constructor(
     playEventDao: PlayEventDao,
     private val playbackRepository: PlaybackRepository,
     private val coverStore: CoverImageStore,
+    private val albumRemover: com.jawon.app.data.local.AlbumRemover,
     private val equalizer: EqualizerController,
     /** Bass, width, reverb and loudness — whichever of them this phone has. */
     private val nativeEffects: com.jawon.app.data.playback.NativeEffects,
@@ -465,13 +466,19 @@ class WallSceneViewModel @Inject constructor(
      * queue whose album no longer exists.
      */
     fun deleteAlbum(albumId: String) {
-        viewModelScope.launch {
-            if (_nowPlayingAlbumId.value == albumId) stop()
-            val album = albumDao.findById(albumId)
-            trackDao.deleteForAlbum(albumId)
-            albumDao.deleteById(albumId)
-            album?.let { coverStore.deleteAll(it.caseCoverUri, it.discFaceUri) }
-        }
+        viewModelScope.launch { removeAlbum(albumId) }
+    }
+
+    /**
+     * Stops playback if this is the record playing, then hands the cleanup to [AlbumRemover].
+     *
+     * The stop is this view model's concern and the deletion is not: leaving the deck driving a
+     * queue whose album no longer exists is a room problem, while what an album leaves behind
+     * in the database is the same wherever it is removed from.
+     */
+    private suspend fun removeAlbum(albumId: String) {
+        if (_nowPlayingAlbumId.value == albumId) stop()
+        albumRemover.remove(albumId)
     }
 
     /** Outstanding [scheduleDiscard] timers, so [skipDiscard] can cut one short. */

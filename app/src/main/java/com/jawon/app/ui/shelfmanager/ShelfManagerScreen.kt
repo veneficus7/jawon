@@ -1,5 +1,6 @@
 package com.jawon.app.ui.shelfmanager
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
@@ -10,7 +11,9 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -106,6 +109,9 @@ fun ShelfManagerScreen(
 ) {
     val shelves by viewModel.shelves.collectAsStateWithLifecycle()
     val sort by viewModel.sort.collectAsStateWithLifecycle()
+    val selection by viewModel.selection.collectAsStateWithLifecycle()
+    val selecting by viewModel.selecting.collectAsStateWithLifecycle()
+    val onToggleSelected = viewModel::onToggleSelected
     var openShelfId by remember { mutableStateOf<String?>(null) }
     var creating by remember { mutableStateOf(false) }
 
@@ -115,12 +121,25 @@ fun ShelfManagerScreen(
             .background(CrateBlack)
             .statusBarsPadding()
     ) {
+        // Cancels the selection before it leaves the screen: the mode is easy to enter by
+        // accident with a long press, and a back that both clears and navigates would take two
+        // presses to do the obvious thing.
+        BackHandler(enabled = selecting) { viewModel.onClearSelection() }
+
         ScreenHeader(
             onBack = onBack,
             onNew = { creating = !creating },
             onOpenListening = onOpenListening,
             newIsOpen = creating
         )
+
+        if (selecting) {
+            SelectionBar(
+                count = selection.size,
+                onCancel = viewModel::onClearSelection,
+                onRemove = viewModel::onRemoveSelected
+            )
+        }
 
         LazyColumn(
             modifier = Modifier
@@ -170,6 +189,9 @@ fun ShelfManagerScreen(
                         onMoveUp = viewModel::onMoveUp,
                         onMoveDown = viewModel::onMoveDown,
                         onEditAlbum = onEditAlbum,
+                        selecting = selecting,
+                        selection = selection,
+                        onToggleSelected = onToggleSelected,
                         onDelete = viewModel::onDeleteShelf
                     )
                 }
@@ -339,6 +361,9 @@ private fun ShelfBoard(
     onMoveUp: (String) -> Unit,
     onMoveDown: (String) -> Unit,
     onEditAlbum: (String) -> Unit,
+    selecting: Boolean,
+    selection: Set<String>,
+    onToggleSelected: (String) -> Unit,
     onDelete: (String) -> Unit
 ) {
     val shelf = entry.shelf
@@ -488,7 +513,13 @@ private fun ShelfBoard(
                 if (entry.albums.isNotEmpty()) {
                     FieldLabel("ON THIS SHELF")
                     entry.albums.forEach { album ->
-                        AlbumLine(album, onEditAlbum)
+                        AlbumLine(
+                            album = album,
+                            onEdit = onEditAlbum,
+                            selecting = selecting,
+                            selected = album.id in selection,
+                            onToggleSelected = onToggleSelected
+                        )
                     }
                 }
 
@@ -686,15 +717,43 @@ private fun NewShelfField(onCreate: (String) -> Unit) {
  * edit screen, so the row can just be a way in.
  */
 @Composable
-private fun AlbumLine(album: Album, onEdit: (String) -> Unit) {
+private fun AlbumLine(
+    album: Album,
+    onEdit: (String) -> Unit,
+    selecting: Boolean,
+    selected: Boolean,
+    onToggleSelected: (String) -> Unit
+) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable { onEdit(album.id) }
+            // **Long press enters selection, and after that a tap ticks rather than edits.**
+            //
+            // A mode rather than a permanent row of checkboxes: removing records is the rare
+            // thing done here and editing one is the common thing, so the common case keeps
+            // the whole row and the rare one has to be asked for. Once the mode is on, a plain
+            // tap has to mean "tick" — a list where some taps select and others navigate is
+            // the classic way to delete something by accident.
+            .combinedClickable(
+                onClick = { if (selecting) onToggleSelected(album.id) else onEdit(album.id) },
+                onLongClick = { onToggleSelected(album.id) }
+            )
+            .background(if (selected) LampAmber.copy(alpha = 0.10f) else Color.Transparent)
             .padding(vertical = 9.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(10.dp)
     ) {
+        if (selecting) {
+            // A mark, not a Material checkbox: this screen draws its own controls throughout,
+            // and a stock checkbox here would be the one piece of another app's furniture.
+            Text(
+                text = if (selected) "■" else "□",
+                style = JawonTextStyle.mono.copy(
+                    color = if (selected) LampAmber else LabelDim,
+                    fontSize = 14.sp
+                )
+            )
+        }
         Column(Modifier.weight(1f)) {
             Text(
                 album.title,
@@ -870,5 +929,65 @@ private fun EmptyNote() {
             style = MaterialTheme.typography.bodySmall,
             color = LabelDim
         )
+    }
+}
+
+/**
+ * What to do with the records that are ticked.
+ *
+ * Sits under the header rather than floating over the list, because it is a mode the screen is
+ * *in* rather than an action hovering above it — and a floating bar would cover the last row,
+ * which is the one most likely to have just been ticked.
+ *
+ * The count is in the button rather than beside it. "REMOVE 12" is a sentence about what is
+ * going to happen; a bare "REMOVE" next to a number somewhere else is two things to read.
+ */
+@Composable
+private fun SelectionBar(count: Int, onCancel: () -> Unit, onRemove: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(CrateRaised)
+            .padding(horizontal = 20.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Text(
+            text = if (count == 1) "1 RECORD" else "$count RECORDS",
+            style = JawonTextStyle.mono.copy(color = LabelCream, fontSize = 11.sp),
+            modifier = Modifier.weight(1f)
+        )
+        Box(
+            Modifier
+                .border(1.dp, CrateEdge)
+                .clickable(onClick = onCancel)
+                .padding(horizontal = 14.dp, vertical = 10.dp)
+        ) {
+            Text(
+                "CANCEL",
+                fontFamily = JetBrainsMonoFamily,
+                fontWeight = FontWeight.Bold,
+                fontSize = 10.sp,
+                letterSpacing = 1.5.sp,
+                color = LabelDim
+            )
+        }
+        Box(
+            Modifier
+                // The destructive one carries the accent and the other does not, so the two are
+                // told apart by more than the words on them.
+                .border(1.dp, LampAmber)
+                .clickable(onClick = onRemove)
+                .padding(horizontal = 14.dp, vertical = 10.dp)
+        ) {
+            Text(
+                "REMOVE $count",
+                fontFamily = JetBrainsMonoFamily,
+                fontWeight = FontWeight.Bold,
+                fontSize = 10.sp,
+                letterSpacing = 1.5.sp,
+                color = LampAmber
+            )
+        }
     }
 }

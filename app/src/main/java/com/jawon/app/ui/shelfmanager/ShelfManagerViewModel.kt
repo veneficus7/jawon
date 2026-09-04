@@ -9,6 +9,8 @@ import com.jawon.app.data.local.ShelfWithAlbums
 import com.jawon.app.data.prefs.AppPreferences
 import com.jawon.app.ui.wallscene.WallSort
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
@@ -22,6 +24,7 @@ import javax.inject.Inject
 class ShelfManagerViewModel @Inject constructor(
     private val shelfDao: ShelfDao,
     private val albumDao: AlbumDao,
+    private val albumRemover: com.jawon.app.data.local.AlbumRemover,
     private val preferences: AppPreferences
 ) : ViewModel() {
 
@@ -36,6 +39,55 @@ class ShelfManagerViewModel @Inject constructor(
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), WallSort.SHELF)
 
     fun onSortChanged(value: WallSort) = preferences.setWallSort(value.name)
+
+    // ---- selecting several records to remove ----------------------------------------------
+    //
+    // **The flip side of the import being good.** The device scan made adding a library
+    // effortless and left removing one exactly as manual as it ever was — one album, one
+    // dialog, one fracture animation — so the easy path now creates a problem only the slow
+    // path can solve. Someone who scans a phone with two hundred records on it has no
+    // practical way back out.
+    //
+    // Selection lives here rather than in the composable so it survives a rotation and a
+    // process death mid-decision, which is exactly when losing forty ticks would hurt most.
+
+    private val _selection = MutableStateFlow<Set<String>>(emptySet())
+
+    /** Album ids ticked for removal. Empty means the screen is in its ordinary browsing mode. */
+    val selection: StateFlow<Set<String>> = _selection.asStateFlow()
+
+    /** Whether the list is in selection mode at all — entered by a long press on any record. */
+    val selecting: StateFlow<Boolean> = _selection
+        .map { it.isNotEmpty() }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
+
+    fun onToggleSelected(albumId: String) {
+        _selection.value = _selection.value.let {
+            if (albumId in it) it - albumId else it + albumId
+        }
+    }
+
+    fun onClearSelection() {
+        _selection.value = emptySet()
+    }
+
+    /**
+     * Removes everything ticked.
+     *
+     * **No discard animation, deliberately.** The fracture is a small ceremony for a deliberate
+     * act, and running it forty times turns it into a wait — the user is not looking at the
+     * wall here, they are on a list, having already decided.
+     *
+     * Goes through [com.jawon.app.data.local.AlbumRemover] rather than deleting rows directly,
+     * so the tracks, the listening history and the copied cover images go with each record. The
+     * room's own delete path uses the same object for the same reason.
+     */
+    fun onRemoveSelected() {
+        val ids = _selection.value
+        if (ids.isEmpty()) return
+        _selection.value = emptySet()
+        viewModelScope.launch { albumRemover.removeAll(ids) }
+    }
 
     val shelves: StateFlow<List<ShelfWithAlbums>> =
         combine(shelfDao.getAll(), albumDao.getAll()) { shelves, albums ->
