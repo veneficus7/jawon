@@ -154,9 +154,6 @@ class SettingsViewModel @Inject constructor(
     // a flow would mean watching a file that changes at most once per process death — for a
     // section most people will never see say anything but "nothing to report".
 
-    /** Whether there is anything at all. Drives whether the section offers any buttons. */
-    fun hasCrashReport(): Boolean = crashLog.hasReport()
-
     /**
      * The whole log, for the preview.
      *

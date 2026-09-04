@@ -81,6 +81,7 @@ import com.jawon.app.ui.theme.JetBrainsMonoFamily
 import com.jawon.app.ui.theme.LabelCream
 import com.jawon.app.ui.theme.LabelDim
 import com.jawon.app.ui.theme.LampAmber
+import java.util.Locale
 
 /**
  * The room's index — every shelf on the wall, in the order they hang.
@@ -538,7 +539,7 @@ private fun TapeLabel(name: String, modifier: Modifier = Modifier) {
             .padding(horizontal = 14.dp, vertical = 5.dp)
     ) {
         Text(
-            text = name.uppercase(),
+            text = name.uppercase(Locale.ROOT),
             fontFamily = JetBrainsMonoFamily,
             fontWeight = FontWeight.Medium,
             fontSize = 11.sp,
@@ -705,7 +706,7 @@ private fun AlbumLine(album: Album, onEdit: (String) -> Unit) {
                 overflow = TextOverflow.Ellipsis
             )
             Text(
-                album.artist.uppercase(),
+                album.artist.uppercase(Locale.ROOT),
                 style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = 10.sp),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis

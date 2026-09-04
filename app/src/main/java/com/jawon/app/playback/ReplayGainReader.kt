@@ -6,6 +6,7 @@ import androidx.media3.extractor.metadata.id3.TextInformationFrame
 import androidx.media3.extractor.metadata.vorbis.VorbisComment
 import androidx.media3.common.util.UnstableApi
 import com.jawon.app.data.prefs.AppPreferences
+import java.util.Locale
 
 /**
  * Pulls ReplayGain out of whatever the current track is tagged with, and levels to it.
@@ -54,7 +55,7 @@ class ReplayGainReader(
                 else -> continue
             }
             val db = ReplayGain.parseDb(value) ?: continue
-            when (key.uppercase()) {
+            when (key.uppercase(Locale.ROOT)) {
                 ReplayGain.KEY_ALBUM_GAIN -> { albumGainDb = db; changed = true }
                 ReplayGain.KEY_TRACK_GAIN -> { trackGainDb = db; changed = true }
             }

@@ -1,12 +1,13 @@
 package com.jawon.app.ui.common
 
 import com.jawon.app.data.local.Track
+import java.util.Locale
 
 fun formatDuration(ms: Long): String {
     val totalSeconds = ms / 1000
     val minutes = totalSeconds / 60
     val seconds = totalSeconds % 60
-    return "%d:%02d".format(minutes, seconds)
+    return "%d:%02d".format(Locale.US, minutes, seconds)
 }
 
 private val LOSSLESS_MIME_TYPES = setOf(
@@ -22,14 +23,14 @@ private fun codecLabel(mimeType: String): String = when (mimeType) {
     "audio/mp4a-latm", "audio/mp4" -> "AAC"
     "audio/opus" -> "OPUS"
     "audio/ogg", "audio/vorbis" -> "OGG"
-    else -> mimeType.substringAfter('/').uppercase()
+    else -> mimeType.substringAfter('/').uppercase(Locale.ROOT)
 }
 
 /** e.g. `FLAC 16-BIT / 44.1 kHz` — what the file actually is. */
 fun qualityReadoutSource(track: Track): String {
     val bitDepthPart = track.bitDepth?.let { "$it-BIT / " } ?: ""
     val rateKhz = track.sampleRateHz / 1000f
-    return "${codecLabel(track.mimeType)} $bitDepthPart${"%.1f".format(rateKhz)} kHz"
+    return "${codecLabel(track.mimeType)} $bitDepthPart${"%.1f".format(Locale.US, rateKhz)} kHz"
 }
 
 /**
@@ -45,7 +46,7 @@ fun qualityReadoutOutput(track: Track, routeLabel: String, outputSampleRateHz: I
     // since A2DP re-encodes to the codec's own rate. Printing nothing beats printing a guess.
     val resampled = outputSampleRateHz > 0 && outputSampleRateHz != track.sampleRateHz
     val outputPart =
-        if (resampled) " → OUTPUT ${"%.0f".format(outputSampleRateHz / 1000f)} kHz" else ""
+        if (resampled) " → OUTPUT ${"%.0f".format(Locale.US, outputSampleRateHz / 1000f)} kHz" else ""
     val route = if (routeLabel.isBlank()) "" else " · $routeLabel"
     return "$losslessTag$route$outputPart"
 }

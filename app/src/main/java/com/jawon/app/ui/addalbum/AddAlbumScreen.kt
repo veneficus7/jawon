@@ -69,6 +69,7 @@ import com.jawon.app.ui.theme.JetBrainsMonoFamily
 import com.jawon.app.ui.theme.LabelCream
 import com.jawon.app.ui.theme.LabelDim
 import com.jawon.app.ui.theme.LampAmber
+import java.util.Locale
 
 /**
  * Adding records to the room.
@@ -500,7 +501,7 @@ private fun AlbumChoice(
                 // The duplicate note goes first, because it is the one thing here that would
                 // change someone's mind about the row.
                 text = (if (alreadyInLibrary) "ALREADY ON A SHELF · " else "") +
-                    artist.uppercase() + " · " + trackCount +
+                    artist.uppercase(Locale.ROOT) + " · " + trackCount +
                     (if (trackCount == 1) " TRACK" else " TRACKS") +
                     (if (hasCover) " · COVER" else ""),
                 style = JawonTextStyle.mono.copy(

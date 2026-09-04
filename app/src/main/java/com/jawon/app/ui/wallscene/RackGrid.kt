@@ -1996,7 +1996,7 @@ private fun UnitParam(param: RackParam?, hue: Color, live: Boolean) {
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
             Text(
-                text = param.name.uppercase(),
+                text = param.name.uppercase(Locale.ROOT),
                 fontFamily = JetBrainsMonoFamily,
                 fontSize = UNIT_MARK_SIZE,
                 fontWeight = FontWeight.Bold,
@@ -2278,7 +2278,7 @@ private fun PatchbayRack(
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
             ConsoleLine(
-                text = "> " + selected.label.uppercase(),
+                text = "> " + selected.label.uppercase(Locale.ROOT),
                 color = if (live) hue else finish.plateDim,
                 glow = live
             )
@@ -2518,7 +2518,7 @@ private fun ConsoleParam(param: RackParam, hue: Color, live: Boolean) {
         verticalAlignment = Alignment.CenterVertically
     ) {
         Box(modifier = Modifier.width(CONSOLE_NAME_W.dp)) {
-            ConsoleLine(text = param.name.uppercase(), color = finish.plateDim)
+            ConsoleLine(text = param.name.uppercase(Locale.ROOT), color = finish.plateDim)
         }
 
         Box(

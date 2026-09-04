@@ -32,6 +32,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -64,6 +65,7 @@ import com.jawon.app.ui.theme.LabelDim
 import com.jawon.app.ui.theme.LampAmber
 import com.jawon.app.ui.theme.DeckFinish
 import com.jawon.app.ui.theme.RoomScheme
+import java.util.Locale
 
 /**
  * Names a group of settings, with a rule running out to the right of the label.
@@ -172,7 +174,7 @@ private fun UpdateSection(
 
             is UpdateState.Available -> {
                 Text(
-                    "VERSION ${state.update.versionName.uppercase()} IS AVAILABLE",
+                    "VERSION ${state.update.versionName.uppercase(Locale.ROOT)} IS AVAILABLE",
                     style = JawonTextStyle.mono.copy(fontSize = 10.sp),
                     textAlign = TextAlign.Center
                 )
@@ -334,7 +336,7 @@ private fun SchemePicker(current: RoomScheme, onPick: (RoomScheme) -> Unit) {
                         }
 
                         Text(
-                            text = scheme.displayName.uppercase(),
+                            text = scheme.displayName.uppercase(Locale.ROOT),
                             style = JawonTextStyle.mono.copy(
                                 color = if (selected) scheme.accent else LabelCream,
                                 fontSize = 10.sp
@@ -380,7 +382,7 @@ private fun DiagnosticsSection(
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         Text(
-            text = device.uppercase(),
+            text = device.uppercase(Locale.ROOT),
             style = JawonTextStyle.mono.copy(color = LabelCream, fontSize = 10.sp),
             lineHeight = 15.sp
         )
@@ -398,8 +400,8 @@ private fun DiagnosticsSection(
         DiagnosticRow("QUALITY", snapshot.currentTier?.name ?: "—")
         DiagnosticRow("CHOSEN AT START", snapshot.detectedTier?.name ?: "—")
         DiagnosticRow("AVERAGE", "${snapshot.averageFps} FPS  ·  %.1f MS".format(snapshot.averageMs))
-        DiagnosticRow("WORST FRAME", "%.1f MS".format(snapshot.worstMs))
-        DiagnosticRow("SLOW FRAMES", "%.1f%%".format(snapshot.slowPercent))
+        DiagnosticRow("WORST FRAME", "%.1f MS".format(Locale.US, snapshot.worstMs))
+        DiagnosticRow("SLOW FRAMES", "%.1f%%".format(Locale.US, snapshot.slowPercent))
         // What the room actually rasterised, against what it was offered. See RoomCadence:
         // the room draws at the rate the fastest thing on screen justifies, so a figure well
         // under 100% while nothing is being touched is the saving working.
@@ -411,7 +413,7 @@ private fun DiagnosticsSection(
         // its own to hold a frame time. Sitting at the tier's ceiling means the device is
         // comfortable; below it means it is scaling down to keep up. The 2D interface is
         // unaffected either way; see QualityTier.maxRenderScale.
-        DiagnosticRow("ROOM SCALE", "%.0f%%".format(snapshot.renderScale * 100f))
+        DiagnosticRow("ROOM SCALE", "%.0f%%".format(Locale.US, snapshot.renderScale * 100f))
         DiagnosticRow("FRAMES SEEN", snapshot.frames.toString())
 
         Text(
@@ -489,15 +491,15 @@ private fun CrashReportSection(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(top = 28.dp),
+            .padding(top = 26.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         Text(
             text = "PROBLEMS",
             fontFamily = JetBrainsMonoFamily,
             fontWeight = FontWeight.Bold,
-            fontSize = 10.sp,
-            letterSpacing = 1.5.sp,
+            fontSize = 11.sp,
+            letterSpacing = 2.sp,
             color = LabelCream
         )
 
@@ -798,7 +800,14 @@ fun SettingsScreen(
     // Read once when the screen opens, and held so "CLEAR" can empty the section without a
     // second trip to disk. A crash cannot happen while this screen is in front of you — the
     // process would be gone — so there is nothing to keep watching for.
-    var crashReport by remember { mutableStateOf(viewModel.crashReport()) }
+    //
+    // **In a LaunchedEffect, not in the `remember` initialiser.** Reading it there put a
+    // `readText` of up to 32,000 characters on the main thread, on the frame Settings opens —
+    // architecture rule 5, which has no exception for "only once" or "only a small file".
+    // The section renders its empty state for one frame and then fills in, which is correct:
+    // for almost every user the answer really is "nothing to report".
+    var crashReport by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(Unit) { crashReport = viewModel.crashReport() }
 
     // Not remembered: the user can leave to grant the permission and come straight back,
     // and a cached "no" would leave them looking at a button that says to do what they just did.
@@ -863,7 +872,7 @@ fun SettingsScreen(
                 verticalArrangement = Arrangement.spacedBy(14.dp)
             ) {
                 Text(
-                    text = stringResource(R.string.app_name).uppercase(),
+                    text = stringResource(R.string.app_name).uppercase(Locale.ROOT),
                     fontFamily = ArchivoFamily,
                     fontWeight = FontWeight.ExtraBold,
                     fontSize = 44.sp,
@@ -880,7 +889,7 @@ fun SettingsScreen(
                             .padding(horizontal = 14.dp, vertical = 6.dp)
                     ) {
                         Text(
-                            text = "VERSION ${versionName.uppercase()}",
+                            text = "VERSION ${versionName.uppercase(Locale.ROOT)}",
                             style = JawonTextStyle.mono
                         )
                     }
@@ -928,7 +937,7 @@ fun SettingsScreen(
                         text = when {
                             caseSpin <= 0f -> "OFF"
                             caseSpin >= 1f -> "FULL"
-                            else -> "%.0f%%".format(caseSpin * 100f)
+                            else -> "%.0f%%".format(Locale.US, caseSpin * 100f)
                         },
                         style = JawonTextStyle.mono.copy(fontSize = 10.sp)
                     )
@@ -974,7 +983,7 @@ fun SettingsScreen(
                     )
                     Text(
                         text = if (crossfadeMs < Crossfade.MIN_MS) "OFF"
-                        else "%.1f s".format(crossfadeMs / 1000f),
+                        else "%.1f s".format(Locale.US, crossfadeMs / 1000f),
                         style = JawonTextStyle.mono.copy(fontSize = 10.sp)
                     )
                 }

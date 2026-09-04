@@ -5,13 +5,14 @@ import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
+import java.util.Locale
 
 /**
  * DESIGN.md §3's "utility/metadata" role: track durations, year, track
  * numbers, elapsed time, and the quality readout — deliberately not a
  * Material Typography slot (see M4 plan decision #3), so it stays a
  * signature detail rather than styling every button in the app. Callers
- * apply `.uppercase()` to the string themselves.
+ * apply `.uppercase(Locale.ROOT)` to the string themselves.
  */
 object JawonTextStyle {
     /**

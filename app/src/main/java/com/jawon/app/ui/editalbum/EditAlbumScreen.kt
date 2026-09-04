@@ -63,6 +63,7 @@ import com.jawon.app.ui.theme.JetBrainsMonoFamily
 import com.jawon.app.ui.theme.LabelCream
 import com.jawon.app.ui.theme.LabelDim
 import com.jawon.app.ui.theme.LampAmber
+import java.util.Locale
 
 /**
  * Editing a record that is already on the wall.
@@ -429,7 +430,7 @@ private fun ShelfPicker(
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Text(
-                    text = current.uppercase(),
+                    text = current.uppercase(Locale.ROOT),
                     fontFamily = JetBrainsMonoFamily,
                     fontSize = 13.sp,
                     letterSpacing = 1.6.sp,
@@ -452,7 +453,7 @@ private fun ShelfPicker(
                     DropdownMenuItem(
                         text = {
                             Text(
-                                shelf.name.uppercase(),
+                                shelf.name.uppercase(Locale.ROOT),
                                 style = JawonTextStyle.mono.copy(color = LabelCream)
                             )
                         },

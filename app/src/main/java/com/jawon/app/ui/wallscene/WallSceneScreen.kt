@@ -144,6 +144,7 @@ import kotlin.math.atan2
 import kotlin.math.exp
 import kotlin.math.floor
 import kotlin.math.pow
+import java.util.Locale
 
 /** Fling coast. The prototype's friction of 28 is a ~36ms time constant — barely a coast; */
 /** this is looser so a flick actually travels. Tuning knob. */
@@ -2625,7 +2626,7 @@ private fun WallSearchBar(
                         overflow = TextOverflow.Ellipsis
                     )
                     Text(
-                        text = case.artist.uppercase(),
+                        text = case.artist.uppercase(Locale.ROOT),
                         fontFamily = JetBrainsMonoFamily,
                         fontSize = 9.sp,
                         letterSpacing = 1.sp,
@@ -2747,7 +2748,7 @@ private fun CrateFlip(
                             overflow = TextOverflow.Ellipsis
                         )
                         Text(
-                            text = it.artist.uppercase(),
+                            text = it.artist.uppercase(Locale.ROOT),
                             fontFamily = JetBrainsMonoFamily,
                             fontSize = 9.sp,
                             letterSpacing = 1.sp,
@@ -2853,7 +2854,7 @@ private fun ShelfPlate(name: String, accentHue: Float) {
         contentAlignment = Alignment.Center
     ) {
         Text(
-            text = name.uppercase(),
+            text = name.uppercase(Locale.ROOT),
             color = ComposeColor(0xFF17120F),
             fontFamily = JetBrainsMonoFamily,
             fontWeight = FontWeight.Medium,
@@ -2924,7 +2925,7 @@ private fun RemoveAlbumDialog(
                     overflow = TextOverflow.Ellipsis
                 )
                 Text(
-                    text = case.artist.uppercase(),
+                    text = case.artist.uppercase(Locale.ROOT),
                     style = JawonTextStyle.mono.copy(color = LabelDim),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
@@ -3066,7 +3067,7 @@ private fun FocusLabel(case: CaseLayout?, modifier: Modifier = Modifier) {
         verticalArrangement = Arrangement.spacedBy(9.dp)
     ) {
         Text(
-            text = case?.title.orEmpty().uppercase(),
+            text = case?.title.orEmpty().uppercase(Locale.ROOT),
             fontFamily = ArchivoFamily,
             fontWeight = FontWeight.ExtraBold,
             fontSize = 22.sp,
@@ -3077,7 +3078,7 @@ private fun FocusLabel(case: CaseLayout?, modifier: Modifier = Modifier) {
             overflow = TextOverflow.Ellipsis
         )
         Text(
-            text = case?.artist.orEmpty().uppercase(),
+            text = case?.artist.orEmpty().uppercase(Locale.ROOT),
             style = JawonTextStyle.mono,
             textAlign = TextAlign.Center,
             maxLines = 1,

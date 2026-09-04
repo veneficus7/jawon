@@ -99,6 +99,7 @@ import com.jawon.app.ui.theme.deckPlate
 import kotlinx.coroutines.flow.StateFlow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Color as ComposeColor
+import java.util.Locale
 
 /**
  * The deck, in the room: what PLAN.md §4 asks of The Deck minus the disc itself, which is
@@ -569,7 +570,7 @@ private fun ScrubOrQuality(scrubReadout: State<ScrubReadout?>, deck: DeckState) 
             modifier = Modifier.padding(top = 10.dp)
         )
         Text(
-            text = track?.title.orEmpty().uppercase(),
+            text = track?.title.orEmpty().uppercase(Locale.ROOT),
             style = JawonTextStyle.mono.copy(color = finish.plateDim),
             modifier = Modifier.padding(top = 2.dp),
             maxLines = 1,
@@ -589,13 +590,13 @@ private fun ScrubOrQuality(scrubReadout: State<ScrubReadout?>, deck: DeckState) 
         // Same treatment as the brand and model marks at the top of the window, deliberately:
         // one printing process for everything printed.
         Silkscreen(
-            text = qualityReadoutSource(track).uppercase(),
+            text = qualityReadoutSource(track).uppercase(Locale.ROOT),
             modifier = Modifier.padding(top = 12.dp)
         )
         Silkscreen(
             text = qualityReadoutOutput(
                 track, deck.routeLabel, deck.outputSampleRateHz
-            ).uppercase(),
+            ).uppercase(Locale.ROOT),
             modifier = Modifier.padding(top = 3.dp)
         )
     }
@@ -853,7 +854,7 @@ private fun TrackRow(track: Track, isCurrent: Boolean, onClick: () -> Unit) {
         horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         Text(
-            text = "%02d".format(track.trackNumber),
+            text = "%02d".format(Locale.US, track.trackNumber),
             style = JawonTextStyle.mono.copy(
                 color = if (isCurrent) finish.accent else finish.plateDim
             )
@@ -1303,7 +1304,7 @@ private fun DeckWindow(
                 // anywhere else is which of its tracks is playing, and that is what a deck is for.
                 DisplayText(
                     text = (deck.currentTrack?.title?.takeIf { it.isNotBlank() } ?: title)
-                        .uppercase(),
+                        .uppercase(Locale.ROOT),
                     size = finish.displaySize,
                     weight = FontWeight.Bold
                 )
@@ -1313,7 +1314,7 @@ private fun DeckWindow(
                     // per-track credit.
                     DisplayText(
                         text = (deck.currentTrack?.artist?.takeIf { it.isNotBlank() } ?: artist)
-                            .uppercase(),
+                            .uppercase(Locale.ROOT),
                         size = finish.displaySize * SECONDARY_SCALE,
                         weight = FontWeight.Normal,
                         dim = true

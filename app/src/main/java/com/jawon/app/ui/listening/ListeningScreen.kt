@@ -47,6 +47,7 @@ import com.jawon.app.ui.theme.LabelDim
 import com.jawon.app.ui.theme.LampAmber
 import java.io.File
 import java.util.concurrent.TimeUnit
+import java.util.Locale
 
 /**
  * The listening record — what this collection has actually been played.
@@ -205,7 +206,7 @@ private fun ListeningRowView(rank: Int, row: ListeningRow, onClick: () -> Unit) 
                     overflow = TextOverflow.Ellipsis
                 )
                 Text(
-                    text = row.artist.uppercase(),
+                    text = row.artist.uppercase(Locale.ROOT),
                     fontFamily = JetBrainsMonoFamily,
                     fontSize = 10.sp,
                     letterSpacing = 1.2.sp,

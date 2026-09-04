@@ -14,6 +14,7 @@ import com.jawon.app.R
 import java.io.File
 import kotlin.math.max
 import kotlin.random.Random
+import java.util.Locale
 
 /**
  * Everything that turns an album into pixels for the wall. All of it is CPU work on
@@ -160,8 +161,8 @@ object CaseArt {
         val hours = totalSeconds / 3600
         val minutes = (totalSeconds % 3600) / 60
         val seconds = totalSeconds % 60
-        return if (hours > 0) "%d:%02d:%02d".format(hours, minutes, seconds)
-        else "%d:%02d".format(minutes, seconds)
+        return if (hours > 0) "%d:%02d:%02d".format(Locale.US, hours, minutes, seconds)
+        else "%d:%02d".format(Locale.US, minutes, seconds)
     }
 
     /**
@@ -234,7 +235,7 @@ object CaseArt {
         }
         canvas.drawText(
             TextUtils.ellipsize(
-                artist.uppercase(), artistPaint, textWidth, TextUtils.TruncateAt.END
+                artist.uppercase(Locale.ROOT), artistPaint, textWidth, TextUtils.TruncateAt.END
             ).toString(),
             textLeft,
             h * 0.205f,
@@ -275,7 +276,7 @@ object CaseArt {
                 y += lineH
                 return@forEachIndexed
             }
-            canvas.drawText("%02d".format(index + 1), numColumn, y, numPaint)
+            canvas.drawText("%02d".format(Locale.US, index + 1), numColumn, y, numPaint)
             canvas.drawText(
                 TextUtils.ellipsize(
                     track, trackPaint, titleRoom, TextUtils.TruncateAt.END
@@ -309,7 +310,7 @@ object CaseArt {
         // Bottom line first, working up: the format is the least important of the three and
         // the one most likely to be missing.
         inlay.formatLabel?.let {
-            canvas.drawText(it.uppercase(), printRight, printY, printPaint)
+            canvas.drawText(it.uppercase(Locale.ROOT), printRight, printY, printPaint)
             printY -= printPaint.textSize * 1.45f
         }
 
@@ -386,7 +387,7 @@ object CaseArt {
         }
         canvas.drawText(
             TextUtils.ellipsize(
-                artist.uppercase(), artistPaint, available, TextUtils.TruncateAt.END
+                artist.uppercase(Locale.ROOT), artistPaint, available, TextUtils.TruncateAt.END
             ).toString(),
             0f,
             w * ARTIST_OFFSET,
