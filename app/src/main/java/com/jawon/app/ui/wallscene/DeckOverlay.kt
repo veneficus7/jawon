@@ -11,7 +11,6 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -867,19 +866,26 @@ private fun TrackRow(
                 color = if (isCurrent) finish.accent else finish.plateDim
             )
         )
-        // The title takes the weight and the badges sit after it, so a long title is
-        // ellipsised rather than pushing a mark off the row — the mark is the rarer thing and
-        // losing it silently would make the whole feature look unreliable.
+        // **One weight, on the title, and nothing else in the row weighted.**
+        //
+        // A Row measures its unweighted children first and gives the weighted one whatever is
+        // left, so this pins the duration to the right edge on every row — the tracklist reads
+        // as a column of times, which is what DESIGN.md §3 asks of the mono figures — while a
+        // long title ellipsises rather than pushing a badge off the end. The badge is the rarer
+        // thing, and losing it silently would make the feature look unreliable.
+        //
+        // This briefly had a second weighted Spacer after the badges. Two weighted siblings
+        // split the free space between them, so the title could claim only half of it and the
+        // duration came to rest wherever that left it — a different place on every row.
         Text(
             text = track.title,
-            modifier = Modifier.weight(1f, fill = false),
+            modifier = Modifier.weight(1f),
             style = MaterialTheme.typography.bodyMedium,
             color = if (isCurrent) finish.accent else finish.plateInk,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )
         badges.forEach { BadgeMark(it) }
-        Spacer(Modifier.weight(1f))
         Text(
             text = formatDuration(track.durationMs),
             style = JawonTextStyle.mono.copy(color = finish.plateDim)
