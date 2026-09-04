@@ -68,6 +68,20 @@ testing the minified build on a device.
   installed and tested. Play rejects debug-signed uploads, so this cannot ship by
   accident — but check the log line if you are unsure which key was used.
 
+**CI runs this build on every push** — `.github/workflows/ci.yml`, alongside the
+unit tests, and deliberately not only in the debug variant. A green debug build
+says nothing about the risk in §3 below: Filament's JNI resolves Java fields by
+name, so an over-eager R8 rule fails at *runtime*, on a device, as a native abort.
+CI catches the half of that which is a build error, which is not the whole risk but
+is the half that used to reach a phone before anyone noticed.
+
+The fallback above is what makes this possible at all: `keystore.properties` is
+gitignored and absent on CI, and the release build simply degrades to the debug
+key rather than failing. Verified — the APK CI produces is signed
+`CN=Android Debug`. It is uploaded as a build artifact for seven days, so a tester
+can be handed a build without anyone opening Android Studio. **It is not a
+release**, for the reason in the paragraph above it.
+
 ### Read `proguard-rules.pro` before trimming it
 
 Most of that file is Filament, and it is not defensive boilerplate. Filament's

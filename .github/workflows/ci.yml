@@ -1,0 +1,102 @@
+# Jawon CI.
+#
+# Two things are checked on every push, and the second one is the reason this file exists.
+#
+#   1. The unit tests. 325 of them, all on the JVM, so they cost about a minute.
+#
+#   2. `assembleRelease` — a full R8 build. **This is not redundant with the tests, and a
+#      green debug build says nothing about it.** Jawon renders through Filament, whose JNI
+#      resolves Java fields by NAME; obfuscating one does not fail to build, it fails to
+#      render, at runtime, on a device. `app/proguard-rules.pro` is mostly keep rules for
+#      exactly that, and the failure mode of trimming one is a native abort nobody sees until
+#      the release APK is on a phone. Compiling it here at least catches the half that is a
+#      build error. See `docs/release.md` §3 and the Filament traps in `ENGINEERING.md`.
+#
+# What this deliberately does NOT do is sign for release. `keystore.properties` is gitignored
+# and absent here, which `app/build.gradle.kts` handles by falling back to the debug key —
+# verified: the APK this produces is signed `CN=Android Debug`. That is installable and
+# testable but not publishable, which is exactly right for CI. Releases are still built and
+# signed by hand; see `docs/release.md`.
+
+name: CI
+
+on:
+  push:
+    branches: [master, m11-realism]
+  pull_request:
+  # So a check can be forced without an empty commit.
+  workflow_dispatch:
+
+# A second push to the same branch cancels the first. R8 builds are slow and there is no
+# value in finishing one that is already superseded.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Tests and release build
+    runs-on: ubuntu-latest
+    # Cold, the R8 build alone runs several minutes. 45 is slack, not an expectation.
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # JDK 17: the minimum AGP 9.x accepts, and nothing here wants newer. Note this is the
+      # JDK that *runs* Gradle — the project still compiles to a JVM 11 target, set in
+      # `app/build.gradle.kts`, and the two are unrelated.
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      # Puts the SDK on ANDROID_HOME and accepts the licences. `local.properties` is
+      # gitignored, so this is how the build finds the SDK at all; do not add one here.
+      #
+      # No components are pinned on purpose. This project needs `platforms;android-37.0` and
+      # build-tools, and AGP downloads what it needs once the licences are accepted — which
+      # is more durable than a hard-coded package name that goes stale at the next compileSdk
+      # bump. If a build ever fails on a missing SDK package, add it here rather than
+      # wondering why.
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      # Handles the Gradle distribution, the dependency cache and the daemon. Do not add
+      # `--no-daemon` to the steps below; this action manages that itself.
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Unit tests
+        run: ./gradlew testDebugUnitTest --stacktrace
+
+      # Runs even when the tests failed, on purpose: a failing test and a broken release
+      # build are unrelated failures with unrelated causes, and finding out about both in one
+      # run beats fixing one, pushing, and waiting to discover the other.
+      #
+      # `!cancelled()` rather than `always()` — `always()` would also run this after the
+      # concurrency rule above cancelled the job, which is the one case where finishing a
+      # multi-minute R8 build is pure waste.
+      - name: Release build (R8)
+        if: ${{ !cancelled() }}
+        run: ./gradlew assembleRelease --stacktrace
+
+      - name: Upload test report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-report
+          path: app/build/reports/tests/testDebugUnitTest/
+          retention-days: 14
+
+      # The APK is debug-signed, so it installs. Handy for putting a build in a tester's
+      # hands without a local toolchain — but it is NOT a release, and Play rejects a
+      # debug-signed upload. Short retention because it is ~40 MB a run.
+      - name: Upload release APK
+        if: success() && github.event_name == 'push'
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-release-unsigned-${{ github.sha }}
+          path: app/build/outputs/apk/release/*.apk
+          retention-days: 7
