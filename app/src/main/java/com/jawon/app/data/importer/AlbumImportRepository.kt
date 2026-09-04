@@ -354,6 +354,24 @@ class AlbumImportRepository @Inject constructor(
          */
         spineHue: Float
     ): String = withContext(Dispatchers.IO) {
+        // **The one place the "no duplicates" rule can actually be enforced.**
+        //
+        // Both scan routes had a guard and neither was binding: `scanDevice` drops albums it
+        // recognises, and `scanTree` only *flags* them so the import screen can say "ALREADY ON
+        // A SHELF" — which leaves the user free to tick it anyway, and nothing downstream
+        // objected. A second copy of a record is not a small annoyance in this app: it is a
+        // second case on the wall, a second set of tracks, and a play history split across two
+        // albums that can never be added back together.
+        //
+        // Returning the existing id rather than throwing makes a repeated import a no-op
+        // instead of an error, which is the honest outcome — the user asked for that album to
+        // be in the library and it is. Editing the title on the import screen still creates a
+        // separate record, because then it is genuinely a different one as far as anyone can
+        // tell from the outside.
+        albumDao.getAll().first()
+            .firstOrNull { albumKey(it.title, it.artist) == albumKey(title, artist) }
+            ?.let { return@withContext it.id }
+
         val shelfId = ensureDefaultShelf()
         val albumId = UUID.randomUUID().toString()
         val now = System.currentTimeMillis()
@@ -385,7 +403,10 @@ class AlbumImportRepository @Inject constructor(
             )
         )
 
-        preview.tracks.forEachIndexed { index, scanned ->
+        // Deduplicated here as well as in `scanTree`, because the two scan routes build their
+        // track lists differently and this is the only path both go through. Two rows pointing
+        // at one file is a tracklist that plays the same song twice and a duration that lies.
+        preview.tracks.distinctBy { it.fileUri }.forEachIndexed { index, scanned ->
             // Opens the file only when the scan could not supply the codec details — which
             // is the device-scan path, and only for the albums actually being imported.
             val track = metadataReader.withTechnical(context, scanned)

@@ -120,8 +120,8 @@ class AlbumImportRepositoryTest {
 
     @Test
     fun `the first import creates the Unsorted shelf, and the second reuses it`() = runTest {
-        commit(preview(listOf(track("a.flac"))))
-        commit(preview(listOf(track("b.flac"))))
+        commit(preview(listOf(track("a.flac")), title = "One"))
+        commit(preview(listOf(track("b.flac")), title = "Two"))
 
         val shelves = db.shelfDao().getAll().first()
         assertEquals("a second import must not create a second shelf", 1, shelves.size)
@@ -132,7 +132,9 @@ class AlbumImportRepositoryTest {
 
     @Test
     fun `albums land on consecutive slots`() = runTest {
-        repeat(3) { commit(preview(listOf(track("$it.flac")))) }
+        // Distinct titles: since the duplicate guard landed, three commits of one title are one
+        // album by design.
+        repeat(3) { commit(preview(listOf(track("$it.flac")), title = "Album $it")) }
 
         val slots = db.albumDao().getAll().first().map { it.slotIndex }.sorted()
         assertEquals(listOf(0, 1, 2), slots)
@@ -144,15 +146,15 @@ class AlbumImportRepositoryTest {
         // its gap on the shelf rather than the rest closing up, so the album *count* and the
         // next free *slot* stop agreeing the moment anything is removed. Counting would drop
         // the new record into the hole instead of at the end of the shelf.
-        val first = commit(preview(listOf(track("a.flac"))))
-        commit(preview(listOf(track("b.flac"))))
-        val third = commit(preview(listOf(track("c.flac"))))
+        val first = commit(preview(listOf(track("a.flac")), title = "One"))
+        commit(preview(listOf(track("b.flac")), title = "Two"))
+        val third = commit(preview(listOf(track("c.flac")), title = "Three"))
 
         // Remove the middle one, leaving slot 1 empty with 2 still occupied.
         db.albumDao().getAll().first().first { it.id != first && it.id != third }
             .let { db.albumDao().delete(it) }
 
-        val fourth = commit(preview(listOf(track("d.flac"))))
+        val fourth = commit(preview(listOf(track("d.flac")), title = "Four"))
         val slot = db.albumDao().getAll().first().first { it.id == fourth }.slotIndex
 
         assertEquals("expected the slot after the highest in use, not the album count", 3, slot)
@@ -284,6 +286,53 @@ class AlbumImportRepositoryTest {
         assertNotEquals(one, two)
         assertEquals(2, db.trackDao().getForAlbum(one).first().size)
         assertEquals(1, db.trackDao().getForAlbum(two).first().size)
+    }
+
+    // ---- no duplicates ----------------------------------------------------------------------
+
+    @Test
+    fun `importing the same album twice does not put it on the wall twice`() = runTest {
+        // Both scan routes had a guard and neither was binding: the device scan drops albums it
+        // recognises, and the folder route only *flags* them so the import screen can say
+        // "ALREADY ON A SHELF" — leaving the user free to tick it anyway. A second copy is not
+        // a small annoyance here: it is a second case on the wall, a second set of tracks, and
+        // a play history split across two albums that can never be added back together.
+        val first = commit(preview(listOf(track("a", 1), track("b", 2)), title = "An Album"))
+        val second = commit(preview(listOf(track("a", 1), track("b", 2)), title = "An Album"))
+
+        assertEquals("the second import should return the album already there", first, second)
+        assertEquals(1, db.albumDao().getAll().first().size)
+        assertEquals(2, db.trackDao().getForAlbum(first).first().size)
+    }
+
+    @Test
+    fun `the match ignores case, spacing and punctuation`() = runTest {
+        val first = commit(preview(listOf(track("a", 1)), title = "The Dark Side of the Moon"))
+        val second = commit(preview(listOf(track("a", 1)), title = "the dark-side of the moon!"))
+        assertEquals(first, second)
+    }
+
+    @Test
+    fun `renaming on the import screen still makes a separate record`() = runTest {
+        // The escape hatch, and it has to keep working: two genuinely different records sharing
+        // a name by the same artist are rare but real, and editing the title is how someone
+        // says so. Refusing that would make the guard worse than the problem.
+        val first = commit(preview(listOf(track("a", 1)), title = "Greatest Hits"))
+        val second = commit(preview(listOf(track("b", 1))), title = "Greatest Hits Vol. 2")
+
+        assertNotEquals(first, second)
+        assertEquals(2, db.albumDao().getAll().first().size)
+    }
+
+    @Test
+    fun `one file cannot appear twice in the same album`() = runTest {
+        // Two rows pointing at one file is a tracklist that plays the same song twice and an
+        // album duration that lies. Deduplicated at the write because the two scan routes build
+        // their lists differently and this is the path they share.
+        val duplicated = track("a", 1)
+        val id = commit(preview(listOf(duplicated, duplicated, track("b", 2))))
+
+        assertEquals(2, db.trackDao().getForAlbum(id).first().size)
     }
 
     // ---- the cover-art count the import screen shows ----------------------------------------
