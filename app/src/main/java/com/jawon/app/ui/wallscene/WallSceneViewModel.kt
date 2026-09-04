@@ -333,6 +333,16 @@ class WallSceneViewModel @Inject constructor(
     /** Read only by the progress bar, so the 2Hz tick can't recompose the tracklist. */
     val positionMs: StateFlow<Long> = playbackRepository.positionMs
 
+    /**
+     * Fires when a record has played all the way through.
+     *
+     * The room answers it by closing the case — see the collector in `WallSceneScreen`. It is
+     * deliberately *not* answered here by starting something else: an album is the atomic unit
+     * (PLAN §2), and auto-advancing to another record is the shuffle-a-huge-library behaviour
+     * this app exists not to have.
+     */
+    val albumEnded = playbackRepository.albumEnded
+
     @Suppress("OPT_IN_USAGE")
     val deck: StateFlow<DeckState> = _nowPlayingAlbumId
         .flatMapLatest { albumId ->

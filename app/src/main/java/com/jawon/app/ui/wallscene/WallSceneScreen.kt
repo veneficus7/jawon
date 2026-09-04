@@ -2416,15 +2416,53 @@ fun WallSceneScreen(
         // case, and is left alone while browsing so it exits the app normally.
         BackHandler(enabled = selectedAlbumId != null) { closeCase() }
 
+        // **What happens when the record finishes.**
+        //
+        // Until now: nothing. The queue ran out, playback stopped, and the case sat open in
+        // front of a dead deck until someone pressed back — the one moment every listener
+        // reaches, every time, and the app had no answer for it.
+        //
+        // The answer is the one already in the room rather than a new screen: the disc stops,
+        // the case closes itself back into its slot, and you are left on the wall looking at
+        // the record you just heard. That is the open sequence run backwards, which
+        // `OpenSequence` supports by construction — every curve is a pure function of
+        // `progress`, so closing is the same five beats with the clock running the other way.
+        //
+        // Deliberately no autoplay. The album is the atomic unit (PLAN §2), and rolling into
+        // another record is the shuffle-a-huge-library behaviour this app exists not to have.
+        // The wall is the offer; tapping the next case is the user's move.
+        LaunchedEffect(Unit) {
+            viewModel.albumEnded.collect {
+                // Guarded because the event fires whether or not a case is open — a record can
+                // end while the deck is closed and the room is being browsed, and closing an
+                // already-closed case would run the sequence backwards from nothing.
+                if (selectedAlbumId != null) closeCase()
+            }
+        }
+
         // Search, only while browsing. Like the crate flip it is a Compose overlay with its
         // own pointer input, so the scene never sees these events (ENGINEERING.md trap 6), and it
         // lands on a record through the same `animateTo` the flip and the magnet use.
         if (selectedAlbumId == null) {
             WallSearchBar(
                 layout = layout,
-                onGoTo = { target ->
+                // **The only way into a record that does not go through the 3D surface.**
+                //
+                // Search used to pan the camera and stop there, leaving the user to find and
+                // tap the case — which is fine with eyes and impossible without them:
+                // `openCase` is otherwise reachable only from a Filament hit test on a surface
+                // that never enters the view system. A screen reader could reach every screen
+                // in this app, read the whole library and work every setting, and could not
+                // start a record.
+                //
+                // It is also simply better sighted behaviour. You searched for a record; two
+                // steps to hear it was one too many.
+                onOpen = { target ->
+                    // Pan first so the sequence starts from the right framing — see the note
+                    // in `openCase` about FRONT_GAP being tuned against the canonical camera.
                     scope.launch { panX.animateTo(target.x, animationSpec = FLIP_SPRING) }
                     scope.launch { panY.animateTo(target.y, animationSpec = FLIP_SPRING) }
+                    openCase(target.albumId)
                 },
                 modifier = Modifier.align(Alignment.TopEnd)
             )
@@ -2620,7 +2658,8 @@ fun WallSceneScreen(
 @Composable
 private fun WallSearchBar(
     layout: WallLayout,
-    onGoTo: (CaseLayout) -> Unit,
+    /** Pans to the record *and opens it*. See the call site for why both. */
+    onOpen: (CaseLayout) -> Unit,
     modifier: Modifier = Modifier
 ) {
     if (layout.cases.size < SEARCH_MIN_ALBUMS) return
@@ -2684,7 +2723,7 @@ private fun WallSearchBar(
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                     keyboardActions = KeyboardActions(
                         onSearch = {
-                            WallSearch.best(layout.cases, query)?.let { onGoTo(it); close() }
+                            WallSearch.best(layout.cases, query)?.let { onOpen(it); close() }
                         }
                     ),
                     decorationBox = { inner ->
@@ -2724,7 +2763,7 @@ private fun WallSearchBar(
                 Column(
                     Modifier
                         .fillMaxWidth()
-                        .clickable { onGoTo(case); close() }
+                        .clickable { onOpen(case); close() }
                         .padding(horizontal = 12.dp, vertical = 9.dp)
                 ) {
                     Text(
@@ -2750,8 +2789,16 @@ private fun WallSearchBar(
     }
 }
 
-/** Below this a glance finds a record faster than typing does. */
-private const val SEARCH_MIN_ALBUMS = 12
+/**
+ * Below this a glance finds a record faster than typing does.
+ *
+ * Two, not twelve. Twelve was the right number while search only *panned the camera* — below
+ * that a glance beats typing and the field was clutter. It stopped being right the moment
+ * search became the only way to open a record without touching the 3D surface: gating it on
+ * library size meant a screen-reader user with five albums could reach every screen in the app
+ * and play none of them. Clutter on a small library is a much smaller cost than that.
+ */
+private const val SEARCH_MIN_ALBUMS = 2
 
 /**
  * The crate flip — a thumb rail down the right edge that runs the wall past you.

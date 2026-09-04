@@ -23,8 +23,11 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
@@ -112,19 +115,43 @@ class PlaybackRepository @Inject constructor(
         setPlaying(false)
     }
 
+    /** Whether the player was already sitting at the end last time [playerListener] looked. */
+    private var wasEnded = false
+
+    private val _albumEnded = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+
+    /**
+     * Fires once each time a record plays all the way through.
+     *
+     * **A `SharedFlow`, because this is an event and not a state.** The room closes the case
+     * when it arrives, and a state would either re-close on every recomposition or need a
+     * consumed-flag threaded through the scene to stop it.
+     *
+     * Deliberately says nothing about what should happen next. What the room does with the end
+     * of a record is the room's decision, and putting "and then play something else" here would
+     * be the first step toward a queue — which PLAN §2 rules out on purpose.
+     */
+    val albumEnded: SharedFlow<Unit> = _albumEnded.asSharedFlow()
+
     private val playerListener = object : Player.Listener {
         override fun onEvents(player: Player, events: Player.Events) {
             // Before the state is replaced, so the *previous* index is still readable.
             noteTransition(player)
             updatePlaybackState(player)
 
-            // End of the record, for the sleep mode that waits for one. STATE_ENDED is the
-            // queue running out, and a queue here is exactly one album — see SleepTimer.
-            if (player.playbackState == Player.STATE_ENDED &&
-                _sleepMode.value == SleepTimer.Mode.EndOfAlbum
-            ) {
-                scope.launch { sleepNow() }
+            // End of the record. STATE_ENDED is the queue running out, and a queue here is
+            // exactly one album — see SleepTimer.
+            //
+            // **Edge-triggered, not level.** `onEvents` fires repeatedly while the player sits
+            // in STATE_ENDED, so anything acting on this needs to hear about it once. The flag
+            // clears the moment the state moves off ENDED, which covers a replay of the same
+            // record as well as a different one.
+            val ended = player.playbackState == Player.STATE_ENDED
+            if (ended && !wasEnded) {
+                if (_sleepMode.value == SleepTimer.Mode.EndOfAlbum) scope.launch { sleepNow() }
+                _albumEnded.tryEmit(Unit)
             }
+            wasEnded = ended
         }
     }
 
