@@ -169,18 +169,20 @@ class PlaybackRepository @Inject constructor(
         val open = segment
 
         val changedTrack = open != null && open.trackIndex != index
-        val stopped = open != null && !player.isPlaying
 
-        if (open != null && (changedTrack || stopped)) {
-            // On a track change the previous item ran to its end; otherwise it reached
-            // wherever the player is now. Either way this is time *in the track*, so a pause
-            // does not inflate it and scrubbing backwards does not either.
-            val endedAt = if (changedTrack) {
-                player.duration.takeIf { it > 0 } ?: position
-            } else {
-                position
-            }
-            recordSegment(open, endedAt)
+        // The decisions live in PlayAccounting, which is pure and tested. This method's job is
+        // reading the player and writing the row; what any of it *means* is not decided here.
+        if (open != null &&
+            PlayAccounting.closes(
+                hasOpenSegment = true,
+                trackChanged = changedTrack,
+                isPlaying = player.isPlaying
+            )
+        ) {
+            recordSegment(
+                open,
+                PlayAccounting.reachedMs(changedTrack, player.duration, position)
+            )
             segment = null
         }
 
@@ -196,9 +198,8 @@ class PlaybackRepository @Inject constructor(
 
     private fun recordSegment(seg: Segment, endedAtMs: Long) {
         val track = queuedTracks.getOrNull(seg.trackIndex) ?: return
-        val played = (endedAtMs - seg.fromPositionMs).coerceAtLeast(0L)
-        // Under two seconds is skipping past something, not listening to it.
-        if (played < MIN_COUNTED_MS) return
+        // Under two seconds is skipping past something, not listening to it. See PlayAccounting.
+        val played = PlayAccounting.countedMs(seg.fromPositionMs, endedAtMs) ?: return
         scope.launch {
             playEventDao.insert(
                 PlayEvent(
@@ -407,16 +408,6 @@ class PlaybackRepository @Inject constructor(
     suspend fun seekTo(index: Int, positionMs: Long) = ensureController().seekTo(index, positionMs)
 
     private companion object {
-        /**
-         * Below this, a track was skipped past rather than listened to.
-         *
-         * Two seconds is enough to sit through the gap between tracks while deciding, and
-         * short enough that genuinely sampling something still counts. It exists so that
-         * running a thumb down the tracklist does not write twenty rows claiming an album was
-         * played twenty times.
-         */
-        const val MIN_COUNTED_MS = 2_000L
-
         /** Ten × the 500ms poll: the resume point is never more than five seconds stale. */
         const val POSITION_SAVE_EVERY_TICKS = 10
     }

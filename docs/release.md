@@ -249,7 +249,7 @@ Honest list, in the order they matter:
    "nothing loaded yet" from "nothing in the library" — one `WallLayout.loaded`
    flag, previously conflated, which is why an empty library could never render
    anything.
-3. ~~**Almost no tests.**~~ **405, across 35 files.** `CrossfadeTest` is long
+3. ~~**Almost no tests.**~~ **429, across 38 files.** `CrossfadeTest` is long
    past being alone: the wear curve, the shelf-bounds maths, the animation
    curves, the scrub cursor, the volume levelling, the whole rack DSP, the
    scratch tone, the lyrics parsers and the LRCLIB client, the wall's sort and
