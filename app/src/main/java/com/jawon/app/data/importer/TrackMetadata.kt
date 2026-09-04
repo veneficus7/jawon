@@ -13,6 +13,8 @@ data class TrackMetadata(
     val album: String?,
     val artist: String?,
     val trackNumber: Int?,
+    /** Which disc of a set, or null for a single-disc album. See Track.discNumber. */
+    val discNumber: Int?,
     val year: Int?,
     val durationMs: Long,
     val mimeType: String,

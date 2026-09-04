@@ -9,7 +9,7 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface TrackDao {
-    @Query("SELECT * FROM Track WHERE albumId = :albumId ORDER BY trackNumber")
+    @Query("SELECT * FROM Track WHERE albumId = :albumId ORDER BY discNumber, trackNumber")
     fun getForAlbum(albumId: String): Flow<List<Track>>
 
     /**
@@ -31,7 +31,7 @@ interface TrackDao {
     suspend fun allFileUris(): List<String>
 
     /** One-shot, for the backup writer. */
-    @Query("SELECT * FROM Track ORDER BY albumId, trackNumber")
+    @Query("SELECT * FROM Track ORDER BY albumId, discNumber, trackNumber")
     suspend fun listAll(): List<Track>
 
     /**

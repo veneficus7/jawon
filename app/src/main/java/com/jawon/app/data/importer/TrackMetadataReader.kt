@@ -32,6 +32,7 @@ class TrackMetadataReader {
             album = tags.album,
             artist = tags.artist,
             trackNumber = tags.trackNumber,
+            discNumber = tags.discNumber,
             year = tags.year,
             durationMs = tags.durationMs,
             mimeType = technical.mimeType,
@@ -101,6 +102,7 @@ class TrackMetadataReader {
         val album: String?,
         val artist: String?,
         val trackNumber: Int?,
+        val discNumber: Int?,
         val year: Int?,
         val durationMs: Long
     )
@@ -115,6 +117,11 @@ class TrackMetadataReader {
                 artist = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_ARTIST),
                 trackNumber = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_CD_TRACK_NUMBER)
                     ?.substringBefore('/')?.trim()?.toIntOrNull(),
+                // The other half of the same question, and the folder route's answer to what
+                // the scan recovers from MediaStore's packed TRACK column. Written "2/3" as
+                // often as "2", hence the same split as above. See Track.discNumber.
+                discNumber = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DISC_NUMBER)
+                    ?.substringBefore('/')?.trim()?.toIntOrNull()?.takeIf { it > 0 },
                 year = (retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_YEAR)
                     ?: retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DATE))
                     ?.take(4)?.toIntOrNull(),

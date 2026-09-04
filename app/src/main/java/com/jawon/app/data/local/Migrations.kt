@@ -59,3 +59,17 @@ val MIGRATION_3_4 = Migration(3, 4) { db: SupportSQLiteDatabase ->
     // keep in step with the file.
     db.execSQL("ALTER TABLE Track ADD COLUMN fetchedLyrics TEXT")
 }
+
+val MIGRATION_4_5 = Migration(4, 5) { db: SupportSQLiteDatabase ->
+    // Which disc of a set a track came from. Nullable with no default, and the nullability is
+    // the point rather than an accident of style: null means "not part of a set", which is a
+    // different fact from "disc one", and a single-disc album should not get a disc number
+    // printed on its case just because the column exists.
+    //
+    // Every existing row becomes null, which is right for the overwhelming majority and
+    // unavoidable for the rest — the disc was thrown away at import (see
+    // AlbumImportRepository) and there is nothing left in the database to recover it from.
+    // A multi-disc album already imported has to be re-imported to get its discs back, and
+    // that is worth saying out loud rather than pretending the migration fixed it.
+    db.execSQL("ALTER TABLE Track ADD COLUMN discNumber INTEGER")
+}

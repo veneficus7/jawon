@@ -269,10 +269,37 @@ class MigrationTest {
         db.close()
     }
 
+    // ---- 4 → 5 ---------------------------------------------------------------------------
+
+    @Test
+    fun `migration 4 to 5 adds the disc number as not-part-of-a-set`() {
+        createV1().close()
+        openRaw(2) { }.also { MIGRATION_1_2.migrate(it) }.close()
+        openRaw(3) { }.also { MIGRATION_2_3.migrate(it) }.close()
+        openRaw(4) { }.also { MIGRATION_3_4.migrate(it) }.close()
+
+        val db = openRaw(5) { }.also { MIGRATION_4_5.migrate(it) }
+
+        db.query("SELECT * FROM Track WHERE id = 'track-1'").use { c ->
+            assertTrue(c.moveToFirst())
+            assertEquals("Xtal", c.getString(c.getColumnIndexOrThrow("title")))
+
+            // NULL means "not part of a set", which is a different fact from "disc one" — a
+            // single-disc album should not get a disc number printed on its case just because
+            // the column now exists. A DEFAULT 1 here would put one on every record ever
+            // imported.
+            assertTrue(
+                "discNumber must be NULL rather than defaulted to 1",
+                c.isNull(c.getColumnIndexOrThrow("discNumber"))
+            )
+        }
+        db.close()
+    }
+
     // ---- the whole chain, through Room ----------------------------------------------------
 
     @Test
-    fun `a version 1 library opens at version 4 through Room's own validation`() {
+    fun `a version 1 library opens at version 5 through Room's own validation`() {
         createV1().close()
 
         // The test that matters most, and the only one that reproduces the production failure.
@@ -283,12 +310,12 @@ class MigrationTest {
         // `writableDatabase` is what forces the open; building the database alone is lazy and
         // would pass no matter how wrong the migrations were.
         val db = Room.databaseBuilder(context, JawonDatabase::class.java, DB_NAME)
-            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
             .allowMainThreadQueries()
             .build()
 
         assertNotNull(db.openHelper.writableDatabase)
-        assertEquals(4, db.openHelper.writableDatabase.version)
+        assertEquals(5, db.openHelper.writableDatabase.version)
         db.close()
     }
 
@@ -316,7 +343,7 @@ class MigrationTest {
         }.close()
 
         val db = Room.databaseBuilder(context, JawonDatabase::class.java, DB_NAME)
-            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
             .allowMainThreadQueries()
             .build()
 

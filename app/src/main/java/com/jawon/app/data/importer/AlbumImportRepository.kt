@@ -188,9 +188,19 @@ class AlbumImportRepository @Inject constructor(
                         // MediaStore packs the disc into the thousands place — 1006 is disc 1
                         // track 6. Taken raw, a two-disc set numbers its second half 1001,
                         // 1002 and sorts fine but reads as nonsense on the case.
+                        //
+                        // **The disc is kept now rather than divided away.** Taking the value
+                        // modulo 1000 recovers the track and discards the only copy of which
+                        // disc it came from — and a scanned multi-disc set arrives under one
+                        // ALBUM_ID and becomes one Jawon album, so that left two tracks
+                        // numbered 6 in the same record with nothing to order them by. See
+                        // Track.discNumber.
                         trackNumber = cursor.getIntOrNull(trackCol)
                             ?.let { if (it > 1000) it % 1000 else it }
                             ?.takeIf { it > 0 },
+                        discNumber = cursor.getIntOrNull(trackCol)
+                            ?.takeIf { it > 1000 }
+                            ?.let { it / 1000 },
                         year = cursor.getIntOrNull(yearCol)?.takeIf { it > 0 },
                         durationMs = cursor.getLongOrNull(durationCol) ?: 0L,
                         mimeType = cursor.getStringOrNull(mimeCol) ?: "audio/unknown",
@@ -211,7 +221,7 @@ class AlbumImportRepository @Inject constructor(
             // the tracklist showed the song twice with no way to tell which was which.
 
             val ordered = tracks.distinctBy { it.fileUri }.sortedWith(
-                compareBy({ it.trackNumber ?: Int.MAX_VALUE }, { it.displayName })
+                compareBy({ it.discNumber ?: 1 }, { it.trackNumber ?: Int.MAX_VALUE }, { it.displayName })
             )
             val (album, artist) = albumNames[key] ?: (null to null)
             val title = album?.takeIf { it.isNotBlank() && it != MEDIASTORE_UNKNOWN }
@@ -271,7 +281,7 @@ class AlbumImportRepository @Inject constructor(
         }
 
         val ordered = read.distinctBy { it.fileUri }.sortedWith(
-            compareBy({ it.trackNumber ?: Int.MAX_VALUE }, { it.displayName })
+            compareBy({ it.discNumber ?: 1 }, { it.trackNumber ?: Int.MAX_VALUE }, { it.displayName })
         )
         // This group's own folder, not the picked root — with nested folders they differ, and
         // the containing folder is what names the album when the tags do not.
@@ -384,6 +394,7 @@ class AlbumImportRepository @Inject constructor(
                     id = UUID.randomUUID().toString(),
                     albumId = albumId,
                     trackNumber = track.trackNumber ?: (index + 1),
+                    discNumber = track.discNumber,
                     title = track.title,
                     // Kept per track, not folded into the album. The reader has always pulled
                     // this tag; until now it was only used to guess the album's artist and then

@@ -7,6 +7,7 @@ import com.jawon.app.data.local.JawonDatabase
 import com.jawon.app.data.local.MIGRATION_1_2
 import com.jawon.app.data.local.MIGRATION_2_3
 import com.jawon.app.data.local.MIGRATION_3_4
+import com.jawon.app.data.local.MIGRATION_4_5
 import com.jawon.app.data.local.PlayEventDao
 import com.jawon.app.data.local.ShelfDao
 import com.jawon.app.data.local.TrackDao
@@ -28,7 +29,7 @@ object DatabaseModule {
             // Every migration, in order. No destructive fallback — see Migrations.kt: a
             // library is work the user cannot get back, so a missing migration must fail
             // loudly in testing rather than silently wipe a collection in the field.
-            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
             .build()
 
     @Provides

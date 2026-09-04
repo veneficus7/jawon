@@ -5,7 +5,7 @@ import androidx.room.RoomDatabase
 
 @Database(
     entities = [Shelf::class, Album::class, Track::class, PlayEvent::class],
-    version = 4,
+    version = 5,
     // On, so every schema version is committed as JSON under app/schemas and a hand-written
     // migration can be checked against what Room actually expects rather than against memory.
     exportSchema = true

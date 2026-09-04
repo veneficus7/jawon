@@ -222,6 +222,7 @@ class LibraryBackup @Inject constructor(
 
     private fun Track.toJson() = JSONObject().apply {
         put("id", id); put("albumId", albumId); put("trackNumber", trackNumber)
+        discNumber?.let { put("discNumber", it) }
         put("title", title); put("durationMs", durationMs); put("fileUri", fileUri)
         put("artist", artist ?: JSONObject.NULL)
         put("mimeType", mimeType); put("sampleRateHz", sampleRateHz)
@@ -232,6 +233,7 @@ class LibraryBackup @Inject constructor(
         id = getString("id"),
         albumId = optString("albumId"),
         trackNumber = optInt("trackNumber"),
+        discNumber = if (has("discNumber")) optInt("discNumber") else null,
         title = optString("title"),
         // Absent in archives written before the column existed, and `optString` would turn
         // that into "" — which reads as a track credited to nobody rather than a track whose
