@@ -2485,6 +2485,12 @@ fun WallSceneScreen(
                     scope.launch { panX.animateTo(target.x, animationSpec = FLIP_SPRING) }
                     scope.launch { panY.animateTo(target.y, animationSpec = FLIP_SPRING) }
                 },
+                // The same spring the magnet and the fling settle with, so a record reached
+                // by the rail arrives exactly like one reached by a swipe.
+                onSettle = { target ->
+                    scope.launch { panX.animateTo(target.x, animationSpec = SETTLE_SPRING) }
+                    scope.launch { panY.animateTo(target.y, animationSpec = SETTLE_SPRING) }
+                },
                 modifier = Modifier
                     .align(Alignment.CenterEnd)
                     .padding(end = 4.dp, top = 96.dp, bottom = 128.dp)
@@ -2821,6 +2827,8 @@ private const val SEARCH_MIN_ALBUMS = 2
 private fun CrateFlip(
     layout: WallLayout,
     onScrub: (CaseLayout) -> Unit,
+    /** Where the wall comes to rest when the thumb lifts. See onDragEnd. */
+    onSettle: (CaseLayout) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val ordered = layout.casesInWallOrder
@@ -2920,7 +2928,12 @@ private fun CrateFlip(
 
         Column(
             modifier = Modifier
-                .width(28.dp)
+                // **48dp, not 28.** This is the primary way to cross the wall now, and 28 was
+                // under the minimum touch target on every accessibility guideline there is —
+                // Play's pre-launch report flags it, and a thumb reaching across a phone this
+                // tall was missing a rail narrower than the thumb. The marks stay where they
+                // were visually; what grew is the part you can hit.
+                .width(48.dp)
                 .fillMaxHeight()
                 // Its own ground, for the same reason the bottom chrome has one: bare on the
                 // room, the marks landed on whatever shelf plank happened to be behind them.
@@ -2939,8 +2952,27 @@ private fun CrateFlip(
                             lastLanded = null
                             scrubTo(offset.y)
                         },
-                        onDragEnd = { dragging = false },
-                        onDragCancel = { dragging = false }
+                        // **The wall settles onto a record rather than stopping dead.**
+                        //
+                        // Until now the release only hid the letter plate: the wall stayed
+                        // wherever the last scrub had dragged it, which on a fast flip is
+                        // between two records rather than on one. That is what made this read
+                        // as a jump-to-position control rather than as part of the room —
+                        // every other way of moving the wall ends on an album, because the
+                        // magnet catches it.
+                        //
+                        // It settles with SETTLE_SPRING, not the stiffer FLIP_SPRING that
+                        // carries the wall *during* the drag. The two want opposite things:
+                        // mid-drag the wall has to keep up with a moving thumb, and at the end
+                        // it is a heavy rack sliding to a stop.
+                        onDragEnd = {
+                            dragging = false
+                            layout.caseAtFraction(fraction)?.let(onSettle)
+                        },
+                        onDragCancel = {
+                            dragging = false
+                            layout.caseAtFraction(fraction)?.let(onSettle)
+                        }
                     ) { change, _ ->
                         scrubTo(change.position.y)
                     }
@@ -2971,8 +3003,15 @@ private fun CrateFlip(
     }
 }
 
-/** Below this the wall is a couple of swipes wide and the rail is clutter. */
-private const val FLIP_MIN_ALBUMS = 12
+/**
+ * Below this the wall is a couple of swipes wide and the rail is clutter.
+ *
+ * Eight, not twelve. Twelve was chosen while the rail was a secondary control worth hiding
+ * until a library clearly needed it; it is the primary way to cross the wall now, and the wall
+ * shows roughly nine cases at once — so from about eight upward there is already something off
+ * screen to reach for, which is exactly when a rail earns its place.
+ */
+private const val FLIP_MIN_ALBUMS = 8
 
 /** Letters down the rail. Enough to read as a crate divider set, few enough to stay legible. */
 private const val FLIP_MARKS = 15
