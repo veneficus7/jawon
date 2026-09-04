@@ -287,10 +287,33 @@ Honest list, in the order they matter:
 5. **Play listing assets**: a 512×512 icon, a feature graphic, screenshots, and a
    privacy policy.
 
-   **The policy is no longer the short one.** Until 0.2 this said Jawon "collects
-   nothing and has no network access", and writing a policy from that sentence
-   today would be writing a false one. Since then the app has gained `INTERNET`,
-   and **three** things leave the device:
+   ~~**The policy.**~~ **Written — `docs/privacy.md`.** But it is not *published*,
+   and that is a real remaining step rather than a formality: **this repository is
+   private**, so a link to the file here resolves to a 404 for Google's reviewer
+   and for every user. Play requires a URL anyone can open.
+
+   Publish it to the releases repository, which is already public and already
+   exists for exactly this class of problem:
+
+   ```bash
+   gh api repos/veneficus7/javon-releases/contents/PRIVACY.md \
+     -f message="Privacy policy" \
+     -f content="$(base64 -w0 docs/privacy.md)"
+   ```
+
+   The URL for the Play console and for the listing is then
+   `https://github.com/veneficus7/javon-releases/blob/main/PRIVACY.md`. GitHub
+   Pages on that repository would be tidier if it ever wants a domain, but a
+   rendered Markdown file at a stable public URL is sufficient and is what Play
+   accepts.
+
+   **Keep the copy in this repo as the source.** It has to be versioned alongside
+   the code that makes it true — a policy that drifts from the app is worse than a
+   missing one — and republishing is the one command above.
+
+   The policy was written against the code, not from memory: every claim in it was
+   checked in `CoverArtFetcher`, `LrclibClient`, `UpdateChecker`, `AppPreferences`
+   and the manifest. Three things leave the device:
 
    - **Cover art lookup.** An album title and artist go to MusicBrainz, and an
      image comes back from the Cover Art Archive — only for albums whose own
@@ -318,6 +341,33 @@ Honest list, in the order they matter:
    `READ_MEDIA_AUDIO` / `READ_EXTERNAL_STORAGE` (the device scan),
    `MODIFY_AUDIO_SETTINGS` (the equaliser), `INTERNET`, and
    `REQUEST_INSTALL_PACKAGES`.
+
+### Answering the data safety form
+
+The form is where an app with nothing to hide still gets this wrong, because its
+questions are about *categories* rather than about what the code does. The answers
+for Jawon, with the reasoning, so the next person filling it in does not have to
+re-derive them:
+
+| Question | Answer | Why |
+|---|---|---|
+| Does your app collect or share any of the required user data types? | **No** | "Collect" in Play's definition means transmitted off the device. Nothing is. The three lookups send an album title, an artist and a track length — which are facts about a published recording, not about the user, and Play's data types do not cover them. |
+| Does your app use encryption in transit? | **Yes** | All three endpoints are HTTPS, and `UpdateChecker` explicitly refuses a non-HTTPS APK URL. |
+| Can users request that data be deleted? | **Yes** | Uninstalling removes everything. There is no account and no server copy. |
+| Data types: Files and docs / Music files | **Not collected** | Jawon *reads* audio the user points it at. Reading is not collecting; nothing about those files leaves the phone. |
+| Crash logs / Diagnostics | **Not collected** | Deliberate, and worth being careful about. `CrashLog` writes to the device and stays there. A user may choose to share one through the system share sheet, but Jawon transmits nothing on its own, and the form asks about what the *app* does. If crash reporting is ever made automatic, **this answer changes**. |
+
+**The one that needs a decision, not an answer:** `REQUEST_INSTALL_PACKAGES`. Play
+restricts it to apps whose core purpose is installing other apps, which Jawon's is
+not, and declaring it invites a rejection that costs a review cycle. §4 says to
+drop the self-updater entirely for a Play build — on Play, updating is Play's job
+and the mechanism is redundant. Do that before the first upload rather than
+arguing the exemption.
+
+Note the consequence for existing testers: they are on directly-installed builds
+whose update path *is* the self-updater. Removing it does not break their install,
+but a Play build and a sideloaded build are then two populations, and only one of
+them updates itself.
 
 ## 6. Devices it has actually run on
 
