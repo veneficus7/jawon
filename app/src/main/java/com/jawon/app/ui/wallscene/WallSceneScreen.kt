@@ -112,6 +112,7 @@ import com.jawon.app.ui.wallscene.WallDimens.TAN_HALF_FOV
 import com.jawon.app.ui.wallscene.WallDimens.WALL_Z
 import com.google.android.filament.LightManager
 import com.google.android.filament.RenderableManager
+import com.google.android.filament.Renderer
 import com.google.android.filament.Texture
 import com.google.android.filament.TextureSampler
 import com.google.android.filament.android.TextureHelper
@@ -405,6 +406,15 @@ private class SequenceDriver {
 
     /** Drawn frames left before the render scale is sampled again. See [SCALE_SAMPLE_FRAMES]. */
     var scaleSampleIn = 0
+
+    /**
+     * The cadence divisor Filament has been told about, so it is told again only when it moves.
+     *
+     * Zero rather than one so the first frame always publishes, whatever the cadence picks.
+     * `setFrameRateOptions` is a JNI call and the divisor changes a handful of times a second at
+     * most — writing it every vsync would be the same waste the render-scale sampling avoids.
+     */
+    var publishedDivisor = 0
 }
 
 /**
@@ -751,6 +761,28 @@ fun WallSceneScreen(
         // SceneView would construct it, and disposed by the same `remember`.
         val renderer = rememberRenderer(engine)
         val cadence = remember { RoomCadence() }
+
+        // **Tell Filament what a frame is actually worth, because nothing else does.**
+        //
+        // Filament's dynamic resolution scales the room's render target to hold a frame-time
+        // budget, and it derives that budget from `DisplayInfo.refreshRate` and
+        // `FrameRateOptions.interval`. Neither was ever set, so it ran on the defaults — 60Hz
+        // and "the app renders every display frame" — in an app that asks for 120 and then
+        // deliberately draws one vsync in eight (see [RoomCadence]).
+        //
+        // The consequence is not a small mis-tuning. `interval` *is* the cadence's divisor by
+        // another name, and with it stuck at 1 the deliberate skipping is indistinguishable
+        // from being late: the room has sat pinned at `minRenderScale` and never once reached
+        // the 0.75 ceiling `RoomQuality.maxRenderScale` calls "the one number to turn".
+        //
+        // The refresh rate is read from the display rather than assumed, because
+        // `preferredRefreshRate` in `MainActivity` is a *request* the platform may refuse —
+        // asking the panel what it settled on is the only honest source.
+        val panelRefreshHz = LocalView.current.display?.refreshRate ?: 60f
+        remember(renderer, panelRefreshHz) {
+            renderer.displayInfo = Renderer.DisplayInfo().apply { refreshRate = panelRefreshHz }
+            panelRefreshHz
+        }
 
         // Filament writes the room's last render scale into this rather than returning it, so
         // it is allocated once and reused — the frame driver must not allocate. Two entries,
@@ -2012,6 +2044,17 @@ fun WallSceneScreen(
                         !reduceMotion,
                     ambientMotion = !reduceMotion
                 )
+                // Keep Filament's frame budget in step with the cadence. `interval` means
+                // exactly what the divisor means — "the app renders every N display frames" —
+                // so publishing it is what lets the dynamic resolution scaler tell a skipped
+                // vsync apart from a late one. Only on change; see [SequenceDriver.publishedDivisor].
+                if (divisor != sequence.publishedDivisor) {
+                    sequence.publishedDivisor = divisor
+                    renderer.frameRateOptions = Renderer.FrameRateOptions().apply {
+                        interval = divisor.toFloat()
+                    }
+                }
+
                 val draw = cadence.shouldDraw(divisor)
                 if (!draw) renderer.skipNextFrames(1)
                 diagnostics.onFrameDrawn(draw)
