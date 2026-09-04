@@ -41,13 +41,13 @@ jobs:
     timeout-minutes: 45
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # JDK 17: the minimum AGP 9.x accepts, and nothing here wants newer. Note this is the
       # JDK that *runs* Gradle — the project still compiles to a JVM 11 target, set in
       # `app/build.gradle.kts`, and the two are unrelated.
       - name: Set up JDK 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: '17'
@@ -61,12 +61,12 @@ jobs:
       # bump. If a build ever fails on a missing SDK package, add it here rather than
       # wondering why.
       - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
+        uses: android-actions/setup-android@v4
 
       # Handles the Gradle distribution, the dependency cache and the daemon. Do not add
       # `--no-daemon` to the steps below; this action manages that itself.
       - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v4
+        uses: gradle/actions/setup-gradle@v6
 
       - name: Unit tests
         run: ./gradlew testDebugUnitTest --stacktrace
@@ -84,7 +84,7 @@ jobs:
 
       - name: Upload test report
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: test-report
           path: app/build/reports/tests/testDebugUnitTest/
@@ -95,7 +95,7 @@ jobs:
       # debug-signed upload. Short retention because it is ~40 MB a run.
       - name: Upload release APK
         if: success() && github.event_name == 'push'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: app-release-unsigned-${{ github.sha }}
           path: app/build/outputs/apk/release/*.apk
