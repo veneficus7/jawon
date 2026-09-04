@@ -8,6 +8,8 @@ import com.jawon.app.data.local.PlayEventDao
 import com.jawon.app.data.local.ShelfDao
 import com.jawon.app.data.local.ShelfWithAlbums
 import com.jawon.app.data.local.Track
+import com.jawon.app.data.local.TrackBadge
+import com.jawon.app.data.local.TrackPlayStats
 import com.jawon.app.data.local.TrackDao
 import com.jawon.app.data.playback.AudioRouteReader
 import com.jawon.app.data.playback.EqBand
@@ -41,6 +43,8 @@ import javax.inject.Inject
 /** What the in-room deck needs to draw itself. */
 data class DeckState(
     val tracks: List<Track> = emptyList(),
+    /** Per track id, the marks it has earned. See [TrackBadge]. */
+    val badges: Map<String, List<TrackBadge>> = emptyMap(),
     val currentTrackIndex: Int = -1,
     val isPlaying: Boolean = false,
     val durationMs: Long = 0L,
@@ -323,15 +327,27 @@ class WallSceneViewModel @Inject constructor(
     @Suppress("OPT_IN_USAGE")
     val deck: StateFlow<DeckState> = _nowPlayingAlbumId
         .flatMapLatest { albumId ->
-            if (albumId == null) flowOf(emptyList()) else trackDao.getForAlbum(albumId)
+            if (albumId == null) {
+                flowOf(emptyList<Track>() to emptyMap<String, List<TrackBadge>>())
+            } else {
+                // Badges are folded in *here*, not in the combine below, so they are recomputed
+                // only when the tracklist or the play history actually changes. Doing it after
+                // the playback combine would redo the whole album's arithmetic on every
+                // transport event, for an answer that cannot have moved.
+                combine(
+                    trackDao.getForAlbum(albumId),
+                    playEventDao.trackStatsForAlbum(albumId)
+                ) { tracks, stats -> tracks to badgesFor(tracks, stats) }
+            }
         }
-        .combine(playbackRepository.playback) { tracks, playback ->
+        .combine(playbackRepository.playback) { (tracks, badges), playback ->
             // Read per emission rather than once at construction. The old code took a single
             // reading when the ViewModel was built, so plugging in headphones after opening
             // the app left the readout insisting on SPEAKER for the rest of the session.
             val route = audioRouteReader.currentRoute()
             DeckState(
                 tracks = tracks,
+                badges = badges,
                 currentTrackIndex = playback.currentIndex,
                 isPlaying = playback.isPlaying,
                 durationMs = playback.durationMs,
@@ -340,6 +356,41 @@ class WallSceneViewModel @Inject constructor(
             )
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), DeckState())
+
+    /**
+     * Works out which marks each track of one album has earned.
+     *
+     * The decisions themselves are in [TrackBadge], which is pure and tested; this only gathers
+     * what that needs — a track's own stats, and the two facts that are properties of the album
+     * rather than of any track in it.
+     *
+     * Tracks that have never been played are still handed to [TrackBadge.albumFacts], with zero
+     * plays, so "the most played" is decided against the whole record rather than against the
+     * subset that happens to have history.
+     */
+    private fun badgesFor(
+        tracks: List<Track>,
+        stats: List<TrackPlayStats>
+    ): Map<String, List<TrackBadge>> {
+        if (tracks.isEmpty()) return emptyMap()
+        val byId = stats.associateBy { it.trackId }
+        val facts = TrackBadge.albumFacts(
+            tracks.map { byId[it.id] ?: TrackPlayStats(it.id, plays = 0, furthestMs = 0L, firstStartedAt = 0L) }
+        )
+        val openerId = tracks.first().id
+        return tracks.associate { track ->
+            track.id to TrackBadge.forTrack(
+                durationMs = track.durationMs,
+                mimeType = track.mimeType,
+                bitDepth = track.bitDepth,
+                sampleRateHz = track.sampleRateHz,
+                stats = byId[track.id],
+                isMostPlayedInAlbum = facts.mostPlayedTrackId == track.id,
+                isFirstInAlbumOrder = track.id == openerId,
+                isEarliestPlayedInAlbum = facts.earliestPlayedTrackId == track.id
+            )
+        }
+    }
 
     /**
      * The current track's words, or null when it has none.

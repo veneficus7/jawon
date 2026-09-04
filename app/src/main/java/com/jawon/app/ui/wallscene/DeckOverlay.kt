@@ -11,6 +11,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -77,6 +78,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.jawon.app.data.local.Track
+import com.jawon.app.data.local.TrackBadge
 import com.jawon.app.data.lyrics.Lyrics
 import com.jawon.app.data.lyrics.LyricSource
 import com.jawon.app.data.lyrics.LyricsState
@@ -494,6 +496,7 @@ fun DeckOverlay(
                 itemsIndexed(deck.tracks) { index, track ->
                     TrackRow(
                         track = track,
+                        badges = deck.badges[track.id].orEmpty(),
                         isCurrent = index == deck.currentTrackIndex,
                         onClick = { onSelectTrack(index) }
                     )
@@ -843,7 +846,12 @@ private const val TRANSPORT_BLOOM_ALPHA = 0.22f
 private const val TRANSPORT_CAP_BLOOM = 0.30f
 
 @Composable
-private fun TrackRow(track: Track, isCurrent: Boolean, onClick: () -> Unit) {
+private fun TrackRow(
+    track: Track,
+    badges: List<TrackBadge>,
+    isCurrent: Boolean,
+    onClick: () -> Unit
+) {
     val finish = LocalDeckFinish.current
     Row(
         modifier = Modifier
@@ -859,19 +867,56 @@ private fun TrackRow(track: Track, isCurrent: Boolean, onClick: () -> Unit) {
                 color = if (isCurrent) finish.accent else finish.plateDim
             )
         )
+        // The title takes the weight and the badges sit after it, so a long title is
+        // ellipsised rather than pushing a mark off the row — the mark is the rarer thing and
+        // losing it silently would make the whole feature look unreliable.
         Text(
             text = track.title,
-            modifier = Modifier.weight(1f),
+            modifier = Modifier.weight(1f, fill = false),
             style = MaterialTheme.typography.bodyMedium,
             color = if (isCurrent) finish.accent else finish.plateInk,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )
+        badges.forEach { BadgeMark(it) }
+        Spacer(Modifier.weight(1f))
         Text(
             text = formatDuration(track.durationMs),
             style = JawonTextStyle.mono.copy(color = finish.plateDim)
         )
     }
+}
+
+/**
+ * One mark on a tracklist row.
+ *
+ * **Deliberately small, quiet and uncoloured except where it means something.** These say
+ * things about the listener rather than about the music — how often a record has been reached
+ * for, which one was never got through — and a row of bright chips would read as an app
+ * decorating itself. The two that describe the *file* rather than the listening sit dimmer
+ * still, because they are the least surprising thing on the row.
+ *
+ * Abbreviated rather than spelled out: a tracklist row is 42dp and already carries a number, a
+ * title and a duration. See [TrackBadge] for what each one is claiming.
+ */
+@Composable
+private fun BadgeMark(badge: TrackBadge) {
+    val finish = LocalDeckFinish.current
+    val (label, colour) = when (badge) {
+        TrackBadge.MOST_PLAYED -> "MOST" to finish.accent
+        TrackBadge.NEVER_FINISHED -> "UNFIN" to finish.plateDim
+        TrackBadge.FIRST_PLAYED -> "FIRST" to finish.accent
+        TrackBadge.LOSSLESS -> "LOSSLESS" to finish.plateDim
+        TrackBadge.HI_RES -> "HI-RES" to finish.plateDim
+    }
+    Text(
+        text = label,
+        fontFamily = JetBrainsMonoFamily,
+        fontWeight = FontWeight.Bold,
+        fontSize = 8.sp,
+        letterSpacing = 1.sp,
+        color = colour.copy(alpha = 0.75f)
+    )
 }
 
 /**

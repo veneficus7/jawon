@@ -36,6 +36,30 @@ interface PlayEventDao {
     )
     fun albumTotals(): Flow<List<AlbumListening>>
 
+    /**
+     * How each track of one album has actually been listened to, for the tracklist badges.
+     *
+     * `MAX(msPlayed)` rather than `SUM`: the question a badge asks is "was this ever finished",
+     * and a track played four times to the two-minute mark has eight minutes against it while
+     * never having been heard through. Summing would mark it complete on the strength of never
+     * completing it. See [TrackBadge].
+     *
+     * Scoped to one album because that is the unit a tracklist shows, and because every badge
+     * here is relative to its own record — the most-played track of an album, not of a library.
+     */
+    @Query(
+        """
+        SELECT trackId,
+               COUNT(*)        AS plays,
+               MAX(msPlayed)   AS furthestMs,
+               MIN(startedAt)  AS firstStartedAt
+        FROM PlayEvent
+        WHERE albumId = :albumId
+        GROUP BY trackId
+        """
+    )
+    fun trackStatsForAlbum(albumId: String): Flow<List<TrackPlayStats>>
+
     /** For the delete path: an album's history goes with it. */
     @Query("DELETE FROM PlayEvent WHERE albumId = :albumId")
     suspend fun deleteForAlbum(albumId: String)
