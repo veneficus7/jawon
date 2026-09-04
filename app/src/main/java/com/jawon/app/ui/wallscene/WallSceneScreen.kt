@@ -415,6 +415,15 @@ private class SequenceDriver {
      * most — writing it every vsync would be the same waste the render-scale sampling avoids.
      */
     var publishedDivisor = 0
+
+    /**
+     * When the last *drawn* frame landed, and at which divisor.
+     *
+     * Both, because the interval between drawn frames only means anything if the promise it is
+     * being judged against did not change underneath it. See the `FrameWatch` call.
+     */
+    var lastDrawnNanos = 0L
+    var lastDrawnDivisor = 0
 }
 
 /**
@@ -1734,15 +1743,32 @@ fun WallSceneScreen(
                 // after firing, so this happens at most once per session.
                 if (dt > 0f) diagnostics.onFrame(dt)
 
-                if (dt > 0f && frameWatch.onFrame(dt)) {
-                    tier.below?.let { stepped ->
-                        Log.i(
-                            "Jawon.Quality",
-                            "Frame times are missing the mark; quality $tier -> $stepped"
-                        )
-                        tier = stepped
-                        diagnostics.onTierStepped(stepped)
+                // **Judged on drawn frames against what the cadence promised**, not on vsync
+                // spacing. See FrameWatch.onDrawnFrame: the old signal could not fire at all
+                // once the room started skipping vsyncs on purpose and the panel went to 120.
+                //
+                // Samples where the divisor changed across the interval are dropped rather
+                // than counted — the gap after a finger lifts is legitimately long, and
+                // reading it as a missed deadline would step a healthy device down every time
+                // someone stopped touching the wall.
+                if (draw) {
+                    val previous = sequence.lastDrawnNanos
+                    if (previous != 0L && divisor == sequence.lastDrawnDivisor) {
+                        val interval = (frameNanos - previous) / 1_000_000_000f
+                        val expected = divisor / panelRefreshHz
+                        if (frameWatch.onDrawnFrame(interval, expected)) {
+                            tier.below?.let { stepped ->
+                                Log.i(
+                                    "Jawon.Quality",
+                                    "Drawn frames are late against the cadence; quality $tier -> $stepped"
+                                )
+                                tier = stepped
+                                diagnostics.onTierStepped(stepped)
+                            }
+                        }
                     }
+                    sequence.lastDrawnNanos = frameNanos
+                    sequence.lastDrawnDivisor = divisor
                 }
 
                 // The dust's whole animation, in one uniform write per frame — no CPU work

@@ -229,22 +229,44 @@ class FrameWatch {
     private var totalFrames = 0
 
     /**
-     * Feed it the frame delta in seconds. Returns true when the evidence is strong enough to
-     * step down a tier.
+     * Feed it one **drawn** frame: how long since the previous drawn one, and how long the
+     * cadence expected that to be. Returns true when the evidence is strong enough to step
+     * down a tier.
      *
-     * A "slow" frame is one that missed a 60fps deadline by a clear margin. Not 120: plenty
-     * of perfectly good devices run at 60, and treating that as failure would downgrade
-     * every one of them.
+     * ## Why it takes two numbers, and what it used to get wrong
+     *
+     * This was fed the **vsync-to-vsync delta** and called anything over 20ms slow. That was
+     * right exactly once: when the room drew every vsync at 60Hz, the vsync delta *was* the
+     * frame cost. Two changes since broke it, and nothing noticed because a watchdog that
+     * never fires looks identical to a device that is coping.
+     *
+     * [RoomCadence] means most vsyncs are deliberately not drawn, so the delta stopped being a
+     * measure of anything the room did. And asking the panel for 120Hz put the delta at 8.3ms,
+     * which cannot cross a 20ms threshold at all — the watchdog built after three of five
+     * testers reported stutter had become incapable of reporting stutter.
+     *
+     * The signal that survives both is whether the *drawn* frames arrive when the cadence said
+     * they would. At `LIVE` on a 120Hz panel that is every 8.3ms; at `DRIFTING` it is every
+     * 33ms; both are a promise the room made, and missing it by half again is the room failing
+     * to keep up rather than the room idling on purpose.
+     *
+     * The caller skips samples where the divisor changed across the interval — the gap after a
+     * finger lifts is legitimately long and means nothing.
      *
      * **It can fire more than once.** It used to latch after a single step, which quietly
      * capped how much help a struggling device could get: one notch, and then nothing however
      * badly it ran. A phone that cannot hold MEDIUM should reach LOW. There is no oscillation
      * risk in letting it repeat, because the tier only ever moves one way and stops at LOW —
      * the caller has nowhere further to go.
+     *
+     * @param intervalS seconds since the previous drawn frame.
+     * @param expectedS what the cadence promised: `divisor / refreshRate`.
      */
-    fun onFrame(dt: Float): Boolean {
+    fun onDrawnFrame(intervalS: Float, expectedS: Float): Boolean {
+        if (expectedS <= 0f) return false
+
         totalFrames++
-        if (dt > SLOW_FRAME_S) slowFrames++
+        if (intervalS > expectedS * LATE_FACTOR) slowFrames++
 
         if (totalFrames < WINDOW_FRAMES) return false
 
@@ -258,10 +280,23 @@ class FrameWatch {
     }
 
     private companion object {
-        /** ~50fps. Comfortably past a 60fps deadline, well short of calling 60fps a problem. */
-        const val SLOW_FRAME_S = 0.020f
+        /**
+         * How far past its promise a drawn frame has to land to count as late.
+         *
+         * Half again, not a fixed millisecond figure, because the promise itself now varies:
+         * 8.3ms while a finger is down and 67ms on an idle wall are both correct, and a
+         * threshold that cannot tell them apart is the bug this replaced. Half again is past
+         * any scheduling jitter and short of tolerating a dropped frame in two.
+         */
+        const val LATE_FACTOR = 1.5f
 
-        /** About four seconds at 60fps before the first verdict. */
+        /**
+         * Drawn frames before the first verdict.
+         *
+         * Counted in *drawn* frames rather than vsyncs, so the window is about two seconds of
+         * interaction and considerably longer on an idle wall — which is the right way round.
+         * A device is judged on the states where it is actually being asked to work.
+         */
         const val WINDOW_FRAMES = 240
 
         /** A third of frames missing the mark is a device struggling, not a hiccup. */
