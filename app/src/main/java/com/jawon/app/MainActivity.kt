@@ -84,4 +84,4 @@ class MainActivity : ComponentActivity() {
  * continuously-rendered scene pays its refresh rate every single frame, and nothing in this room
  * moves fast enough for the difference to be visible.
  */
-private const val TARGET_REFRESH_HZ = 60f
+private const val TARGET_REFRESH_HZ = 120f
