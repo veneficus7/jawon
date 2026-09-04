@@ -779,6 +779,7 @@ fun SettingsScreen(
     val context = LocalContext.current
     val fetchCoverArt by viewModel.fetchCoverArt.collectAsStateWithLifecycle()
     val fetchLyrics by viewModel.fetchLyrics.collectAsStateWithLifecycle()
+    val preferOnlineLyrics by viewModel.preferOnlineLyrics.collectAsStateWithLifecycle()
     val roomScheme by viewModel.roomScheme.collectAsStateWithLifecycle()
     val crossfadeMs by viewModel.crossfadeMs.collectAsStateWithLifecycle()
     val updateState by viewModel.updateState.collectAsStateWithLifecycle()
@@ -1026,6 +1027,19 @@ fun SettingsScreen(
                     "thing Jawon sends anywhere.",
                 checked = fetchCoverArt,
                 onCheckedChange = viewModel::onFetchCoverArtChanged
+            )
+
+            SettingRow(
+                title = "PREFER ONLINE LYRICS",
+                // Says what it costs as well as what it does. The default is off because the
+                // file's own words are instant, offline and private; this is for libraries
+                // whose tags are untimed or simply wrong.
+                detail = "Take the words from LRCLIB even when the file has its own. Jawon " +
+                    "already prefers a timed answer over an untimed one — turn this on if you " +
+                    "want the online copy regardless. Costs a lookup per track, and needs the " +
+                    "switch above.",
+                checked = preferOnlineLyrics,
+                onCheckedChange = viewModel::onPreferOnlineLyricsChanged
             )
 
             SettingRow(

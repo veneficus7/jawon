@@ -25,7 +25,9 @@ class SettingsViewModel @Inject constructor(
     private val updateChecker: UpdateChecker,
     private val backup: LibraryBackup,
     private val diagnostics: com.jawon.app.ui.wallscene.RoomDiagnostics,
-    private val crashLog: CrashLog
+    private val crashLog: CrashLog,
+    /** Cleared when the lyrics source preference changes. */
+    private val lyricsRepository: com.jawon.app.data.lyrics.LyricsRepository
 ) : ViewModel() {
 
     val fetchCoverArt: StateFlow<Boolean> = preferences.fetchCoverArt
@@ -38,6 +40,15 @@ class SettingsViewModel @Inject constructor(
     fun onFetchCoverArtChanged(enabled: Boolean) = preferences.setFetchCoverArt(enabled)
 
     fun onFetchLyricsChanged(enabled: Boolean) = preferences.setFetchLyrics(enabled)
+
+    val preferOnlineLyrics: StateFlow<Boolean> = preferences.preferOnlineLyrics
+
+    fun onPreferOnlineLyricsChanged(enabled: Boolean) {
+        preferences.setPreferOnlineLyrics(enabled)
+        // The session cache holds whichever source won last time, so without this the switch
+        // appears to do nothing until the app is restarted.
+        lyricsRepository.clear()
+    }
 
     fun onRoomSchemeChanged(scheme: RoomScheme) = preferences.setRoomScheme(scheme)
 

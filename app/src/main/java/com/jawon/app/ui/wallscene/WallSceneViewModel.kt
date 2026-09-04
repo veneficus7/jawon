@@ -138,6 +138,15 @@ class WallSceneViewModel @Inject constructor(
     private suspend fun albumTitleNow(): String =
         _nowPlayingAlbumId.value?.let { albumDao.findById(it)?.title }.orEmpty()
 
+    /**
+     * The open record's artist, for the same lookup.
+     *
+     * Supplied because `Track.artist` is null for any file whose tag carried only an album
+     * artist, and the lookup needs *an* artist or it cannot ask at all.
+     */
+    private suspend fun albumArtistNow(): String =
+        _nowPlayingAlbumId.value?.let { albumDao.findById(it)?.artist }.orEmpty()
+
     /** The album whose case should sit proud of its slot (PLAN.md §9 #3). */
     private val _nowPlayingAlbumId = MutableStateFlow<String?>(null)
     val nowPlayingAlbumId: StateFlow<String?> = _nowPlayingAlbumId.asStateFlow()
@@ -420,7 +429,7 @@ class WallSceneViewModel @Inject constructor(
                     return@flow
                 }
                 emit(com.jawon.app.data.lyrics.LyricsState.Looking)
-                val found = lyricsRepository.lyricsFor(track, albumTitleNow())
+                val found = lyricsRepository.lyricsFor(track, albumTitleNow(), albumArtistNow())
                 emit(
                     if (found == null) com.jawon.app.data.lyrics.LyricsState.None
                     else com.jawon.app.data.lyrics.LyricsState.Ready(found)

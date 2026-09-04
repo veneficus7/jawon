@@ -46,7 +46,21 @@ class LyricsRepository @Inject constructor(
 
     private val cache = HashMap<String, Lyrics?>()
 
-    suspend fun lyricsFor(track: Track, albumTitle: String = ""): Lyrics? =
+    suspend fun lyricsFor(
+        track: Track,
+        albumTitle: String = "",
+        /**
+         * The record's artist, used when the track has none of its own.
+         *
+         * **Not optional in practice.** `Track.artist` is the *per-track* credit and the
+         * importer deliberately leaves it null when the file's tag does not carry one — null
+         * means "the file did not say", and the deck already falls back to the album for
+         * display. The lookup was not doing the same and simply returned before asking, so
+         * every track without its own artist tag could never get lyrics at all, however good
+         * LRCLIB's copy was. That is most of a loose-download library.
+         */
+        albumArtist: String = ""
+    ): Lyrics? =
         withContext(Dispatchers.IO) {
             synchronized(cache) {
                 if (cache.containsKey(track.id)) return@withContext cache[track.id]
@@ -66,10 +80,23 @@ class LyricsRepository @Inject constructor(
             // untimed one already in hand, and the local copy is free and private, so it keeps
             // the slot on a tie.
             val local = sidecarFor(track.fileUri) ?: embeddedIn(track.fileUri)
-            val found = if (local != null && local.synced) {
-                local
-            } else {
-                online(track, albumTitle)?.takeIf { it.synced || local == null } ?: local
+            val found = when {
+                // **Trust the service, not the file.** Off by default and deliberately so —
+                // see AppPreferences.preferOnlineLyrics — but on a library of loose downloads
+                // the tags are frequently both untimed and wrong, and the rule below only
+                // rescues the untimed half. This says take LRCLIB's answer whenever it has one.
+                preferences.preferOnlineLyrics.value ->
+                    online(track, albumTitle, albumArtist) ?: local
+
+                // Local wins whenever it is *timed*: it is free, private and instant, and a
+                // timed answer is the whole point.
+                local != null && local.synced -> local
+
+                // Otherwise ask, and let a timed answer displace an untimed one. An untimed
+                // answer from the network is no better than the untimed one already in hand,
+                // so the local copy keeps the slot on a tie.
+                else -> online(track, albumTitle, albumArtist)
+                    ?.takeIf { it.synced || local == null } ?: local
             }
             synchronized(cache) { cache[track.id] = found }
             found
@@ -87,13 +114,18 @@ class LyricsRepository @Inject constructor(
      * there are none" is told apart from "never asked", which is what stops a track without
      * lyrics being looked up again every time the page is opened.
      */
-    private suspend fun online(track: Track, albumTitle: String): Lyrics? {
+    private suspend fun online(track: Track, albumTitle: String, albumArtist: String): Lyrics? {
         val cached = runCatching { trackDao.fetchedLyrics(track.id) }.getOrNull()
         if (cached != null) return cached.takeIf { it.isNotBlank() }?.let { LrcParser.parse(it) }
             ?.copy(source = LyricSource.ONLINE)
 
         if (!preferences.fetchLyrics.value) return null
-        val artist = track.artist?.takeIf { it.isNotBlank() } ?: return null
+        // The track's own credit if the file gave one, the record's otherwise. This used to
+        // return here when the track had none, which silently excluded every file whose tag
+        // carries only an album artist — see the note on `lyricsFor`.
+        val artist = track.artist?.takeIf { it.isNotBlank() }
+            ?: albumArtist.takeIf { it.isNotBlank() }
+            ?: return null
 
         val result = lrclib.fetch(
             title = track.title,

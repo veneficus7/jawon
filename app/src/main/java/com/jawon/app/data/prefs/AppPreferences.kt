@@ -177,6 +177,28 @@ class AppPreferences @Inject constructor(@param:ApplicationContext context: Cont
         _fetchLyrics.value = enabled
     }
 
+    private val _preferOnlineLyrics = MutableStateFlow(prefs.getBoolean(KEY_PREFER_ONLINE_LYRICS, false))
+
+    /**
+     * Take the words from LRCLIB even when the file carries its own.
+     *
+     * **Off by default, and it should stay that way for most people**: the file's own tag is
+     * instant, offline and private, and asking the network for something already on the phone
+     * is the wrong default for a local-first app.
+     *
+     * It exists because the default is not right for everyone. A great many files carry an
+     * unsynced `USLT` — plain words, no timestamps — and Jawon already prefers a *timed* answer
+     * from LRCLIB over an untimed local one for exactly that reason. But when LRCLIB's copy is
+     * also untimed the local one keeps the slot, and on a library of loose downloads the tags
+     * are often wrong as well as untimed. This says: trust the service, not the file.
+     */
+    val preferOnlineLyrics: StateFlow<Boolean> = _preferOnlineLyrics.asStateFlow()
+
+    fun setPreferOnlineLyrics(enabled: Boolean) {
+        prefs.edit { putBoolean(KEY_PREFER_ONLINE_LYRICS, enabled) }
+        _preferOnlineLyrics.value = enabled
+    }
+
     // ---- the platform effects. See [com.jawon.app.data.playback.NativeEffects] -----------
     //
     // Persisted, like the equaliser's bands, because these are a preference rather than a
@@ -236,6 +258,7 @@ class AppPreferences @Inject constructor(@param:ApplicationContext context: Cont
         const val KEY_CROSSFADE_MS = "crossfade_ms"
         const val KEY_FETCH_COVER_ART = "fetch_cover_art"
         const val KEY_FETCH_LYRICS = "fetch_lyrics"
+        const val KEY_PREFER_ONLINE_LYRICS = "prefer_online_lyrics"
         const val KEY_ROOM_SCHEME = "room_scheme"
         const val KEY_EQ_ENABLED = "equalizer_enabled"
         const val KEY_EQ_BANDS = "equalizer_bands"
