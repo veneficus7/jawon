@@ -48,6 +48,27 @@ class RoomCadence {
     var moving = false
 
     /**
+     * What [moving] was at the end of the previous frame.
+     *
+     * Exists so the draw decision can be taken at the *top* of a frame rather than the tail.
+     * The tail is where it belongs logically — by then the driver has walked every animation
+     * and knows the truth — but a decision taken there can only skip the *draw*, never the
+     * work: every node transform has already been written by the time it is made.
+     *
+     * Deciding from the previous frame lets the driver skip the writes too. The cost is that
+     * motion starting this frame is noticed one vsync late, which at 120Hz is 8ms and at the
+     * slowest cadence 67ms — and neither matters, because the one thing that must never be
+     * late is a response to a finger, and [pointerDown] is set by the touch handler *before*
+     * the frame runs. It is exact, not a frame behind.
+     *
+     * Erring toward drawing on purpose: `moving || wasMoving` keeps the room live for one
+     * extra frame after everything settles, which costs a single frame and removes any chance
+     * of the last frame of an animation being the one that gets skipped.
+     */
+    var wasMoving = false
+        private set
+
+    /**
      * Vsyncs skipped since the last one that drew.
      *
      * Starts unbounded rather than at zero, because before the first frame there *is* no last
@@ -60,6 +81,7 @@ class RoomCadence {
 
     /** Call at the top of every frame, before the driver runs. */
     fun beginFrame() {
+        wasMoving = moving
         moving = false
     }
 
@@ -81,7 +103,7 @@ class RoomCadence {
      *   where DESIGN.md §4 drops the rotation, the parallax and the dust.
      */
     fun divisorFor(discTurning: Boolean, ambientMotion: Boolean): Int = when {
-        pointerDown || moving -> LIVE
+        pointerDown || moving || wasMoving -> LIVE
         discTurning -> TURNING
         ambientMotion -> DRIFTING
         else -> STILL

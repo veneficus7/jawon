@@ -1685,9 +1685,33 @@ fun WallSceneScreen(
                 sequence.lastFrameNanos = frameNanos
                 sequence.clock += dt
 
-                // Nothing is known to be moving until something in this pass says so. Read
-                // once at the tail, where it decides whether this vsync is drawn at all.
+                // Nothing is known to be moving until something in this pass says so — but the
+                // decision is taken *here*, from the previous frame, not at the tail.
+                //
+                // **That is the difference between skipping a draw and skipping the work.** At
+                // the tail every node transform has already been written; deciding there saved
+                // the rasterisation and nothing else, so at the idle wall the driver was
+                // writing two SceneView transforms per case per vsync — 120 times a second —
+                // to produce fifteen drawn frames. Seven sets in every eight were overwritten
+                // before anything read them.
+                //
+                // The cost of deciding a frame early is that motion beginning *this* frame is
+                // noticed one vsync late. That is 8ms, and it never applies to the case that
+                // matters: a finger sets `pointerDown` from the touch handler before the frame
+                // runs, so a hand on the glass is exact rather than a frame behind. See
+                // RoomCadence.wasMoving.
                 cadence.beginFrame()
+                val divisor = cadence.divisorFor(
+                    // The disc turns under its own power only while an album is actually
+                    // playing and no finger is on it — the same three conditions the spin
+                    // itself is written under, further down.
+                    discTurning = frame.selected != null &&
+                        frame.isPlaying &&
+                        !scratch.active &&
+                        !reduceMotion,
+                    ambientMotion = !reduceMotion
+                )
+                val draw = cadence.shouldDraw(divisor)
 
                 // Walk the browse camera toward wherever the pinch left it. Every frame,
                 // whether or not anything is pinching � it is a no-op once it has arrived,
@@ -1748,9 +1772,11 @@ fun WallSceneScreen(
                 // Depth of field exists only while a case is open — on the flat wall it
                 // erased the spines outright. One write per crossing, not per frame.
                 //
-                // Ambient occlusion rides the same crossing, for a different reason: it is not
-                // invisible on the wall, it is merely not worth 29% of the room's CPU there.
-                // See RoomAtmosphere.setAmbientOcclusion for the measurement.
+                // Ambient occlusion rides the same crossing, but as a change of *quality* rather
+                // than a switch: it stays on while browsing, cheap and broad, and takes the
+                // full configuration only up close where the 1mm seam is resolvable. Switching
+                // it off entirely on the wall was tried and reverted — see
+                // RoomAtmosphere.setAmbientOcclusion.
                 val wantsDof = frame.selected != null
                 if (wantsDof != sequence.dofEnabled) {
                     sequence.dofEnabled = wantsDof
@@ -1892,6 +1918,37 @@ fun WallSceneScreen(
                             return@forEach
                         }
 
+                        // **State first, and unconditionally.** Carry any throw the user gave
+                        // this case, shedding it over about a second. Skipped while the finger
+                        // is down, because onMove is already writing manualTurn directly.
+                        //
+                        // This runs on every vsync whether or not the frame is drawn, and that
+                        // is load-bearing rather than tidy: it integrates `dt`, so running it
+                        // only on drawn frames would make a fling shed its spin at a rate that
+                        // depended on the cadence — the same throw travelling further at 15fps
+                        // than at 120. Everything in the driver that advances a clock or a
+                        // spring is unconditional for this reason; only the *writes* below are
+                        // conditional. See RoomCadence.
+                        if (!reduceMotion && slot !== caseDrag.slot && slot.spinVelocity != 0f) {
+                            // A case still carrying a throw. Shedding over about a second,
+                            // and fast enough at the start to need every frame of it.
+                            cadence.moving = true
+                            slot.manualTurn += slot.spinVelocity * dt
+                            slot.spinVelocity *= ShelfHover.SPIN_RETAIN_PER_S.pow(dt)
+                            if (abs(slot.spinVelocity) < 1f) slot.spinVelocity = 0f
+                        }
+
+                        // The transforms, which only matter on a vsync that will be drawn.
+                        //
+                        // Two SceneView writes per case, each a matrix compose and a JNI call
+                        // into Filament's TransformManager. At the idle wall this loop ran 120
+                        // times a second to produce 15 drawn frames: seven of every eight sets
+                        // were overwritten before anything read them. Nothing here is a
+                        // function of anything but `t` and the slot's own state, both of which
+                        // are current whenever this runs, so a skipped write loses nothing —
+                        // the next drawn frame computes the same value from the same clock.
+                        if (!draw) return@forEach
+
                         if (reduceMotion) {
                             // Seated on the shelf, square on, exactly as before.
                             root.position = Position(slot.baseX, slot.baseY, slot.baseZ)
@@ -1902,17 +1959,6 @@ fun WallSceneScreen(
                                 slot.baseY + ShelfHover.lift(t, slot.phase),
                                 slot.baseZ
                             )
-                            // Carry any throw the user gave this case, shedding it over
-                            // about a second. Skipped while the finger is down, because
-                            // onMove is already writing manualTurn directly.
-                            if (slot !== caseDrag.slot && slot.spinVelocity != 0f) {
-                                // A case still carrying a throw. Shedding over about a second,
-                                // and fast enough at the start to need every frame of it.
-                                cadence.moving = true
-                                slot.manualTurn += slot.spinVelocity * dt
-                                slot.spinVelocity *= ShelfHover.SPIN_RETAIN_PER_S.pow(dt)
-                                if (abs(slot.spinVelocity) < 1f) slot.spinVelocity = 0f
-                            }
                             // At any spin setting a case still bobs and leans — that is the
                             // room breathing. What the slider scales is the slow rotation,
                             // which is the part that catches the eye from across the screen;
@@ -2033,17 +2079,13 @@ fun WallSceneScreen(
                 // because they are Compose `Animatable`s and already know: `isRunning` is
                 // true from `animateTo` until the spring settles, which is precisely the
                 // window in which the magnet is carrying the wall somewhere.
+                // The springs are asked here rather than tracked through the pass above
+                // because they are Compose `Animatable`s and already know: `isRunning` is
+                // true from `animateTo` until the spring settles, which is precisely the
+                // window in which the magnet is carrying the wall somewhere. Raised for the
+                // *next* frame's decision now that the decision is taken at the top.
                 if (panX.isRunning || panY.isRunning) cadence.moving = true
-                val divisor = cadence.divisorFor(
-                    // The disc turns under its own power only while an album is actually
-                    // playing and no finger is on it — the same three conditions the spin
-                    // itself is written under, a few lines up.
-                    discTurning = frame.selected != null &&
-                        frame.isPlaying &&
-                        !scratch.active &&
-                        !reduceMotion,
-                    ambientMotion = !reduceMotion
-                )
+
                 // Keep Filament's frame budget in step with the cadence. `interval` means
                 // exactly what the divisor means — "the app renders every N display frames" —
                 // so publishing it is what lets the dynamic resolution scaler tell a skipped
@@ -2055,7 +2097,6 @@ fun WallSceneScreen(
                     }
                 }
 
-                val draw = cadence.shouldDraw(divisor)
                 if (!draw) renderer.skipNextFrames(1)
                 diagnostics.onFrameDrawn(draw)
 

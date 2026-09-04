@@ -158,6 +158,15 @@ object RoomAtmosphere {
     private const val AO_BIAS = 0.0005f
 
     /**
+     * AO render-target scale while browsing.
+     *
+     * Half resolution, which is Filament's own default and what every tier below HIGH already
+     * uses. On the wall a case is a few hundred pixels tall and canted away from the lens, so
+     * this costs nothing visible and is a quarter of the fragment work.
+     */
+    private const val AO_RESOLUTION_BROWSING = 0.5f
+
+    /**
      * Screen-space cone tracing — directional occlusion from the lamp's own direction.
      *
      * Unlike the AO above, which darkens creases from every direction equally, this traces
@@ -344,8 +353,9 @@ object RoomAtmosphere {
             maxScale = tier.maxRenderScale
         }
 
-        // Off to begin with, and switched on only while a case is open — the same treatment,
-        // and for the same reason, as the depth of field. See [setAmbientOcclusion].
+        // On from the first frame, at browsing quality — the full configuration arrives when a
+        // case does. It used to be off entirely here; see [setAmbientOcclusion] for why that was
+        // reverted.
         setAmbientOcclusion(view, false, tier)
 
         view.screenSpaceReflectionsOptions = View.ScreenSpaceReflectionsOptions().apply {
@@ -410,13 +420,14 @@ object RoomAtmosphere {
      * | field | room | `RenderQuality.Default` |
      * |---|---|---|
      * | `bloomOptions.strength` | [BLOOM_STRENGTH] | 0.1 |
-     * | `ambientOcclusionOptions.enabled` | `false` while browsing | `true` |
+     * | `ambientOcclusionOptions` quality | browsing preset | full |
      *
-     * The second is the expensive one. [setAmbientOcclusion]'s measurement — 309 jiffies against
-     * 218 — is the whole argument for keeping contact shading off the flat wall, and the preset
-     * quietly switched it back on for every session from launch until the first case was closed,
-     * which is the first moment the frame driver's crossing writes the field at all. The first is
-     * merely a lie: the underlight has been glowing at 0.1 while this file said 0.28.
+     * The second is the expensive one. AO is no longer switched off while browsing — see
+     * [setAmbientOcclusion] — but it still runs there at a deliberately cheaper setting, and the
+     * preset quietly replaces that with the full configuration for every session from launch
+     * until the first case is closed, which is the first moment the frame driver's crossing
+     * writes the field at all. The first is merely a lie: the underlight has been glowing at 0.1
+     * while this file said 0.28.
      *
      * **Tested rather than counted.** The obvious fix is to re-apply for the first frame or three
      * and trust that the effect has landed by then. That is an ordering assumption, and an
@@ -469,30 +480,43 @@ object RoomAtmosphere {
      * case and it flies to within a fifth of a metre of the lens, filling the frame, and every
      * one of those arguments reverses.
      *
-     * So it follows the depth of field exactly: off while browsing, on the moment a case comes
-     * out. Written once per crossing rather than per frame — this reallocates render targets.
+     * **This used to switch AO off entirely while browsing, and that went too far.** Read the
+     * argument above again: every clause of it indicts the *expensive configuration* — full
+     * resolution, HIGH upsampling, bent normals, for a seam that is not resolvable at wall
+     * distance. None of it indicts occlusion itself. What it actually bought was 91 jiffies;
+     * what it cost was the shading that makes a case look like it is *resting* in its slot
+     * rather than floating in front of the wall, which is most of what makes the room read as
+     * a room. The owner noticed it was gone, which settles whether it was doing anything.
      *
-     * Browsing is also where the phone spends most of its life, which is what makes this worth
-     * more than the number alone suggests.
+     * So AO is now always on, and the *quality* rides the crossing rather than the switch:
+     * cheap and broad while browsing, the full configuration the moment a case flies to within
+     * a fifth of a metre of the lens and the seam becomes something you can actually see.
+     *
+     * Written once per crossing rather than per frame — this reallocates render targets.
+     *
+     * @param close a case is open and near the lens, so the fine detail is worth paying for.
      */
-    fun setAmbientOcclusion(view: View, enabled: Boolean, tier: QualityTier) {
+    fun setAmbientOcclusion(view: View, close: Boolean, tier: QualityTier) {
+        val fine = close && tier == QualityTier.HIGH
         view.ambientOcclusionOptions = View.AmbientOcclusionOptions().apply {
-            this.enabled = enabled && tier.ambientOcclusion
+            this.enabled = tier.ambientOcclusion
             radius = AO_RADIUS
             intensity = AO_INTENSITY
             power = AO_POWER
             bias = AO_BIAS
-            quality = if (tier == QualityTier.HIGH) View.QualityLevel.HIGH else View.QualityLevel.MEDIUM
-            // Full-resolution AO at HIGH. At the half resolution Filament defaults to, the
-            // occlusion line where the lid meets the tray — a 1mm seam — lands between
-            // samples and disappears. That is a real loss, and it is still the right trade
-            // below HIGH: the shading survives as shading, just without the crisp seam.
-            resolution = tier.aoResolution
-            upsampling = if (tier == QualityTier.HIGH) View.QualityLevel.HIGH else View.QualityLevel.LOW
+            quality = if (fine) View.QualityLevel.HIGH else View.QualityLevel.MEDIUM
+            // Full-resolution AO only up close. At the half resolution Filament defaults to,
+            // the occlusion line where the lid meets the tray — a 1mm seam — lands between
+            // samples and disappears. That is a real loss with the case in your hand and no
+            // loss at all on the wall, where the seam is under a pixel: the shading survives
+            // as shading, which is the part that grounds the case.
+            resolution = if (fine) tier.aoResolution else AO_RESOLUTION_BROWSING
+            upsampling = if (fine) View.QualityLevel.HIGH else View.QualityLevel.LOW
             lowPassFilter = View.QualityLevel.MEDIUM
             // Feeds occluded directions back into the indirect light, so the IBL arrives
-            // from where it can actually reach rather than uniformly.
-            bentNormals = tier == QualityTier.HIGH
+            // from where it can actually reach rather than uniformly. The most expensive
+            // single flag here, and the one whose effect is least visible at wall distance.
+            bentNormals = fine
 
             ssctEnabled = tier.ssct
             ssctIntensity = SSCT_INTENSITY
