@@ -61,6 +61,30 @@ export DEBIAN_FRONTEND=noninteractive
 apt-get update -qq
 apt-get install -y -qq curl ca-certificates ffmpeg python3 jq >/dev/null
 
+say "Basic hardening"
+# A rented server has a public IP from the minute it exists, and the internet starts
+# knocking on port 22 within the hour. Neither of these is optional on a box that is
+# going to sit there for years.
+#
+# Unattended upgrades: security patches applied without anyone remembering to. The
+# alternative is a machine that is fully patched on the day it was built and never again.
+apt-get install -y -qq unattended-upgrades >/dev/null
+cat > /etc/apt/apt.conf.d/20auto-upgrades <<'EOF'
+APT::Periodic::Update-Package-Lists "1";
+APT::Periodic::Unattended-Upgrade "1";
+EOF
+
+# fail2ban: bans an address after repeated failed logins. Does not replace key-based
+# auth, but it turns the constant background brute-forcing into a non-event.
+apt-get install -y -qq fail2ban >/dev/null
+cat > /etc/fail2ban/jail.local <<'EOF'
+[sshd]
+enabled = true
+maxretry = 5
+bantime = 1h
+EOF
+systemctl enable --now fail2ban >/dev/null 2>&1 || true
+
 # ---------------------------------------------------------------------------- Navidrome
 
 say "Installing Navidrome"
@@ -263,15 +287,16 @@ cat <<EOF
   Done. Three things left, and only you can do them.
 ============================================================
 
-1. OPEN THE CLOUD FIREWALL TOO.
-   The host firewall is set. Your provider has a second one the machine
-   cannot touch:
+1. CHECK WHETHER YOUR PROVIDER HAS A SECOND FIREWALL.
+   The one on this machine is now set. Some providers put another in
+   their web console that the machine cannot reach:
      Oracle : Networking > VCN > Subnet > Security List > Add Ingress Rule
      AWS    : the instance's Security Group
      GCP    : VPC network > Firewall
-$(if [[ $USE_TLS -eq 1 ]]; then echo "   Open TCP 80 and 443 from 0.0.0.0/0."; \
-   else echo "   Open TCP $NAVIDROME_PORT and $DROP_PORT from 0.0.0.0/0."; fi)
-   If the addresses below time out, this is why.
+     netcup, Hetzner dedicated, Contabo : nothing to do, skip this.
+$(if [[ $USE_TLS -eq 1 ]]; then echo "   If yours has one, open TCP 80 and 443 from 0.0.0.0/0."; \
+   else echo "   If yours has one, open TCP $NAVIDROME_PORT and $DROP_PORT."; fi)
+   If the addresses below time out, this is the first thing to check.
 $(if [[ $USE_TLS -eq 1 ]]; then cat <<DNS
 
    DNS: point $DOMAIN and $DROP_SUBDOMAIN.$DOMAIN at this machine.

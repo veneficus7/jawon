@@ -31,15 +31,36 @@ upload, and it is the reason this section is first.
 
 ## 1. Somewhere to run it
 
-**Oracle Cloud Always Free** is the one worth using: 2 ARM cores, 12 GB RAM, **200 GB of
-storage** and 10 TB/month of traffic, free with no expiry. That is roughly 2,000 albums
-as MP3 or 400 as FLAC.
+**Storage is what decides this**, and per-GB prices differ by nearly twenty times between
+options at the same provider. A music library is mostly disk and very little CPU, which
+is the opposite of what most VPS plans are priced for.
 
-A laptop works for testing and is the wrong answer for anything else — it is off most of
-the time, and the whole point here is a library that is there when someone opens the app.
+**Recommended: netcup RS 1000 G12** — €10.74/month for 4 dedicated EPYC cores, 8 GB of
+DDR5 ECC RAM and **256 GB of NVMe**. Dedicated cores rather than shared matters more than
+the number suggests: shared-vCPU budget hosts oversell, and the symptom is CPU steal that
+turns a library scan into a crawl at the wrong moment. 256 GB is roughly 2,800 albums as
+MP3 or 730 as FLAC. One-month terms and a 30-day refund, so the downside is capped.
 
-Anything else with a public address and a disk is equally fine: a VPS, a NAS, a
-Raspberry Pi on a home connection with a tunnel.
+If the library outgrows it, add a **Hetzner Storage Box** (1 TB, €3.20/month) and mount it
+at the music folder. That is €0.0032/GB against €0.0572/GB for a Hetzner Cloud volume —
+the same company, eighteen times the price, which is why no plan here puts music on block
+storage.
+
+**Better, if you own a machine that can stay on.** A box at home with a Cloudflare Tunnel
+costs about $3/month in electricity, uses a disk you already have, and — on a symmetric
+connection — will out-serve a budget VPS. Korean residential fibre averages 191 Mbit/s
+upload, which is roughly 190 simultaneous lossless streams. Run `server_setup.sh --no-tls`
+and put `cloudflared` in front. The catch is that it is your machine: it goes down when
+you unplug it.
+
+**Ruled out: Oracle Always Free.** It reclaims free instances whose CPU sits below 20% for
+seven days, and a personal music server is idle almost all the time — exactly the profile
+that gets deleted. Its ARM capacity also frequently refuses to provision at all.
+
+**Ruled out: Telegram as storage.** Its Bot Developer ToS names cloud storage as the
+prohibited example, downloads cap at 20 MB, and — the practical objection — it offers no
+HTTP range requests, so every project doing this runs a middleware server to translate
+them. You end up renting a server anyway and adding a layer that can be switched off.
 
 ## 2. One command
 
