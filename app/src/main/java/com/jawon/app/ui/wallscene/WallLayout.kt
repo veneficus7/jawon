@@ -79,6 +79,29 @@ object WallDimens {
     const val WALL_MARGIN = 0.35f
 
     /**
+     * How far the floor sits below the lowest the camera can look — see [WallLayout.floorY].
+     *
+     * Under the 0.167 half-frame height the camera has at its closest zoom, so the floor is in
+     * shot whenever the user reaches the bottom of the library at any zoom. Going much larger
+     * would put it off screen at close zoom; much smaller and the bottom shelf would appear to
+     * rest on the ground, which loses the plinth.
+     */
+    const val FLOOR_DROP = 0.115f
+
+    /**
+     * How far the floor reaches out from the wall, toward and past the camera.
+     *
+     * Past [CAMERA_Z] deliberately, and past [WallSceneScreen]'s furthest zoom too. A floor that
+     * stopped short of the lens would show its own front edge as a hard line across the bottom
+     * of the screen with blackness nearer than the ground — a step, not a floor. Extending under
+     * the camera costs two more triangles and removes the edge entirely.
+     */
+    const val FLOOR_REACH = 1.62f
+
+    /** Thin, like the wall backing. Nothing ever sees its underside. */
+    const val FLOOR_T = 0.01f
+
+    /**
      * Filament derives vertical FOV from focal length against a 35mm frame:
      * `tan(fovY/2) = 12 / focalMm`. 33mm reproduces the prototype's 40° vertical FOV.
      * Focal length (rather than [CameraNode.setProjection]) is the stable knob — SceneView
@@ -264,6 +287,27 @@ data class WallLayout(
         val dy = (it.y - targetY) / WallDimens.ROW_PITCH
         dx * dx + dy * dy
     }
+
+    /**
+     * Where the room's floor sits, derived from the library rather than fixed.
+     *
+     * **There is no fixed bottom to this room, which is why this is computed.** The wall grows
+     * downward as shelves are added — `rowCenterY` spreads the rows around y=0 — so a floor at a
+     * constant height would be buried inside the shelving for a large library and far below the
+     * frame for a small one. Deriving it from the lowest row is the same discipline the pan
+     * bounds already follow (ENGINEERING.md: "Shelf bounds derived from content, never unbounded").
+     *
+     * Dropped below [minPanY] rather than below the last board, and that choice is what makes it
+     * visible at all: `minPanY` is the lowest the camera can be centred, so anything within half
+     * a frame height of it is on screen when the user pans to the bottom of the library. The
+     * drop is smaller than the tightest half-frame the camera can have — `ZOOM_NEAR * TAN_HALF_FOV`
+     * is about 0.167 — so the floor is in frame at every zoom level, not just when pulled back.
+     *
+     * The gap it leaves under the bottom shelf reads as the plinth a real shelving unit stands
+     * on, which is the other half of the point: a shelf that meets the floor at its own last
+     * board looks like a wall, and one standing clear of it looks like furniture.
+     */
+    val floorY: Float get() = minPanY - WallDimens.FLOOR_DROP
 
     companion object {
         /**

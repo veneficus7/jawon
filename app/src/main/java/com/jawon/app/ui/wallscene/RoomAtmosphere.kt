@@ -45,6 +45,24 @@ object RoomAtmosphere {
     private const val FOG_MAX_OPACITY = 0.92f
 
     /**
+     * How far above the floor slab the densest fog sits.
+     *
+     * Anchoring it at the slab exactly puts the thickest fog inside the geometry, where it is
+     * invisible; a little above and the gradient starts in open air where it can be seen.
+     */
+    private const val FOG_FLOOR_LIFT = 0.02f
+
+    /**
+     * How quickly the ground fog thins going up, per metre.
+     *
+     * High, because the room is small - a case is 142mm, so the whole visible space is a couple
+     * of case heights. A falloff tuned for an outdoor scene would leave the fog either uniform
+     * across the frame or invisible; this puts the transition inside about one shelf of height,
+     * which is where it reads as a layer rather than as a haze.
+     */
+    private const val FOG_HEIGHT_FALLOFF = 7.5f
+
+    /**
      * Bloom. DESIGN.md: "subtle, on the lamp and the disc's specular highlight only. Not a
      * global haze." Hence the threshold — without it every lit surface glows and the room
      * turns to soup. M9 part 1's IBL puts the lamp above 1.0, so there is a real highlight
@@ -280,9 +298,17 @@ object RoomAtmosphere {
             density = FOG_DENSITY
             maximumOpacity = FOG_MAX_OPACITY
             color = RoomLighting.VOID_COLOR.copyOf()
-            // Height fog would need a floor to pool on; this room has none.
+            // Height is set separately, once the layout knows where the floor is - see
+            // [setFogFloor]. Left flat here so the very first frame, which is composed before
+            // any library has loaded, is not fogged from an arbitrary height.
             heightFalloff = 0f
         }
+
+        // Set here as well as in `RoomGrading.bind`, so the very first frame is dithered even
+        // if the grade has not been bound yet. See RoomGrade.DITHERING for why this room needs
+        // it more than most: almost all of its tonal range sits in the bottom few percent,
+        // where 8-bit output has the fewest codes to spend.
+        view.dithering = RoomGrade.DITHERING
 
         // **The underlights, and the most expensive thing in the room per unit of look.**
         //
@@ -437,6 +463,50 @@ object RoomAtmosphere {
      * read is free: Filament's getter hands back the Java struct it already holds.
      */
     fun isApplied(view: View): Boolean = view.bloomOptions.strength == BLOOM_STRENGTH
+
+    /**
+     * Lets the fog pool on the floor, now that there is a floor.
+     *
+     * **This is the other half of adding one.** The fog block above used to carry the line
+     * *"Height fog would need a floor to pool on; this room has none"* - a correct observation
+     * and, for as long as it was true, the reason the room's only depth cue was distance. Fog
+     * that thickens toward the ground is what separates a dark room from a dark void: it gives
+     * the lower half of the frame a gradient the eye reads as air, and it hides the floor's far
+     * edge without a hard line.
+     *
+     * Called when the layout changes rather than per frame, because [WallLayout.floorY] moves
+     * with the library - a shelf added or removed changes where the bottom of the room is.
+     *
+     * Filament measures `height` in world space and `heightFalloff` as how quickly density
+     * falls off going up from it, so the fog is anchored slightly *above* the floor slab: at the
+     * slab itself the densest fog would sit inside the geometry where none of it is visible.
+     */
+    fun setFogFloor(view: View, floorY: Float) {
+        if (!floorY.isFinite()) return
+        view.fogOptions = View.FogOptions().apply {
+            enabled = true
+            distance = FOG_START
+            density = FOG_DENSITY
+            maximumOpacity = FOG_MAX_OPACITY
+            color = RoomLighting.VOID_COLOR.copyOf()
+            height = floorY + FOG_FLOOR_LIFT
+            heightFalloff = FOG_HEIGHT_FALLOFF
+        }
+        view.dithering = RoomGrade.DITHERING
+    }
+
+    /**
+     * The same question, including the grade.
+     *
+     * [isApplied] checks the bloom strength because that is a field [apply] writes and nothing
+     * else does. The grade is owned by a [RoomGrading] rather than by this file, so it needs the
+     * holder to answer for it — and it has to be part of the per-frame check for exactly the
+     * reason bloom is: SceneView writes its own `RenderQuality` preset over this View from a
+     * `LaunchedEffect`, and a preset that reset the colour grading would leave the room running
+     * ungraded with nothing to notice it.
+     */
+    fun isApplied(view: View, grading: RoomGrading): Boolean =
+        isApplied(view) && grading.isBound(view)
 
     /**
      * Depth of field, on only while a case is open.

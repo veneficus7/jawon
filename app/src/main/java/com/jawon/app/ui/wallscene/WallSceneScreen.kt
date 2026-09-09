@@ -106,6 +106,8 @@ import com.jawon.app.ui.wallscene.WallDimens.FAR_PLANE
 import com.jawon.app.ui.wallscene.WallDimens.NEAR_PLANE
 import com.jawon.app.ui.wallscene.WallDimens.PLATE_LIFT
 import com.jawon.app.ui.wallscene.WallDimens.PLATE_W
+import com.jawon.app.ui.wallscene.WallDimens.FLOOR_REACH
+import com.jawon.app.ui.wallscene.WallDimens.FLOOR_T
 import com.jawon.app.ui.wallscene.WallDimens.ROW_PITCH
 import com.jawon.app.ui.wallscene.WallDimens.SLOT_PITCH
 import com.jawon.app.ui.wallscene.WallDimens.TAN_HALF_FOV
@@ -134,6 +136,7 @@ import io.github.sceneview.rememberRenderer
 import io.github.sceneview.rememberView
 import io.github.sceneview.rememberViewNodeManager
 import dev.romainguy.kotlin.math.Float4
+import io.github.sceneview.texture.ImageTexture
 import io.github.sceneview.node.LightNode
 import io.github.sceneview.node.Node as SceneNode
 import io.github.sceneview.safeDestroyGeometry
@@ -202,8 +205,8 @@ private const val FLING_CLAIM_MS = 120L
  * [WallDimens.CAMERA_Z] sits between them and is where the camera rests by default, and where
  * the open sequence returns it to.
  */
-private const val ZOOM_NEAR = 0.46f
-private const val ZOOM_FAR = 1.30f
+internal const val ZOOM_NEAR = 0.46f
+internal const val ZOOM_FAR = 1.30f
 
 /**
  * How fast a pinch travels, as a multiplier on the raw scale factor's departure from 1.
@@ -823,9 +826,32 @@ fun WallSceneScreen(
         // rather than composition state, and `apply` is idempotent — an abandoned composition
         // leaves the same settings a committed one would. Returning the tier says what the
         // remembered value actually is instead of silencing the rule with a discard.
+        // Owns the room's colour grading for the life of this scene — see [RoomGrading] for why
+        // it is a holder rather than a value, and why the old grade is released only after the
+        // new one is bound.
+        val grading = remember { RoomGrading() }
+
         remember(filamentView, tier) {
             RoomAtmosphere.apply(filamentView, tier)
             tier
+        }
+
+        // Keyed on the scheme as well, because the grade is part of the mode: Vesper is graded
+        // warm and Officina is not, and a single grade would break three of the four. Applied
+        // during composition for the same reason the atmosphere above is — a LaunchedEffect
+        // lands after the first frames are already on screen, and an ungraded flash is exactly
+        // the flat brown wall that note is about.
+        remember(filamentView, engine, roomScheme) {
+            grading.bind(filamentView, engine, roomScheme)
+            roomScheme
+        }
+
+        // The ground fog follows the floor, and the floor follows the library — a shelf added or
+        // removed moves the bottom of the room. Keyed on the value rather than on the layout, so
+        // a pan or a play count changing does not rebuild the fog struct.
+        remember(filamentView, layout.floorY) {
+            RoomAtmosphere.setFogFloor(filamentView, layout.floorY)
+            layout.floorY
         }
 
         // DESIGN.md §4: "Respect reduced-motion settings: drop ambient rotation, parallax,
@@ -1792,8 +1818,9 @@ fun WallSceneScreen(
                 // being fixed *is* an ordering assumption and there is no reason to replace it
                 // with a shorter one. Costs a float compare per frame and self-heals if
                 // SceneView ever writes the preset again.
-                if (!RoomAtmosphere.isApplied(filamentView)) {
+                if (!RoomAtmosphere.isApplied(filamentView, grading)) {
                     RoomAtmosphere.apply(filamentView, tier)
+                    grading.bind(filamentView, engine, roomScheme)
                     // `apply` leaves depth of field and contact shading in their browsing
                     // state. Clearing the latch makes the crossing below re-decide rather than
                     // assuming no case can be open at the moment this fires.
@@ -2262,17 +2289,42 @@ fun WallSceneScreen(
                     // changing it rebuilds the panel and its material together — the same
                     // discipline the size already follows, and for the same reason: a
                     // CubeNode destroys the instance it is handed.
-                    val backing = remember(roomScheme) {
-                        materialLoader.createColorInstance(
-                            roomScheme.wall, metallic = 0f, roughness = 0.95f
+                    val panelW = (layout.maxPanX - layout.minPanX) + halfW * 2f
+                    val panelH = (layout.maxPanY - layout.minPanY) + halfH * 2f
+
+                    // **The wall has a surface now, not just a colour.**
+                    //
+                    // This was `createColorInstance` - one constant albedo over the largest
+                    // object on screen, which no amount of lighting or post-processing can
+                    // articulate. `createTextureInstance` binds SceneView's stock
+                    // `opaque_textured`, whose parameter set really is metallic / roughness /
+                    // reflectance plus a `texture` sampler - read out of the shipped .filamat's
+                    // MAT_UIB chunk rather than assumed - so this costs no hand-written material
+                    // and does not touch the locked decision that keeps dust.mat the only one.
+                    //
+                    // The aspect ratio goes in because a CubeNode's UVs are 0..1 and the stock
+                    // material has no UV scale: the texture stretches over the panel exactly
+                    // once, so the mottle cell counts have to be pre-distorted to arrive square
+                    // in world space. See RoomSurface.
+                    //
+                    // Remembered in the same scope as the node, for the reason the note above
+                    // gives: a CubeNode destroys the MaterialInstance it is handed.
+                    val backing = remember(roomScheme, panelW, panelH) {
+                        val texture = ImageTexture.Builder()
+                            .bitmap(RoomSurface.wallBitmap(roomScheme.wall, panelW / panelH))
+                            .build(engine)
+                        materialLoader.createTextureInstance(
+                            texture,
+                            metallic = 0f,
+                            // Reflectance stays very low and roughness very high: this is painted
+                            // board, and a wall that caught the lamp would pull the eye off the
+                            // records, which are the only things in the room that should shine.
+                            roughness = 0.95f,
+                            reflectance = 0.04f
                         )
                     }
                     CubeNode(
-                        size = Size(
-                            (layout.maxPanX - layout.minPanX) + halfW * 2f,
-                            (layout.maxPanY - layout.minPanY) + halfH * 2f,
-                            0.01f
-                        ),
+                        size = Size(panelW, panelH, 0.01f),
                         position = Position(
                             (layout.maxPanX + layout.minPanX) / 2f,
                             (layout.maxPanY + layout.minPanY) / 2f,
@@ -2281,7 +2333,56 @@ fun WallSceneScreen(
                         materialInstance = backing,
                         apply = {
                             isTouchable = false
-                            // Takes shadows, casts none � there is nothing behind it.
+                            // Takes shadows, casts none - there is nothing behind it.
+                            isShadowReceiver = true
+                            isShadowCaster = false
+                        }
+                    )
+
+                    // **A floor, which this room has never had.**
+                    //
+                    // RoomAtmosphere's own fog comment said so outright: "Height fog would need a
+                    // floor to pool on; this room has none." Until now the shelving stood in
+                    // blackness - nothing cast a shadow downward, there was no surface for the
+                    // lamp to graze, and the room had no bottom. Three of the reasons it read as
+                    // a backdrop rather than a place.
+                    //
+                    // Positioned from the layout rather than fixed: see WallLayout.floorY. Built
+                    // in the same rebuild scope as the wall so its material shares that
+                    // lifetime, and from the wall's own colour darkened, so it belongs to
+                    // whichever of the four modes is showing without being tuned four times.
+                    val floorDepth = FLOOR_REACH - WALL_Z
+                    val floorSurface = remember(roomScheme, panelW, floorDepth) {
+                        val texture = ImageTexture.Builder()
+                            .bitmap(
+                                RoomSurface.floorBitmap(roomScheme.wall, panelW / floorDepth)
+                            )
+                            .build(engine)
+                        materialLoader.createTextureInstance(
+                            texture,
+                            metallic = 0f,
+                            // Smoother and a touch more reflective than the wall, deliberately.
+                            // A floor seen at a grazing angle is where one lamp shows as a long
+                            // soft sheen, and that sheen is most of what tells the eye the
+                            // ground is there at all.
+                            roughness = 0.72f,
+                            reflectance = 0.12f
+                        )
+                    }
+                    CubeNode(
+                        size = Size(panelW, FLOOR_T, floorDepth),
+                        position = Position(
+                            (layout.maxPanX + layout.minPanX) / 2f,
+                            layout.floorY,
+                            // Centred between the wall and the floor's far reach, so the slab
+                            // runs from behind the shelving to past the camera.
+                            (WALL_Z + FLOOR_REACH) / 2f
+                        ),
+                        materialInstance = floorSurface,
+                        apply = {
+                            isTouchable = false
+                            // Receives, never casts. There is nothing below a floor to catch its
+                            // shadow, and casting would spend shadow-map budget for no return.
                             isShadowReceiver = true
                             isShadowCaster = false
                         }
