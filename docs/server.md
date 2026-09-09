@@ -41,84 +41,117 @@ the time, and the whole point here is a library that is there when someone opens
 Anything else with a public address and a disk is equally fine: a VPS, a NAS, a
 Raspberry Pi on a home connection with a tunnel.
 
-## 2. Navidrome
+## 2. One command
 
-Navidrome is the server. It reads a folder of music, exposes the Subsonic API that Jawon
-speaks, and handles scanning, cover art and transcoding.
+Copy `tools/` onto the new machine and run:
 
-Install it however that platform prefers — a container or the single binary from its own
-releases. Point `MusicFolder` at a directory you have created for the purpose, e.g.
-`/music`.
+```bash
+sudo bash server_setup.sh --domain music.example.net
+```
 
-Two settings worth getting right at the start:
+That installs **Navidrome** (the music server — it watches a folder and speaks the API
+Jawon uses), **album_drop** (uploads, below) and **Caddy** in front of both for automatic
+HTTPS, wires all three into systemd so they come back after a reboot, and opens the host
+firewall. It picks the right binary for ARM or x86, which matters because the Oracle free
+tier is ARM and most guides assume otherwise.
 
-- **Put it behind HTTPS.** Jawon works over plain `http` — that is verified, and it is
-  what a home LAN usually looks like — but an invite link travels through chat apps, and
-  a password crossing the open internet unencrypted is a bad trade for saving an
-  afternoon. A reverse proxy with a free certificate is the usual route.
-- **Turn the scanner's schedule down** if you upload often, or rely on `album_drop`
-  below to trigger a scan when it finishes.
+Re-running it upgrades in place and keeps your existing upload token, so it is also how
+you update later.
 
-## 3. A guest account
+For a server that never leaves your own network, `--no-tls` skips Caddy and binds the
+services directly. **Do not use it for anything reachable from the internet**: the invite
+link carries a password, and over plain `http` that password crosses the wire in the
+clear on every request.
 
-**Make a second, non-admin user.** Call it `guest`, give it a long random password, and
-never use it for anything else.
+### The one thing the script cannot do
 
-This is the account that goes into the invite, and an invite is a shared secret handed to
-strangers — anyone who has the link, or the APK it was built into, can read the password
-out of it in seconds. That is a property of the situation, not of the encoding, and it is
-why the account must be one whose compromise costs nothing.
+**Your cloud provider has a second firewall**, in its web console, that nothing running on
+the machine can reach. The script opens the one on the host; you have to open the other:
 
-**Revoking access means changing that password** and publishing a new invite. Every old
-link stops working at once. There is no per-person revocation, which is another reason
-the account should never be an admin.
+- **Oracle** — Networking → VCN → Subnet → Security List → Add Ingress Rule
+- **AWS** — the instance's Security Group
+- **GCP** — VPC network → Firewall
+
+Open TCP **80** and **443** from `0.0.0.0/0` (or the two service ports if you used
+`--no-tls`). If the address times out after a clean install, this is why — it is the most
+common failure by a wide margin.
+
+With `--domain`, also point that name and `drop.<name>` at the machine. Caddy fetches
+certificates by itself once DNS resolves.
+
+## 3. Two accounts, and only one of them gets shared
+
+Open the address the script prints. **The first visit creates the admin account** —
+Navidrome does this through its own web UI and nothing can script around it.
+
+Then, in *Settings → Users*, add a **second, non-admin user**. Call it `guest`, give it a
+long random password, and never use it for anything else.
+
+That is the account that goes into the invite. An invite is a shared secret handed to
+strangers: anyone with the link, or with the APK it was baked into, reads the password
+back out in seconds. That is a property of the situation and not of the encoding, which
+is why the account must be one whose compromise costs nothing.
+
+**Revoking access means changing that password and issuing a new link.** Every old link
+stops working at once. There is no per-person revocation — another reason it must never
+be the admin account.
 
 ## 4. Letting people in without typing anything
 
-Two routes, and they compose.
+Make the link:
 
-**A link.** In Jawon: Settings → *A music server of your own* → **SHARE A LINK**. That
-produces a single `jawon://…` string carrying the address and the sign-in. Whoever
-receives it pastes it into the *PASTE A LINK* field and is listening — no address, no
-username, no password to get wrong. The app tests the connection as soon as it is pasted,
-so a bad link says so immediately.
+```bash
+python3 tools/make_invite.py https://music.example.net guest 'the-guest-password'
+```
+
+**A link.** Send that string to someone. They paste it into Jawon under *PASTE A LINK*
+and the address, username and password fill themselves in and test immediately — nothing
+to mistype. (In the app, **SHARE A LINK** produces the same thing for a server already
+set up.)
 
 **A build that already knows.** To hand someone an APK that simply has a library when it
-opens, bake the invite in at build time:
+opens:
 
 ```bash
 ./gradlew assembleRelease -Pjawon.serverInvite=jawon://eyJ1Ijoi...
 ```
 
-With that set, a fresh install starts already pointed at the server and the user never
-sees a settings screen. `FORGET` still works and still sticks — the first time a user
-touches the setting, their answer wins permanently, including when their answer is
-"none". See `AppPreferences.readServer`.
+A fresh install starts already pointed at the server and the user never sees a settings
+screen. `FORGET` still works and still sticks — the first time a user touches the
+setting, their answer wins permanently, including when their answer is "none". See
+`AppPreferences.readServer`.
 
-Left unset — which is the default, and the default for every build that ships — the app
-behaves exactly as it always has: no server, nothing sent anywhere.
+Left unset — the default, and the default for every build that ships — the app behaves
+exactly as it always has: no server, nothing sent anywhere.
+
+The format is shared between `make_invite.py` and `data/remote/ServerInvite.kt`, and
+`ServerInviteTest` pins the exact bytes so the two cannot drift.
 
 ## 5. Getting albums onto it
 
 ### The comfortable way: `album_drop`
 
-`tools/album_drop.py` is a single file with no dependencies. Run it next to Navidrome:
+Already installed and running — `server_setup.sh` did it. The address is printed at the
+end of the script, and it looks like:
 
-```bash
-python3 tools/album_drop.py --music-root /music \
-  --token "$(python3 -c 'import secrets;print(secrets.token_urlsafe(24))')" \
-  --navidrome-url http://localhost:4533 \
-  --navidrome-user admin --navidrome-pass '…'
+```
+https://drop.music.example.net/?t=<token>
 ```
 
-Open `http://<server>:880/?t=<token>` on a laptop or a phone, drag an album folder in,
-and it uploads file by file and asks Navidrome to rescan when it finishes. Then hit
+**Bookmark that on your phone and your laptop.** Open it, drag an album folder onto the
+page, and it uploads file by file and asks Navidrome to rescan when it finishes. Then hit
 **SYNC LIBRARY** in Jawon and the case is on the wall.
+
+The token in the URL *is* the password — treat the bookmark accordingly. It is kept in
+`/etc/navidrome/album_drop.token` if you need it again, and re-running the setup script
+does not change it.
 
 It is deliberately narrow: audio, artwork and `.lrc`/`.cue` only, every path component
 sanitised, a size cap, and a token that is required rather than optional — it refuses to
-start without one. Put it behind the same HTTPS proxy as Navidrome, and do not leave it
-running when you are not using it.
+start without one. It binds to localhost and is reached only through Caddy, so it is
+never exposed on its own port.
+
+To stop accepting uploads entirely: `sudo systemctl stop album-drop`.
 
 ### The set-and-forget way: Syncthing
 

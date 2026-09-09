@@ -107,4 +107,24 @@ class ServerInviteTest {
     fun `a decoded link is immediately usable`() {
         assertTrue(ServerInvite.decode(ServerInvite.encode(server))!!.isConfigured)
     }
+
+    @Test
+    fun `a link made by tools make_invite py decodes here`() {
+        // **The cross-language contract, pinned.** `tools/make_invite.py` writes this format
+        // independently — it has to, because the link is needed on the server before the app
+        // has ever been configured — and two encoders of the same format drift the moment
+        // nothing is checking. This literal is the actual output of:
+        //
+        //   python3 tools/make_invite.py https://music.example.net guest 'a-long-random-password'
+        //
+        // If a change here breaks it, the Python script needs the same change, and every
+        // invite already handed out stops working.
+        val fromPython = "jawon://eyJ1IjoiaHR0cHM6Ly9tdXNpYy5leGFtcGxlLm5ldCIsIm4iOiJndWVzdCIs" +
+            "InAiOiJhLWxvbmctcmFuZG9tLXBhc3N3b3JkIn0"
+
+        val decoded = ServerInvite.decode(fromPython)!!
+        assertEquals("https://music.example.net", decoded.url)
+        assertEquals("guest", decoded.username)
+        assertEquals("a-long-random-password", decoded.password)
+    }
 }
