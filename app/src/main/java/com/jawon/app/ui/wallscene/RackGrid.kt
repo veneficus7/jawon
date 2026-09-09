@@ -237,7 +237,21 @@ fun RackGrid(
                         order = rowIndex * 4 + colIndex,
                         arrived = arrived,
                         cell = cell,
-                        engaged = cell.channel in engaged,
+                        // **`available &&` is load-bearing, not defensive.**
+                        //
+                        // The rack engages every channel at startup, including ones this phone
+                        // cannot provide — TONE needs the platform's bass and virtualiser
+                        // effects, and those are frequently absent, most reliably when a USB DAC
+                        // is attached and the effect cannot bind to that output. An unavailable
+                        // cell also has no tap handler at all, because `Cell` only attaches
+                        // `pointerInput` when `cell.available`.
+                        //
+                        // Together those made a switch that showed as ON and could never be
+                        // turned off: not a control that failed, a control that was never
+                        // wired, drawn as though it were. Deriving the lit state from
+                        // availability makes that state unrepresentable rather than merely
+                        // unlikely.
+                        engaged = cell.available && cell.channel in engaged,
                         selected = cell.channel == selected,
                         onToggle = { onToggle(cell.channel) },
                         onSelect = { onSelect(cell.channel) },
@@ -460,12 +474,22 @@ private fun Fader(
             modifier = Modifier
                 .fillMaxWidth()
                 .weight(1f)
-                // A slot with no knob behind it is drawn as an outline rather than a filled
-                // groove. Three dark slabs sitting under a one-parameter effect read as three
-                // broken controls; three faint rectangles read as room the effect does not need.
+                // **A slot with no knob behind it draws nothing at all.**
+                //
+                // This used to draw a faint outline, on the reasoning that an empty rectangle
+                // reads as "room the effect does not need" where a filled slab would read as a
+                // broken control. It does not. `keyEdge` is `lerp(lit, Black, 0.55f)` — a near
+                // black — so under the one-parameter effects it rendered as two dark horizontal
+                // lines beneath the fader, and what a person sees there is two controls that are
+                // switched off or missing, not absence of a control.
+                //
+                // The slot still occupies its width, so selecting an effect with fewer
+                // parameters does not make the row jump. It simply is not drawn.
                 .background(if (param == null) ComposeTransparent else finish.groove, shape)
-                .border(1.dp, finish.keyEdge, shape)
-                .alpha(if (param == null) BLANK_ALPHA else if (live) 1f else BYPASSED_ALPHA)
+                .then(
+                    if (param == null) Modifier else Modifier.border(1.dp, finish.keyEdge, shape)
+                )
+                .alpha(if (param == null) 0f else if (live) 1f else BYPASSED_ALPHA)
                 .onSizeChanged { height = it.height.toFloat().coerceAtLeast(1f) }
                 .then(
                     if (param != null) {
@@ -924,14 +948,18 @@ private fun RingParam(
     var width by remember { mutableFloatStateOf(1f) }
 
     if (param == null) {
-        // A slot with nothing behind it is a hairline, not an empty control. The ring shows one
-        // to three of these and an empty groove would read as three broken sliders.
-        Box(
-            modifier = modifier
-                .fillMaxWidth()
-                .height(1.dp)
-                .background(finish.keyEdge.copy(alpha = RING_BLANK_ALPHA))
-        )
+        // **Nothing is drawn here, and the previous attempt is why.**
+        //
+        // This used to draw a hairline, reasoning that a thin rule reads as "no control" where an
+        // empty groove would read as a broken one. Both readings were wrong. `keyEdge` is
+        // `lerp(lit, Black, 0.55f)` — very nearly black — and at 45% alpha across the full width
+        // the result is a hard dark line. Under the filter, which has a single parameter against
+        // three slots, that is two black bars sitting beneath the slider, and the owner reported
+        // them as exactly that.
+        //
+        // A slot with no control in it should look like panel. The box stays so the rows below do
+        // not move when an effect with fewer parameters is selected; it simply is not painted.
+        Box(modifier = modifier.fillMaxWidth().height(1.dp))
         return
     }
 
@@ -1220,7 +1248,7 @@ private fun SegmentRing(
                     val lit = ((entry.value * cells.size) - i).coerceIn(0f, 1f)
                     if (lit <= 0f) return@forEachIndexed
 
-                    val isIn = cell.channel in engaged
+                    val isIn = cell.available && cell.channel in engaged
                     val isSel = cell.channel == selected
                     val a0 = SEG_START + step * i + SEG_GAP_DEGREES
                     val sweep = step - SEG_GAP_DEGREES * 2
@@ -1795,7 +1823,7 @@ private fun RackUnit(
                             cell = cell,
                             order = rowIndex * 4 + colIndex,
                             arrived = arrived,
-                            engaged = cell.channel in engaged,
+                            engaged = cell.available && cell.channel in engaged,
                             selected = cell.channel == selected,
                             onToggle = { onToggle(cell.channel) },
                             onSelect = { onSelect(cell.channel) },
@@ -2197,7 +2225,7 @@ private fun PatchbayRack(
         if (finish.glow <= 0f) return@Canvas
         val r = PATCH_SOCKET.dp.toPx() / 2f
         cells.forEachIndexed { index, c ->
-            if (c.channel !in engaged) return@forEachIndexed
+            if (!c.available || c.channel !in engaged) return@forEachIndexed
             val centre = bank[c.channel] ?: return@forEachIndexed
             drawNeon(centre = centre, radius = r, hue = hueAt(index), strength = finish.glow)
         }
@@ -2242,7 +2270,7 @@ private fun PatchbayRack(
                         hue = hueAt(order),
                         order = order,
                         arrived = arrived,
-                        engaged = c.channel in engaged,
+                        engaged = c.available && c.channel in engaged,
                         selected = c.channel == selected,
                         onToggle = { onToggle(c.channel) },
                         onSelect = { onSelect(c.channel) },
