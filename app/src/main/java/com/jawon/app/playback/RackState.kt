@@ -107,6 +107,8 @@ class RackState @Inject constructor() {
         echoMixPosition = through(RackChannel.ECHO, _echoMix.value, 0f)
         _speedApplied.value = through(RackChannel.SPEED, _speed.value, CENTRE)
         _pitchApplied.value = through(RackChannel.PITCH, _pitchTarget, CENTRE)
+        bassPosition = through(RackChannel.TONE, _bass.value, 0f)
+        widthPosition = through(RackChannel.TONE, _width.value, 0f)
     }
 
     /** The value the audio should get: the target when the channel is in, neutral when it is out. */
@@ -219,6 +221,45 @@ class RackState @Inject constructor() {
         val clamped = position.coerceIn(0f, 1f)
         _drive.value = clamped
         drivePosition = through(RackChannel.DRIVE, clamped, 0f)
+    }
+
+    // ---- bass and stereo width. See [Tone] --------------------------------------------
+    //
+    // **Jawon's own arithmetic, not the platform's.** These were `BassBoost` and `Virtualizer`
+    // until the owner's phone refused to hand either of them over — the vendor's audio stack
+    // holds both device-wide, so the constructor fails with `ERROR_INVALID_OPERATION` and the
+    // TONE key was dead rather than merely limited. See [Tone] for the log line that said so.
+    // Now they run in the processor chain beside the filter, the drive and the echo, which is
+    // where they always belonged.
+
+    private val _bass = MutableStateFlow(0f)
+
+    /** How much low end is added, 0 flat … 1 heavy. Rests flat: the record as recorded. */
+    val bass: StateFlow<Float> = _bass.asStateFlow()
+
+    private val _width = MutableStateFlow(0f)
+
+    /** How far the stereo image is opened, 0 as recorded … 1 wide. */
+    val width: StateFlow<Float> = _width.asStateFlow()
+
+    @Volatile
+    var bassPosition: Float = 0f
+        private set
+
+    @Volatile
+    var widthPosition: Float = 0f
+        private set
+
+    fun setBass(position: Float) {
+        val clamped = position.coerceIn(0f, 1f)
+        _bass.value = clamped
+        bassPosition = through(RackChannel.TONE, clamped, 0f)
+    }
+
+    fun setWidth(position: Float) {
+        val clamped = position.coerceIn(0f, 1f)
+        _width.value = clamped
+        widthPosition = through(RackChannel.TONE, clamped, 0f)
     }
 
     // ---- the echo. See [Echo] ---------------------------------------------------------

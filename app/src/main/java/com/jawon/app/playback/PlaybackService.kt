@@ -112,6 +112,11 @@ class PlaybackService : MediaSessionService() {
                 // reconfiguration each way rather than a change of ratio. See `Varispeed`.
                 .setAudioProcessors(
                     arrayOf(
+                        // Tone first: it is the source's character, and the filter is what you
+                        // sweep afterwards. See ToneAudioProcessor for why it is ours at all —
+                        // the platform's bass boost and virtualiser are held device-wide on the
+                        // target phone and cannot be instantiated by any app.
+                        ToneAudioProcessor(rack),
                         FilterAudioProcessor(rack),
                         DriveAudioProcessor(rack),
                         EchoAudioProcessor(rack)

@@ -774,7 +774,12 @@ fun rackCells(
         RackCell(
             channel = RackChannel.TONE,
             hue = HUE_TONE,
-            available = NativeEffect.BASS in available || NativeEffect.WIDTH in available,
+            // **No availability test any more, because there is nothing left to be unavailable.**
+            // This asked the platform for bass boost and a virtualiser, and on the owner's phone
+            // the answer was no — the vendor holds both device-wide — which drew a key that could
+            // never be pressed. Both are Jawon's own DSP now, in the same chain as the filter and
+            // the drive, so TONE works on every device and over a USB DAC. See
+            // [com.jawon.app.playback.Tone].
             params = listOf(
                 RackParam("BASS", bass, false, onBass, { pct(it) }),
                 RackParam("WIDE", width, false, onWidth, { pct(it) })

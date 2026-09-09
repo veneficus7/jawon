@@ -278,15 +278,25 @@ class WallSceneViewModel @Inject constructor(
      */
     val nativeAvailable: StateFlow<Set<com.jawon.app.data.playback.NativeEffect>> =
         nativeEffects.available
-    val bassStrength: StateFlow<Float> = nativeEffects.bassStrength
-    val stereoWidth: StateFlow<Float> = nativeEffects.stereoWidth
     val reverbPreset: StateFlow<Int> = nativeEffects.reverbPreset
     val loudnessGain: StateFlow<Float> = nativeEffects.loudnessGain
 
-    fun onBassChange(value: Float) = nativeEffects.setBassStrength(value)
-    fun onWidthChange(value: Float) = nativeEffects.setStereoWidth(value)
     fun onReverbChange(preset: Int) = nativeEffects.setReverbPreset(preset)
     fun onLoudnessChange(value: Float) = nativeEffects.setLoudnessGain(value)
+
+    /**
+     * TONE's two knobs, which are the rack's own now rather than the platform's.
+     *
+     * They read from [RackState] like the filter, the drive and the echo do, because that is
+     * where they are computed — see [com.jawon.app.playback.Tone]. The move is invisible from
+     * up here apart from these two lines, which is the argument for the rack having owned them
+     * all along.
+     */
+    val bassStrength: StateFlow<Float> = rack.bass
+    val stereoWidth: StateFlow<Float> = rack.width
+
+    fun onBassChange(value: Float) = rack.setBass(value)
+    fun onWidthChange(value: Float) = rack.setWidth(value)
 
     /**
      * Which of the rack's eight cells are in circuit. See [RackChannel].
@@ -311,10 +321,14 @@ class WallSceneViewModel @Inject constructor(
     /**
      * A cell on the rack's grid has been tapped: switch that effect in, or take it out.
      *
-     * Three of the eight are not this app's own DSP — [RackChannel.SPACE] and
-     * [RackChannel.TONE] run on the platform's audio effects, and [RackChannel.EQ] is the
-     * system equaliser. [RackState] stays the single answer to "what is in circuit" for
-     * everything it actually owns, and the other three are told rather than observed.
+     * Two of the eight are not this app's own DSP — [RackChannel.SPACE] runs on the platform's
+     * reverb and loudness, and [RackChannel.EQ] is the system equaliser. [RackState] stays the
+     * single answer to "what is in circuit" for everything it actually owns, and those two are
+     * told rather than observed.
+     *
+     * TONE used to be a third. It is not any more: the platform would not give up its bass
+     * boost or its virtualiser on the target phone, so both are Jawon's own arithmetic now and
+     * the cell needs no telling. See [com.jawon.app.playback.Tone].
      */
     fun onChannelToggle(channel: RackChannel) {
         // The equaliser owns its own switch, so this flips that and never touches the rack's
@@ -326,7 +340,6 @@ class WallSceneViewModel @Inject constructor(
         rack.toggleEngaged(channel)
         val engaged = rack.isEngaged(channel)
         when (channel) {
-            RackChannel.TONE -> nativeEffects.setToneEngaged(engaged)
             RackChannel.SPACE -> nativeEffects.setSpaceEngaged(engaged)
             else -> Unit
         }
