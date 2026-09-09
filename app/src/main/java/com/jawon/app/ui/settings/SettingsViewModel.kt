@@ -13,6 +13,10 @@ import com.jawon.app.data.remote.ServerProbe
 import com.jawon.app.data.remote.SubsonicClient
 import com.jawon.app.data.remote.SubsonicServer
 import com.jawon.app.data.remote.SyncState
+import com.jawon.app.data.spotify.SpotifyLibrarySync
+import com.jawon.app.data.spotify.SpotifyLogin
+import com.jawon.app.data.spotify.SpotifyLoginState
+import com.jawon.app.data.spotify.SpotifySyncState
 import com.jawon.app.playback.StreamCache
 import com.jawon.app.data.update.AvailableUpdate
 import com.jawon.app.data.update.UpdateChecker
@@ -44,7 +48,9 @@ class SettingsViewModel @Inject constructor(
     private val lyricsRepository: com.jawon.app.data.lyrics.LyricsRepository,
     private val subsonic: SubsonicClient,
     private val librarySync: RemoteLibrarySync,
-    private val streamCache: StreamCache
+    private val streamCache: StreamCache,
+    private val spotifyLogin: SpotifyLogin,
+    private val spotifyLibrarySync: SpotifyLibrarySync
 ) : ViewModel() {
 
     // ---- the music server ------------------------------------------------------------------
@@ -74,6 +80,26 @@ class SettingsViewModel @Inject constructor(
         // freshly-typed address was verified when nothing has asked it anything.
         _probe.value = null
     }
+
+    // ---- Spotify ---------------------------------------------------------------------------
+
+    val spotifyClientId: StateFlow<String> = preferences.spotifyClientId
+
+    val spotifyConnected: StateFlow<Boolean> = preferences.spotifyConnected
+
+    val spotifyLoginState: StateFlow<SpotifyLoginState> = spotifyLogin.state
+
+    val spotifySyncState: StateFlow<SpotifySyncState> = spotifyLibrarySync.state
+
+    fun onSpotifyClientIdChanged(id: String) = preferences.setSpotifyClientId(id)
+
+    fun onConnectSpotify() {
+        spotifyLogin.begin(preferences.spotifyClientId.value)
+    }
+
+    fun onDisconnectSpotify() = spotifyLogin.signOut()
+
+    fun onSyncSpotify() = viewModelScope.launch { spotifyLibrarySync.sync() }
 
     private val _inviteMessage = MutableStateFlow<String?>(null)
 

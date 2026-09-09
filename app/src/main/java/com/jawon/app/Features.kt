@@ -1,0 +1,42 @@
+package com.jawon.app
+
+/**
+ * Which half-finished or parked features the app currently shows.
+ *
+ * **These are switches, not deletions, and the difference is the point.** Code that is
+ * commented out rots: it stops compiling, its tests stop running, and by the time anyone wants
+ * it back it is cheaper to rewrite than to revive. A flag keeps the whole thing built, tested
+ * and honest on every commit, and turning it back on is one line rather than an archaeology
+ * exercise.
+ */
+object Features {
+
+    /**
+     * The Subsonic music-server route — `data/remote/`, `StreamCache`, the Settings section.
+     *
+     * **Off since 2026-09-09, deliberately and temporarily.** The owner's decision was to park
+     * self-hosting while the Spotify route is explored, and to come back to it "after some time
+     * with careful consideration". Nothing about it was found wanting: it was verified end to
+     * end on a device — migration, sync, streamed playback, a cached scrub, deletion — and its
+     * 40-odd tests still run on every build.
+     *
+     * What this flag hides is the *entrance*: the Settings section that sets a server up. It
+     * does **not** tear out the playback path, and that restraint is deliberate. Anyone who
+     * already configured a server has albums on their wall, and making those silently
+     * unplayable would be a worse outcome than leaving a working feature quietly running for
+     * the few people using it. They keep working; there is simply no longer a way to add a new
+     * one from the UI.
+     *
+     * Turning it back on is this line. See `docs/server.md`, which stays accurate meanwhile.
+     */
+    const val MUSIC_SERVER = false
+
+    /**
+     * Playing from a Spotify account.
+     *
+     * On, and the current focus. Unlike the server route this cannot be the whole app: Spotify
+     * never hands over the audio, so the equaliser, the rack and the scratch do not apply to a
+     * Spotify album. See `data/spotify/SpotifyClient` for what that costs and why.
+     */
+    const val SPOTIFY = true
+}

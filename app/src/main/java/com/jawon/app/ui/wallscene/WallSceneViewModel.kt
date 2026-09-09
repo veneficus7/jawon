@@ -17,6 +17,7 @@ import com.jawon.app.data.playback.EqualizerController
 import com.jawon.app.data.playback.PlaybackRepository
 import com.jawon.app.data.lyrics.Lyrics
 import com.jawon.app.data.prefs.AppPreferences
+import com.jawon.app.data.spotify.SpotifyLibrarySync
 import com.jawon.app.playback.RackChannel
 import com.jawon.app.playback.SleepTimer
 import com.jawon.app.ui.common.qualityReadoutSource
@@ -534,14 +535,26 @@ class WallSceneViewModel @Inject constructor(
                 position > 0L &&
                 position >= tracks[index].durationMs - FINISHED_TAIL_MS
 
+            // A Spotify record is played by Spotify, not by this app — the repository needs the
+            // album URI to know that, because a track alone cannot say whose remote it is.
+            val spotifyUri = album
+                ?.takeIf { it.sourceId == SpotifyLibrarySync.SOURCE_ID }
+                ?.remoteId
+                ?.let { "spotify:album:$it" }
+
             if (finished) {
-                playbackRepository.playAlbum(tracks, albumArtist = album?.artist)
+                playbackRepository.playAlbum(
+                    tracks,
+                    albumArtist = album?.artist,
+                    spotifyAlbumUri = spotifyUri
+                )
             } else {
                 playbackRepository.playAlbum(
                     tracks,
                     startIndex = index,
                     startPositionMs = position,
-                    albumArtist = album?.artist
+                    albumArtist = album?.artist,
+                    spotifyAlbumUri = spotifyUri
                 )
             }
         }

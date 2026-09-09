@@ -1,5 +1,6 @@
 package com.jawon.app
 
+import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -12,6 +13,8 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.launch
 import com.jawon.app.data.prefs.AppPreferences
 import com.jawon.app.navigation.JawonNavHost
 import com.jawon.app.ui.intro.IntroOverlay
@@ -29,8 +32,34 @@ class MainActivity : ComponentActivity() {
     @Inject
     lateinit var preferences: AppPreferences
 
+    /** Receives the browser redirect at the end of a Spotify sign-in. */
+    @Inject
+    lateinit var spotifyLogin: com.jawon.app.data.spotify.SpotifyLogin
+
+    /**
+     * The redirect arrives here rather than at a new activity.
+     *
+     * `MainActivity` is `singleTop`, so Spotify sending the user back to `jawon://spotify` while
+     * the app is already running delivers the URI through this rather than by building a second
+     * copy of the room on top of the first — which would be both expensive and visibly wrong.
+     */
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleSpotifyRedirect(intent)
+    }
+
+    private fun handleSpotifyRedirect(intent: Intent?) {
+        val uri = intent?.data ?: return
+        lifecycleScope.launch { spotifyLogin.onRedirect(uri) }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        // Also handled here, for the case where the app was not running when the browser came
+        // back and Android started it fresh with the redirect as its launch intent.
+        handleSpotifyRedirect(intent)
 
         // **Ask the display for 60Hz, not 120.**
         //

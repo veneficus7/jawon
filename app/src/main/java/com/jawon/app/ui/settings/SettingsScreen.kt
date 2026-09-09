@@ -57,10 +57,14 @@ import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
+import com.jawon.app.Features
 import com.jawon.app.R
 import com.jawon.app.data.remote.ServerProbe
 import com.jawon.app.data.remote.SubsonicServer
 import com.jawon.app.data.remote.SyncState
+import com.jawon.app.data.spotify.SpotifyAuth
+import com.jawon.app.data.spotify.SpotifyLoginState
+import com.jawon.app.data.spotify.SpotifySyncState
 import com.jawon.app.data.update.AvailableUpdate
 import com.jawon.app.data.update.UpdateState
 import com.jawon.app.playback.Crossfade
@@ -1002,6 +1006,119 @@ private fun ServerField(
     }
 }
 
+/**
+ * Playing from a Spotify account.
+ *
+ * The copy here does more work than usual because three things will otherwise be discovered the
+ * hard way: Premium is required for any playback at all, the Spotify app has to be open for
+ * there to be somewhere to play, and none of the room's audio controls apply to a Spotify album.
+ * That last one is the surprising one — the disc still turns, and turning it does nothing.
+ */
+@Composable
+private fun SpotifySection(
+    clientId: String,
+    connected: Boolean,
+    loginState: SpotifyLoginState,
+    syncState: SpotifySyncState,
+    onClientIdChanged: (String) -> Unit,
+    onConnect: () -> Unit,
+    onDisconnect: () -> Unit,
+    onSync: () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 26.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        Text(
+            text = "SPOTIFY",
+            fontFamily = JetBrainsMonoFamily,
+            fontWeight = FontWeight.Bold,
+            fontSize = 11.sp,
+            letterSpacing = 2.sp,
+            color = LabelCream
+        )
+        Text(
+            text = "Put the albums you have saved in Spotify onto the wall. Jawon shows the " +
+                "room and sends the play commands; Spotify plays the sound itself.",
+            style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = 10.sp),
+            lineHeight = 16.sp
+        )
+        Text(
+            text = "Three things worth knowing before you start. It needs Spotify PREMIUM — " +
+                "the playback API refuses a free account outright. The Spotify app has to be " +
+                "open on some device, because Jawon is asking it to play rather than playing " +
+                "itself. And the disc, the equaliser and the whole rack do nothing to a " +
+                "Spotify album: the audio never passes through this app, so there is nothing " +
+                "here to scratch.",
+            style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = 10.sp),
+            lineHeight = 16.sp
+        )
+        Text(
+            text = "You need your own Spotify app. Make one at developer.spotify.com, add " +
+                "${SpotifyAuth.REDIRECT_URI} as a Redirect URI, and paste the Client ID here. " +
+                "Spotify caps a new app at five users, so one shared ID would not go far.",
+            style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = 10.sp),
+            lineHeight = 16.sp
+        )
+
+        ServerField(
+            label = "CLIENT ID",
+            value = clientId,
+            placeholder = "from developer.spotify.com",
+            onValueChange = onClientIdChanged
+        )
+
+        Row(
+            modifier = Modifier.padding(top = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            BackupButton(
+                text = if (connected) "RECONNECT" else "CONNECT",
+                enabled = clientId.isNotBlank(),
+                onClick = onConnect
+            )
+            BackupButton(
+                text = "SYNC ALBUMS",
+                enabled = connected && syncState !is SpotifySyncState.Running,
+                onClick = onSync
+            )
+            BackupButton(text = "SIGN OUT", enabled = connected, onClick = onDisconnect)
+        }
+
+        when (loginState) {
+            SpotifyLoginState.WaitingForBrowser ->
+                StatusLine("Finish signing in, then come back.", LabelCream)
+            is SpotifyLoginState.Connected -> StatusLine(
+                if (loginState.isPremium) {
+                    "Signed in as ${loginState.displayName}"
+                } else {
+                    "Signed in as ${loginState.displayName} — but this account is not " +
+                        "Premium, so Spotify will refuse to play."
+                },
+                if (loginState.isPremium) LampAmber else LabelCream
+            )
+            is SpotifyLoginState.Failed -> StatusLine(loginState.reason, LabelCream)
+            SpotifyLoginState.Idle -> Unit
+        }
+
+        when (syncState) {
+            is SpotifySyncState.Running -> StatusLine(
+                "Reading ${syncState.done + 1} of ${syncState.total} — ${syncState.album}",
+                LabelCream
+            )
+            is SpotifySyncState.Done -> StatusLine(
+                "${syncState.added} new, ${syncState.updated} updated, " +
+                    "${syncState.removed} no longer saved",
+                LampAmber
+            )
+            is SpotifySyncState.Failed -> StatusLine(syncState.reason, LabelCream)
+            SpotifySyncState.Idle -> Unit
+        }
+    }
+}
+
 /** One switchable setting: what it is, what it actually does, and the switch. */
 @Composable
 private fun SettingRow(
@@ -1070,6 +1187,10 @@ fun SettingsScreen(
     val syncState by viewModel.syncState.collectAsStateWithLifecycle()
     val streamCacheMb by viewModel.streamCacheMb.collectAsStateWithLifecycle()
     val inviteMessage by viewModel.inviteMessage.collectAsStateWithLifecycle()
+    val spotifyClientId by viewModel.spotifyClientId.collectAsStateWithLifecycle()
+    val spotifyConnected by viewModel.spotifyConnected.collectAsStateWithLifecycle()
+    val spotifyLoginState by viewModel.spotifyLoginState.collectAsStateWithLifecycle()
+    val spotifySyncState by viewModel.spotifySyncState.collectAsStateWithLifecycle()
 
     // SAF both ways, for the same reason the folder import uses it: the file belongs to the
     // user, in a place they chose and can find again, not in this app's private storage where
@@ -1337,7 +1458,20 @@ fun SettingsScreen(
                 onCheckedChange = viewModel::onFetchLyricsChanged
             )
 
-            MusicServerSection(
+            if (Features.SPOTIFY) SpotifySection(
+                clientId = spotifyClientId,
+                connected = spotifyConnected,
+                loginState = spotifyLoginState,
+                syncState = spotifySyncState,
+                onClientIdChanged = viewModel::onSpotifyClientIdChanged,
+                onConnect = viewModel::onConnectSpotify,
+                onDisconnect = viewModel::onDisconnectSpotify,
+                onSync = viewModel::onSyncSpotify
+            )
+
+            // Parked, not removed — see Features.MUSIC_SERVER. An already-configured server
+            // keeps playing; this only withdraws the way to set a new one up.
+            if (Features.MUSIC_SERVER) MusicServerSection(
                 server = musicServer,
                 probe = probe,
                 probing = probing,

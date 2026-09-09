@@ -19,6 +19,8 @@ import com.jawon.app.data.local.Track
 import com.jawon.app.data.prefs.AppPreferences
 import com.jawon.app.data.remote.SubsonicClient
 import com.jawon.app.data.remote.SubsonicServer
+import com.jawon.app.data.spotify.SpotifyPlayer
+import com.jawon.app.data.spotify.SpotifyResult
 import com.jawon.app.playback.PlaybackService
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
@@ -58,8 +60,27 @@ class PlaybackRepository @Inject constructor(
      * network and the queue is assembled as fast for a remote album as for a local one.
      */
     private val subsonic: SubsonicClient,
-    private val preferences: AppPreferences
+    private val preferences: AppPreferences,
+    /**
+     * The other kind of playback.
+     *
+     * A Spotify album is not played by this app at all — Spotify's own process decodes it and
+     * this sends commands. So the repository has two modes rather than one player with two
+     * sources, and [spotifyAlbumUri] is which mode it is in. Keeping both behind this one class
+     * is what preserves the second architecture rule: everything else in the app still reads
+     * playback from exactly one place and does not know which kind it is watching.
+     */
+    private val spotifyPlayer: SpotifyPlayer
 ) {
+
+    /**
+     * Non-null while a Spotify album is loaded, and the flag that routes every transport
+     * control. Cleared whenever a local or streamed album takes over.
+     */
+    private var activeSpotifyAlbum: String? = null
+
+    /** Polls Spotify for what it is doing, only while a Spotify album is open. */
+    private var spotifyJob: Job? = null
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
@@ -330,8 +351,27 @@ class PlaybackRepository @Inject constructor(
         tracks: List<Track>,
         startIndex: Int = 0,
         startPositionMs: Long = 0L,
-        albumArtist: String? = null
+        albumArtist: String? = null,
+        /**
+         * `spotify:album:…` when this record lives in a Spotify account, and null otherwise.
+         *
+         * Passed in rather than derived, because a track knows it is remote but not *whose*
+         * remote it is — `Track.remoteId` is set for both a Subsonic server and Spotify, and the
+         * album is the only row carrying `sourceId`. The caller has the album; this does not.
+         */
+        spotifyAlbumUri: String? = null
     ) {
+        if (spotifyAlbumUri != null) {
+            playSpotifyAlbum(tracks, spotifyAlbumUri, startIndex, startPositionMs)
+            return
+        }
+        // Any previous Spotify album stops being the thing the transport controls talk to.
+        // Not paused — a local record taking over is not a reason to silence something the
+        // user may be listening to on another device.
+        activeSpotifyAlbum = null
+        spotifyJob?.cancel()
+        spotifyJob = null
+
         val controller = ensureController()
         // Recorded before the queue is replaced, so the last stretch of the album being
         // swapped out is not lost — and so `queuedTracks` still describes it while we do.
@@ -370,7 +410,73 @@ class PlaybackRepository @Inject constructor(
         }
     }
 
+    /**
+     * Starts a Spotify album, and begins mirroring what Spotify reports into [playback].
+     *
+     * The local player is paused first. Two things playing at once is the obvious failure here,
+     * and it is not hypothetical: the ExoPlayer queue survives a case closing, so opening a
+     * Spotify record while a local one is loaded would have both making sound.
+     */
+    private suspend fun playSpotifyAlbum(
+        tracks: List<Track>,
+        albumUri: String,
+        startIndex: Int,
+        startPositionMs: Long
+    ) {
+        runCatching { ensureController().pause() }
+
+        segment?.let { recordSegment(it, _positionMs.value) }
+        segment = null
+        queuedTracks = tracks
+        activeSpotifyAlbum = albumUri
+
+        spotifyPlayer.playAlbum(albumUri, startIndex.coerceAtLeast(0), startPositionMs.coerceAtLeast(0L))
+        startSpotifyPolling()
+    }
+
+    /**
+     * Asks Spotify what it is doing, once a second, and publishes it as ordinary playback state.
+     *
+     * **This is the price of not having the audio.** The local player reports its own position
+     * for free; Spotify has to be asked over the network, and a poll per second is a real share
+     * of a rate limit computed over a rolling thirty seconds. It therefore runs only while a
+     * Spotify album is actually open, and stops the moment one is not.
+     *
+     * The index is resolved by matching Spotify's track id against the queue rather than trusting
+     * a counter, because the user can change tracks from Spotify itself — on another device, or
+     * from the notification — and a counter would drift out of step with no way back.
+     */
+    private fun startSpotifyPolling() {
+        spotifyJob?.cancel()
+        spotifyJob = scope.launch {
+            while (true) {
+                val result = spotifyPlayer.playback()
+                if (result is SpotifyResult.Ok) {
+                    val state = result.value
+                    if (state != null) {
+                        _positionMs.value = state.positionMs
+                        val index = queuedTracks.indexOfFirst { it.remoteId == state.trackId }
+                        _playback.value = _playback.value.copy(
+                            isPlaying = state.isPlaying,
+                            currentIndex = if (index >= 0) index else _playback.value.currentIndex,
+                            durationMs = state.durationMs
+                        )
+                    } else {
+                        // 204: Spotify is idle. Not an error, and not a reason to stop asking —
+                        // the user may press play on another device at any moment.
+                        _playback.value = _playback.value.copy(isPlaying = false)
+                    }
+                }
+                delay(SpotifyPlayer.POLL_INTERVAL_MS)
+            }
+        }
+    }
+
     suspend fun playPause() {
+        activeSpotifyAlbum?.let {
+            if (_playback.value.isPlaying) spotifyPlayer.pause() else spotifyPlayer.resume()
+            return
+        }
         val controller = ensureController()
         if (controller.isPlaying) controller.pause() else controller.play()
     }
@@ -408,11 +514,33 @@ class PlaybackRepository @Inject constructor(
         if (playing) controller.play() else controller.pause()
     }
 
-    suspend fun seekToNext() = ensureController().seekToNextMediaItem()
+    suspend fun seekToNext() {
+        activeSpotifyAlbum?.let { spotifyPlayer.next(); return }
+        ensureController().seekToNextMediaItem()
+    }
 
-    suspend fun seekToPrevious() = ensureController().seekToPreviousMediaItem()
+    suspend fun seekToPrevious() {
+        activeSpotifyAlbum?.let { spotifyPlayer.previous(); return }
+        ensureController().seekToPreviousMediaItem()
+    }
 
-    suspend fun seekTo(positionMs: Long) = ensureController().seekTo(positionMs)
+    /**
+     * On a Spotify album this is the *only* thing the disc can do.
+     *
+     * Turning the platter normally scratches — resampling the audio as the finger moves, which
+     * needs the samples. Spotify never provides them, so the gesture degrades to a seek: the
+     * position follows the finger and the sound simply jumps. Every command is also a network
+     * round trip, so a scrub cannot be fed to Spotify continuously the way it is fed to
+     * ExoPlayer; the caller sends where the finger *landed*, not where it passed.
+     */
+    suspend fun seekTo(positionMs: Long) {
+        activeSpotifyAlbum?.let {
+            _positionMs.value = positionMs.coerceAtLeast(0L)
+            spotifyPlayer.seek(positionMs)
+            return
+        }
+        ensureController().seekTo(positionMs)
+    }
 
     /**
      * Choose a track from the list.

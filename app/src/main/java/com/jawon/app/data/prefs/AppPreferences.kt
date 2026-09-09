@@ -315,6 +315,57 @@ class AppPreferences @Inject constructor(@param:ApplicationContext context: Cont
     val hasBundledServer: Boolean
         get() = ServerInvite.decode(BuildConfig.DEFAULT_SERVER_INVITE) != null
 
+    // ---- Spotify ---------------------------------------------------------------------------
+
+    private val _spotifyClientId = MutableStateFlow(prefs.getString(KEY_SPOTIFY_CLIENT_ID, "").orEmpty())
+
+    /**
+     * The Spotify application id this phone signs in with.
+     *
+     * Entered by the user rather than shipped in the build, and that is not laziness. Since
+     * February 2026 a Spotify app in development mode is capped at **five users, all Premium**,
+     * so one id baked into the APK would be exhausted by the sixth person to install it — and
+     * they would see an inscrutable authorisation failure rather than anything explaining why.
+     * A client id is not a secret (PKCE exists precisely so that no secret is needed), so asking
+     * for it costs nothing beyond a paste.
+     */
+    val spotifyClientId: StateFlow<String> = _spotifyClientId.asStateFlow()
+
+    fun setSpotifyClientId(id: String) {
+        prefs.edit { putString(KEY_SPOTIFY_CLIENT_ID, id.trim()) }
+        _spotifyClientId.value = id.trim()
+    }
+
+    private val _spotifyConnected = MutableStateFlow(prefs.getString(KEY_SPOTIFY_REFRESH, null) != null)
+
+    /** Whether there is a refresh token, i.e. whether the user has signed in and stayed in. */
+    val spotifyConnected: StateFlow<Boolean> = _spotifyConnected.asStateFlow()
+
+    var spotifyAccessToken: String?
+        get() = prefs.getString(KEY_SPOTIFY_ACCESS, null)
+        set(value) = prefs.edit { putString(KEY_SPOTIFY_ACCESS, value) }
+
+    var spotifyRefreshToken: String?
+        get() = prefs.getString(KEY_SPOTIFY_REFRESH, null)
+        set(value) {
+            prefs.edit { putString(KEY_SPOTIFY_REFRESH, value) }
+            _spotifyConnected.value = value != null
+        }
+
+    var spotifyExpiresAt: Long
+        get() = prefs.getLong(KEY_SPOTIFY_EXPIRES, 0L)
+        set(value) = prefs.edit { putLong(KEY_SPOTIFY_EXPIRES, value) }
+
+    /** Forgets the sign-in. The saved albums stay on the wall until they are removed. */
+    fun clearSpotifyTokens() {
+        prefs.edit {
+            remove(KEY_SPOTIFY_ACCESS)
+            remove(KEY_SPOTIFY_REFRESH)
+            remove(KEY_SPOTIFY_EXPIRES)
+        }
+        _spotifyConnected.value = false
+    }
+
     private val _streamCacheMb = MutableStateFlow(prefs.getInt(KEY_STREAM_CACHE_MB, DEFAULT_CACHE_MB))
 
     /**
@@ -343,6 +394,10 @@ class AppPreferences @Inject constructor(@param:ApplicationContext context: Cont
         const val KEY_SERVER_USER = "server_user"
         const val KEY_SERVER_PASSWORD = "server_password"
         const val KEY_SERVER_CHOSEN = "server_chosen"
+        const val KEY_SPOTIFY_CLIENT_ID = "spotify_client_id"
+        const val KEY_SPOTIFY_ACCESS = "spotify_access_token"
+        const val KEY_SPOTIFY_REFRESH = "spotify_refresh_token"
+        const val KEY_SPOTIFY_EXPIRES = "spotify_expires_at"
         const val KEY_STREAM_CACHE_MB = "stream_cache_mb"
 
         const val DEFAULT_CACHE_MB = 512
