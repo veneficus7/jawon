@@ -87,9 +87,15 @@ class StreamCache @Inject constructor(
     }
 
     /**
-     * The factory the player reads everything through — local files direct, network via cache.
+     * The network half on its own: http, wrapped in the cache.
+     *
+     * Exposed separately because [AlbumDownloader] needs the `CacheDataSource` *itself* rather
+     * than something that happens to contain one — `CacheWriter` takes that exact type, since
+     * writing into a cache is not a thing a general data source can be asked to do. Playback
+     * still goes through [dataSourceFactory], which wraps this; both therefore read and write the
+     * same cache under the same keys, which is the whole reason a downloaded album simply plays.
      */
-    fun dataSourceFactory(): DataSource.Factory {
+    fun cacheDataSourceFactory(): CacheDataSource.Factory {
         val http = DefaultHttpDataSource.Factory()
             .setUserAgent(USER_AGENT)
             .setConnectTimeoutMs(CONNECT_TIMEOUT_MS)
@@ -99,16 +105,20 @@ class StreamCache @Inject constructor(
             // "connection failed" for a server that is working perfectly.
             .setAllowCrossProtocolRedirects(true)
 
-        val cached = CacheDataSource.Factory()
+        return CacheDataSource.Factory()
             .setCache(cache)
             .setUpstreamDataSourceFactory(http)
             // Without this, a network blip while writing the cache surfaces as a playback error
             // rather than as what it is — a cache miss. Playback continues from upstream and the
             // cache simply does not get that block.
             .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
-
-        return DefaultDataSource.Factory(context, cached)
     }
+
+    /**
+     * The factory the player reads everything through — local files direct, network via cache.
+     */
+    fun dataSourceFactory(): DataSource.Factory =
+        DefaultDataSource.Factory(context, cacheDataSourceFactory())
 
     /** How much of the allowance is currently spent, for the settings screen to report. */
     fun usedBytes(): Long = runCatching { cache.cacheSpace }.getOrDefault(0L)

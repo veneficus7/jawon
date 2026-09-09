@@ -41,6 +41,16 @@ class NativeEffects @Inject constructor(
     private var loudness: LoudnessEnhancer? = null
     private var sessionId: Int = 0
 
+    /**
+     * Whether these two accept a *degree* of themselves, or only on and off.
+     *
+     * Vendor implementations differ, and the difference is not a failure — see [attach]. Where
+     * the answer is no, the fader still switches the effect in and out; it simply cannot ask
+     * for half of it.
+     */
+    private var bassTakesStrength = false
+    private var widthTakesStrength = false
+
     /** Which of the four this phone actually gave us. Drives what the rack draws. */
     private val _available = MutableStateFlow(emptySet<NativeEffect>())
     val available: StateFlow<Set<NativeEffect>> = _available.asStateFlow()
@@ -78,15 +88,33 @@ class NativeEffects @Inject constructor(
 
         val found = mutableSetOf<NativeEffect>()
 
-        bass = build("bass boost") { BassBoost(EFFECT_PRIORITY, newSessionId) }
-            // `strengthSupported` is a real distinction: some implementations exist but only
-            // switch on and off, and a strength slider on one of those is a lie.
-            ?.takeIf { runCatching { it.strengthSupported }.getOrDefault(false) }
-            ?.also { found += NativeEffect.BASS }
+        // **An effect that exists but will not take a strength is still an effect.**
+        //
+        // These two used to be dropped entirely unless `strengthSupported` was true, on the
+        // reasoning that a slider which does nothing is a lie. The reasoning was right and the
+        // conclusion was wrong: what a vendor is saying with `strengthSupported = false` is
+        // "I do one amount, take it or leave it", and throwing the whole effect away over that
+        // costs the user bass boost to avoid mislabelling a fader. It also cost them the TONE
+        // key outright — dropping BASS *and* WIDTH takes the cell with it, which is what a
+        // person sees as a button that does nothing at all.
+        //
+        // So: constructed means available, and [bassTakesStrength] / [widthTakesStrength]
+        // decide whether the fader's position is passed on or only its on-ness. The fader is
+        // then honest in the only way that matters — it does change the sound.
+        //
+        // The old form also leaked. `?.takeIf { … }` returning null dropped the constructed
+        // effect on the floor without releasing it, holding a scarce session slot until the
+        // process died.
+        bass = build("bass boost") { BassBoost(EFFECT_PRIORITY, newSessionId) }?.also { effect ->
+            bassTakesStrength = runCatching { effect.strengthSupported }.getOrDefault(false)
+            found += NativeEffect.BASS
+        }
 
         virtualizer = build("virtualizer") { Virtualizer(EFFECT_PRIORITY, newSessionId) }
-            ?.takeIf { runCatching { it.strengthSupported }.getOrDefault(false) }
-            ?.also { found += NativeEffect.WIDTH }
+            ?.also { effect ->
+                widthTakesStrength = runCatching { effect.strengthSupported }.getOrDefault(false)
+                found += NativeEffect.WIDTH
+            }
 
         // Reverb is the odd one out, and the device said so on the first run: attaching it to a
         // session like the others fails outright — *"Cannot initialize effect engine ...
@@ -170,7 +198,9 @@ class NativeEffects @Inject constructor(
             // Off means *released of duty*, not zero strength: an enabled effect with a zero
             // setting still sits in the chain doing arithmetic on every sample.
             effect.enabled = value > OFF
-            if (value > OFF) effect.setStrength((value * MAX_STRENGTH).toInt().toShort())
+            if (value > OFF && bassTakesStrength) {
+                effect.setStrength((value * MAX_STRENGTH).toInt().toShort())
+            }
         }.onFailure { Log.w(TAG, "bass boost refused a value", it) }
     }
 
@@ -179,7 +209,9 @@ class NativeEffects @Inject constructor(
         val value = if (toneEngaged) preferences.stereoWidth.value else 0f
         runCatching {
             effect.enabled = value > OFF
-            if (value > OFF) effect.setStrength((value * MAX_STRENGTH).toInt().toShort())
+            if (value > OFF && widthTakesStrength) {
+                effect.setStrength((value * MAX_STRENGTH).toInt().toShort())
+            }
         }.onFailure { Log.w(TAG, "virtualizer refused a value", it) }
     }
 
@@ -217,6 +249,8 @@ class NativeEffects @Inject constructor(
         virtualizer = null
         reverb = null
         loudness = null
+        bassTakesStrength = false
+        widthTakesStrength = false
         sessionId = 0
         _available.value = emptySet()
         // Zero is Media3's sentinel for "no aux effect", so the player stops routing to a tank

@@ -741,6 +741,22 @@ private fun BackupButton(text: String, enabled: Boolean, onClick: () -> Unit) {
  * **The one section in Settings that changes what leaves the device**, so it says so in plain
  * words rather than making the user infer it. Everything else here is local; this sends a
  * username and a password to an address the user chose, and then streams audio from it.
+ *
+ * ## Closed by default, and two different sections inside
+ *
+ * This was four paragraphs, three text fields, five buttons and a cache readout, all on screen
+ * at once, all the time — the single largest block on a page that had just been cut down for
+ * exactly that reason. Two things fix it.
+ *
+ * It is a [Disclosure], so the page carries one line about it until someone wants it, and that
+ * line is the *state* — how many albums, from where — which is the only thing a person coming
+ * back here wants to know. The three paragraphs of why-this-and-not-Spotify are still here,
+ * still worth having, behind a `+`.
+ *
+ * And it stops showing setup to people who are set up. Filling in an address is a thing you do
+ * once; syncing and sharing are things you do repeatedly. So a configured server leads with what
+ * it can do now and folds the credentials away behind CHANGE THE DETAILS, while an unconfigured
+ * one leads with the paste-a-link box, which is the route almost everybody should take.
  */
 @Composable
 private fun MusicServerSection(
@@ -748,6 +764,7 @@ private fun MusicServerSection(
     probe: ServerProbe?,
     probing: Boolean,
     syncState: SyncState,
+    albumCount: Int,
     cacheUsedMb: Int,
     cacheLimitMb: Int,
     bundledServer: Boolean,
@@ -760,46 +777,209 @@ private fun MusicServerSection(
     onForget: () -> Unit,
     onClearCache: () -> Unit
 ) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(top = 26.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp)
+    Disclosure(
+        title = "A MUSIC SERVER OF YOUR OWN",
+        subtitle = when {
+            !server.isConfigured ->
+                "Not set up. Play a library that is too big for this phone."
+            albumCount > 0 -> "$albumCount albums from ${server.displayHost}."
+            else -> "${server.displayHost} — nothing synced yet."
+        }
     ) {
-        Text(
-            text = "A MUSIC SERVER OF YOUR OWN",
-            fontFamily = JetBrainsMonoFamily,
-            fontWeight = FontWeight.Bold,
-            fontSize = 11.sp,
-            letterSpacing = 2.sp,
-            color = LabelCream
-        )
-        Text(
-            text = "Point Jawon at your own Subsonic server — Navidrome, Airsonic, Gonic or " +
-                "Ampache — and its albums appear on the wall without taking up room on your " +
-                "phone. Only the catalogue is stored here: titles, tracklists and one cover " +
-                "each. The music itself is streamed when you play it.",
-            style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = 10.sp),
-            lineHeight = 16.sp
-        )
-        Text(
-            text = "This is still your library. Jawon has no catalogue of its own to offer " +
-                "you, and streaming services cannot be used here — every one of them forbids " +
-                "an app from touching the audio, which is the whole of what the disc does.",
-            style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = 10.sp),
-            lineHeight = 16.sp
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            MoreText(
+                summary = "Point Jawon at your own Subsonic server and its albums appear on the " +
+                    "wall without taking up room here.",
+                detail = "Navidrome, Airsonic, Gonic and Ampache all speak it. Only the " +
+                    "catalogue is stored on this phone: titles, tracklists and one cover each. " +
+                    "The music itself is streamed when you play it, and kept afterwards so the " +
+                    "disc still scrubs instantly.\n\n" +
+                    "This is still your library. Jawon has no catalogue of its own to offer " +
+                    "you, and streaming services cannot be used here — every one of them " +
+                    "forbids an app from touching the audio, which is the whole of what the " +
+                    "disc does."
+            )
+
+            if (server.isConfigured) {
+                ServerInUse(
+                    server = server,
+                    probing = probing,
+                    syncState = syncState,
+                    bundledServer = bundledServer,
+                    inviteMessage = inviteMessage,
+                    onServerChanged = onServerChanged,
+                    onInvitePasted = onInvitePasted,
+                    onShareInvite = onShareInvite,
+                    onTest = onTest,
+                    onSync = onSync,
+                    onForget = onForget
+                )
+            } else {
+                ServerSetup(
+                    server = server,
+                    probing = probing,
+                    bundledServer = bundledServer,
+                    inviteMessage = inviteMessage,
+                    onServerChanged = onServerChanged,
+                    onInvitePasted = onInvitePasted,
+                    onTest = onTest
+                )
+            }
+
+            // Refused and unreachable are reported apart, because they call for opposite fixes:
+            // check the password, versus check the address.
+            when (probe) {
+                is ServerProbe.Reachable -> StatusLine(
+                    "Connected · ${probe.serverType} ${probe.version}",
+                    LampAmber
+                )
+                is ServerProbe.Refused -> StatusLine("Refused · ${probe.reason}", LabelCream)
+                is ServerProbe.Unreachable -> StatusLine("No answer · ${probe.reason}", LabelCream)
+                null -> Unit
+            }
+
+            when (syncState) {
+                is SyncState.Running -> StatusLine(
+                    "Reading ${syncState.done + 1} of ${syncState.total} — ${syncState.album}",
+                    LabelCream
+                )
+                is SyncState.Done -> StatusLine(
+                    "${syncState.added} new, ${syncState.updated} updated, " +
+                        "${syncState.removed} gone from the server",
+                    LampAmber
+                )
+                is SyncState.Failed -> StatusLine("Sync failed · ${syncState.reason}", LabelCream)
+                SyncState.Idle -> Unit
+            }
+
+            OfflineStoreRow(
+                usedMb = cacheUsedMb,
+                limitMb = cacheLimitMb,
+                onClear = onClearCache
+            )
+        }
+    }
+}
+
+/**
+ * A server that is already set up: what it can do, and its details tucked behind a tap.
+ */
+@Composable
+private fun ServerInUse(
+    server: SubsonicServer,
+    probing: Boolean,
+    syncState: SyncState,
+    bundledServer: Boolean,
+    inviteMessage: String?,
+    onServerChanged: (SubsonicServer) -> Unit,
+    onInvitePasted: (String) -> Unit,
+    onShareInvite: () -> Unit,
+    onTest: () -> Unit,
+    onSync: () -> Unit,
+    onForget: () -> Unit
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            BackupButton(
+                text = "SYNC LIBRARY",
+                enabled = syncState !is SyncState.Running,
+                onClick = onSync
+            )
+            BackupButton(
+                text = if (probing) "TESTING…" else "TEST",
+                enabled = !probing,
+                onClick = onTest
+            )
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            BackupButton(text = "SHARE A LINK", enabled = true, onClick = onShareInvite)
+            BackupButton(text = "FORGET", enabled = true, onClick = onForget)
+        }
+        MoreText(
+            summary = "A link carries the address and the sign-in, so whoever you send it to " +
+                "pastes one thing and is listening.",
+            detail = "Treat it as the password it contains: anyone holding it can reach the " +
+                "server, and the only way to take it back is to change the password there and " +
+                "send a new one.\n\n" +
+                "FORGET clears the sign-in and leaves the albums on the wall, where they stop " +
+                "being playable rather than disappearing. Removing them is a separate, " +
+                "deliberate act."
         )
 
-        // The one-field route, first, because it is the one most people should use.
-        //
-        // Three fields is three chances to mistype and a reason to give up before hearing
-        // anything. A link carries all of it, and whoever sent it already knows it works.
-        var invite by remember { mutableStateOf("") }
-        // Emptied when the server goes, so FORGET does not leave the link that set it up
-        // sitting in the box looking like it is still in force.
-        LaunchedEffect(server.isConfigured) {
-            if (!server.isConfigured) invite = ""
+        Disclosure(
+            title = "CHANGE THE DETAILS",
+            subtitle = "${server.username} at ${server.displayHost}"
+        ) {
+            ServerCredentials(
+                server = server,
+                bundledServer = bundledServer,
+                inviteMessage = inviteMessage,
+                onServerChanged = onServerChanged,
+                onInvitePasted = onInvitePasted
+            )
         }
+    }
+}
+
+/**
+ * No server yet: the one-field route first, because it is the one most people should use.
+ *
+ * Three fields is three chances to mistype and a reason to give up before hearing anything. A
+ * link carries all of it, and whoever sent it already knows it works.
+ */
+@Composable
+private fun ServerSetup(
+    server: SubsonicServer,
+    probing: Boolean,
+    bundledServer: Boolean,
+    inviteMessage: String?,
+    onServerChanged: (SubsonicServer) -> Unit,
+    onInvitePasted: (String) -> Unit,
+    onTest: () -> Unit
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        ServerCredentials(
+            server = server,
+            bundledServer = bundledServer,
+            inviteMessage = inviteMessage,
+            onServerChanged = onServerChanged,
+            onInvitePasted = onInvitePasted
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            BackupButton(
+                text = if (probing) "TESTING…" else "TEST",
+                enabled = server.isConfigured && !probing,
+                onClick = onTest
+            )
+        }
+    }
+}
+
+/**
+ * The paste box and the three fields, shared by both states above.
+ *
+ * One copy, because a credentials form that drifts between the setup path and the edit path is
+ * two bugs waiting rather than one form.
+ */
+@Composable
+private fun ServerCredentials(
+    server: SubsonicServer,
+    bundledServer: Boolean,
+    inviteMessage: String?,
+    onServerChanged: (SubsonicServer) -> Unit,
+    onInvitePasted: (String) -> Unit
+) {
+    var invite by remember { mutableStateOf("") }
+    // Emptied when the server goes, so FORGET does not leave the link that set it up sitting in
+    // the box looking like it is still in force.
+    LaunchedEffect(server.isConfigured) {
+        if (!server.isConfigured) invite = ""
+    }
+
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Text(
             text = if (bundledServer) {
                 "This copy of Jawon came with a library already set up — the details below were " +
@@ -808,8 +988,7 @@ private fun MusicServerSection(
                 "Been sent a link? Paste it here and the three fields below fill themselves in."
             },
             style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = 10.sp),
-            lineHeight = 16.sp,
-            modifier = Modifier.padding(top = 6.dp)
+            lineHeight = 16.sp
         )
         ServerField(
             label = "PASTE A LINK",
@@ -829,9 +1008,8 @@ private fun MusicServerSection(
             fontSize = 9.sp,
             letterSpacing = 1.6.sp,
             color = LabelDim,
-            modifier = Modifier.padding(top = 10.dp)
+            modifier = Modifier.padding(top = 6.dp)
         )
-
         ServerField(
             label = "ADDRESS",
             value = server.url,
@@ -851,88 +1029,86 @@ private fun MusicServerSection(
             password = true,
             onValueChange = { onServerChanged(server.copy(password = it)) }
         )
+    }
+}
 
-        Row(
-            modifier = Modifier.padding(top = 4.dp),
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            BackupButton(
-                text = if (probing) "TESTING…" else "TEST",
-                enabled = server.isConfigured && !probing,
-                onClick = onTest
-            )
-            BackupButton(
-                text = "SYNC LIBRARY",
-                enabled = server.isConfigured && syncState !is SyncState.Running,
-                onClick = onSync
-            )
-            BackupButton(
-                text = "FORGET",
-                enabled = server.isConfigured,
-                onClick = onForget
-            )
-        }
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            BackupButton(
-                text = "SHARE A LINK",
-                enabled = server.isConfigured,
-                onClick = onShareInvite
-            )
-        }
+/**
+ * What the streamed audio is using on disk.
+ *
+ * Named "offline store" rather than "cache" because of what it now also holds: an album kept
+ * on purpose from the deck lives here too, and calling that a cache invites someone to clear it
+ * expecting to lose only a head start. The wording says both.
+ */
+@Composable
+private fun OfflineStoreRow(usedMb: Int, limitMb: Int, onClear: () -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Text(
-            text = "A link carries the address and the sign-in, so whoever you send it to " +
-                "pastes one thing and is listening. Treat it as the password it contains: " +
-                "anyone holding it can reach the server, and the only way to take it back is " +
-                "to change the password there and send a new one.",
-            style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = 10.sp),
-            lineHeight = 16.sp
-        )
-
-        // Refused and unreachable are reported apart, because they call for opposite fixes:
-        // check the password, versus check the address.
-        when (probe) {
-            is ServerProbe.Reachable -> StatusLine(
-                "Connected · ${probe.serverType} ${probe.version}",
-                LampAmber
-            )
-            is ServerProbe.Refused -> StatusLine("Refused · ${probe.reason}", LabelCream)
-            is ServerProbe.Unreachable -> StatusLine("No answer · ${probe.reason}", LabelCream)
-            null -> Unit
-        }
-
-        when (syncState) {
-            is SyncState.Running -> StatusLine(
-                "Reading ${syncState.done + 1} of ${syncState.total} — ${syncState.album}",
-                LabelCream
-            )
-            is SyncState.Done -> StatusLine(
-                "${syncState.added} new, ${syncState.updated} updated, " +
-                    "${syncState.removed} gone from the server",
-                LampAmber
-            )
-            is SyncState.Failed -> StatusLine("Sync failed · ${syncState.reason}", LabelCream)
-            SyncState.Idle -> Unit
-        }
-
-        Text(
-            text = "OFFLINE STORE",
+            text = "OFFLINE STORE · $usedMb OF $limitMb MB",
             fontFamily = JetBrainsMonoFamily,
             fontWeight = FontWeight.Bold,
-            fontSize = 11.sp,
-            letterSpacing = 2.sp,
+            fontSize = 10.sp,
+            letterSpacing = 1.6.sp,
             color = LabelCream,
-            modifier = Modifier.padding(top = 12.dp)
+            modifier = Modifier.padding(top = 6.dp)
         )
-        Text(
-            text = "Streamed tracks are kept here after they play, which is what lets you " +
-                "turn the disc to scrub without waiting for the network. Using " +
-                "$cacheUsedMb MB of $cacheLimitMb MB. Clearing it costs nothing but the head " +
-                "start; your shelves and covers stay. A new size takes effect next launch.",
-            style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = 10.sp),
-            lineHeight = 16.sp
+        MoreText(
+            summary = "Streamed tracks are kept here, which is what lets you turn the disc " +
+                "without waiting for the network.",
+            detail = "Anything you played is here, and so is anything you chose to KEEP " +
+                "OFFLINE from an album's tracklist. When the store is full the oldest goes " +
+                "first, so give it more room than the albums you want to keep.\n\n" +
+                "Clearing it costs the head start and any kept albums; your shelves and covers " +
+                "stay, and everything can be streamed again. A new size takes effect next launch."
         )
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            BackupButton(text = "CLEAR IT", enabled = cacheUsedMb > 0, onClick = onClearCache)
+            BackupButton(text = "CLEAR IT", enabled = usedMb > 0, onClick = onClear)
+        }
+    }
+}
+
+/**
+ * Repairs, for what older builds left in the library.
+ *
+ * Closed, and worded as a repair rather than a feature — nobody comes to a settings screen
+ * wanting to tidy their library; they come because they noticed something wrong. So the
+ * subtitle names the symptom, which is how somebody who has seen a track twice finds this at
+ * all.
+ */
+@Composable
+private fun TidySection(
+    busy: Boolean,
+    message: String?,
+    onRemoveDuplicates: () -> Unit
+) {
+    Disclosure(
+        title = "TIDY THE LIBRARY",
+        subtitle = "Seeing a track twice on a record? Fix it here."
+    ) {
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            MoreText(
+                summary = "Removes tracks that appear twice on the same album, keeping the " +
+                    "first of each.",
+                detail = "A duplicate gets in when one record arrives two ways — a folder " +
+                    "holding both a FLAC and an MP3, or an album imported by hand and then " +
+                    "found again by the device scan. Newer builds refuse those at the door; " +
+                    "this clears out the ones that got in before.\n\n" +
+                    "Two tracks count as the same when they share a disc, a position and a " +
+                    "name. A remix or a live take keeps its own row — those are different " +
+                    "recordings, and losing one would be worse than seeing two.\n\n" +
+                    "There is no undo. Nothing on disk is touched, so anything removed in " +
+                    "error comes back by importing that folder again."
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                BackupButton(
+                    text = if (busy) "TIDYING…" else "REMOVE DUPLICATES",
+                    enabled = !busy,
+                    onClick = onRemoveDuplicates
+                )
+            }
+            message?.let { StatusLine(it, LampAmber) }
         }
     }
 }
@@ -1315,6 +1491,9 @@ fun SettingsScreen(
     val syncState by viewModel.syncState.collectAsStateWithLifecycle()
     val streamCacheMb by viewModel.streamCacheMb.collectAsStateWithLifecycle()
     val inviteMessage by viewModel.inviteMessage.collectAsStateWithLifecycle()
+    val serverAlbumCount by viewModel.serverAlbumCount.collectAsStateWithLifecycle()
+    val repairBusy by viewModel.repairBusy.collectAsStateWithLifecycle()
+    val repairMessage by viewModel.repairMessage.collectAsStateWithLifecycle()
     val spotifyClientId by viewModel.spotifyClientId.collectAsStateWithLifecycle()
     val spotifyConnected by viewModel.spotifyConnected.collectAsStateWithLifecycle()
     val spotifyLoginState by viewModel.spotifyLoginState.collectAsStateWithLifecycle()
@@ -1605,13 +1784,12 @@ fun SettingsScreen(
                 onSync = viewModel::onSyncSpotify
             )
 
-            // Parked, not removed — see Features.MUSIC_SERVER. An already-configured server
-            // keeps playing; this only withdraws the way to set a new one up.
             if (Features.MUSIC_SERVER) MusicServerSection(
                 server = musicServer,
                 probe = probe,
                 probing = probing,
                 syncState = syncState,
+                albumCount = serverAlbumCount,
                 // Read on composition rather than collected: the cache size changes as audio
                 // streams, and a flow of it would recompose this screen continuously for a
                 // number nobody is watching change.
@@ -1637,6 +1815,12 @@ fun SettingsScreen(
                 onSync = viewModel::onSyncLibrary,
                 onForget = viewModel::onForgetServer,
                 onClearCache = viewModel::onClearStreamCache
+            )
+
+            TidySection(
+                busy = repairBusy,
+                message = repairMessage,
+                onRemoveDuplicates = viewModel::onRemoveDuplicateTracks
             )
 
             BackupSection(

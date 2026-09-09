@@ -143,6 +143,20 @@ class LyricsRepository @Inject constructor(
     fun clear() = synchronized(cache) { cache.clear() }
 
     /**
+     * Forget the session cache *and* every stored "there are none".
+     *
+     * For when the lyrics settings change. [clear] alone was not enough and the difference was
+     * invisible: the session cache holds whichever source won this run, but a track that was
+     * looked up once and came back empty carries that empty answer in the database forever, so
+     * flipping a switch changed nothing for exactly the tracks the switch was flipped for.
+     * Tracks with real words keep them, so this costs one lookup for the ones that failed.
+     */
+    suspend fun forgetLookups() {
+        clear()
+        runCatching { trackDao.forgetEmptyLyricLookups() }
+    }
+
+    /**
      * The `.lrc` sitting next to the audio.
      *
      * Built by swapping the extension on the *document id* rather than on the URI, because the

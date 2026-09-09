@@ -26,7 +26,9 @@ import com.jawon.app.ui.theme.RoomScheme
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -46,6 +48,8 @@ class SettingsViewModel @Inject constructor(
     private val crashLog: CrashLog,
     /** Cleared when the lyrics source preference changes. */
     private val lyricsRepository: com.jawon.app.data.lyrics.LyricsRepository,
+    /** Tidies what older builds left behind. See [LibraryRepair]. */
+    private val libraryRepair: com.jawon.app.data.local.LibraryRepair,
     private val subsonic: SubsonicClient,
     private val librarySync: RemoteLibrarySync,
     private val streamCache: StreamCache,
@@ -66,6 +70,15 @@ class SettingsViewModel @Inject constructor(
 
     private val _probing = MutableStateFlow(false)
     val probing: StateFlow<Boolean> = _probing.asStateFlow()
+
+    /**
+     * How many albums the server currently has on the wall.
+     *
+     * Drawn in the server section's closed heading, so the answer to "did that work" is visible
+     * without opening anything or running another test.
+     */
+    val serverAlbumCount: StateFlow<Int> = librarySync.albumCount
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0)
 
     /**
      * Saves the server without testing it.
@@ -158,6 +171,39 @@ class SettingsViewModel @Inject constructor(
         _probe.value = null
     }
 
+    // ---- tidying up ------------------------------------------------------------------------
+
+    private val _repairBusy = MutableStateFlow(false)
+    val repairBusy: StateFlow<Boolean> = _repairBusy.asStateFlow()
+
+    private val _repairMessage = MutableStateFlow<String?>(null)
+    val repairMessage: StateFlow<String?> = _repairMessage.asStateFlow()
+
+    /**
+     * Removes duplicate tracks from every album.
+     *
+     * Reports what it did even when that is nothing, because "0 removed" is the answer somebody
+     * pressing this wants — a button that goes quiet is indistinguishable from one that failed.
+     */
+    fun onRemoveDuplicateTracks() = viewModelScope.launch {
+        _repairBusy.value = true
+        _repairMessage.value = null
+        val result = runCatching { libraryRepair.removeDuplicateTracks() }
+        _repairMessage.value = result.fold(
+            onSuccess = { done ->
+                when {
+                    done.duplicatesRemoved == 0 -> "No duplicates found."
+                    done.albumsTouched == 1 ->
+                        "Removed ${done.duplicatesRemoved} duplicate tracks from one album."
+                    else -> "Removed ${done.duplicatesRemoved} duplicate tracks from " +
+                        "${done.albumsTouched} albums."
+                }
+            },
+            onFailure = { "Could not tidy the library · ${it.message ?: "unknown"}" }
+        )
+        _repairBusy.value = false
+    }
+
     val streamCacheMb: StateFlow<Int> = preferences.streamCacheMb
 
     fun onStreamCacheMbChanged(mb: Int) = preferences.setStreamCacheMb(mb)
@@ -176,15 +222,20 @@ class SettingsViewModel @Inject constructor(
 
     fun onFetchCoverArtChanged(enabled: Boolean) = preferences.setFetchCoverArt(enabled)
 
-    fun onFetchLyricsChanged(enabled: Boolean) = preferences.setFetchLyrics(enabled)
+    fun onFetchLyricsChanged(enabled: Boolean) {
+        preferences.setFetchLyrics(enabled)
+        // Turning the lookup on has to un-remember the tracks that were never looked up.
+        viewModelScope.launch { lyricsRepository.forgetLookups() }
+    }
 
     val preferOnlineLyrics: StateFlow<Boolean> = preferences.preferOnlineLyrics
 
     fun onPreferOnlineLyricsChanged(enabled: Boolean) {
         preferences.setPreferOnlineLyrics(enabled)
-        // The session cache holds whichever source won last time, so without this the switch
-        // appears to do nothing until the app is restarted.
-        lyricsRepository.clear()
+        // The session cache holds whichever source won last time, and the database holds every
+        // "we asked and there were none" — so without both, the switch appears to do nothing
+        // for precisely the tracks somebody turned it on for.
+        viewModelScope.launch { lyricsRepository.forgetLookups() }
     }
 
     fun onRoomSchemeChanged(scheme: RoomScheme) = preferences.setRoomScheme(scheme)

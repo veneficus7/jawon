@@ -31,6 +31,9 @@ import kotlinx.coroutines.launch
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Bedtime
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.SkipNext
@@ -89,6 +92,7 @@ import com.jawon.app.ui.common.qualityReadoutOutput
 import com.jawon.app.ui.common.qualityReadoutSource
 import com.jawon.app.playback.DjFilter
 import com.jawon.app.playback.Drive
+import com.jawon.app.playback.OfflineState
 import com.jawon.app.playback.RackChannel
 import com.jawon.app.playback.SleepTimer
 import com.jawon.app.playback.Varispeed
@@ -165,6 +169,18 @@ fun DeckOverlay(
     onPrevious: () -> Unit,
     onSeek: (Long) -> Unit,
     onSelectTrack: (Int) -> Unit,
+    /**
+     * How much of this album is stored on the phone, or null when it is not a streamed one.
+     *
+     * A `State` rather than a value so a download's progress redraws the one row that shows it
+     * instead of the whole deck — the same reasoning as [scrubReadout] below.
+     */
+    offline: State<OfflineState?>,
+    downloading: State<Boolean>,
+    offlineMessage: State<String?>,
+    onKeepOffline: () -> Unit,
+    onCancelKeepOffline: () -> Unit,
+    onDropOffline: () -> Unit,
     scrubReadout: State<ScrubReadout?>,
     eqAvailable: Boolean,
     eqEnabled: Boolean,
@@ -492,6 +508,21 @@ fun DeckOverlay(
                     .fillMaxHeight()
                     .padding(top = 12.dp)
             ) {
+                // Above the tracklist rather than beside a menu, and only for a streamed
+                // record — this is a fact about the whole album, and the tracklist is the one
+                // place in the app where the album is the thing being looked at.
+                offline.value?.let { state ->
+                    item {
+                        OfflineRow(
+                            state = state,
+                            busy = downloading.value,
+                            message = offlineMessage.value,
+                            onKeep = onKeepOffline,
+                            onCancel = onCancelKeepOffline,
+                            onDrop = onDropOffline
+                        )
+                    }
+                }
                 itemsIndexed(deck.tracks) { index, track ->
                     TrackRow(
                         track = track,
@@ -843,6 +874,104 @@ private val TRANSPORT_CAP_H = 17.dp
 private const val TRANSPORT_BLOOM_SPREAD = 3.2f
 private const val TRANSPORT_BLOOM_ALPHA = 0.22f
 private const val TRANSPORT_CAP_BLOOM = 0.30f
+
+/**
+ * Whether this streamed record is kept on the phone, and the way to change that.
+ *
+ * **Only ever drawn for an album that came from a server.** A local album is already on the
+ * device, so offering to download it would be offering to copy a file onto itself.
+ *
+ * The progress is a hairline under the row rather than a percentage: what a person wants from
+ * a download is a sense that it is moving, and a number invites watching it. It fills the row
+ * because a bar the width of a word would be decoration.
+ */
+@Composable
+private fun OfflineRow(
+    state: OfflineState,
+    busy: Boolean,
+    message: String?,
+    onKeep: () -> Unit,
+    onCancel: () -> Unit,
+    onDrop: () -> Unit
+) {
+    val finish = LocalDeckFinish.current
+    val complete = state.isComplete
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable {
+                when {
+                    busy -> onCancel()
+                    complete -> onDrop()
+                    else -> onKeep()
+                }
+            }
+            .padding(vertical = 10.dp),
+        verticalArrangement = Arrangement.spacedBy(7.dp)
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Icon(
+                imageVector = when {
+                    busy -> Icons.Default.Close
+                    complete -> Icons.Default.CheckCircle
+                    else -> Icons.Default.Download
+                },
+                contentDescription = null,
+                tint = if (complete) finish.accent else finish.plateDim,
+                modifier = Modifier.size(18.dp)
+            )
+            Text(
+                text = when {
+                    busy -> "KEEPING… TAP TO STOP"
+                    complete -> "KEPT ON THIS PHONE"
+                    state.cachedBytes > 0L -> "KEEP THE REST OFFLINE"
+                    else -> "KEEP OFFLINE"
+                },
+                modifier = Modifier.weight(1f),
+                style = JawonTextStyle.mono.copy(
+                    color = if (complete) finish.accent else finish.plateInk,
+                    fontSize = 10.sp,
+                    letterSpacing = 1.6.sp
+                )
+            )
+            Text(
+                text = "${state.totalBytes / (1024L * 1024L)} MB",
+                style = JawonTextStyle.mono.copy(color = finish.plateDim, fontSize = 10.sp)
+            )
+        }
+
+        // Drawn while a download is running and while one is part-done, and hidden once the
+        // album is whole — a full bar sitting under a row that already says KEPT is a second
+        // way of saying the same thing.
+        if (!complete && state.cachedBytes > 0L || busy) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(2.dp)
+                    .background(finish.plateDim.copy(alpha = 0.25f))
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxHeight()
+                        .fillMaxWidth(state.fraction.coerceIn(0f, 1f))
+                        .background(finish.accent)
+                )
+            }
+        }
+
+        message?.let {
+            Text(
+                text = it,
+                style = JawonTextStyle.mono.copy(color = finish.plateInk, fontSize = 9.sp),
+                lineHeight = 14.sp
+            )
+        }
+    }
+}
 
 @Composable
 private fun TrackRow(

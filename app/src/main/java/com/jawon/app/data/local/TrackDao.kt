@@ -35,6 +35,15 @@ interface TrackDao {
     suspend fun listAll(): List<Track>
 
     /**
+     * One album's tracks, once, in playing order.
+     *
+     * The same order [getForAlbum] gives, which is what makes the survivor of a de-duplication
+     * the row the tracklist was already showing. See `LibraryRepair`.
+     */
+    @Query("SELECT * FROM Track WHERE albumId = :albumId ORDER BY discNumber, trackNumber")
+    suspend fun listForAlbum(albumId: String): List<Track>
+
+    /**
      * Tracks whose own artist was never read — everything imported before that column existed.
      *
      * See `TrackArtistBackfill`: without a pass over these, per-track credits would only ever
@@ -52,6 +61,21 @@ interface TrackDao {
 
     @Query("SELECT fetchedLyrics FROM Track WHERE id = :id")
     suspend fun fetchedLyrics(id: String): String?
+
+    /**
+     * Forget every *empty* answer, keeping every real one.
+     *
+     * An empty string means "we asked and there were none", and it is what stops a track being
+     * looked up on every visit to the page. That is right while the question stays the same —
+     * and wrong the moment it changes. Turning a lyrics switch on, or improving how the lookup
+     * matches, asks a different question of the same track, and a cached "no" from the old one
+     * would answer it forever.
+     *
+     * Deliberately narrow: rows holding actual words are untouched, so this costs a lookup for
+     * the tracks that failed and nothing at all for the tracks that worked.
+     */
+    @Query("UPDATE Track SET fetchedLyrics = NULL WHERE fetchedLyrics = ''")
+    suspend fun forgetEmptyLyricLookups()
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(track: Track)

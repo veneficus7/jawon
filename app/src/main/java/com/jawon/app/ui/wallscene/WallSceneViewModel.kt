@@ -18,6 +18,8 @@ import com.jawon.app.data.playback.PlaybackRepository
 import com.jawon.app.data.lyrics.Lyrics
 import com.jawon.app.data.prefs.AppPreferences
 import com.jawon.app.data.spotify.SpotifyLibrarySync
+import com.jawon.app.playback.AlbumDownloader
+import com.jawon.app.playback.OfflineState
 import com.jawon.app.playback.RackChannel
 import com.jawon.app.playback.SleepTimer
 import com.jawon.app.ui.common.qualityReadoutSource
@@ -60,7 +62,12 @@ data class DeckState(
  * open. Pan, fling and the open sequence deliberately do not live here: per ENGINEERING.md,
  * high-frequency state must not drive Compose recomposition, so the scene owns it and writes
  * the nodes directly.
+ *
+ * `@UnstableApi` for the same reason `SettingsViewModel` is: it holds an [AlbumDownloader],
+ * which is built on Media3's cache APIs. The annotation is lint-enforced rather than
+ * compiler-enforced, so leaving it off builds green and fails the release lint pass.
  */
+@androidx.media3.common.util.UnstableApi
 @HiltViewModel
 class WallSceneViewModel @Inject constructor(
     shelfDao: ShelfDao,
@@ -77,6 +84,8 @@ class WallSceneViewModel @Inject constructor(
     private val lyricsRepository: com.jawon.app.data.lyrics.LyricsRepository,
     private val preferences: AppPreferences,
     private val audioRouteReader: AudioRouteReader,
+    /** Keeps a streamed album on the phone on request. See [AlbumDownloader]. */
+    private val downloader: AlbumDownloader,
     /**
      * Written by the frame loop, read by Settings. Exposed rather than injected into the
      * composable directly so the scene keeps talking to one object.
@@ -601,6 +610,91 @@ class WallSceneViewModel @Inject constructor(
      */
     fun onScrub(trackIndex: Int, positionMs: Long) =
         viewModelScope.launch { playbackRepository.seekTo(trackIndex, positionMs) }
+
+    // ---- Keeping a streamed record on the phone ------------------------------------
+    //
+    // Only ever visible for an album that came from a server. A local album is already on the
+    // phone, and offering to download it would be offering to copy a file onto itself.
+
+    private val _offline = MutableStateFlow<OfflineState?>(null)
+
+    /** How much of the open album is stored, or null when it is not a streamed one. */
+    val offline: StateFlow<OfflineState?> = _offline.asStateFlow()
+
+    private val _downloading = MutableStateFlow(false)
+    val downloading: StateFlow<Boolean> = _downloading.asStateFlow()
+
+    private val _offlineMessage = MutableStateFlow<String?>(null)
+
+    /** Why the last attempt did not work, for the deck to say out loud. */
+    val offlineMessage: StateFlow<String?> = _offlineMessage.asStateFlow()
+
+    private var downloadJob: Job? = null
+
+    init {
+        viewModelScope.launch {
+            deck
+                .map { it.tracks }
+                // The deck re-emits on every playback tick; the tracklist changes when a case
+                // opens. Reading the cache index sixty times a minute for an answer that only
+                // moves when a record does would be the same mistake the lyrics flow documents.
+                .distinctUntilChanged { a, b -> a.map { it.id } == b.map { it.id } }
+                .collect { tracks ->
+                    downloadJob?.cancel()
+                    _offlineMessage.value = null
+                    _offline.value = offlineStateOf(tracks)
+                }
+        }
+    }
+
+    /** Null for a local album — that is what makes the control disappear rather than mislead. */
+    private fun offlineStateOf(tracks: List<Track>): OfflineState? =
+        if (tracks.none { it.remoteId != null }) null else downloader.stateOf(tracks)
+
+    /**
+     * Pulls the open album down in full.
+     *
+     * Deliberately fire-and-forget from the deck's point of view: the progress is in [offline],
+     * which the row draws, and leaving the deck does not stop it. Opening a *different* record
+     * does, in the collector above — one download at a time, so a stream and a download are not
+     * competing for the same connection.
+     */
+    fun onKeepOffline() {
+        val tracks = deck.value.tracks
+        if (tracks.isEmpty()) return
+        downloadJob?.cancel()
+        downloadJob = viewModelScope.launch {
+            _downloading.value = true
+            _offlineMessage.value = null
+            try {
+                when (val result = downloader.download(tracks) { _offline.value = it }) {
+                    is AlbumDownloader.Result.Done -> Unit
+                    is AlbumDownloader.Result.TooLarge -> _offlineMessage.value =
+                        "Needs ${result.neededMb} MB — the offline store holds ${result.limitMb} MB. " +
+                            "Make it bigger in Settings."
+                    is AlbumDownloader.Result.Failed -> _offlineMessage.value = result.reason
+                }
+            } finally {
+                // In a `finally` because cancelling unwinds rather than returning, and a
+                // cancelled download that left this true would show a spinner forever.
+                _downloading.value = false
+                _offline.value = offlineStateOf(tracks)
+            }
+        }
+    }
+
+    fun onCancelKeepOffline() {
+        downloadJob?.cancel()
+    }
+
+    /** Gives the space back. The album stays on the wall and goes back to streaming. */
+    fun onDropOffline() = viewModelScope.launch {
+        val tracks = deck.value.tracks
+        downloadJob?.cancel()
+        downloader.remove(tracks)
+        _offlineMessage.value = null
+        _offline.value = offlineStateOf(tracks)
+    }
 
     // ---- Equaliser, from inside the deck ------------------------------------------
     //

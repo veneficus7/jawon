@@ -51,6 +51,23 @@ data class SubsonicServer(
     val isConfigured: Boolean
         get() = baseUrl.isNotBlank() && username.isNotBlank() && password.isNotBlank()
 
+    /**
+     * The address as a person would say it: `music.example.net`, not `https://music.example.net/`.
+     *
+     * For the one line of heading that says which server this is. The scheme and the trailing
+     * slash are noise in that position — nobody reading a settings screen is checking whether
+     * their own server is on TLS by looking at the label — and dropping them keeps a long
+     * self-hosted address from wrapping onto a second line.
+     */
+    val displayHost: String
+        get() = baseUrl
+            .substringAfter("://")
+            // A path can follow the host on a reverse-proxied install (`example.net/music`).
+            // Keeping it would be more accurate and less readable; the full address is in the
+            // field two rows below, unchanged.
+            .substringBefore('/')
+            .ifBlank { baseUrl }
+
     /** Everything after the `?`, minus the endpoint's own parameters. */
     fun authQuery(salt: String = newSalt()): String {
         val token = md5(password + salt)

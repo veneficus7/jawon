@@ -45,4 +45,15 @@ interface AlbumDao {
      */
     @Query("SELECT * FROM Album WHERE sourceId = :sourceId")
     suspend fun forSource(sourceId: String): List<Album>
+
+    /**
+     * How many albums came from one source, watched rather than asked.
+     *
+     * For the settings screen's one-line answer to "is this working" — a server section whose
+     * heading says *412 albums* has said everything the three paragraphs under it were saying,
+     * and it updates itself the moment a sync finishes without anyone having to remember to
+     * refresh it.
+     */
+    @Query("SELECT COUNT(*) FROM Album WHERE sourceId = :sourceId")
+    fun countForSource(sourceId: String): Flow<Int>
 }

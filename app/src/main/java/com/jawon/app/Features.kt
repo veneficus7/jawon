@@ -27,9 +27,16 @@ object Features {
      * the few people using it. They keep working; there is simply no longer a way to add a new
      * one from the UI.
      *
-     * Turning it back on is this line. See `docs/server.md`, which stays accurate meanwhile.
+     * **Back on as of 2026-09-09**, and the reasoning that brought it back is worth keeping.
+     * The owner's own argument arrived at it: a collection ripped at full quality is hundreds of
+     * gigabytes, no phone holds that, and the person who cares most about physical listening is
+     * therefore the one who can least fit their records on the device. That is the central
+     * problem of the product, and this is the only answer to it that is also unambiguously
+     * legal — your own music, on your own machine, streamed to your own phone.
+     *
+     * See `docs/server.md`.
      */
-    const val MUSIC_SERVER = false
+    const val MUSIC_SERVER = true
 
     /**
      * Playing from a Spotify account.

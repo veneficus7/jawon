@@ -76,6 +76,15 @@ class RemoteLibrarySync @Inject constructor(
     val state: StateFlow<SyncState> = _state.asStateFlow()
 
     /**
+     * How many albums the server has put on the wall, live.
+     *
+     * The honest answer to "is this set up and working", and better than the last sync's summary
+     * because it survives leaving the screen — a count of what is *there* rather than a report of
+     * what happened once.
+     */
+    val albumCount: kotlinx.coroutines.flow.Flow<Int> = albumDao.countForSource(SOURCE_ID)
+
+    /**
      * Brings the local catalogue in line with the server's.
      *
      * Failures are per-album rather than fatal, the same way `AlbumImportRepository.commitAll`
