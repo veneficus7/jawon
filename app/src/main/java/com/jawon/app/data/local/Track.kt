@@ -47,9 +47,37 @@ data class Track(
      */
     val fetchedLyrics: String? = null,
     val durationMs: Long,
+    /**
+     * Where the audio is.
+     *
+     * For a track on this phone, a content URI, and the only thing needed to play it. For a
+     * track on a music server this is **empty**, and that is deliberate rather than lazy: a
+     * Subsonic stream URL carries a one-shot authentication salt, so a URL stored here would
+     * be stale by the time anything read it, and storing credentials in a hundred rows would
+     * mean rewriting all of them when the password changes. [remoteId] is stored instead and
+     * the URL is built at the moment of playing — see `PlaybackRepository`.
+     */
     val fileUri: String,
+
+    /**
+     * This track's id on the music server it came from, or null for a local file.
+     *
+     * Paired with `Album.sourceId`: the album knows *which* server, the track knows *what* to
+     * ask it for. Also the stable cache key — a stream URL changes on every request, so the
+     * cache has to key off this instead or it would store the same track under a new name
+     * every time and never hit.
+     */
+    val remoteId: String? = null,
+
     // captured at import, drives the quality readout
     val mimeType: String,
+    /**
+     * Zero where it is not known.
+     *
+     * Plain Subsonic does not report a sample rate, so a streamed track from a non-OpenSubsonic
+     * server genuinely has no answer. Left as 0 and rendered as a blank rather than invented,
+     * because the deck prints this and a made-up number is worse than an absent one.
+     */
     val sampleRateHz: Int,
     val bitDepth: Int?,
     val bitrateBps: Int

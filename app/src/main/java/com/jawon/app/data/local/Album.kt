@@ -31,5 +31,29 @@ data class Album(
     val lastPositionMs: Long = 0L,
 
     /** Null until the album has actually been played once. Drives "recently played". */
-    val lastPlayedAt: Long? = null
+    val lastPlayedAt: Long? = null,
+
+    /**
+     * Which music server this record came from, or null for one that lives on this phone.
+     *
+     * **Null is the whole library as it stood before streaming existed**, which is why it is
+     * the default rather than a sentinel like `"local"`: every row written by the importer
+     * keeps meaning exactly what it meant, and every query that does not care about the
+     * distinction carries on not caring.
+     *
+     * A string rather than a boolean because there will be more than one server one day, and a
+     * boolean that has to become an id later is a second migration nobody needed.
+     */
+    val sourceId: String? = null,
+
+    /**
+     * This album's id **on that server**, which is not the same thing as [id].
+     *
+     * [id] is Jawon's own — a UUID minted here, and the key everything else in the database
+     * hangs off, including the play history. Keeping them separate is what lets a re-sync
+     * recognise an album it has already seen and *update* it, rather than inserting a second
+     * copy and splitting its listening record in half. It is also what makes the server
+     * replaceable: move to a different one and the wear on the case survives.
+     */
+    val remoteId: String? = null
 )

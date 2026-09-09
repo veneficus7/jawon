@@ -16,6 +16,9 @@ import com.jawon.app.data.local.AlbumDao
 import com.jawon.app.data.local.PlayEvent
 import com.jawon.app.data.local.PlayEventDao
 import com.jawon.app.data.local.Track
+import com.jawon.app.data.prefs.AppPreferences
+import com.jawon.app.data.remote.SubsonicClient
+import com.jawon.app.data.remote.SubsonicServer
 import com.jawon.app.playback.PlaybackService
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
@@ -48,7 +51,14 @@ import kotlin.coroutines.resumeWithException
 class PlaybackRepository @Inject constructor(
     @param:ApplicationContext private val context: Context,
     private val albumDao: AlbumDao,
-    private val playEventDao: PlayEventDao
+    private val playEventDao: PlayEventDao,
+    /**
+     * Only ever asked to *build a URL*, never to fetch anything. Resolving a streamed track to
+     * an address is a string operation — see [SubsonicClient.streamUrl] — so this stays off the
+     * network and the queue is assembled as fast for a remote album as for a local one.
+     */
+    private val subsonic: SubsonicClient,
+    private val preferences: AppPreferences
 ) {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
@@ -329,12 +339,35 @@ class PlaybackRepository @Inject constructor(
         segment = null
         queuedTracks = tracks
         controller.setMediaItems(
-            tracks.map { it.toMediaItem(albumArtist) },
+            tracks.map { mediaItemFor(it, albumArtist) },
             startIndex.coerceIn(0, (tracks.size - 1).coerceAtLeast(0)),
             startPositionMs.coerceAtLeast(0L)
         )
         controller.prepare()
         controller.play()
+    }
+
+    /**
+     * Turns one track into something the player can open, wherever it happens to live.
+     *
+     * The branch is on [Track.remoteId] rather than on the album's `sourceId`, because this is
+     * handed a list of tracks and not the album they came from — and because the track is the
+     * thing that knows whether it has a file behind it.
+     *
+     * A remote track with no server configured falls through to the local path and gets an empty
+     * URI, which the player reports as an error rather than failing silently. That is the right
+     * outcome for a state that should not be reachable: the only way to reach it is to remove
+     * the server while its albums are still on the wall, and a track that cannot say where it
+     * is should say so.
+     */
+    private fun mediaItemFor(track: Track, albumArtist: String?): MediaItem {
+        val remoteId = track.remoteId
+        val server = preferences.musicServer.value
+        return if (remoteId != null && server.isConfigured) {
+            track.toStreamedMediaItem(albumArtist, subsonic.streamUrl(server, remoteId))
+        } else {
+            track.toMediaItem(albumArtist)
+        }
     }
 
     suspend fun playPause() {
@@ -423,6 +456,39 @@ private fun Track.toMediaItem(albumArtist: String?): MediaItem =
     MediaItem.Builder()
         .setMediaId(id)
         .setUri(fileUri)
+        .setMediaMetadata(
+            MediaMetadata.Builder()
+                .setTitle(title)
+                .setArtist(artist?.takeIf { it.isNotBlank() } ?: albumArtist)
+                .build()
+        )
+        .build()
+
+/**
+ * The same, for a track that lives on a music server.
+ *
+ * Two things differ from the local case, and both matter.
+ *
+ * **The URI is built now, not stored.** A Subsonic stream URL carries a one-shot authentication
+ * salt (see [SubsonicServer]), so it is only valid as long as it takes to use it. Storing one in
+ * the database would mean storing something already stale, and storing the credentials in every
+ * row would mean rewriting every row when the password changes.
+ *
+ * **The cache key is the track, not the URL.** This is the line that makes streaming usable at
+ * all. `CacheDataSource` keys on the URI unless told otherwise, and because the salt is fresh
+ * every time, the same track would arrive under a different key on every play — a cache that
+ * fills up and never once hits, and a scratch gesture that goes to the network for every seek.
+ * Pinning the key to Jawon's own stable track id is what makes the second play, and every
+ * scrub, come off local disk.
+ */
+private fun Track.toStreamedMediaItem(
+    albumArtist: String?,
+    streamUrl: String
+): MediaItem =
+    MediaItem.Builder()
+        .setMediaId(id)
+        .setUri(streamUrl)
+        .setCustomCacheKey(id)
         .setMediaMetadata(
             MediaMetadata.Builder()
                 .setTitle(title)

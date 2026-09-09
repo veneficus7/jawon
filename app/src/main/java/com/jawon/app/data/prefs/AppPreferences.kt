@@ -2,6 +2,9 @@ package com.jawon.app.data.prefs
 
 import android.content.Context
 import androidx.core.content.edit
+import com.jawon.app.BuildConfig
+import com.jawon.app.data.remote.ServerInvite
+import com.jawon.app.data.remote.SubsonicServer
 import com.jawon.app.ui.theme.RoomScheme
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -248,7 +251,110 @@ class AppPreferences @Inject constructor(@param:ApplicationContext context: Cont
         get() = prefs.getBoolean(KEY_TRACK_ARTIST_BACKFILL, false)
         set(value) = prefs.edit { putBoolean(KEY_TRACK_ARTIST_BACKFILL, value) }
 
+    private val _musicServer = MutableStateFlow(readServer())
+
+    /**
+     * The music server this phone streams from, or [SubsonicServer.NONE] when there is none.
+     *
+     * **The password is stored in plain `SharedPreferences`**, in the app's private directory,
+     * and that deserves saying out loud rather than being left for someone to discover. On a
+     * non-rooted phone no other app can read it. On a rooted one it is readable, and so is
+     * anything else here. The alternatives were weighed and rejected: `EncryptedSharedPreferences`
+     * is deprecated and its replacement wants a keystore-backed key that a factory reset or a
+     * restore invalidates — which turns "your library vanished" into a support problem — and the
+     * Subsonic protocol needs the password itself on every request, so it cannot be stored as a
+     * one-way hash the way a login secret could. This is the same trade every Subsonic client
+     * on the platform makes, and the privacy policy names it.
+     */
+    val musicServer: StateFlow<SubsonicServer> = _musicServer.asStateFlow()
+
+    fun setMusicServer(server: SubsonicServer) {
+        prefs.edit {
+            putString(KEY_SERVER_URL, server.url)
+            putString(KEY_SERVER_USER, server.username)
+            putString(KEY_SERVER_PASSWORD, server.password)
+            // Records that the choice is now the user's, which is what makes FORGET stick on a
+            // build that ships a default server — see [readServer].
+            putBoolean(KEY_SERVER_CHOSEN, true)
+        }
+        _musicServer.value = server
+    }
+
+    /**
+     * The server to use: whatever the user set, else whatever this build shipped with.
+     *
+     * **The flag is what makes FORGET mean something.** On a build carrying a default invite,
+     * falling back to it whenever the stored fields are blank would restore the server the
+     * instant someone removed it — a button that visibly does nothing. So the first time the
+     * user touches the setting at all, their answer wins permanently, including when their
+     * answer is "none".
+     *
+     * A malformed invite is treated as no invite rather than as an error. It reaches this point
+     * only from a build flag, so the person who can fix it is the person who cut the build, and
+     * failing to launch would be a strange way to tell them.
+     */
+    private fun readServer(): SubsonicServer {
+        val chosen = prefs.getBoolean(KEY_SERVER_CHOSEN, false)
+        if (!chosen) {
+            ServerInvite.decode(BuildConfig.DEFAULT_SERVER_INVITE)?.let { return it }
+        }
+        return SubsonicServer(
+            url = prefs.getString(KEY_SERVER_URL, null).orEmpty(),
+            username = prefs.getString(KEY_SERVER_USER, null).orEmpty(),
+            password = prefs.getString(KEY_SERVER_PASSWORD, null).orEmpty()
+        )
+    }
+
+    /**
+     * `true` when this build shipped pointed at a server.
+     *
+     * The settings screen uses it to explain where a library nobody configured came from —
+     * otherwise the first run of a shared build looks like the app inventing music from
+     * nowhere.
+     */
+    val hasBundledServer: Boolean
+        get() = ServerInvite.decode(BuildConfig.DEFAULT_SERVER_INVITE) != null
+
+    private val _streamCacheMb = MutableStateFlow(prefs.getInt(KEY_STREAM_CACHE_MB, DEFAULT_CACHE_MB))
+
+    /**
+     * How much of the phone this app may spend holding streamed audio, in megabytes.
+     *
+     * **This is not a nicety, it is what makes the disc work.** Turning the platter issues a
+     * seek per gesture, and against a bare network source every one of those is a fresh range
+     * request over the wire — the app's most tactile interaction turned into its laggiest. With
+     * a cache in front, a track that has been played once is scrubbed from local disk at local
+     * disk speed. See `StreamCache`.
+     *
+     * 512 MB by default: enough for roughly a day of listening to stay instant, small enough
+     * that a phone which is short of space — which is the whole reason to stream — is not
+     * quietly filled back up. The user who bought a 1 TB phone can raise it.
+     */
+    val streamCacheMb: StateFlow<Int> = _streamCacheMb.asStateFlow()
+
+    fun setStreamCacheMb(mb: Int) {
+        val clamped = mb.coerceIn(MIN_CACHE_MB, MAX_CACHE_MB)
+        prefs.edit { putInt(KEY_STREAM_CACHE_MB, clamped) }
+        _streamCacheMb.value = clamped
+    }
+
     private companion object {
+        const val KEY_SERVER_URL = "server_url"
+        const val KEY_SERVER_USER = "server_user"
+        const val KEY_SERVER_PASSWORD = "server_password"
+        const val KEY_SERVER_CHOSEN = "server_chosen"
+        const val KEY_STREAM_CACHE_MB = "stream_cache_mb"
+
+        const val DEFAULT_CACHE_MB = 512
+
+        /**
+         * Below about this, the cache stops being able to hold even one album and starts
+         * evicting the track that is currently playing — which is worse than no cache at all,
+         * because it re-downloads what it just threw away.
+         */
+        const val MIN_CACHE_MB = 128
+        const val MAX_CACHE_MB = 16_384
+
         const val KEY_TRACK_ARTIST_BACKFILL = "track_artist_backfill_done"
         const val KEY_BASS = "effect_bass"
         const val KEY_WIDTH = "effect_width"

@@ -12,6 +12,7 @@ import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -116,6 +117,94 @@ class LibraryBackupTest {
 
         assertEquals("Late Night", db.shelfDao().listAll().single().name)
         assertEquals(240_000L, db.playEventDao().listAll().single().msPlayed)
+    }
+
+    @Test
+    fun `a streamed album comes back streamed, not as an unplayable local one`() = runTest {
+        // **A real bug, caught before it shipped.** The first version of streaming added
+        // `sourceId` and `remoteId` to the entities and forgot them here, and the failure was
+        // entirely silent: a restored streamed album became a *local* album whose tracks had an
+        // empty fileUri — so it sat on the wall looking perfect and played nothing. Worse, with
+        // its sourceId gone `AlbumDao.forSource` could no longer see it, so the next sync would
+        // insert a second copy of the entire server alongside the first.
+        db.shelfDao().insert(Shelf("shelf-s", "Streaming", 0, 0f, 1_000L))
+        db.albumDao().insert(
+            Album(
+                id = "subsonic:album:al-1", shelfId = "shelf-s", title = "Kid A",
+                artist = "Radiohead", year = 2000, caseCoverUri = null, discFaceUri = null,
+                spineHue = 0f, slotIndex = 0, playCount = 9, addedAt = 2_000L,
+                lastTrackIndex = 0, lastPositionMs = 0L, lastPlayedAt = 4_000L,
+                sourceId = "subsonic", remoteId = "al-1"
+            )
+        )
+        db.trackDao().insert(
+            Track(
+                id = "subsonic:track:tr-1", albumId = "subsonic:album:al-1", trackNumber = 1,
+                title = "Idioteque", durationMs = 100_000L,
+                // Empty, because a stream URL carries a one-shot salt and is built at play time.
+                fileUri = "", remoteId = "tr-1",
+                mimeType = "audio/flac", sampleRateHz = 44100, bitDepth = 16, bitrateBps = 900_000
+            )
+        )
+
+        val file = tempFile("streamed.zip")
+        backup.writeTo(context, Uri.fromFile(file))
+        db.clearAllTables()
+        backup.readFrom(context, Uri.fromFile(file))
+
+        val album = db.albumDao().listAll().single()
+        assertEquals("subsonic", album.sourceId)
+        assertEquals("al-1", album.remoteId)
+        assertEquals("the play count is still the curation", 9, album.playCount)
+
+        val track = db.trackDao().listAll().single()
+        assertEquals("tr-1", track.remoteId)
+
+        // And the album is findable again by the query the sync depends on. Without this, a
+        // restore followed by a sync duplicates every record on the server.
+        assertEquals(1, db.albumDao().forSource("subsonic").size)
+    }
+
+    @Test
+    fun `an id containing a slash is not truncated on the way back`() = runTest {
+        // `optName`, used for cover filenames, runs its value through `File(...).name` — which
+        // would quietly shorten a server id like "library/1/al-9" to "al-9" and point the album
+        // at the wrong record, or at none. The remote ids read through `optText` instead, and
+        // this is what says so.
+        db.shelfDao().insert(Shelf("shelf-s", "Streaming", 0, 0f, 1_000L))
+        db.albumDao().insert(
+            Album(
+                id = "subsonic:album:x", shelfId = "shelf-s", title = "T", artist = "A",
+                year = null, caseCoverUri = null, discFaceUri = null, spineHue = 0f,
+                slotIndex = 0, playCount = 0, addedAt = 0L,
+                sourceId = "subsonic", remoteId = "library/1/al-9"
+            )
+        )
+
+        val file = tempFile("slashy.zip")
+        backup.writeTo(context, Uri.fromFile(file))
+        db.clearAllTables()
+        backup.readFrom(context, Uri.fromFile(file))
+
+        assertEquals("library/1/al-9", db.albumDao().listAll().single().remoteId)
+    }
+
+    @Test
+    fun `an album from before streaming restores as local, not as remote`() = runTest {
+        // The inverse, and the one that protects every backup already in existence: an archive
+        // written before these keys existed has no `sourceId`, and the absent value must read as
+        // null. `optString` would give "" — which is not null, so `forSource("")` could match it
+        // and hand a hand-curated local library to a sync entitled to delete from it.
+        seed()
+        val file = tempFile("legacy.zip")
+        backup.writeTo(context, Uri.fromFile(file))
+        db.clearAllTables()
+        backup.readFrom(context, Uri.fromFile(file))
+
+        val album = db.albumDao().listAll().single()
+        assertNull("an album with no server is local", album.sourceId)
+        assertNull(album.remoteId)
+        assertNull(db.trackDao().listAll().single().remoteId)
     }
 
     @Test

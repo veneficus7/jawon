@@ -26,11 +26,29 @@ private fun codecLabel(mimeType: String): String = when (mimeType) {
     else -> mimeType.substringAfter('/').uppercase(Locale.ROOT)
 }
 
-/** e.g. `FLAC 16-BIT / 44.1 kHz` — what the file actually is. */
+/**
+ * e.g. `FLAC 16-BIT / 44.1 kHz` — what the file actually is.
+ *
+ * **Zero means "not known", and is printed as nothing at all.** A local import always reads a
+ * real rate off the file, but a track streamed from a plain Subsonic server may not have one:
+ * `samplingRate` is an OpenSubsonic addition, so Navidrome sends it and an older server does
+ * not. Formatting that absence naively gives `FLAC 0.0 kHz`, which is not a gap in the readout
+ * — it is a confident, wrong claim about the audio, on the one screen in this app whose whole
+ * job is to tell the truth about the audio. The same rule already governs the output leg below.
+ */
 fun qualityReadoutSource(track: Track): String {
     val bitDepthPart = track.bitDepth?.let { "$it-BIT / " } ?: ""
-    val rateKhz = track.sampleRateHz / 1000f
-    return "${codecLabel(track.mimeType)} $bitDepthPart${"%.1f".format(Locale.US, rateKhz)} kHz"
+    val ratePart = if (track.sampleRateHz > 0) {
+        "${"%.1f".format(Locale.US, track.sampleRateHz / 1000f)} kHz"
+    } else {
+        ""
+    }
+    // Trimmed rather than assembled conditionally, so an absent rate does not leave the
+    // trailing " / " from the bit depth dangling on the end of the line.
+    return "${codecLabel(track.mimeType)} $bitDepthPart$ratePart"
+        .trim()
+        .removeSuffix("/")
+        .trim()
 }
 
 /**

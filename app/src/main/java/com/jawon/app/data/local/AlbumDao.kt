@@ -34,4 +34,15 @@ interface AlbumDao {
 
     @Query("DELETE FROM Album WHERE id = :id")
     suspend fun deleteById(id: String)
+
+    /**
+     * Everything that came from one music server.
+     *
+     * The sync needs this to tell three cases apart: an album it already has and should update,
+     * one it has never seen, and one that has gone from the server and should go from the wall.
+     * `sourceId IS NULL` is the local library and is never returned here, which is what keeps a
+     * sync from touching records that live on the phone.
+     */
+    @Query("SELECT * FROM Album WHERE sourceId = :sourceId")
+    suspend fun forSource(sourceId: String): List<Album>
 }

@@ -7,6 +7,13 @@ import android.net.Uri
 import com.jawon.app.data.backup.LibraryBackup
 import com.jawon.app.data.diagnostics.CrashLog
 import com.jawon.app.data.prefs.AppPreferences
+import com.jawon.app.data.remote.RemoteLibrarySync
+import com.jawon.app.data.remote.ServerInvite
+import com.jawon.app.data.remote.ServerProbe
+import com.jawon.app.data.remote.SubsonicClient
+import com.jawon.app.data.remote.SubsonicServer
+import com.jawon.app.data.remote.SyncState
+import com.jawon.app.playback.StreamCache
 import com.jawon.app.data.update.AvailableUpdate
 import com.jawon.app.data.update.UpdateChecker
 import com.jawon.app.data.update.UpdateState
@@ -19,6 +26,13 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
+/**
+ * `@UnstableApi` because it holds a [StreamCache], which is built on Media3's cache and data
+ * source APIs. Declared here for the same reason `PlaybackService` declares it: the annotation is
+ * lint-enforced rather than compiler-enforced, so an un-annotated holder builds green and fails
+ * the release lint pass instead.
+ */
+@androidx.media3.common.util.UnstableApi
 @HiltViewModel
 class SettingsViewModel @Inject constructor(
     private val preferences: AppPreferences,
@@ -27,8 +41,105 @@ class SettingsViewModel @Inject constructor(
     private val diagnostics: com.jawon.app.ui.wallscene.RoomDiagnostics,
     private val crashLog: CrashLog,
     /** Cleared when the lyrics source preference changes. */
-    private val lyricsRepository: com.jawon.app.data.lyrics.LyricsRepository
+    private val lyricsRepository: com.jawon.app.data.lyrics.LyricsRepository,
+    private val subsonic: SubsonicClient,
+    private val librarySync: RemoteLibrarySync,
+    private val streamCache: StreamCache
 ) : ViewModel() {
+
+    // ---- the music server ------------------------------------------------------------------
+
+    val musicServer: StateFlow<SubsonicServer> = preferences.musicServer
+
+    val syncState: StateFlow<SyncState> = librarySync.state
+
+    private val _probe = MutableStateFlow<ServerProbe?>(null)
+
+    /** What the last connection test found, or null if none has been run this session. */
+    val probe: StateFlow<ServerProbe?> = _probe.asStateFlow()
+
+    private val _probing = MutableStateFlow(false)
+    val probing: StateFlow<Boolean> = _probing.asStateFlow()
+
+    /**
+     * Saves the server without testing it.
+     *
+     * Deliberately separate from [onTestServer]: typing a password should not fire a request on
+     * every keystroke, and a user who knows their details should not have to pass a test before
+     * the app will remember them.
+     */
+    fun onServerChanged(server: SubsonicServer) {
+        preferences.setMusicServer(server)
+        // The old result described the old server, and leaving it on screen would say a
+        // freshly-typed address was verified when nothing has asked it anything.
+        _probe.value = null
+    }
+
+    private val _inviteMessage = MutableStateFlow<String?>(null)
+
+    /** What happened to the last pasted link, so a bad paste says so rather than doing nothing. */
+    val inviteMessage: StateFlow<String?> = _inviteMessage.asStateFlow()
+
+    /** `true` when this build already came pointed at a server. */
+    val hasBundledServer: Boolean get() = preferences.hasBundledServer
+
+    /**
+     * Fills in a whole server from one pasted link, and tests it straight away.
+     *
+     * Testing without being asked is the right call *here* specifically: someone pasting a link
+     * has not chosen an address, a username or a password, so there is nothing for them to
+     * check over. Either it works or the link is bad, and they want to know which.
+     */
+    fun onInvitePasted(text: String) {
+        val server = ServerInvite.decode(text)
+        if (server == null) {
+            _inviteMessage.value = "That does not look like a Jawon link."
+            return
+        }
+        _inviteMessage.value = null
+        preferences.setMusicServer(server)
+        _probe.value = null
+        onTestServer()
+    }
+
+    /** The current server as a link, for handing to someone else. */
+    fun inviteForCurrentServer(): String? =
+        preferences.musicServer.value.takeIf { it.isConfigured }?.let { ServerInvite.encode(it) }
+
+    fun onTestServer() = viewModelScope.launch {
+        _probing.value = true
+        _probe.value = subsonic.ping(preferences.musicServer.value)
+        _probing.value = false
+    }
+
+    /**
+     * Pulls the catalogue in.
+     *
+     * No music is downloaded here — this is titles, artists, tracklists and one cover per album.
+     * See [RemoteLibrarySync].
+     */
+    fun onSyncLibrary() = viewModelScope.launch { librarySync.sync() }
+
+    /**
+     * Forgets the server, leaving its albums where they are.
+     *
+     * The cases stay on the wall and simply stop being playable, which is the honest state:
+     * silently deleting a few hundred records because a password was cleared would be a
+     * catastrophic reading of a small action. Removing them is a separate, deliberate act.
+     */
+    fun onForgetServer() {
+        preferences.setMusicServer(SubsonicServer.NONE)
+        _probe.value = null
+    }
+
+    val streamCacheMb: StateFlow<Int> = preferences.streamCacheMb
+
+    fun onStreamCacheMbChanged(mb: Int) = preferences.setStreamCacheMb(mb)
+
+    /** Megabytes currently held, for the readout. */
+    fun cacheUsedMb(): Int = (streamCache.usedBytes() / (1024L * 1024L)).toInt()
+
+    fun onClearStreamCache() = viewModelScope.launch { streamCache.clear() }
 
     val fetchCoverArt: StateFlow<Boolean> = preferences.fetchCoverArt
 

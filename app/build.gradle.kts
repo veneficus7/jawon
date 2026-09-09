@@ -46,6 +46,29 @@ android {
         versionName = "0.5.2 beta"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        /**
+         * A music server this build ships already pointed at, as a `ServerInvite` string.
+         *
+         * **Empty by default, and that is the shipping default.** With nothing here the app
+         * behaves exactly as it always has: no server, nothing sent anywhere, the user's own
+         * library and nothing else. Set it only to cut a build for a specific shared library,
+         * where the point is that whoever installs it has music without configuring anything.
+         *
+         *     ./gradlew assembleRelease -Pjawon.serverInvite=jawon://eyJ1Ijoi...
+         *
+         * or a line in `gradle.properties` (which is committed — so put an invite there only if
+         * the library behind it is genuinely public).
+         *
+         * **What goes in it is a shared secret handed to strangers.** Anyone with the APK can
+         * read it back out. Use a read-only account that exists for this and nothing else, and
+         * rotate it by changing the server password and cutting a new build. See ServerInvite.
+         */
+        buildConfigField(
+            "String",
+            "DEFAULT_SERVER_INVITE",
+            "\"${project.findProperty("jawon.serverInvite") ?: ""}\""
+        )
     }
 
     // Room writes each schema version here as JSON, and the directory is committed. It is
@@ -109,6 +132,8 @@ android {
     }
     buildFeatures {
         compose = true
+        // For DEFAULT_SERVER_INVITE above.
+        buildConfig = true
     }
 }
 

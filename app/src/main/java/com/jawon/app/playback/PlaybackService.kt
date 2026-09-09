@@ -60,6 +60,16 @@ class PlaybackService : MediaSessionService() {
     @Inject
     lateinit var crashLog: com.jawon.app.data.diagnostics.CrashLog
 
+    /**
+     * The disk streamed audio is read through.
+     *
+     * App-scoped rather than built here, because `SimpleCache` locks its directory and a second
+     * instance over the same folder throws — and this service can be destroyed and recreated
+     * while the process lives on. See [StreamCache].
+     */
+    @Inject
+    lateinit var streamCache: StreamCache
+
     private var crossfadeEngine: CrossfadeEngine? = null
     private var replayGainReader: ReplayGainReader? = null
 
@@ -111,6 +121,18 @@ class PlaybackService : MediaSessionService() {
         }
 
         val player = ExoPlayer.Builder(this, renderersFactory)
+            // How every track is read, local or streamed.
+            //
+            // Local files are unaffected — `DefaultDataSource` still serves `content://`
+            // straight off the phone, and the cache never sees them. What this adds is that a
+            // track coming from a music server is read through disk, which is what lets the
+            // scratch seek instantly and the crossfade tail replay without a second download.
+            // See [StreamCache].
+            .setMediaSourceFactory(
+                androidx.media3.exoplayer.source.DefaultMediaSourceFactory(
+                    streamCache.dataSourceFactory()
+                )
+            )
             .setAudioAttributes(
                 AudioAttributes.Builder()
                     .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC)
@@ -135,7 +157,8 @@ class PlaybackService : MediaSessionService() {
         // levelling both want that field, and written independently they overwrite each
         // other — see PlayerVolume.
         val volume = PlayerVolume(player)
-        val crossfade = CrossfadeEngine(this, player, preferences, volume)
+        val crossfade =
+            CrossfadeEngine(this, player, preferences, volume, streamCache.dataSourceFactory())
         crossfadeEngine = crossfade
 
         val replayGain = ReplayGainReader(volume, preferences)

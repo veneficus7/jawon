@@ -50,7 +50,17 @@ import androidx.compose.ui.unit.sp
 import androidx.core.content.FileProvider
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.LocalTextStyle
+import androidx.compose.material3.TextField
+import androidx.compose.material3.TextFieldDefaults
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import com.jawon.app.R
+import com.jawon.app.data.remote.ServerProbe
+import com.jawon.app.data.remote.SubsonicServer
+import com.jawon.app.data.remote.SyncState
 import com.jawon.app.data.update.AvailableUpdate
 import com.jawon.app.data.update.UpdateState
 import com.jawon.app.playback.Crossfade
@@ -58,6 +68,7 @@ import com.jawon.app.playback.ReplayGain
 import com.jawon.app.ui.theme.ArchivoFamily
 import com.jawon.app.ui.theme.CrateBlack
 import com.jawon.app.ui.theme.CrateEdge
+import com.jawon.app.ui.theme.CrateRaised
 import com.jawon.app.ui.theme.JawonTextStyle
 import com.jawon.app.ui.theme.JetBrainsMonoFamily
 import com.jawon.app.ui.theme.LabelCream
@@ -725,6 +736,272 @@ private fun BackupButton(text: String, enabled: Boolean, onClick: () -> Unit) {
     }
 }
 
+/**
+ * The music server, for a library too big to keep on the phone.
+ *
+ * **The one section in Settings that changes what leaves the device**, so it says so in plain
+ * words rather than making the user infer it. Everything else here is local; this sends a
+ * username and a password to an address the user chose, and then streams audio from it.
+ */
+@Composable
+private fun MusicServerSection(
+    server: SubsonicServer,
+    probe: ServerProbe?,
+    probing: Boolean,
+    syncState: SyncState,
+    cacheUsedMb: Int,
+    cacheLimitMb: Int,
+    bundledServer: Boolean,
+    inviteMessage: String?,
+    onServerChanged: (SubsonicServer) -> Unit,
+    onInvitePasted: (String) -> Unit,
+    onShareInvite: () -> Unit,
+    onTest: () -> Unit,
+    onSync: () -> Unit,
+    onForget: () -> Unit,
+    onClearCache: () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 26.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        Text(
+            text = "A MUSIC SERVER OF YOUR OWN",
+            fontFamily = JetBrainsMonoFamily,
+            fontWeight = FontWeight.Bold,
+            fontSize = 11.sp,
+            letterSpacing = 2.sp,
+            color = LabelCream
+        )
+        Text(
+            text = "Point Jawon at your own Subsonic server — Navidrome, Airsonic, Gonic or " +
+                "Ampache — and its albums appear on the wall without taking up room on your " +
+                "phone. Only the catalogue is stored here: titles, tracklists and one cover " +
+                "each. The music itself is streamed when you play it.",
+            style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = 10.sp),
+            lineHeight = 16.sp
+        )
+        Text(
+            text = "This is still your library. Jawon has no catalogue of its own to offer " +
+                "you, and streaming services cannot be used here — every one of them forbids " +
+                "an app from touching the audio, which is the whole of what the disc does.",
+            style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = 10.sp),
+            lineHeight = 16.sp
+        )
+
+        // The one-field route, first, because it is the one most people should use.
+        //
+        // Three fields is three chances to mistype and a reason to give up before hearing
+        // anything. A link carries all of it, and whoever sent it already knows it works.
+        var invite by remember { mutableStateOf("") }
+        // Emptied when the server goes, so FORGET does not leave the link that set it up
+        // sitting in the box looking like it is still in force.
+        LaunchedEffect(server.isConfigured) {
+            if (!server.isConfigured) invite = ""
+        }
+        Text(
+            text = if (bundledServer) {
+                "This copy of Jawon came with a library already set up — the details below were " +
+                    "filled in for you. Paste a different link to point it somewhere else."
+            } else {
+                "Been sent a link? Paste it here and the three fields below fill themselves in."
+            },
+            style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = 10.sp),
+            lineHeight = 16.sp,
+            modifier = Modifier.padding(top = 6.dp)
+        )
+        ServerField(
+            label = "PASTE A LINK",
+            value = invite,
+            placeholder = "jawon://…",
+            onValueChange = {
+                invite = it
+                if (it.isNotBlank()) onInvitePasted(it)
+            }
+        )
+        inviteMessage?.let { StatusLine(it, LabelCream) }
+
+        Text(
+            text = "OR FILL IT IN YOURSELF",
+            fontFamily = JetBrainsMonoFamily,
+            fontWeight = FontWeight.Bold,
+            fontSize = 9.sp,
+            letterSpacing = 1.6.sp,
+            color = LabelDim,
+            modifier = Modifier.padding(top = 10.dp)
+        )
+
+        ServerField(
+            label = "ADDRESS",
+            value = server.url,
+            placeholder = "https://music.example.net",
+            onValueChange = { onServerChanged(server.copy(url = it)) }
+        )
+        ServerField(
+            label = "USERNAME",
+            value = server.username,
+            placeholder = "",
+            onValueChange = { onServerChanged(server.copy(username = it)) }
+        )
+        ServerField(
+            label = "PASSWORD",
+            value = server.password,
+            placeholder = "",
+            password = true,
+            onValueChange = { onServerChanged(server.copy(password = it)) }
+        )
+
+        Row(
+            modifier = Modifier.padding(top = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            BackupButton(
+                text = if (probing) "TESTING…" else "TEST",
+                enabled = server.isConfigured && !probing,
+                onClick = onTest
+            )
+            BackupButton(
+                text = "SYNC LIBRARY",
+                enabled = server.isConfigured && syncState !is SyncState.Running,
+                onClick = onSync
+            )
+            BackupButton(
+                text = "FORGET",
+                enabled = server.isConfigured,
+                onClick = onForget
+            )
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            BackupButton(
+                text = "SHARE A LINK",
+                enabled = server.isConfigured,
+                onClick = onShareInvite
+            )
+        }
+        Text(
+            text = "A link carries the address and the sign-in, so whoever you send it to " +
+                "pastes one thing and is listening. Treat it as the password it contains: " +
+                "anyone holding it can reach the server, and the only way to take it back is " +
+                "to change the password there and send a new one.",
+            style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = 10.sp),
+            lineHeight = 16.sp
+        )
+
+        // Refused and unreachable are reported apart, because they call for opposite fixes:
+        // check the password, versus check the address.
+        when (probe) {
+            is ServerProbe.Reachable -> StatusLine(
+                "Connected · ${probe.serverType} ${probe.version}",
+                LampAmber
+            )
+            is ServerProbe.Refused -> StatusLine("Refused · ${probe.reason}", LabelCream)
+            is ServerProbe.Unreachable -> StatusLine("No answer · ${probe.reason}", LabelCream)
+            null -> Unit
+        }
+
+        when (syncState) {
+            is SyncState.Running -> StatusLine(
+                "Reading ${syncState.done + 1} of ${syncState.total} — ${syncState.album}",
+                LabelCream
+            )
+            is SyncState.Done -> StatusLine(
+                "${syncState.added} new, ${syncState.updated} updated, " +
+                    "${syncState.removed} gone from the server",
+                LampAmber
+            )
+            is SyncState.Failed -> StatusLine("Sync failed · ${syncState.reason}", LabelCream)
+            SyncState.Idle -> Unit
+        }
+
+        Text(
+            text = "OFFLINE STORE",
+            fontFamily = JetBrainsMonoFamily,
+            fontWeight = FontWeight.Bold,
+            fontSize = 11.sp,
+            letterSpacing = 2.sp,
+            color = LabelCream,
+            modifier = Modifier.padding(top = 12.dp)
+        )
+        Text(
+            text = "Streamed tracks are kept here after they play, which is what lets you " +
+                "turn the disc to scrub without waiting for the network. Using " +
+                "$cacheUsedMb MB of $cacheLimitMb MB. Clearing it costs nothing but the head " +
+                "start; your shelves and covers stay. A new size takes effect next launch.",
+            style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = 10.sp),
+            lineHeight = 16.sp
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            BackupButton(text = "CLEAR IT", enabled = cacheUsedMb > 0, onClick = onClearCache)
+        }
+    }
+}
+
+@Composable
+private fun StatusLine(text: String, color: androidx.compose.ui.graphics.Color) {
+    Text(
+        text = text,
+        style = JawonTextStyle.mono.copy(color = color, fontSize = 10.sp),
+        lineHeight = 16.sp
+    )
+}
+
+@Composable
+private fun ServerField(
+    label: String,
+    value: String,
+    placeholder: String,
+    onValueChange: (String) -> Unit,
+    password: Boolean = false
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text(
+            text = label,
+            fontFamily = JetBrainsMonoFamily,
+            fontWeight = FontWeight.Bold,
+            fontSize = 9.sp,
+            letterSpacing = 1.6.sp,
+            color = LabelDim
+        )
+        TextField(
+            value = value,
+            onValueChange = onValueChange,
+            singleLine = true,
+            placeholder = {
+                Text(
+                    text = placeholder,
+                    style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = 12.sp)
+                )
+            },
+            visualTransformation = if (password) {
+                PasswordVisualTransformation()
+            } else {
+                VisualTransformation.None
+            },
+            keyboardOptions = KeyboardOptions(
+                keyboardType = if (password) KeyboardType.Password else KeyboardType.Uri,
+                // A server address is not a sentence, and autocapitalising the first letter of
+                // a URL or a username is how a correct entry becomes a failed login.
+                autoCorrectEnabled = false
+            ),
+            textStyle = LocalTextStyle.current.copy(
+                fontFamily = JetBrainsMonoFamily,
+                fontSize = 12.sp,
+                color = LabelCream
+            ),
+            colors = TextFieldDefaults.colors(
+                focusedContainerColor = CrateRaised,
+                unfocusedContainerColor = CrateRaised,
+                focusedIndicatorColor = LampAmber,
+                unfocusedIndicatorColor = CrateEdge,
+                cursorColor = LampAmber
+            ),
+            modifier = Modifier.fillMaxWidth()
+        )
+    }
+}
+
 /** One switchable setting: what it is, what it actually does, and the switch. */
 @Composable
 private fun SettingRow(
@@ -787,6 +1064,12 @@ fun SettingsScreen(
     val replayGainMode by viewModel.replayGainMode.collectAsStateWithLifecycle()
     val backupBusy by viewModel.backupBusy.collectAsStateWithLifecycle()
     val backupMessage by viewModel.backupMessage.collectAsStateWithLifecycle()
+    val musicServer by viewModel.musicServer.collectAsStateWithLifecycle()
+    val probe by viewModel.probe.collectAsStateWithLifecycle()
+    val probing by viewModel.probing.collectAsStateWithLifecycle()
+    val syncState by viewModel.syncState.collectAsStateWithLifecycle()
+    val streamCacheMb by viewModel.streamCacheMb.collectAsStateWithLifecycle()
+    val inviteMessage by viewModel.inviteMessage.collectAsStateWithLifecycle()
 
     // SAF both ways, for the same reason the folder import uses it: the file belongs to the
     // user, in a place they chose and can find again, not in this app's private storage where
@@ -1052,6 +1335,38 @@ fun SettingsScreen(
                     "kept so the same track is never looked up twice. Nothing else is sent.",
                 checked = fetchLyrics,
                 onCheckedChange = viewModel::onFetchLyricsChanged
+            )
+
+            MusicServerSection(
+                server = musicServer,
+                probe = probe,
+                probing = probing,
+                syncState = syncState,
+                // Read on composition rather than collected: the cache size changes as audio
+                // streams, and a flow of it would recompose this screen continuously for a
+                // number nobody is watching change.
+                cacheUsedMb = viewModel.cacheUsedMb(),
+                cacheLimitMb = streamCacheMb,
+                bundledServer = viewModel.hasBundledServer,
+                inviteMessage = inviteMessage,
+                onServerChanged = viewModel::onServerChanged,
+                onInvitePasted = viewModel::onInvitePasted,
+                onShareInvite = {
+                    viewModel.inviteForCurrentServer()?.let { link ->
+                        context.startActivity(
+                            Intent.createChooser(
+                                Intent(Intent.ACTION_SEND)
+                                    .setType("text/plain")
+                                    .putExtra(Intent.EXTRA_TEXT, link),
+                                "Share this library"
+                            )
+                        )
+                    }
+                },
+                onTest = viewModel::onTestServer,
+                onSync = viewModel::onSyncLibrary,
+                onForget = viewModel::onForgetServer,
+                onClearCache = viewModel::onClearStreamCache
             )
 
             BackupSection(

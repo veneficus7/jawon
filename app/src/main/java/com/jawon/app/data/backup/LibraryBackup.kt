@@ -201,6 +201,12 @@ class LibraryBackup @Inject constructor(
         put("playCount", playCount); put("addedAt", addedAt)
         put("lastTrackIndex", lastTrackIndex); put("lastPositionMs", lastPositionMs)
         put("lastPlayedAt", lastPlayedAt ?: JSONObject.NULL)
+        // Where the record lives. Omitting these was a real bug for exactly one release: a
+        // streamed album restored without them becomes a *local* album whose tracks have an
+        // empty fileUri — silently unplayable — and, because `AlbumDao.forSource` would no
+        // longer find it, the next sync would insert a second copy of the whole server.
+        put("sourceId", sourceId ?: JSONObject.NULL)
+        put("remoteId", remoteId ?: JSONObject.NULL)
     }
 
     private fun JSONObject.toAlbum(coversDir: File) = Album(
@@ -217,7 +223,12 @@ class LibraryBackup @Inject constructor(
         addedAt = optLong("addedAt"),
         lastTrackIndex = optInt("lastTrackIndex"),
         lastPositionMs = optLong("lastPositionMs"),
-        lastPlayedAt = if (isNull("lastPlayedAt")) null else optLong("lastPlayedAt")
+        lastPlayedAt = if (isNull("lastPlayedAt")) null else optLong("lastPlayedAt"),
+        // Absent in archives written before streaming existed, and null is exactly right for
+        // those: every album in them was on the phone. `optString` would give "" instead, which
+        // `forSource` would never match and which would make a local album claim to be remote.
+        sourceId = optText("sourceId"),
+        remoteId = optText("remoteId")
     )
 
     private fun Track.toJson() = JSONObject().apply {
@@ -227,6 +238,10 @@ class LibraryBackup @Inject constructor(
         put("artist", artist ?: JSONObject.NULL)
         put("mimeType", mimeType); put("sampleRateHz", sampleRateHz)
         put("bitDepth", bitDepth ?: JSONObject.NULL); put("bitrateBps", bitrateBps)
+        // The other half of the album's `remoteId`: without this a restored streamed track has
+        // neither a file nor an id to ask the server for, and there is nothing left anywhere
+        // that could recover it.
+        put("remoteId", remoteId ?: JSONObject.NULL)
     }
 
     private fun JSONObject.toTrack() = Track(
@@ -244,7 +259,8 @@ class LibraryBackup @Inject constructor(
         mimeType = optString("mimeType"),
         sampleRateHz = optInt("sampleRateHz"),
         bitDepth = if (isNull("bitDepth")) null else optInt("bitDepth"),
-        bitrateBps = optInt("bitrateBps")
+        bitrateBps = optInt("bitrateBps"),
+        remoteId = optText("remoteId")
     )
 
     private fun PlayEvent.toJson() = JSONObject().apply {
@@ -273,6 +289,19 @@ class LibraryBackup @Inject constructor(
     private fun JSONObject.optName(key: String): String? {
         if (isNull(key)) return null
         return File(optString(key)).name.takeIf { it.isNotEmpty() }
+    }
+
+    /**
+     * A nullable string, read as written.
+     *
+     * Distinct from [optName], which passes the value through `File(...).name` to strip the
+     * directory off a cover path. That is right for a filename and wrong for anything else: a
+     * server is free to use ids containing a slash, and [optName] would silently truncate one
+     * to its last segment — an album that then resolved to the wrong record, or to none.
+     */
+    private fun JSONObject.optText(key: String): String? {
+        if (isNull(key)) return null
+        return optString(key).takeIf { it.isNotEmpty() }
     }
 
     private companion object {

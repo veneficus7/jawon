@@ -82,8 +82,12 @@ move that into this list first.
 
 | File | Owns |
 |---|---|
-| `local/JawonDatabase.kt` + entities | Room. `Shelf`, `Album`, `Track`, `PlayEvent`, and their DAOs. **Version 4, with three hand-written migrations** — see below. |
-| `local/Migrations.kt` | `MIGRATION_1_2` (resume position, and the `PlayEvent` table), `MIGRATION_2_3` (`Track.artist`, for compilations), `MIGRATION_3_4` (`Track.fetchedLyrics`). Read its KDoc before adding a fourth: there is deliberately no destructive fallback. |
+| `local/JawonDatabase.kt` + entities | Room. `Shelf`, `Album`, `Track`, `PlayEvent`, and their DAOs. **Version 6, with five hand-written migrations** — see below. |
+| `local/Migrations.kt` | `MIGRATION_1_2` (resume position, and the `PlayEvent` table), `MIGRATION_2_3` (`Track.artist`, for compilations), `MIGRATION_3_4` (`Track.fetchedLyrics`), `MIGRATION_4_5` (`Track.discNumber`), `MIGRATION_5_6` (`Album.sourceId`, `Album.remoteId`, `Track.remoteId` — where a record lives). Read its KDoc before adding a sixth: there is deliberately no destructive fallback. |
+| `remote/SubsonicClient.kt` | Four endpoints against a Subsonic-compatible server: `ping`, `getAlbumList2`, `getAlbum`, and the cover and stream URLs. Every `parse*` is pure and static, which is what makes the JSON shapes testable without a server. **A refusal arrives as HTTP 200** with a nested error — see its KDoc. |
+| `remote/SubsonicServer.kt` | The address and credentials, and the salted-token authentication. The password never crosses the wire; the salt is fresh per request, which is why the stream URL changes every time and the cache cannot key on it. |
+| `remote/ServerInvite.kt` | One pasteable string carrying a whole server, so nobody types three fields — and the `-Pjawon.serverInvite` build flag that ships a build already pointed at one. **Obfuscation, not security**: anyone with the link or the APK can read the credentials back out, which is why the account behind it must be read-only and disposable. Read its KDoc before using it for anything. |
+| `remote/RemoteLibrarySync.kt` | Walks the server's catalogue into Room — rows and one cover per album, never audio. `merge()` is the careful part: the server is authoritative for the title, artist, year and tracklist, and for **nothing else**. Ids are derived from the server's, so a re-sync updates rather than duplicating and the play history stays attached. |
 | `importer/AlbumImportRepository.kt` | Two ways in, both producing one preview *per album found*: `scanTree` walks a picked SAF folder, `scanDevice` queries MediaStore for what the phone already indexed. Grouping is by containing folder. Also `commit`/`commitAll`, and the cover-art lookup for records that carry none. |
 | `importer/AudioScanner.kt` | Walks a SAF tree for audio. **It recurses** — that is deliberate now, and used to be a trap. |
 | `importer/TrackMetadataReader.kt` | Tags via `MediaMetadataRetriever`, technical detail via `MediaExtractor`. Also pulls embedded cover art. |
@@ -110,6 +114,7 @@ Split the same way `ui/wallscene` is — the maths is separate from the plumbing
 | `ReplayGain.kt`, `ReplayGainReader.kt` | Tag-driven level matching, clamped at −15 dB. |
 | `RackState.kt` | What every rack control currently means. The bridge to `ui/wallscene/RackGrid.kt`. |
 | `SleepTimer.kt`, `PlayerVolume.kt` | Small, and exactly what they say. |
+| `StreamCache.kt` | The bounded LRU disk cache streamed audio is read through, and the `DataSource.Factory` the player and the crossfade tail share. **Only the network branch is cached** — local `content://` files go straight through, since copying them would be the wrong failure on a phone short of space. This is what makes the scratch seek instantly on a streamed track. |
 
 **Read trap 15 in `ENGINEERING.md` before touching anything that sets
 `PlaybackParameters`.** The pitch control was withdrawn because crossing 1.0

@@ -73,3 +73,21 @@ val MIGRATION_4_5 = Migration(4, 5) { db: SupportSQLiteDatabase ->
     // that is worth saying out loud rather than pretending the migration fixed it.
     db.execSQL("ALTER TABLE Track ADD COLUMN discNumber INTEGER")
 }
+
+val MIGRATION_5_6 = Migration(5, 6) { db: SupportSQLiteDatabase ->
+    // Where a record actually lives, now that it does not have to be on the phone.
+    //
+    // All three are nullable with no default, and null carries the meaning that was true
+    // before streaming existed: this album is on this device, and its tracks are files. That
+    // makes the migration a no-op for every library already out there rather than a rewrite
+    // of it — no row is touched, nothing is reinterpreted, and an existing collection behaves
+    // on the next launch exactly as it did on the last one.
+    //
+    // `sourceId` on the album and `remoteId` on both: the album records *which* server, each
+    // track records *what to ask it for*. They are separate columns rather than one encoded
+    // string because the two are queried differently — "show me everything from the server
+    // I just removed" is an album question, and "how do I play this" is a track question.
+    db.execSQL("ALTER TABLE Album ADD COLUMN sourceId TEXT")
+    db.execSQL("ALTER TABLE Album ADD COLUMN remoteId TEXT")
+    db.execSQL("ALTER TABLE Track ADD COLUMN remoteId TEXT")
+}

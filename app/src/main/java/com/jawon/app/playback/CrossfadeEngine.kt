@@ -43,7 +43,17 @@ class CrossfadeEngine(
      * rather than writing `main.volume`, so levelling survives a fade and a fade lands on top
      * of the level the record asked for — see [PlayerVolume].
      */
-    private val mainVolume: PlayerVolume
+    private val mainVolume: PlayerVolume,
+    /**
+     * The same source chain the main player reads through — crucially, the same cache.
+     *
+     * Left to its own devices the tail player would build a default factory and fetch the
+     * outgoing track's last seconds over the network **again**, having just streamed them. On a
+     * phone that is streaming precisely because it has no room to store music, paying twice for
+     * every transition is the wrong bargain. Sharing the factory means the tail is served from
+     * the cache the main player just filled.
+     */
+    private val dataSourceFactory: androidx.media3.datasource.DataSource.Factory
 ) {
 
     private val handler = Handler(Looper.getMainLooper())
@@ -229,6 +239,9 @@ class CrossfadeEngine(
 
     private fun buildTailPlayer(): ExoPlayer =
         ExoPlayer.Builder(context)
+            .setMediaSourceFactory(
+                androidx.media3.exoplayer.source.DefaultMediaSourceFactory(dataSourceFactory)
+            )
             .setAudioAttributes(
                 AudioAttributes.Builder()
                     .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC)

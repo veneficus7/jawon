@@ -296,10 +296,53 @@ class MigrationTest {
         db.close()
     }
 
+    @Test
+    fun `migration 5 to 6 leaves an existing library local, not stranded on a server`() {
+        createV1().close()
+        openRaw(2) { }.also { MIGRATION_1_2.migrate(it) }.close()
+        openRaw(3) { }.also { MIGRATION_2_3.migrate(it) }.close()
+        openRaw(4) { }.also { MIGRATION_3_4.migrate(it) }.close()
+        openRaw(5) { }.also { MIGRATION_4_5.migrate(it) }.close()
+
+        val db = openRaw(6) { }.also { MIGRATION_5_6.migrate(it) }
+
+        db.query("SELECT * FROM Album WHERE id = 'album-1'").use { c ->
+            assertTrue(c.moveToFirst())
+            // The album is untouched...
+            assertEquals("Selected Ambient Works", c.getString(c.getColumnIndexOrThrow("title")))
+
+            // ...and NULL is what says "this record is on this phone". Anything else here — a
+            // default of '' or 'local' — would make every album that predates streaming look
+            // like it came from a server, and `AlbumDao.forSource` would then hand the whole
+            // pre-existing library to a sync that is entitled to delete what the server does
+            // not list. That is the failure this assertion exists to catch.
+            assertTrue(
+                "sourceId must be NULL so an existing album stays local",
+                c.isNull(c.getColumnIndexOrThrow("sourceId"))
+            )
+            assertTrue(c.isNull(c.getColumnIndexOrThrow("remoteId")))
+        }
+
+        db.query("SELECT * FROM Track WHERE id = 'track-1'").use { c ->
+            assertTrue(c.moveToFirst())
+            // The file is still the file. A track whose fileUri survived but whose remoteId was
+            // set would be looked up on a server that has never heard of it.
+            assertEquals(
+                "content://audio/1",
+                c.getString(c.getColumnIndexOrThrow("fileUri"))
+            )
+            assertTrue(
+                "remoteId must be NULL for a track that has a file",
+                c.isNull(c.getColumnIndexOrThrow("remoteId"))
+            )
+        }
+        db.close()
+    }
+
     // ---- the whole chain, through Room ----------------------------------------------------
 
     @Test
-    fun `a version 1 library opens at version 5 through Room's own validation`() {
+    fun `a version 1 library opens at the current version through Room's own validation`() {
         createV1().close()
 
         // The test that matters most, and the only one that reproduces the production failure.
@@ -310,12 +353,14 @@ class MigrationTest {
         // `writableDatabase` is what forces the open; building the database alone is lazy and
         // would pass no matter how wrong the migrations were.
         val db = Room.databaseBuilder(context, JawonDatabase::class.java, DB_NAME)
-            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
+            .addMigrations(
+                MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6
+            )
             .allowMainThreadQueries()
             .build()
 
         assertNotNull(db.openHelper.writableDatabase)
-        assertEquals(5, db.openHelper.writableDatabase.version)
+        assertEquals(6, db.openHelper.writableDatabase.version)
         db.close()
     }
 
@@ -343,7 +388,9 @@ class MigrationTest {
         }.close()
 
         val db = Room.databaseBuilder(context, JawonDatabase::class.java, DB_NAME)
-            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
+            .addMigrations(
+                MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6
+            )
             .allowMainThreadQueries()
             .build()
 
