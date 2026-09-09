@@ -17,6 +17,15 @@ sealed class JawonDestination(val route: String) {
      */
     data object Listening : JawonDestination("listening")
 
+    /**
+     * Browsing the Internet Archive for records to take home.
+     *
+     * Reached from Add Album rather than from the room's chrome: whatever else it is, it is a
+     * way of getting a record onto a shelf, and that screen is where the other two live. The
+     * chrome's three even thirds stay three.
+     */
+    data object RecordShop : JawonDestination("record_shop")
+
     /** Editing one album. Reached from the room's long-press and from the shelf list. */
     data object EditAlbum : JawonDestination("edit_album/{albumId}") {
         fun routeFor(albumId: String) = "edit_album/$albumId"

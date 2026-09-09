@@ -8,6 +8,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.jawon.app.ui.addalbum.AddAlbumScreen
+import com.jawon.app.ui.archive.RecordShopScreen
 import com.jawon.app.ui.editalbum.EditAlbumScreen
 import com.jawon.app.ui.listening.ListeningScreen
 import com.jawon.app.ui.settings.SettingsScreen
@@ -30,8 +31,12 @@ fun JawonNavHost(navController: NavHostController = rememberNavController()) {
         composable(JawonDestination.AddAlbum.route) {
             AddAlbumScreen(
                 onDone = { navController.popBackStack() },
-                onCancel = { navController.popBackStack() }
+                onCancel = { navController.popBackStack() },
+                onBrowseArchive = { navController.navigate(JawonDestination.RecordShop.route) }
             )
+        }
+        composable(JawonDestination.RecordShop.route) {
+            RecordShopScreen(onBack = { navController.popBackStack() })
         }
         composable(JawonDestination.ShelfManager.route) {
             ShelfManagerScreen(

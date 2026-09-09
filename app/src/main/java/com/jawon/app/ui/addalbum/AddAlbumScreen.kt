@@ -82,6 +82,7 @@ import java.util.Locale
 fun AddAlbumScreen(
     onDone: (albumId: String) -> Unit,
     onCancel: () -> Unit,
+    onBrowseArchive: () -> Unit = {},
     viewModel: AddAlbumViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -126,7 +127,8 @@ fun AddAlbumScreen(
                     // the scan rather than showing a dialog that answers itself.
                     if (hasAudioPermission(context)) viewModel.onScanDevice()
                     else audioPermissionLauncher.launch(audioPermission())
-                }
+                },
+                onBrowseArchive = onBrowseArchive
             )
             is AddAlbumUiState.Scanning -> Working("READING YOUR MUSIC")
             is AddAlbumUiState.Preview -> PreviewContent(
@@ -202,15 +204,24 @@ private fun ScreenHeader(title: String, onBack: () -> Unit) {
 }
 
 /**
- * The two ways in, weighted.
+ * The three ways in, weighted.
  *
  * Scanning is the answer for almost everyone — the music is already on the phone and Android
  * already knows where it is — so it gets the whole card. Picking a folder asks the user a
  * question about their filesystem, and is offered underneath as the thing it actually is: the
  * route to music a scan cannot see.
+ *
+ * The Archive is last and is a different kind of thing entirely: the first route in this app
+ * that adds music the user did not already have. It is offered here rather than as a fourth
+ * button in the room's chrome, because whatever it is, it is a way of getting a record onto a
+ * shelf — which is what this screen is for.
  */
 @Composable
-private fun IdleContent(onChooseFolder: () -> Unit, onScanDevice: () -> Unit) {
+private fun IdleContent(
+    onChooseFolder: () -> Unit,
+    onScanDevice: () -> Unit,
+    onBrowseArchive: () -> Unit
+) {
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -272,6 +283,33 @@ private fun IdleContent(onChooseFolder: () -> Unit, onScanDevice: () -> Unit) {
                 // scanner has seen, so this is the only route to some music.
                 text = "For music on a memory card or in cloud storage, which a scan " +
                     "cannot see.",
+                style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = 10.sp),
+                lineHeight = 16.sp
+            )
+        }
+
+        Column(
+            modifier = Modifier
+                .padding(top = 18.dp)
+                .fillMaxWidth()
+                .border(1.dp, CrateEdge)
+                .clickable(onClick = onBrowseArchive)
+                .padding(22.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Text(
+                text = "THE RECORD SHOP",
+                fontFamily = ArchivoFamily,
+                fontWeight = FontWeight.ExtraBold,
+                fontSize = 18.sp,
+                letterSpacing = 1.sp,
+                color = LabelDim
+            )
+            Text(
+                text = "Browse the Internet Archive — a quarter of a million live concerts " +
+                    "from bands who allow taping, and Creative Commons releases. Free, no " +
+                    "account. Take a record home and it is yours, on your wall, with the disc " +
+                    "and everything else that does.",
                 style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = 10.sp),
                 lineHeight = 16.sp
             )
