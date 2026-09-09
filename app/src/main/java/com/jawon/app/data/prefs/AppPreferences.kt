@@ -128,8 +128,28 @@ class AppPreferences @Inject constructor(@param:ApplicationContext context: Cont
         _wallSort.value = name
     }
 
+    /**
+     * Level matching, and it is **off** by default now.
+     *
+     * **This was why Jawon sounded quieter and weaker than every other player on the phone.**
+     * Nearly all commercial music since the nineties is mastered loud and tagged with a negative
+     * ReplayGain — typically −6 to −10 dB. Levelling to the reference therefore does not "even
+     * things out" on a modern library, it turns almost everything *down*, by a margin nobody
+     * could mistake for subtle. Six decibels is heard as a different, worse master: thinner, less
+     * punchy, further away. Put next to Spotify or the stock player the same file sounds cheap,
+     * and nothing on screen explains why.
+     *
+     * The other players that do this by default pair it with a pre-amp so the result lands near
+     * where it started. Jawon had the attenuation and no pre-amp, which is the one combination
+     * that is strictly worse than not doing it at all.
+     *
+     * Off is also the honest default for a feature whose whole purpose is comparing records to
+     * each other: it matters on shuffle across a mixed library, and this app plays albums.
+     * Anyone who wants it can still switch it on, and now they will be choosing it rather than
+     * wondering why their music sounds flat.
+     */
     private val _replayGainMode =
-        MutableStateFlow(prefs.getString(KEY_REPLAY_GAIN, null) ?: "ALBUM")
+        MutableStateFlow(prefs.getString(KEY_REPLAY_GAIN, null) ?: "OFF")
     val replayGainMode: StateFlow<String> = _replayGainMode.asStateFlow()
 
     fun setReplayGainMode(name: String) {

@@ -270,13 +270,13 @@ class ScratchAudio @Inject constructor() {
                     val frameBase = cursor
                     var c = 0
                     while (c < channels && i < buffer.size) {
-                        val raw = ScratchTone.sampleAt(pcm, frameBase + c) / 32768f
+                        val raw = Pcm16.toFloat(ScratchTone.sampleAt(pcm, frameBase + c))
                         // Dulled, then driven, then levelled. Filtering before saturation and
                         // not after: a needle loses the top end on the way *in*, and clipping
                         // a dull signal is warm where dulling a clipped one is muffled.
                         toneState[c] += toneCoeff * (raw - toneState[c])
                         val shaped = ScratchTone.saturate(toneState[c], drive) * gain
-                        buffer[i] = (shaped * 32767f).toInt().coerceIn(-32768, 32767).toShort()
+                        buffer[i] = Pcm16.toShort(shaped)
                         i++
                         c++
                     }

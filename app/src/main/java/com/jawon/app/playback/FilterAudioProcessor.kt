@@ -96,9 +96,9 @@ class FilterAudioProcessor(private val rack: RackState) : BaseAudioProcessor() {
             }
 
             for (channel in 0 until channelCount) {
-                val sample = inputBuffer.short / 32_768f
+                val sample = Pcm16.toFloat(inputBuffer.short)
                 val filtered = channels[channel].process(sample, g, q, highPass)
-                output.putShort((filtered * 32_767f).toInt().coerceIn(-32_768, 32_767).toShort())
+                output.putShort(Pcm16.toShort(filtered))
             }
         }
         output.flip()

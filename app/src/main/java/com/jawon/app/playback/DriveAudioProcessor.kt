@@ -57,9 +57,9 @@ class DriveAudioProcessor(private val rack: RackState) : BaseAudioProcessor() {
         for (frame in 0 until frames) {
             amount += (target - amount) * smoothingK
             for (channel in 0 until channelCount) {
-                val sample = inputBuffer.short / 32_768f
+                val sample = Pcm16.toFloat(inputBuffer.short)
                 val out = Drive.process(sample, amount)
-                output.putShort((out * 32_767f).toInt().coerceIn(-32_768, 32_767).toShort())
+                output.putShort(Pcm16.toShort(out))
             }
         }
         output.flip()

@@ -112,9 +112,9 @@ class EchoAudioProcessor(private val rack: RackState) : BaseAudioProcessor() {
             mix += (targetMix - mix) * levelK
 
             for (channel in 0 until channelCount) {
-                val sample = inputBuffer.short / 32_768f
+                val sample = Pcm16.toFloat(inputBuffer.short)
                 val out = lines[channel].process(sample, timeFrames, feedback, mix)
-                output.putShort((out * 32_767f).toInt().coerceIn(-32_768, 32_767).toShort())
+                output.putShort(Pcm16.toShort(out))
             }
         }
         output.flip()
