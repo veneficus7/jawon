@@ -681,20 +681,15 @@ private fun BackupSection(
             letterSpacing = 2.sp,
             color = LabelCream
         )
-        Text(
-            text = "Saves which records are on which shelf, what the shelves are called and " +
+        MoreText(
+            summary = "Your shelves, artwork and listening history — not the audio files.",
+            detail = "Saves which records are on which shelf, what the shelves are called and " +
                 "how they glow, the titles and artwork you fixed, and every hour of " +
                 "listening the case wear is drawn from. Your audio files are not copied — " +
-                "they are already on your phone and Jawon never touches them.",
-            style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = 10.sp),
-            lineHeight = 16.sp
-        )
-        Text(
-            text = "Restoring onto the same phone brings everything back. Onto a different " +
+                "they are already on your phone and Jawon never touches them.\n\n" +
+                "Restoring onto the same phone brings everything back. Onto a different " +
                 "one, the shelves and artwork come back but the tracks may need importing " +
-                "again — Android ties a file's address to the device that issued it.",
-            style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = 10.sp),
-            lineHeight = 16.sp
+                "again — Android ties a file's address to the device that issued it."
         )
 
         Row(
@@ -1039,28 +1034,21 @@ private fun SpotifySection(
             letterSpacing = 2.sp,
             color = LabelCream
         )
-        Text(
-            text = "Put the albums you have saved in Spotify onto the wall. Jawon shows the " +
-                "room and sends the play commands; Spotify plays the sound itself.",
-            style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = 10.sp),
-            lineHeight = 16.sp
-        )
-        Text(
-            text = "Three things worth knowing before you start. It needs Spotify PREMIUM — " +
-                "the playback API refuses a free account outright. The Spotify app has to be " +
-                "open on some device, because Jawon is asking it to play rather than playing " +
-                "itself. And the disc, the equaliser and the whole rack do nothing to a " +
-                "Spotify album: the audio never passes through this app, so there is nothing " +
-                "here to scratch.",
-            style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = 10.sp),
-            lineHeight = 16.sp
-        )
-        Text(
-            text = "You need your own Spotify app. Make one at developer.spotify.com, add " +
+        MoreText(
+            // The summary leads with the two things that stop it working, because those are what
+            // someone needs before they start rather than after.
+            summary = "Your saved albums on the wall. Needs Premium, and the disc does nothing " +
+                "to a Spotify track.",
+            detail = "Put the albums you have saved in Spotify onto the wall. Jawon shows the " +
+                "room and sends the play commands; Spotify plays the sound itself.\n\n" +
+                "It needs Spotify PREMIUM — the playback API refuses a free account outright. " +
+                "The Spotify app has to be open on some device, because Jawon is asking it to " +
+                "play rather than playing itself. And the disc, the equaliser and the whole " +
+                "rack do nothing to a Spotify album: the audio never passes through this app, " +
+                "so there is nothing here to scratch.\n\n" +
+                "You need your own Spotify app. Make one at developer.spotify.com, add " +
                 "${SpotifyAuth.REDIRECT_URI} as a Redirect URI, and paste the Client ID here. " +
-                "Spotify caps a new app at five users, so one shared ID would not go far.",
-            style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = 10.sp),
-            lineHeight = 16.sp
+                "Spotify caps a new app at five users, so one shared ID would not go far."
         )
 
         ServerField(
@@ -1119,49 +1107,189 @@ private fun SpotifySection(
     }
 }
 
-/** One switchable setting: what it is, what it actually does, and the switch. */
+/**
+ * One switchable setting: what it is, one line on what it does, and the switch.
+ *
+ * ## Why the long version is hidden rather than shortened
+ *
+ * This screen used to print the whole explanation under every row — four to six lines apiece,
+ * for a dozen rows. Individually each paragraph is worth having; together they turn a settings
+ * page into a document, and a page of documentation is one nobody reads, including the parts
+ * that matter. The result was a screen that was both exhaustively honest and completely opaque.
+ *
+ * **Deleting the text was not an option.** Several of these paragraphs say exactly what leaves
+ * the device and to whom — that is a promise `docs/privacy.md` makes in the same words, and
+ * `ENGINEERING.md` treats it as one. Shortening them would quietly narrow what the app admits to.
+ *
+ * So nothing is removed and nothing is summarised away: [summary] is the one line a person needs
+ * at the moment of deciding, [detail] is the full text unchanged, and the row opens on a tap.
+ * Scannable by default, complete on demand, and the honesty is a gesture away rather than a
+ * paragraph in the way.
+ */
 @Composable
 private fun SettingRow(
     title: String,
+    summary: String,
     detail: String,
     checked: Boolean,
     onCheckedChange: (Boolean) -> Unit,
     enabled: Boolean = true
 ) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(16.dp)
-    ) {
-        Column(
-            modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
+    var expanded by remember { mutableStateOf(false) }
+
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                // The whole text block is the target, not a small chevron. A row is the natural
+                // thing to press and a 12dp glyph is not.
+                .clickable { expanded = !expanded }
+                .padding(vertical = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(5.dp)
+            ) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        text = title,
+                        fontFamily = JetBrainsMonoFamily,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 11.sp,
+                        letterSpacing = 2.sp,
+                        color = LabelCream
+                    )
+                    // Understated on purpose: it marks that there is more without competing
+                    // with the setting's own name.
+                    Text(
+                        text = if (expanded) "–" else "+",
+                        fontFamily = JetBrainsMonoFamily,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 11.sp,
+                        color = LampAmber.copy(alpha = 0.7f)
+                    )
+                }
+                Text(
+                    text = summary,
+                    style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = 10.sp),
+                    lineHeight = 15.sp
+                )
+            }
+            Switch(
+                checked = checked,
+                onCheckedChange = onCheckedChange,
+                enabled = enabled,
+                colors = SwitchDefaults.colors(
+                    checkedThumbColor = CrateBlack,
+                    checkedTrackColor = LampAmber,
+                    uncheckedThumbColor = LabelDim,
+                    uncheckedTrackColor = CrateBlack,
+                    uncheckedBorderColor = CrateEdge
+                )
+            )
+        }
+        if (expanded) {
             Text(
-                text = title,
+                text = detail,
+                style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = 10.sp),
+                lineHeight = 16.sp,
+                modifier = Modifier.padding(top = 2.dp, bottom = 6.dp, end = 56.dp)
+            )
+        }
+    }
+}
+
+/**
+ * A short line, and the long version on a tap.
+ *
+ * The same idea as [SettingRow]'s disclosure, for the blocks of prose that are not attached to a
+ * switch — what a backup contains, what Spotify will and will not do. Those paragraphs are worth
+ * having and worth keeping exactly as written; they are simply not worth reading every time
+ * somebody comes here to change the crossfade.
+ */
+@Composable
+private fun MoreText(summary: String, detail: String) {
+    var open by remember { mutableStateOf(false) }
+
+    Column(
+        modifier = Modifier.fillMaxWidth().clickable { open = !open },
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(
+                text = summary,
+                style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = 10.sp),
+                lineHeight = 16.sp,
+                modifier = Modifier.weight(1f)
+            )
+            Text(
+                text = if (open) "–" else "+",
                 fontFamily = JetBrainsMonoFamily,
                 fontWeight = FontWeight.Bold,
                 fontSize = 11.sp,
-                letterSpacing = 2.sp,
-                color = LabelCream
+                color = LampAmber.copy(alpha = 0.7f)
             )
+        }
+        if (open) {
             Text(
                 text = detail,
                 style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = 10.sp),
                 lineHeight = 16.sp
             )
         }
-        Switch(
-            checked = checked,
-            onCheckedChange = onCheckedChange,
-            enabled = enabled,
-            colors = SwitchDefaults.colors(
-                checkedThumbColor = CrateBlack,
-                checkedTrackColor = LampAmber,
-                uncheckedThumbColor = LabelDim,
-                uncheckedTrackColor = CrateBlack,
-                uncheckedBorderColor = CrateEdge
+    }
+}
+
+/**
+ * A section that is closed until it is wanted.
+ *
+ * For the parts of this screen that are reference rather than choice — how the room is
+ * performing, what crashed, how to point the app at a server. Someone opens those perhaps twice
+ * in the life of the app, and until then they are the bulk of the scrolling.
+ */
+@Composable
+private fun Disclosure(
+    title: String,
+    subtitle: String,
+    content: @Composable () -> Unit
+) {
+    var open by remember { mutableStateOf(false) }
+
+    Column(modifier = Modifier.fillMaxWidth().padding(top = 26.dp)) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { open = !open }
+                .padding(vertical = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                Text(
+                    text = title,
+                    fontFamily = JetBrainsMonoFamily,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 11.sp,
+                    letterSpacing = 2.sp,
+                    color = LabelCream
+                )
+                Text(
+                    text = subtitle,
+                    style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = 10.sp),
+                    lineHeight = 15.sp
+                )
+            }
+            Text(
+                text = if (open) "–" else "+",
+                fontFamily = JetBrainsMonoFamily,
+                fontWeight = FontWeight.Bold,
+                fontSize = 14.sp,
+                color = LampAmber.copy(alpha = 0.7f)
             )
-        )
+        }
+        if (open) content()
     }
 }
 
@@ -1423,6 +1551,9 @@ fun SettingsScreen(
 
             SettingRow(
                 title = "LOOK UP COVER ART",
+                // The summary names the service and what is sent, because those are the two
+                // facts a decision actually turns on. Everything else is a tap away.
+                summary = "Sends title and artist to MusicBrainz, for albums with no artwork.",
                 // States exactly what leaves the device. A privacy switch that says
                 // "improve your experience" is not a switch anyone can make a decision with.
                 detail = "When an album's own files carry no artwork, send its title and " +
@@ -1434,20 +1565,8 @@ fun SettingsScreen(
             )
 
             SettingRow(
-                title = "PREFER ONLINE LYRICS",
-                // Says what it costs as well as what it does. The default is off because the
-                // file's own words are instant, offline and private; this is for libraries
-                // whose tags are untimed or simply wrong.
-                detail = "Take the words from LRCLIB even when the file has its own. Jawon " +
-                    "already prefers a timed answer over an untimed one — turn this on if you " +
-                    "want the online copy regardless. Costs a lookup per track, and needs the " +
-                    "switch above.",
-                checked = preferOnlineLyrics,
-                onCheckedChange = viewModel::onPreferOnlineLyricsChanged
-            )
-
-            SettingRow(
                 title = "LOOK UP LYRICS",
+                summary = "Sends track, artist, album and length to LRCLIB, when a file has none.",
                 // Same rule as above: name the service, name exactly what is sent, and say
                 // when. "Enhanced metadata" is not something anyone can decide about.
                 detail = "When a track carries no lyrics of its own, send its title, artist, " +
@@ -1456,6 +1575,23 @@ fun SettingsScreen(
                     "kept so the same track is never looked up twice. Nothing else is sent.",
                 checked = fetchLyrics,
                 onCheckedChange = viewModel::onFetchLyricsChanged
+            )
+
+            // Moved below the switch it depends on. It was above it, which read as the more
+            // important of the two and made "needs the switch above" point at nothing.
+            SettingRow(
+                title = "PREFER ONLINE LYRICS",
+                summary = "Use LRCLIB even when the file has its own words.",
+                // Says what it costs as well as what it does. The default is off because the
+                // file's own words are instant, offline and private; this is for libraries
+                // whose tags are untimed or simply wrong.
+                detail = "Take the words from LRCLIB even when the file has its own. Jawon " +
+                    "already prefers a timed answer over an untimed one — turn this on if you " +
+                    "want the online copy regardless. Costs a lookup per track, and only does " +
+                    "anything while the switch above is on.",
+                checked = preferOnlineLyrics,
+                onCheckedChange = viewModel::onPreferOnlineLyricsChanged,
+                enabled = fetchLyrics
             )
 
             if (Features.SPOTIFY) SpotifySection(
@@ -1510,27 +1646,41 @@ fun SettingsScreen(
                 onRead = { readBackupLauncher.launch(arrayOf("application/zip", "*/*")) }
             )
 
-            SectionHeader("HOW IT IS RUNNING")
-
-            DiagnosticsSection(
-                device = viewModel.deviceLine(),
-                snapshot = viewModel.diagnosticsSnapshot(),
-                onReset = viewModel::onResetDiagnostics
-            )
-
-            CrashReportSection(
-                report = crashReport,
-                onShare = {
-                    viewModel.crashReportUri()?.let { shareCrashReport(context, it) }
-                },
-                onClear = {
-                    viewModel.onClearCrashReport()
-                    crashReport = null
+            // Closed by default. Frame times and a crash log are reference, not choices — worth
+            // having, opened perhaps twice in the life of the app, and until then the largest
+            // block of text on the screen. The subtitle carries the one thing worth knowing
+            // without opening it: whether anything has gone wrong.
+            Disclosure(
+                title = "HOW IT IS RUNNING",
+                subtitle = if (crashReport == null) {
+                    "Frame times and quality. Nothing has gone wrong."
+                } else {
+                    "Frame times and quality — and a problem worth reading."
                 }
-            )
+            ) {
+                DiagnosticsSection(
+                    device = viewModel.deviceLine(),
+                    snapshot = viewModel.diagnosticsSnapshot(),
+                    onReset = viewModel::onResetDiagnostics
+                )
+
+                CrashReportSection(
+                    report = crashReport,
+                    onShare = {
+                        viewModel.crashReportUri()?.let { shareCrashReport(context, it) }
+                    },
+                    onClear = {
+                        viewModel.onClearCrashReport()
+                        crashReport = null
+                    }
+                )
+            }
 
             Text(
-                text = "Everything Jawon knows lives on this phone.",
+                // Was "Everything Jawon knows lives on this phone", which stopped being true the
+                // moment a music server or a Spotify account could be attached. It is still true
+                // of everything the *app* keeps, and that is what it now says.
+                text = "Jawon keeps nothing about you, anywhere but this phone.",
                 style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = 10.sp),
                 modifier = Modifier.padding(top = 48.dp, bottom = 48.dp)
             )

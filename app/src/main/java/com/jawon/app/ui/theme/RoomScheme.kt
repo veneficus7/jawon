@@ -28,6 +28,28 @@ import androidx.compose.ui.graphics.Color
  * says so rather than leaving the user to notice.
  */
 enum class RoomScheme(
+    /**
+     * What the mode is called on screen — **Latin, and one word each**.
+     *
+     * The names were "Midnight Shop", "Cold Storage", "After Hours" and "Workshop": accurate
+     * descriptions, and descriptions are the problem. Each one explains the room instead of
+     * naming it, two of them are the same length as the card they sit on, and together they read
+     * as a list of settings rather than as four places you could be.
+     *
+     * Latin does what is wanted here for a reason that is not decoration: a single word that
+     * carries a whole scene without describing it. Every one of these is an ordinary Latin noun
+     * meaning exactly what the room is, so the name is precise as well as short —
+     *
+     * * **Vesper** — evening; the evening star. The warm amber hour after closing.
+     * * **Glacies** — ice.
+     * * **Vigilia** — a watch of the night. The Romans divided the night into four of them, and
+     *   this is the small hours, which is what "After Hours" was reaching for.
+     * * **Officina** — a workshop. The literal word, and the room is lit like a bench.
+     *
+     * **This is the label only.** The enum constant is what gets written to preferences, so the
+     * names above can be changed freely without resetting anybody's chosen room — which is the
+     * whole reason the two are separate fields rather than one.
+     */
     val displayName: String,
     /** The lamp. Linear-ish RGB, matching `RoomLighting.KEY_COLOR`'s scale. */
     val key: FloatArray,
@@ -67,7 +89,7 @@ enum class RoomScheme(
      * dark shop, on old brown shelving. `DESIGN.md` §3's palette exactly.
      */
     MIDNIGHT_SHOP(
-        displayName = "Midnight Shop",
+        displayName = "Vesper",
         key = floatArrayOf(1.0f, 0.824f, 0.627f),
         rim = floatArrayOf(0.941f, 0.663f, 0.235f),
         ambient = floatArrayOf(0.251f, 0.192f, 0.165f),
@@ -94,7 +116,7 @@ enum class RoomScheme(
      * stay closer to their printed colours.
      */
     COLD_STORAGE(
-        displayName = "Cold Storage",
+        displayName = "Glacies",
         // **A cold key and a hot rim, and no cyan anywhere.**
         //
         // The key stays a near-white with the faintest blue in it, which is what a cold room
@@ -130,7 +152,7 @@ enum class RoomScheme(
      * not look grey.
      */
     AFTER_HOURS(
-        displayName = "After Hours",
+        displayName = "Vigilia",
         // A cold key and a hot bounce, which is the whole cyberpunk trick: you read the room by
         // the cyan and you feel it by the magenta. The key stays near-white for the reason kept
         // below — a strongly coloured lamp fights the artwork it is lighting — so the colour
@@ -156,7 +178,7 @@ enum class RoomScheme(
      * than lazy.
      */
     WORKSHOP(
-        displayName = "Workshop",
+        displayName = "Officina",
         // Phosphor, not daylight. The key is a cold green-white and the bounce is pure emerald,
         // so a sleeve on the shelf reads the way a photograph does on a monitor in a dark room.
         key = floatArrayOf(0.784f, 1.0f, 0.847f),
