@@ -137,9 +137,24 @@ enum class QualityTier {
      */
     val maxRenderScale: Float
         get() = when (this) {
-            HIGH -> 0.75f
-            MEDIUM -> 0.68f
-            LOW -> 0.60f
+            // **Raised to 1.0, and the paragraph above is the argument it lost.**
+            //
+            // That reasoning is sound about acuity and wrong about this scene. It compares
+            // resolution against what the eye resolves on a still image at arm's length, and the
+            // room is not that: it is a dark, fogged, bloomed box whose whole appeal is in thin
+            // bright things against black — spine lettering, the lamp's underlight, the rim of a
+            // case, single dust motes. Those are exactly the features an upscale destroys first,
+            // because each is a pixel or two wide and upscaling averages it with the dark
+            // beside it. The result does not read as "slightly softer", it reads as less moody,
+            // which is what was reported and is a fair description of losing the highlights.
+            //
+            // The device has the budget: the diagnostics on the test phone report 120fps with
+            // 0.0% slow frames at HIGH, and the tier system is not stepping. Spending it on the
+            // one thing the app is *for* is the right call, and the dynamic floor below still
+            // catches a hot phone.
+            HIGH -> 1.0f
+            MEDIUM -> 0.85f
+            LOW -> 0.68f
         }
 
     /**

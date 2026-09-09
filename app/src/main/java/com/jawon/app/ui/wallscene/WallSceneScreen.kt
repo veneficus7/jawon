@@ -769,7 +769,12 @@ fun WallSceneScreen(
         // See RoomCadence, and the tail of `onFrame` where the two meet. Constructed exactly as
         // SceneView would construct it, and disposed by the same `remember`.
         val renderer = rememberRenderer(engine)
+        // Told what the panel is actually doing, rather than assuming the test device's 120.
+        // Every interval in the cadence is derived from this; see RoomCadence.refreshHz for what
+        // went wrong while it was assumed.
+        val displayRefreshHz = LocalContext.current.display?.refreshRate ?: RoomCadence.DEFAULT_REFRESH_HZ
         val cadence = remember { RoomCadence() }
+        cadence.refreshHz = displayRefreshHz
 
         // **Tell Filament what a frame is actually worth, because nothing else does.**
         //

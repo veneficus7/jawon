@@ -1,5 +1,7 @@
 package com.jawon.app.ui.wallscene
 
+import kotlin.math.roundToInt
+
 /**
  * How often the room actually needs to be **drawn**, as opposed to how often it is asked to be.
  *
@@ -104,10 +106,43 @@ class RoomCadence {
      */
     fun divisorFor(discTurning: Boolean, ambientMotion: Boolean): Int = when {
         pointerDown || moving || wasMoving -> LIVE
-        discTurning -> TURNING
-        ambientMotion -> DRIFTING
-        else -> STILL
+        discTurning -> divisorForFps(TURNING_FPS)
+        ambientMotion -> divisorForFps(DRIFTING_FPS)
+        else -> divisorForFps(STILL_FPS)
     }
+
+    /**
+     * The panel's actual refresh rate, which every interval below is derived from.
+     *
+     * **This used to be assumed rather than known, and the assumption was 120.** The intervals
+     * were written as vsync counts — every second, fourth, eighth — with their reasoning stated
+     * in the frame rates those produce *on a 120Hz panel*. On any other panel they silently
+     * produced something else: at 60Hz the drifting wall fell from 30fps to 15 and the still
+     * room to 7.5, which is visible as judder and was reported as the room simply looking worse.
+     * Nothing said the constants had a panel baked into them.
+     *
+     * Half the phones this app runs on are 60Hz, so that was not a hypothetical — it was the
+     * majority case, wrong, since the cadence work shipped.
+     *
+     * Set once from the display; defaults to 120 so a device that will not report a rate behaves
+     * as the test hardware does rather than as something slower.
+     */
+    var refreshHz: Float = DEFAULT_REFRESH_HZ
+        set(value) {
+            // A nonsense rate would produce a nonsense divisor, and this arrives from the
+            // platform rather than from us.
+            field = if (value.isFinite() && value >= 20f) value else DEFAULT_REFRESH_HZ
+        }
+
+    /**
+     * How many vsyncs to skip to land nearest [fps], never fewer than every frame.
+     *
+     * Expressed as a target frame rate rather than as a count, because the frame rate is the
+     * thing the reasoning is actually about — 30fps is the floor for animation this slow whether
+     * the panel runs at 60, 120 or 144.
+     */
+    fun divisorForFps(fps: Float): Int =
+        (refreshHz / fps).roundToInt().coerceAtLeast(LIVE)
 
     /**
      * Whether this vsync should be drawn, at [divisor].
@@ -131,27 +166,30 @@ class RoomCadence {
         /** Every vsync. Anything a hand is driving, and every animation. */
         const val LIVE = 1
 
+        /** The rate assumed when the display will not say. The test hardware's. */
+        const val DEFAULT_REFRESH_HZ = 120f
+
         /**
-         * Every second vsync — 60fps on a 120Hz panel.
+         * Sixty frames a second, whatever the panel runs at.
          *
          * The disc's own rate sets this. At 78°/s a point on the rim moves 0.65° between vsyncs
          * and 1.3° at this interval, which at the size the disc is drawn is well under a pixel
          * of difference in how the rotation reads. Halving it again would put the label's
          * printing at 2.6° a frame, which is where a slow rotation starts to look stepped.
          */
-        const val TURNING = 2
+        const val TURNING_FPS = 60f
 
         /**
-         * Every fourth vsync — 30fps.
+         * Thirty frames a second.
          *
          * The wall with nothing open, or a case open and paused. `ShelfHover` bobs and turns on
          * multi-second periods and the dust drifts slower still; 30 is the conventional floor
          * for animation of that speed, and the wall is not being touched when it applies.
          */
-        const val DRIFTING = 4
+        const val DRIFTING_FPS = 30f
 
         /**
-         * Every eighth vsync — 15fps.
+         * Fifteen frames a second.
          *
          * Only reachable with reduced motion on, where the hover, the dust and the disc's idle
          * spin are all switched off and successive frames are *identical*. This is not a frame
@@ -159,6 +197,6 @@ class RoomCadence {
          * finishing its decode, a scheme change — reaches the screen within ~67ms without
          * needing an explicit invalidate path.
          */
-        const val STILL = 8
+        const val STILL_FPS = 15f
     }
 }

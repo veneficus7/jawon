@@ -109,8 +109,22 @@ class MainActivity : ComponentActivity() {
 /**
  * The refresh rate the room asks for.
  *
- * Sixty rather than the panel's full hundred and twenty. See the note in `onCreate`: a
- * continuously-rendered scene pays its refresh rate every single frame, and nothing in this room
- * moves fast enough for the difference to be visible.
+ * **The panel's full rate, on the owner's call, and the thermal argument in `onCreate` loses.**
+ *
+ * That argument is not wrong about heat — it is wrong about what it costs. The claim underneath
+ * it was that nothing in this room moves fast enough for 120 to read differently from 60, and
+ * that turns out to be false in practice: dropped to 60 the room was reported as visibly worse,
+ * immediately, without being told what had changed.
+ *
+ * Part of that was a bug now fixed — [com.jawon.app.ui.wallscene.RoomCadence] expressed its
+ * intervals as vsync counts chosen for a 120Hz panel, so halving the refresh rate silently
+ * halved every animation rate underneath it as well, and the drifting wall fell to 7.5fps. But
+ * only part. The rest is that this app's entire proposition is how the room feels, and a room
+ * that renders continuously is exactly the case where the difference between 60 and 120 is
+ * visible rather than theoretical.
+ *
+ * The heat is real and is accepted. If it has to be paid down later, the honest lever is the
+ * cadence — drawing the *room* less often while the panel stays at 120 — not the panel, because
+ * the panel also carries the deck, the tracklist and every gesture.
  */
-private const val TARGET_REFRESH_HZ = 60f
+private const val TARGET_REFRESH_HZ = 120f
