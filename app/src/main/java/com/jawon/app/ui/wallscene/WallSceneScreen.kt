@@ -2250,22 +2250,32 @@ fun WallSceneScreen(
                 // tube, emitting down the panel it is stuck to — see RoomLighting.WASH_Z for
                 // why the corner is the right place and not the trap it first looks like.
                 //
-                // POINT, with no direction and no cone. A ribbon emits into the hemisphere in
-                // front of it, and the gradient down the panel is made by distance and
-                // incidence rather than by a cone edge — which is what three rounds of
-                // re-aiming a spot could never produce over a 52mm compartment.
+                // Aimed straight down, with a cone wide enough to graze the panel and short of
+                // the 90° where the shelf board above starts — see RoomLighting.WASH_CONE_OUTER.
+                // As a POINT light each diode lit that board as hard as it lit the panel, and
+                // twenty-one of them put a row of dots along the fixture.
+                //
+                // The gradient down the panel still comes from distance and incidence, not from
+                // the cone: the cone is only there to stop light going upward.
                 //
                 // Twenty-one at 24mm, about the pitch of the diodes on a real ribbon and for
                 // the same reason: close to a surface, a point source has a small footprint.
                 repeat(RoomLighting.WASH_COLUMNS) { column ->
                     LightNode(
-                        type = LightManager.Type.POINT,
+                        type = LightManager.Type.FOCUSED_SPOT,
                         position = Position(
                             (column - RoomLighting.WASH_COLUMNS / 2) *
                                 RoomLighting.WASH_COLUMN_SPACING,
                             WallDimens.CASE_H / 2f + RoomLighting.SHELF_LIGHT_LIFT +
                                 row * ROW_PITCH - RoomLighting.WASH_DROP,
                             RoomLighting.WASH_Z
+                        ),
+                        direction = normalize(
+                            Direction(
+                                RoomLighting.WASH_DIRECTION[0],
+                                RoomLighting.WASH_DIRECTION[1],
+                                RoomLighting.WASH_DIRECTION[2]
+                            )
                         ),
                         apply = {
                             color(
@@ -2274,8 +2284,18 @@ fun WallSceneScreen(
                                 roomScheme.key[2]
                             )
                             intensityCandela(RoomLighting.WASH_CANDELA)
+                            spotLightCone(
+                                RoomLighting.WASH_CONE_INNER,
+                                RoomLighting.WASH_CONE_OUTER
+                            )
                             falloff(RoomLighting.WASH_FALLOFF)
-                            castShadows(false)
+                            // One diode per ribbon casts, and only on the tier that can
+                            // afford it. See RoomLighting.WASH_SHADOW_COLUMN for why one of
+                            // twenty-seven is the right number rather than a compromise.
+                            castShadows(
+                                column == RoomLighting.WASH_SHADOW_COLUMN &&
+                                    initialTier.shadowsOnFixtures
+                            )
                         }
                     )
                 }
@@ -2527,9 +2547,10 @@ fun WallSceneScreen(
                     val fixtureY = row.centerY + WallDimens.CASE_H / 2f +
                         RoomLighting.SHELF_LIGHT_LIFT
 
-                    // The channel first, sitting on top of the tube and reaching up to the
-                    // board. This is what makes the fixture read as attached rather than
-                    // floating — see RoomLighting.HOUSING_H.
+                    // The bracket first: a plate lying flat against the back panel with the
+                    // tube standing off the front of it. Screwed to the wall rather than to the
+                    // shelf above, because the topmost shelf in a library has no shelf above
+                    // it — see RoomLighting.HOUSING_H.
                     CubeNode(
                         size = Size(
                             layout.wallWidth,
@@ -2538,8 +2559,8 @@ fun WallSceneScreen(
                         ),
                         position = Position(
                             0f,
-                            fixtureY + (RoomLighting.HOUSING_H + RoomLighting.STRIP_H) / 2f,
-                            RoomLighting.STRIP_Z
+                            fixtureY - RoomLighting.HOUSING_RISE,
+                            RoomLighting.HOUSING_Z
                         ),
                         materialInstance = housing,
                         apply = {

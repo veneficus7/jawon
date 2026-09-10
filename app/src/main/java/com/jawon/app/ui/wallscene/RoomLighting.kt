@@ -255,12 +255,38 @@ object RoomLighting {
     // panel faces the camera — so the panel's `N·L` against it is negative and the wash would
     // be exactly zero. It needs its own light aimed **down and back**, into the wall.
 
-    // The ribbon is a POINT light now and has no direction at all. An LED ribbon emits into
-    // the hemisphere in front of it; the gradient down the panel comes from distance and
-    // incidence, not from a cone. Three aims were tried here — down-and-back at 0.45, then
-    // 0.25, then 0.10 — each chasing a gradient a cone was never going to make over a 52mm
-    // span, and each leaving the scalloped edges that made nine lamps read as nine lamps.
-    // Removing the cone removes both problems at once.
+    // ---- The ribbon emits DOWNWARD, into a hemisphere ------------------------------
+    //
+    // It was briefly a POINT light, on the reasoning that an LED ribbon emits into the
+    // hemisphere in front of it and the gradient should come from distance rather than from a
+    // cone edge. The second half of that is right and the first half is exactly backwards: a
+    // point light radiates into a *sphere*, so every diode was lighting the underside of the
+    // shelf board directly above it just as hard as the panel below. Twenty-one of them, 11mm
+    // under a board, put twenty-one small bright pools on it — a visible row of dots along the
+    // fixture, which is precisely what a strip light must not look like.
+    //
+    // A wide downward cone fixes it geometrically rather than by tuning. The board above sits
+    // at 90° from straight down, so an outer angle short of that excludes it completely, while
+    // the panel below is reached from about 3mm under the fixture downward. This is also what
+    // the real thing does: a ribbon is a strip of diodes on an opaque backing, and it emits
+    // down.
+    //
+    // The cone is radially symmetric about the down axis, so it does nothing to the spread
+    // along the shelf — horizontal continuity is still overlap between neighbours, and the
+    // cone edge lands far enough away to leave no scallop.
+
+    /** Straight down, parallel to the panel it grazes. */
+    val WASH_DIRECTION: FloatArray = floatArrayOf(0f, -1f, 0f)
+
+    /**
+     * How wide the ribbon throws, as angles from straight down.
+     *
+     * The outer angle is the load-bearing one: 1.45 rad is 83°, comfortably short of the 90°
+     * where the shelf board above begins, and wide enough to reach the panel from a few
+     * millimetres below the fixture down.
+     */
+    const val WASH_CONE_INNER = 1.05f
+    const val WASH_CONE_OUTER = 1.45f
 
 
     /**
@@ -296,7 +322,7 @@ object RoomLighting {
      * nowhere, so the number had to be enormous to show at all. Throwing across the bay puts
      * the same light on the surface at a useful angle and a fraction of the distance.
      */
-    const val WASH_CANDELA = 26f
+    const val WASH_CANDELA = 46f
 
     /**
      * Narrow, narrowed twice, and then widened again once the tube came back.
@@ -316,8 +342,6 @@ object RoomLighting {
      * under the board above, so the band is hot where the photograph is hot and the light has
      * run out by the tops of the records.
      */
-    const val WASH_CONE_INNER = 0.42f
-    const val WASH_CONE_OUTER = 0.92f
 
     /**
      * Long enough to reach down the panel, short enough that the bottom of a bay is visibly
@@ -329,13 +353,13 @@ object RoomLighting {
     /**
      * How far below the tube the diodes sit.
      *
-     * A ribbon points down. Mounted level with the tube, each of the twenty-one sources was
-     * close enough to the board above to punch a visible hotspot into it, so the fixture read
-     * as a row of dots on a bar rather than a strip — the exact failure this was supposed to
-     * fix. Dropping them clear of the board removes the dots and costs nothing on the panel,
-     * which is below them anyway.
+     * Nearly nothing now. This was 7mm, trying to buy distance from the shelf board above so
+     * the diodes would stop punching hotspots into it — which helped and could never be
+     * enough, because a point light was going to keep lighting that board however far away it
+     * got. [WASH_CONE_OUTER] excludes the board outright, so the sources can sit where the
+     * owner asked them to be: in the tube.
      */
-    const val WASH_DROP = 0.007f
+    const val WASH_DROP = 0.003f
 
     // ---- The underlight: one real light per album ----------------------------------
     //
@@ -382,7 +406,7 @@ object RoomLighting {
      * It is the only thing lighting an album's cover, so what used to be a coloured accent has
      * to carry the artwork on its own.
      */
-    const val UNDER_CANDELA = 340f
+    const val UNDER_CANDELA = 430f
 
     /**
      * Short reach. The pool belongs to one record; a long falloff turns a hundred of these into
@@ -393,14 +417,19 @@ object RoomLighting {
     /**
      * How much of the album's own hue the bulb takes, 0 = warm white, 1 = the full hue.
      *
-     * Held well down on purpose, and this is the tension in the design. `DESIGN.md` wants an
+     * **Brought down again after the covers came out grey.** With this as the only light on an
+     * album, every tint it carries is a tint on the artwork, and a third of the way toward a
+     * warm bulb was enough to pull the colour out of every sleeve on the wall at once. What
+     * looks like a modest accent on a shelf board is a colour cast on a photograph.
+     *
+     * The rest of the original reasoning, which still holds: `DESIGN.md` wants an
      * album's colour in its underlight, and when the underlight was decoration that was free.
      * Now the same light is the only thing illuminating the sleeve, so a fully tinted bulb would
      * light every cover in a wash of its own dominant colour — a blue record lit blue, which
      * destroys the artwork it exists to show. A third of the way keeps a visibly coloured pool
      * on the board, where nothing else competes, and leaves the cover close to neutral.
      */
-    const val UNDER_TINT = 0.34f
+    const val UNDER_TINT = 0.20f
 
     /**
      * The same underlight, for the record being held.
@@ -419,8 +448,17 @@ object RoomLighting {
     /** And how far in front of the platter, so the label is lit rather than the edge. */
     const val DISC_UNDER_FORWARD = 0.055f
 
-    /** The lamp the tint is mixed away toward: ordinary warm tungsten. */
-    val UNDER_WHITE: FloatArray = floatArrayOf(1.0f, 0.86f, 0.72f)
+    /**
+     * The lamp the tint is mixed away toward.
+     *
+     * Was full warm tungsten (1.0, 0.86, 0.72), which is the right colour for a shop and the
+     * wrong colour for the only light falling on a photograph. Between that and the tint above,
+     * every cover on the wall was rendering through a heavy amber filter and reading grey.
+     * Barely warm now: enough that the room is not lit by a fluorescent tube, little enough
+     * that album art keeps its own colour. The room's warmth comes from the ribbon, which lights
+     * the wall rather than the artwork.
+     */
+    val UNDER_WHITE: FloatArray = floatArrayOf(1.0f, 0.95f, 0.90f)
 
 
     /**
@@ -456,13 +494,30 @@ object RoomLighting {
      * a little over half the old spacing, cores overlapping, which is also how a real strip
      * light is built.
      */
-    const val WASH_COLUMNS = 21
+    const val WASH_COLUMNS = 27
 
     /**
      * How far apart those are. Close enough that the cones overlap into a continuous band at
      * panel distance rather than reading as five separate lamps.
      */
-    const val WASH_COLUMN_SPACING = 0.024f
+    const val WASH_COLUMN_SPACING = 0.019f
+
+    /**
+     * Which diode in each ribbon casts shadows — the middle one, and only that one.
+     *
+     * Removing the key light removed the room's only shadow caster, and shadows are most of
+     * what makes objects sit in a place rather than float in front of a picture of one. They
+     * have to come back from a light that actually exists, and the ribbon is the one with a
+     * useful angle on the records: it is above and behind them, so what it throws runs down the
+     * panel behind each sleeve.
+     *
+     * One of twenty-seven, because a shadow map is per casting light and twenty-seven of them
+     * per row is not a budget, it is a joke. The other twenty-six fill the shadow in, which is
+     * exactly what happens under a real ribbon: a soft, shallow shadow rather than a hard one.
+     * `RoomAtmosphere`'s soft-shadow settings — PCSS and the penumbra scales — have been sitting
+     * unused since the key light went and apply to this.
+     */
+    const val WASH_SHADOW_COLUMN = WASH_COLUMNS / 2
 
     const val SHELF_LIGHT_COUNT = 3
 
@@ -510,14 +565,34 @@ object RoomLighting {
     val STRIP_EMISSIVE: FloatArray = floatArrayOf(1.75f, 0.92f, 0.36f)
 
     /**
-     * The channel the tube is mounted in, and the reason the fixture reads as *attached*.
+     * The bracket the tube is mounted on, and the reason the fixture reads as *attached*.
      *
-     * Tall enough to bridge the gap between the tube and the board above it, so the two meet.
-     * That contact is the whole trick: an emissive bar with clear air above it reads as
-     * floating no matter how it is lit, and floating is what the owner kept seeing.
+     * **It used to bridge upward to the shelf board above, and that was a design error the
+     * owner spotted before it shipped:** the topmost shelf in a library has no shelf above it,
+     * so the top row's fixture would have been bolted to thin air. Attaching a fixture to
+     * something that may not exist is not a tuning problem, it is a wrong choice of anchor.
+     *
+     * The back panel is the anchor instead. Every compartment has one, including the top, and a
+     * ribbon stuck to the back wall near the top of a bay is what the real thing usually is
+     * anyway. So this is a plate lying against the panel with the tube standing off the front
+     * of it, running the full width of the shelf.
+     *
+     * The alternative considered and rejected was moving the fixture to the *bottom* back
+     * corner, where every row has its own board to attach to. It solves the anchor and costs
+     * the whole effect: records stand 142mm tall on that board, so the tube would sit behind
+     * their base and never be seen at all, and the gradient would inverted to brightest at the
+     * floor of the bay.
      */
-    const val HOUSING_H = 0.0038f
-    const val HOUSING_D = STRIP_D + 0.007f
+    const val HOUSING_H = 0.0130f
+
+    /** Deep enough to reach from the tube back to the panel it is screwed to. */
+    const val HOUSING_D = 0.0060f
+
+    /** Where that plate sits: hard against the panel, just behind the tube. */
+    const val HOUSING_Z = WallDimens.WALL_Z + HOUSING_D / 2f + 0.0005f
+
+    /** And how far up the plate the tube is mounted — a little above centre, like a real one. */
+    const val HOUSING_RISE = 0.0022f
 
     /**
      * Dark, and unlit rather than shaded.
@@ -778,28 +853,40 @@ object RoomLighting {
      * trusting; if the room looks lit from the floor, flip it.
      */
     /**
-     * Irradiance as spherical harmonics — **all zero, on purpose.**
+     * How much ambient the room gets, as a fraction of the scheme's own ambient colour.
      *
-     * The owner's lighting design is two lights and no ambient: a backlight per shelf and one
-     * real underlight per album. This is where "no ambient" is actually enforced, and it is
-     * worth being precise about what it removes, because `IndirectLight` does two separate
-     * jobs through one object.
+     * **Zero for a while, and a little is better than none.** The owner asked for the ambient
+     * out, and taking it out was right: an irradiance term arrives from every direction at once,
+     * lands on every surface regardless of position or facing, and therefore cannot fall off.
+     * It was measured at six-sevenths of the wall's brightness once, and it is what made the
+     * room flat.
      *
-     * The *irradiance* half is the ambient — a diffuse fill arriving from every direction at
-     * once, which lands on every surface regardless of where it is or which way it faces. That
-     * is what made the room flat: a fill with no position has no falloff, so nothing can be
-     * further from the light than anything else. It was measured at six-sevenths of the wall's
-     * brightness once. Zeroing these coefficients removes it completely.
-     *
-     * The *reflections* half is kept. `IndirectLight.reflections` is what a glossy surface has
-     * to look at — without it a jewel case's shell mirrors nothing and reads as painted card,
-     * which is most of "it looks like cheap plastic". That is not ambient light in the sense
-     * being removed here: it adds no diffuse fill, and after [buildRoomCubemap] the only thing
-     * in that environment is the backlight, so what the cases reflect is a light that genuinely
-     * exists in the room.
+     * What removing it entirely also does is put every surface the two lights do not reach at
+     * literally zero, which is not what a dark room looks like — a dark room has shadow detail,
+     * and film that clips its blacks reads as cheap rather than as moody. A sixth of what was
+     * there lifts the floor off absolute black without competing with either light.
      */
-    private fun ambientSphericalHarmonics(scheme: RoomScheme): FloatArray =
-        FloatArray(SH_BANDS * SH_BANDS * 3)
+    private const val AMBIENT_FILL = 0.17f
+
+    /**
+     * Irradiance as spherical harmonics: 3 bands, 9 coefficients, RGB each.
+     *
+     * Hand-authored rather than convolved from an environment — a single dim fill has no detail
+     * worth baking. Index 0 is the constant term, index 1 the vertical one, biased positive so
+     * what little fill there is arrives from above. The rest stay zero.
+     *
+     * The *reflections* half of `IndirectLight` is a separate thing from this and is not scaled
+     * by [AMBIENT_FILL]: it adds no diffuse fill, it is what a glossy surface looks at, and
+     * without it a jewel case mirrors nothing and reads as painted card.
+     */
+    private fun ambientSphericalHarmonics(scheme: RoomScheme): FloatArray {
+        val sh = FloatArray(SH_BANDS * SH_BANDS * 3)
+        for (c in 0..2) {
+            sh[c] = scheme.ambient[c] * AMBIENT_FILL
+            sh[3 + c] = scheme.ambient[c] * AMBIENT_FILL * 0.35f
+        }
+        return sh
+    }
 
     /**
      * A 64² cubemap of the room: warm light pooling above, falling to near-black below.

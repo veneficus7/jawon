@@ -95,6 +95,21 @@ enum class QualityTier {
      */
     val softShadows: Boolean get() = this == HIGH
 
+    /**
+     * Whether the shelf fixtures cast shadows at all.
+     *
+     * The room used to have exactly one shadow caster — the key light — and losing it in the
+     * two-light redesign lost every shadow in the scene. They come back from one diode per
+     * ribbon (see `RoomLighting.WASH_SHADOW_COLUMN`), which is one shadow map per visible row
+     * rather than one for the whole room.
+     *
+     * That is a real increase in the scarcest resource in the renderer, so the bottom tier does
+     * without. It is also the reason this is read from the *initial* tier rather than the live
+     * one: shadow casting is a property of the light as it is built, and rebuilding lights
+     * mid-session to chase a tier step is the kind of scene surgery trap 1 punishes.
+     */
+    val shadowsOnFixtures: Boolean get() = this != LOW
+
     /** Shadow map, in texels per side. Halving the side quarters the memory. */
     val shadowMapPx: Int
         get() = when (this) {
