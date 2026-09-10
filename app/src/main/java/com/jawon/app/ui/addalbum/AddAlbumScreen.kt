@@ -83,6 +83,16 @@ fun AddAlbumScreen(
     onDone: (albumId: String) -> Unit,
     onCancel: () -> Unit,
     onBrowseArchive: () -> Unit = {},
+    onImportCd: () -> Unit = {},
+    /**
+     * A folder a CD was just ripped into, handed back by the CD screen.
+     *
+     * Deliberately routed through the ordinary folder import rather than given an import path of
+     * its own: a rip produces a folder of audio files, which is exactly what this screen already
+     * knows how to take. Nothing about a ripped CD is special once the discs are files.
+     */
+    rippedFolder: android.net.Uri? = null,
+    onRippedFolderConsumed: () -> Unit = {},
     viewModel: AddAlbumViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -102,6 +112,15 @@ fun AddAlbumScreen(
     LaunchedEffect(uiState) {
         val state = uiState
         if (state is AddAlbumUiState.Done) onDone(state.albumId)
+    }
+
+    // Consumed immediately, so coming back to this screen later does not re-import the same
+    // folder — the saved-state value outlives the navigation that carried it.
+    LaunchedEffect(rippedFolder) {
+        rippedFolder?.let {
+            viewModel.onFolderPicked(it)
+            onRippedFolderConsumed()
+        }
     }
 
     Column(
@@ -128,7 +147,8 @@ fun AddAlbumScreen(
                     if (hasAudioPermission(context)) viewModel.onScanDevice()
                     else audioPermissionLauncher.launch(audioPermission())
                 },
-                onBrowseArchive = onBrowseArchive
+                onBrowseArchive = onBrowseArchive,
+                onImportCd = onImportCd
             )
             is AddAlbumUiState.Scanning -> Working("READING YOUR MUSIC")
             is AddAlbumUiState.Preview -> PreviewContent(
@@ -220,7 +240,8 @@ private fun ScreenHeader(title: String, onBack: () -> Unit) {
 private fun IdleContent(
     onChooseFolder: () -> Unit,
     onScanDevice: () -> Unit,
-    onBrowseArchive: () -> Unit
+    onBrowseArchive: () -> Unit,
+    onImportCd: () -> Unit
 ) {
     Column(
         modifier = Modifier
@@ -283,6 +304,33 @@ private fun IdleContent(
                 // scanner has seen, so this is the only route to some music.
                 text = "For music on a memory card or in cloud storage, which a scan " +
                     "cannot see.",
+                style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = 10.sp),
+                lineHeight = 16.sp
+            )
+        }
+
+        Column(
+            modifier = Modifier
+                .padding(top = 18.dp)
+                .fillMaxWidth()
+                .border(1.dp, CrateEdge)
+                .clickable(onClick = onImportCd)
+                .padding(22.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Text(
+                text = "IMPORT A CD",
+                fontFamily = ArchivoFamily,
+                fontWeight = FontWeight.ExtraBold,
+                fontSize = 18.sp,
+                letterSpacing = 1.sp,
+                color = LabelDim
+            )
+            Text(
+                text = "Put a disc in a USB drive and read it straight off the silver. The " +
+                    "tracks are written as WAV into a folder you choose, at exactly the " +
+                    "quality they were pressed at, and then imported like any other folder. " +
+                    "Most drives need their own power supply.",
                 style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = 10.sp),
                 lineHeight = 16.sp
             )

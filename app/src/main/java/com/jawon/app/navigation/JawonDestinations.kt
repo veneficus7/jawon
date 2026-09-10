@@ -26,6 +26,14 @@ sealed class JawonDestination(val route: String) {
      */
     data object RecordShop : JawonDestination("record_shop")
 
+    /**
+     * Ripping a CD off a USB drive.
+     *
+     * Reached from Add Album for the same reason the record shop is: whatever else it is, it is
+     * a way of getting a record onto a shelf. The room's chrome stays three even thirds.
+     */
+    data object ImportCd : JawonDestination("import_cd")
+
     /** Editing one album. Reached from the room's long-press and from the shelf list. */
     data object EditAlbum : JawonDestination("edit_album/{albumId}") {
         fun routeFor(albumId: String) = "edit_album/$albumId"

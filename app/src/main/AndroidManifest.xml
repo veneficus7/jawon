@@ -68,6 +68,21 @@
 
     <uses-feature android:glEsVersion="0x00030000" android:required="true" />
 
+    <!--
+        A USB CD drive, for ripping discs — see ui/cd/CdImportScreen.
+
+        `required="false"` deliberately: almost no phone advertises USB host support in a way
+        Play would filter on sensibly, and the overwhelming majority of this app's users will
+        never attach a drive. Marking it required would remove Jawon from the store for devices
+        that run every other part of it perfectly.
+
+        No permission element: USB host access is granted per device, at runtime, by the system's
+        own dialog. There is nothing to declare here for it.
+    -->
+    <uses-feature
+        android:name="android.hardware.usb.host"
+        android:required="false" />
+
     <application
         android:name=".JawonApplication"
         android:allowBackup="true"
