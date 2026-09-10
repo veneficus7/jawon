@@ -182,6 +182,36 @@ object RoomLighting {
      */
     const val SHELF_LIGHT_COUNT = 3
 
+    // ---- The strip you can actually see ---------------------------------------------
+    //
+    // **Every reference photograph shows its own source.** A strip inside the shelf, a pendant,
+    // a track spot, a device's display — the light is small, local, and *in the frame*. A room
+    // lit by something you cannot see reads as lit by nothing, which is most of the difference
+    // between the wall as it was and the photographs.
+    //
+    // Geometry rather than an emissive material from a `.glb`, because it needs no new asset:
+    // an unlit colour above 1.0 goes straight to the output and blooms, since `RoomAtmosphere`
+    // runs bloom thresholded at 1.0. Same trick the underlight uses, one surface up.
+
+    /** How thick the bar is. A strip, not a soffit. */
+    const val STRIP_H = 0.0035f
+
+    /** How deep, front to back. Enough to catch the eye edge-on, not enough to be a shelf. */
+    const val STRIP_D = 0.014f
+
+    /** Where it sits, front to back — near the front lip of the board, where a real one is. */
+    const val STRIP_Z = 0.052f
+
+    /**
+     * How bright the visible bar is.
+     *
+     * Above bloom's 1.0 threshold so it glows rather than sitting there as a pale rectangle,
+     * and only just: this is a thing you notice at the edge of the frame, not a light box. It
+     * does no lighting of its own — [SHELF_CANDELA] does that — so raising it buys glare and
+     * nothing else.
+     */
+    val STRIP_EMISSIVE: FloatArray = floatArrayOf(2.1f, 1.65f, 1.15f)
+
     /**
      * The key light's shadow map, in texels per side.
      *

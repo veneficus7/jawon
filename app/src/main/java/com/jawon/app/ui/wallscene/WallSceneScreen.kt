@@ -2553,6 +2553,46 @@ fun WallSceneScreen(
                         }
                     )
 
+                    // **The strip, made visible.** The shelf lights above do the lighting;
+                    // this is the fixture doing it, which every reference photograph shows and
+                    // this room never had. Unlit and above bloom's 1.0 threshold, so it goes
+                    // straight to the output and glows — the same trick the underlight uses,
+                    // one surface up, and it needs no new asset.
+                    //
+                    // Remembered in this row's key alongside the board, because a CubeNode
+                    // destroys the MaterialInstance it is handed.
+                    val strip = remember(rowIndex, roomScheme) {
+                        materialLoader.createUnlitColorInstance(
+                            dev.romainguy.kotlin.math.Float4(
+                                RoomLighting.STRIP_EMISSIVE[0],
+                                RoomLighting.STRIP_EMISSIVE[1],
+                                RoomLighting.STRIP_EMISSIVE[2],
+                                1f
+                            )
+                        )
+                    }
+                    CubeNode(
+                        size = Size(
+                            layout.wallWidth,
+                            RoomLighting.STRIP_H,
+                            RoomLighting.STRIP_D
+                        ),
+                        position = Position(
+                            0f,
+                            row.centerY + WallDimens.CASE_H / 2f +
+                                RoomLighting.SHELF_LIGHT_LIFT,
+                            RoomLighting.STRIP_Z
+                        ),
+                        materialInstance = strip,
+                        apply = {
+                            isTouchable = false
+                            // Neither: it is a light fixture. Casting would put a bar of shadow
+                            // across the records it is supposed to be lighting.
+                            isShadowCaster = false
+                            isShadowReceiver = false
+                        }
+                    )
+
                     ViewNode(
                         windowManager = viewNodeManager,
                         position = Position(row.plateX, row.boardY, BOARD_D / 2f + PLATE_LIFT),

@@ -308,12 +308,24 @@ private fun beamRgb(hue: Float): FloatArray {
 }
 
 /**
- * Well above 1.0 on purpose. Bloom runs thresholded — DESIGN.md asks for glow "on the lamp
- * and the disc's specular highlight only, not a global haze" — so anything at or below 1.0
- * cannot bloom at all. That is the exact bug the beam had when it was first built: it
- * emitted 0.3 and was structurally incapable of glowing.
+ * Above 1.0 on purpose, and no longer far above it.
+ *
+ * Bloom runs thresholded — DESIGN.md asks for glow "on the lamp and the disc's specular
+ * highlight only, not a global haze" — so anything at or below 1.0 cannot bloom at all. That
+ * was the bug the beam had when first built: it emitted 0.3 and was structurally incapable of
+ * glowing. Hence 4.5, which fixed it.
+ *
+ * **4.5 then became the opposite problem, and a measurement found it.** A vertical luminance
+ * profile down a lit sleeve came out bright at the top, dark in the middle and bright again at
+ * the bottom — a record lit from above by the new shelf strip *and* from below by this. Every
+ * one of the owner's reference photographs lights a record from above only; light arrives at
+ * the top of a sleeve and dies toward the bottom, and nothing glows upward out of a shelf.
+ *
+ * So this is now spill rather than a source: enough to clear the threshold and keep the pool of
+ * album colour DESIGN.md calls "where the app's colour lives", not enough to compete with the
+ * strip above it for what is lighting the record.
  */
-private const val BEAM_VALUE = 4.5f
+private const val BEAM_VALUE = 1.75f
 
 /** Coloured, not gelled. See [beamRgb]. */
 private const val BEAM_SATURATION = 0.62f
