@@ -186,7 +186,20 @@ object RoomSurface {
      *   over the tile. This is why it is not the value noise used everywhere else in this file:
      *   lattice noise does not wrap without being rewritten to, and a sine does it for free.
      */
-    fun woodTile(color: Color, seed: Int, tintScale: Float): Bitmap {
+    fun woodTile(
+        color: Color,
+        seed: Int,
+        tintScale: Float,
+        /**
+         * Which way the boards run.
+         *
+         * The back panel's boards stand upright; a shelf's board lies along its length, and its
+         * grain with it. Same generator, axes swapped on the way out — a shelf wearing the back
+         * panel's texture would have its grain running across the board, which is the one thing
+         * no sawn timber does.
+         */
+        acrossInstead: Boolean = false
+    ): Bitmap {
         val argb = color.toArgb()
         val baseR = AndroidColor.red(argb) * tintScale
         val baseG = AndroidColor.green(argb) * tintScale
@@ -225,7 +238,8 @@ object RoomSurface {
                         kotlin.math.sin(across * 2.3f + phase) * 0.3f) * GRAIN_CONTRAST
 
                 val k = tone * seam * grain
-                pixels[y * TEX_PX + x] = AndroidColor.rgb(
+                val index = if (acrossInstead) x * TEX_PX + y else y * TEX_PX + x
+                pixels[index] = AndroidColor.rgb(
                     (baseR * k).toInt().coerceIn(0, 255),
                     (baseG * k).toInt().coerceIn(0, 255),
                     (baseB * k).toInt().coerceIn(0, 255)

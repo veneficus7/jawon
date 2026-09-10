@@ -342,6 +342,12 @@ internal const val WALL_REFLECTANCE = 0.5f
 /** Fixed, so the rack is made of the same timber on every launch. */
 private const val WALL_TILE_SEED = 0x5A17
 
+/** A different cut of the same timber, so shelf and panel are not identical. */
+private const val BOARD_TILE_SEED = 0x2C41
+
+/** How thick the rack's end panels are. Shelving stock, same as a board. */
+private const val SIDE_T = 0.018f
+
 /** A little above the wall: a floor is smoother, and takes the lamp at a grazing angle. */
 internal const val FLOOR_REFLECTANCE = 0.55f
 
@@ -2354,8 +2360,20 @@ fun WallSceneScreen(
                     // changing it rebuilds the panel and its material together — the same
                     // discipline the size already follows, and for the same reason: a
                     // CubeNode destroys the instance it is handed.
-                    val panelW = (layout.maxPanX - layout.minPanX) + halfW * 2f
-                    val panelH = (layout.maxPanY - layout.minPanY) + halfH * 2f
+                    // **The rack's own back panel, not a room wall.**
+                    //
+                    // This used to be sized to what the CAMERA can reach — the whole pan range
+                    // plus a frustum in every direction — which is why it read as a wall with
+                    // shelves hung on it. A cupboard's back is the same size as the cupboard.
+                    // Bounded to the run and to the rows, it ends where the sides and the top
+                    // board end, and the three of them are one object.
+                    //
+                    // ROW_PITCH above the top row's board is the top of that row's compartment,
+                    // and half a board below the bottom row's is the underside of the carcass.
+                    val rackTopY = (layout.rows.firstOrNull()?.boardY ?: 0f) + ROW_PITCH
+                    val rackBottomY = (layout.rows.lastOrNull()?.boardY ?: 0f) - BOARD_H / 2f
+                    val panelW = layout.wallWidth
+                    val panelH = (rackTopY - rackBottomY).coerceAtLeast(ROW_PITCH)
 
                     // **The wall has a surface now, not just a colour.**
                     //
@@ -2416,8 +2434,8 @@ fun WallSceneScreen(
                     val tilesY = ceil(panelH / RoomSurface.TILE_M).toInt().coerceIn(1, 64)
                     val tileW = panelW / tilesX
                     val tileH = panelH / tilesY
-                    val panelLeft = (layout.maxPanX + layout.minPanX) / 2f - panelW / 2f
-                    val panelBottom = (layout.maxPanY + layout.minPanY) / 2f - panelH / 2f
+                    val panelLeft = -panelW / 2f
+                    val panelBottom = rackBottomY
 
                     repeat(tilesY) { ty ->
                         repeat(tilesX) { tx ->
@@ -2457,6 +2475,48 @@ fun WallSceneScreen(
                                     }
                                 )
                             }
+                        }
+                    }
+
+                    // **The ends of the rack.**
+                    //
+                    // A carcass has sides, and without them the shelves run off into the dark at
+                    // both ends and the thing reads as boards fixed to a wall rather than as a
+                    // piece of furniture standing in a room. They are only in frame when the
+                    // browse is at one end of the run — the camera sees about 26cm of a rack
+                    // well over a metre wide — which is exactly why they are two nodes and not
+                    // tiled: at that rarity the stretch costs nothing worth spending draws on.
+                    //
+                    // Spanning the whole run, from under the bottom board to the top of the top
+                    // compartment, so the rack has a top and a bottom as well as two ends.
+                    // The same extent the back panel uses, so the carcass cannot come apart.
+                    val rackTop = rackTopY
+                    val rackBottom = rackBottomY
+                    val rackHeight = panelH
+                    listOf(-1f, 1f).forEach { side ->
+                        key(side) {
+                            val cheek = remember(roomScheme, side, rackHeight) {
+                                materialLoader.createTextureInstance(
+                                    panelTexture,
+                                    metallic = 0.04f,
+                                    roughness = 0.82f,
+                                    reflectance = WALL_REFLECTANCE
+                                )
+                            }
+                            CubeNode(
+                                size = Size(SIDE_T, rackHeight, BOARD_D),
+                                position = Position(
+                                    side * (layout.wallWidth / 2f + SIDE_T / 2f),
+                                    (rackTop + rackBottom) / 2f,
+                                    0f
+                                ),
+                                materialInstance = cheek,
+                                apply = {
+                                    isTouchable = false
+                                    isShadowReceiver = true
+                                    isShadowCaster = true
+                                }
+                            )
                         }
                     }
 
@@ -2531,21 +2591,67 @@ fun WallSceneScreen(
                 // leaves every later board with a dead material � which is why the shelf
                 // disappeared on import, and again on delete.
                 key(rowIndex, layout.wallWidth, roomScheme) {
-                    val boardSurface = remember(roomScheme) {
-                        materialLoader.createColorInstance(
-                            roomScheme.board, metallic = 0.04f, roughness = 0.82f
-                        )
+                    // **The shelf itself, in the same timber as the panel behind it.**
+                    //
+                    // This was one node wearing one flat colour, which is what left the rack
+                    // reading as boards floating in front of a wall rather than as one piece of
+                    // furniture: the back panel had a material and the shelves did not.
+                    //
+                    // Segmented along its length for the reason the back panel is — the texture
+                    // stretches across a node exactly once, and a board is well over a metre
+                    // wide, so one node puts a couple of texels on every centimetre. Each
+                    // segment is about RoomSurface.TILE_M and gets the whole bitmap.
+                    //
+                    // The grain runs ALONG the board, which is why this asks for the across
+                    // variant. A shelf wearing the back panel's upright boards would have its
+                    // grain running the short way across the plank, and nothing sawn does that.
+                    val boardTexture = remember(roomScheme) {
+                        ImageTexture.Builder()
+                            .bitmap(
+                                RoomSurface.woodTile(
+                                    roomScheme.board,
+                                    BOARD_TILE_SEED,
+                                    1f,
+                                    acrossInstead = true
+                                ),
+                                TextureType.COLOR
+                            )
+                            .build(engine)
                     }
-                    CubeNode(
-                        size = Size(layout.wallWidth, BOARD_H, BOARD_D),
-                        position = Position(0f, row.boardY, 0f),
-                        materialInstance = boardSurface,
-                        apply = {
-                            isTouchable = false
-                            isShadowReceiver = true
-                            isShadowCaster = true
+                    val boardTiles =
+                        ceil(layout.wallWidth / RoomSurface.TILE_M).toInt().coerceIn(1, 64)
+                    val boardW = layout.wallWidth / boardTiles
+                    repeat(boardTiles) { bx ->
+                        key(bx) {
+                            // Its own instance, never a shared one: a CubeNode destroys the
+                            // MaterialInstance it is handed, and one shared across the segments
+                            // would die with the first to rebuild and leave the rest of the
+                            // shelf holding a dead one. That is the exact fault that made the
+                            // boards vanish on import once already.
+                            val segment = remember(roomScheme, bx, boardTiles) {
+                                materialLoader.createTextureInstance(
+                                    boardTexture,
+                                    metallic = 0.04f,
+                                    roughness = 0.82f,
+                                    reflectance = WALL_REFLECTANCE
+                                )
+                            }
+                            CubeNode(
+                                size = Size(boardW, BOARD_H, BOARD_D),
+                                position = Position(
+                                    -layout.wallWidth / 2f + (bx + 0.5f) * boardW,
+                                    row.boardY,
+                                    0f
+                                ),
+                                materialInstance = segment,
+                                apply = {
+                                    isTouchable = false
+                                    isShadowReceiver = true
+                                    isShadowCaster = true
+                                }
+                            )
                         }
-                    )
+                    }
 
                     // **The tube, and the channel it is mounted in.**
                     //

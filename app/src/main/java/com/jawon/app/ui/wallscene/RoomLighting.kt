@@ -406,7 +406,7 @@ object RoomLighting {
      * It is the only thing lighting an album's cover, so what used to be a coloured accent has
      * to carry the artwork on its own.
      */
-    const val UNDER_CANDELA = 430f
+    const val UNDER_CANDELA = 780f
 
     /**
      * Short reach. The pool belongs to one record; a long falloff turns a hundred of these into
@@ -415,9 +415,35 @@ object RoomLighting {
     const val UNDER_FALLOFF = 0.20f
 
     /**
+     * How wide the underlight throws, as angles from straight up.
+     *
+     * **It was a POINT light, and that was quietly wrecking the back panel.** A point light
+     * radiates into a sphere, so each of the hundred-odd underlights was throwing as much light
+     * backwards at the panel 120mm behind it as upwards at the record it exists for — inside its
+     * own falloff, so all of it landed. The owner saw the result before I did: the gradient on
+     * the back panel was not coming from the tube, and most of it was not. It was a hundred
+     * album underlights washing the wall from in front.
+     *
+     * Aimed up with a cone that reaches the sleeve and not the panel. A wall point 50mm above
+     * the bulb sits about 67° off the up axis; the sleeve directly above is at 0°. An outer
+     * angle of 0.9 rad — 52° — takes the record and leaves the wall to the ribbon, which is
+     * whose job it is.
+     */
+    const val UNDER_CONE_INNER = 0.50f
+    const val UNDER_CONE_OUTER = 0.90f
+
+    /** Straight up, at the record standing over it. */
+    val UNDER_DIRECTION: FloatArray = floatArrayOf(0f, 1f, 0f)
+
+    /**
      * How much of the album's own hue the bulb takes, 0 = warm white, 1 = the full hue.
      *
-     * **Brought down again after the covers came out grey.** With this as the only light on an
+     * **Brought down twice, the second time because the covers still were not vivid.** Every
+     * step away from white here is a colour cast on album art, and album art is the one thing on
+     * the wall whose colours are somebody else's work. What is left is a hint on the shelf board,
+     * where nothing else competes.
+     *
+     * The original reasoning: With this as the only light on an
      * album, every tint it carries is a tint on the artwork, and a third of the way toward a
      * warm bulb was enough to pull the colour out of every sleeve on the wall at once. What
      * looks like a modest accent on a shelf board is a colour cast on a photograph.
@@ -429,7 +455,7 @@ object RoomLighting {
      * destroys the artwork it exists to show. A third of the way keeps a visibly coloured pool
      * on the board, where nothing else competes, and leaves the cover close to neutral.
      */
-    const val UNDER_TINT = 0.20f
+    const val UNDER_TINT = 0.11f
 
     /**
      * The same underlight, for the record being held.
@@ -458,7 +484,7 @@ object RoomLighting {
      * that album art keeps its own colour. The room's warmth comes from the ribbon, which lights
      * the wall rather than the artwork.
      */
-    val UNDER_WHITE: FloatArray = floatArrayOf(1.0f, 0.95f, 0.90f)
+    val UNDER_WHITE: FloatArray = floatArrayOf(1.0f, 0.98f, 0.95f)
 
 
     /**
@@ -543,26 +569,34 @@ object RoomLighting {
     // is the part that was missing every previous time. A bar on its own floats. A bar in a
     // channel that meets the board above it is a fitting.
 
-    /** How thick the tube is. A tube, not a soffit — but thick enough to read as an object. */
-    const val STRIP_H = 0.0042f
+    /**
+     * How thick the tube is.
+     *
+     * Halved from 4.2mm at the owner's call. A strip light is a *line* — the thing that reads
+     * as neon is a hard thin edge with a bloom around it, not a bar with area. Thinner also
+     * means the emissive can go brighter for the same amount of glare, which is why these two
+     * moved together.
+     */
+    const val STRIP_H = 0.0022f
 
     /** How deep, front to back. */
     const val STRIP_D = 0.016f
 
-    /** Where it sits, front to back: the back corner, hard against the panel it washes. */
-    const val STRIP_Z = CORNER_Z
 
     /**
      * How bright the tube is, and **what colour it survives as**.
      *
-     * Over bloom's 1.0 threshold in red so it glows, with the channels well separated so the
-     * tonemapper's shoulder cannot compress it back to white. The first version of this was
+     * Well over bloom's 1.0 threshold so it glows hard, with the channels held far apart so the
+     * tonemapper's shoulder cannot compress it back to white — the ratio is what keeps a bright
+     * tube amber instead of a white bar, and it is the first thing lost when the level is raised.
+     * Raised with [STRIP_H] halved: a thinner source can carry more emission for the same glare,
+     * because glare is area times brightness. The first version of this was
      * (2.1, 1.65, 1.15) and rendered a pure white bar: three channels comfortably over 1.0 all
      * arrive at the same place on an ACES curve, and a warm tungsten strip — the single most
      * recognisable thing in every reference — was being thrown away in the last step of the
      * pipeline.
      */
-    val STRIP_EMISSIVE: FloatArray = floatArrayOf(1.75f, 0.92f, 0.36f)
+    val STRIP_EMISSIVE: FloatArray = floatArrayOf(3.10f, 1.62f, 0.62f)
 
     /**
      * The bracket the tube is mounted on, and the reason the fixture reads as *attached*.
@@ -593,6 +627,19 @@ object RoomLighting {
 
     /** And how far up the plate the tube is mounted — a little above centre, like a real one. */
     const val HOUSING_RISE = 0.0022f
+
+    /**
+     * Where the tube sits, front to back — **derived from the bracket, so the two touch.**
+     *
+     * This was `CORNER_Z`, which put the tube 15mm in front of the plate it is supposed to be
+     * screwed to, with clear air between them. The owner's read was that the tube "is not in
+     * the corner" and is not attached, and that is exactly what a 15mm gap looks like: the
+     * bracket lies against the panel, the tube floats in the bay, and nothing says they are one
+     * fitting.
+     *
+     * Derived rather than typed, so no future edit to either can open that gap again.
+     */
+    const val STRIP_Z = HOUSING_Z + HOUSING_D / 2f + STRIP_D / 2f
 
     /**
      * Dark, and unlit rather than shaded.

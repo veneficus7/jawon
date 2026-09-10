@@ -773,9 +773,18 @@ fun SceneScope.CaseSlotNodes(
                 isVisible = false
             }) {
                 LightNode(
-                    type = LightManager.Type.POINT,
+                    type = LightManager.Type.FOCUSED_SPOT,
+                    direction = io.github.sceneview.math.Direction(
+                        RoomLighting.UNDER_DIRECTION[0],
+                        RoomLighting.UNDER_DIRECTION[1],
+                        RoomLighting.UNDER_DIRECTION[2]
+                    ),
                     apply = {
                         intensityCandela(RoomLighting.UNDER_CANDELA)
+                        spotLightCone(
+                            RoomLighting.UNDER_CONE_INNER,
+                            RoomLighting.UNDER_CONE_OUTER
+                        )
                         falloff(RoomLighting.UNDER_FALLOFF)
                         // Around a hundred of these are on screen at once. Clustered forward
                         // rendering is fine with that; a hundred shadow casters would not be,

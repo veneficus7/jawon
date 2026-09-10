@@ -188,15 +188,25 @@ object RoomGrade {
             // four schemes at once. The first version of this file added 0.35 to compensate for
             // AgX and turned the room grey.
             exposure = 0f,
-            contrast = 1.06f,
-            // Under 1 deliberately. DESIGN.md §1: the underlights are where the saturated colour
-            // lives and "everything else stays warm, dark and disciplined" — so the global
-            // saturation comes down a touch and the pools of colour stand out more, not less.
-            saturation = 0.97f,
-            // And back up through vibrance, which only touches what is *already* dull. The brown
-            // shelving gets its wood back without the amber lamp going radioactive.
-            vibrance = 1.12f,
-            temperature = 0.05f,
+            contrast = 1.08f,
+            // **Over 1 now, and the reason it used to be under 1 has expired.**
+            //
+            // It sat at 0.97 on DESIGN.md §1: the underlights were where the saturated colour
+            // lived, so pulling global saturation down made those pools stand out more. That was
+            // right for the room it was written for. In the two-light room the underlight is a
+            // near-white bulb and the colour in the frame is the *album art* — somebody else's
+            // work, and the one thing on the wall that has to arrive as it was made. Pulling
+            // saturation down globally now takes it out of the artwork to protect a pool of
+            // colour that no longer exists, which is why the owner's read was that the covers
+            // are not vivid enough.
+            saturation = 1.05f,
+            // Vibrance on top, which only touches what is already dull, so the timber gets its
+            // wood back without the tube going radioactive.
+            vibrance = 1.20f,
+            // Halved. A warm push is a warm push on the artwork too, and the room's warmth
+            // should come from the tube lighting the rack rather than from a filter over the
+            // records.
+            temperature = 0.025f,
             tint = 0f,
             // Red crushed hardest, blue least — so the shadows fall away COOL under a warm key.
             //
