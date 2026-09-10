@@ -3,7 +3,9 @@ package com.jawon.app.ui.wallscene
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.remember
+import com.google.android.filament.LightManager
 import com.google.android.filament.gltfio.FilamentInstance
+import dev.romainguy.kotlin.math.Float4
 import com.jawon.app.ui.wallscene.WallDimens.CASE_D
 import com.jawon.app.ui.wallscene.WallDimens.CASE_H
 import com.jawon.app.ui.wallscene.WallDimens.CASE_W
@@ -14,7 +16,9 @@ import io.github.sceneview.math.Direction
 import io.github.sceneview.math.Position
 import io.github.sceneview.math.Rotation
 import io.github.sceneview.math.Size
+import io.github.sceneview.loaders.MaterialLoader
 import io.github.sceneview.node.ImageNode
+import io.github.sceneview.node.LightNode
 import io.github.sceneview.node.ModelNode
 import io.github.sceneview.node.Node
 
@@ -59,6 +63,58 @@ class ActiveCaseNodes {
     var discMesh: ModelNode? = null
     var spineArt: ImageNode? = null
     var coverArt: ImageNode? = null
+
+    /**
+     * The lit materials the two art plates are rendered with. See `CaseSlot.coverMaterial` —
+     * SceneView's `ImageNode` is unlit, so without these the held case's artwork is the one
+     * surface in the room that ignores the light falling on it.
+     */
+    var coverMaterial: com.google.android.filament.MaterialInstance? = null
+    var spineMaterial: com.google.android.filament.MaterialInstance? = null
+
+    /**
+     * The held case's own underlight, and the bulb beneath it.
+     *
+     * The room has two lights and this is one of them — the same album underlight the shelf
+     * gives every record, following the record when it is pulled out. It has to: the disc
+     * lifts clear of the case and there is nothing else in the room to light it. Removing the
+     * key light left it rendering nearly black, which is how this got noticed.
+     *
+     * Carrier and bulb rather than one node for the reason `RoomNodes` records — a `LightNode`'s
+     * `apply` runs against a `LightManager.Builder`, so the node cannot be captured where it is
+     * declared.
+     */
+    var underCarrier: Node? = null
+    private var underBulb: LightNode? = null
+
+    /** The same light again, riding the disc — see the note where it is mounted. */
+    var discUnderCarrier: Node? = null
+    private var discUnderBulb: LightNode? = null
+
+    /** Tints the held record's underlight, exactly as the shelf's does. */
+    fun setUnderHue(hue: Float) {
+        if (hue == appliedUnderHue) return
+        val caseLight = underBulb
+            ?: underCarrier?.childNodes?.firstNotNullOfOrNull { it as? LightNode }
+                ?.also { underBulb = it }
+        val discLight = discUnderBulb
+            ?: discUnderCarrier?.childNodes?.firstNotNullOfOrNull { it as? LightNode }
+                ?.also { discUnderBulb = it }
+        if (caseLight == null && discLight == null) return
+        appliedUnderHue = hue
+        val rgb = beamRgb(hue)
+        val peak = maxOf(rgb[0], rgb[1], rgb[2]).coerceAtLeast(1e-4f)
+        val colour = Float4(
+            mixToward(rgb[0] / peak, RoomLighting.UNDER_WHITE[0]),
+            mixToward(rgb[1] / peak, RoomLighting.UNDER_WHITE[1]),
+            mixToward(rgb[2] / peak, RoomLighting.UNDER_WHITE[2]),
+            1f
+        )
+        caseLight?.color = colour
+        discLight?.color = colour
+    }
+
+    private var appliedUnderHue = Float.NaN
 }
 
 /**
@@ -79,6 +135,7 @@ class ActiveCaseNodes {
 @Composable
 fun SceneScope.ActiveCaseNodes(
     nodes: ActiveCaseNodes,
+    materialLoader: MaterialLoader,
     trayModel: FilamentInstance?,
     lidModel: FilamentInstance?,
     discModel: FilamentInstance?
@@ -107,6 +164,12 @@ fun SceneScope.ActiveCaseNodes(
             nodes.discMesh = null
             nodes.spineArt = null
             nodes.coverArt = null
+            nodes.underCarrier = null
+            nodes.discUnderCarrier = null
+            // Not destroyed — trap 1. They stay bound to the plates' textures for as long as
+            // the scene lives.
+            nodes.coverMaterial = null
+            nodes.spineMaterial = null
         }
     }
 
@@ -121,6 +184,37 @@ fun SceneScope.ActiveCaseNodes(
         nodes.root = this
         isVisible = false
     }) {
+        // **The record's own underlight, carried out of the shelf with it.**
+        //
+        // The room has two lights and this is one of them: the same album underlight every
+        // record on the wall gets, following this one while it is held. It is not optional —
+        // the disc lifts clear of the case and there is nothing else in the room to light it,
+        // so without this the centrepiece of playback renders nearly black. That is exactly
+        // what happened the moment the key light was removed.
+        //
+        // Reaches further than the shelf's does, because it has further to reach: the disc
+        // rises to close to full frame height above the foot of the case, where the shelf's
+        // job ends at the top of a sleeve.
+        //
+        // A child of the case group, so it travels and turns with it. The swing during the
+        // turn is deliberate rather than tolerated — a highlight that moves across the lid as
+        // the case comes round is what the sequence is for.
+        Node(apply = { nodes.underCarrier = this }) {
+            LightNode(
+                type = LightManager.Type.POINT,
+                position = Position(
+                    0f,
+                    -CASE_H / 2f + RoomLighting.UNDER_LIFT,
+                    CASE_D / 2f + RoomLighting.UNDER_FORWARD
+                ),
+                apply = {
+                    intensityCandela(RoomLighting.HELD_UNDER_CANDELA)
+                    falloff(RoomLighting.HELD_UNDER_FALLOFF)
+                    castShadows(false)
+                }
+            )
+        }
+
         // The tray, from tools/models/build_models.py — a moulded shell with real wall
         // thickness, a spindle rosette and hinge knuckles, where this used to be one box.
         //
@@ -149,6 +243,14 @@ fun SceneScope.ActiveCaseNodes(
                 isTouchable = false
                 isShadowCaster = false
                 nodes.spineArt = this
+                if (nodes.spineMaterial == null) {
+                    nodes.spineMaterial = materialLoader.createTextureInstance(
+                        texture,
+                        metallic = 0f,
+                        roughness = ACT_PAPER_ROUGHNESS,
+                        reflectance = ACT_PAPER_REFLECTANCE
+                    ).also { materialInstance = it }
+                }
             }
         )
         // The spindle that used to be a bare cylinder here is part of the tray model now —
@@ -176,6 +278,15 @@ fun SceneScope.ActiveCaseNodes(
                     isTouchable = false
                     isShadowCaster = false
                     nodes.coverArt = this
+                    // Lit, like the shelf's. See ActiveCaseNodes.coverMaterial.
+                    if (nodes.coverMaterial == null) {
+                        nodes.coverMaterial = materialLoader.createTextureInstance(
+                            texture,
+                            metallic = 0f,
+                            roughness = ACT_COVER_ROUGHNESS,
+                            reflectance = ACT_PAPER_REFLECTANCE
+                        ).also { materialInstance = it }
+                    }
                 }
             )
             // Clear polycarbonate front, closing flush with the case's outer face.
@@ -198,6 +309,34 @@ fun SceneScope.ActiveCaseNodes(
         nodes.disc = this
         isVisible = false
     }) {
+        // **The record's underlight travels with the record.**
+        //
+        // The disc is a sibling of the case, not a child of it, because it rides to a
+        // camera-relative position — roughly half a metre in front of the shelf by the end of
+        // the lift. A light parented to the case therefore cannot reach it at any intensity,
+        // which is exactly what happened: with the key light gone the disc rendered nearly
+        // black while the underlight sat back at the case throwing a perfectly good pool on
+        // the tray. Two carriers, one light: the album's underlight, on whichever piece of the
+        // album is being looked at.
+        //
+        // Below and in front, for the same reason the shelf's is — a disc face is a plane and
+        // a light in that plane contributes nothing to it.
+        Node(apply = { nodes.discUnderCarrier = this }) {
+            LightNode(
+                type = LightManager.Type.POINT,
+                position = Position(
+                    0f,
+                    -WallDimens.DISC_RADIUS - RoomLighting.DISC_UNDER_DROP,
+                    RoomLighting.DISC_UNDER_FORWARD
+                ),
+                apply = {
+                    intensityCandela(RoomLighting.HELD_UNDER_CANDELA)
+                    falloff(RoomLighting.HELD_UNDER_FALLOFF)
+                    castShadows(false)
+                }
+            )
+        }
+
         // A real disc now: 1.2mm thick with a broken edge, where this was an infinitely
         // thin annulus whose every normal was +Z. docs/materials.md records what that cost
         // — `dot(N,V)` spanned 1.0 to 0.994 across the entire face, so any Fresnel term
@@ -227,3 +366,13 @@ fun SceneScope.ActiveCaseNodes(
         )
     }
 }
+
+/**
+ * The held case's art plates are the same printed card the shelf's are — see
+ * `PAPER_ROUGHNESS` in `CaseSlots`. Duplicated rather than shared because these are private
+ * to each file and the two are free to diverge: the held case is seen from 200mm away, the
+ * shelf's from a metre.
+ */
+private const val ACT_PAPER_ROUGHNESS = 0.72f
+private const val ACT_PAPER_REFLECTANCE = 0.5f
+private const val ACT_COVER_ROUGHNESS = 0.60f

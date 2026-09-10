@@ -307,45 +307,91 @@ object RoomLighting {
      */
     const val WASH_FALLOFF = 0.22f
 
-    // ---- The underlight, as an actual light ----------------------------------------
+    // ---- The underlight: one real light per album ----------------------------------
     //
-    // The per-bay underlight has always been emissive geometry, and the comment on it was
-    // honest about the trade: one draw for the whole wall, which is the only way two hundred
-    // albums each get their own glow. What it does not do is *light* anything. It blooms, it
-    // is not in the shading, and so the album colour DESIGN.md calls "where the app's colour
-    // lives" never landed on the board it stands on or on the case standing in it. Measured,
-    // the pool was the brightest object in the room — brighter than the artwork — while
-    // contributing nothing to a single surface.
+    // **The owner's lighting design, stated plainly: two lights and nothing else.** A backlight
+    // in the top back corner of each shelf giving a gradient on the panel, and this — the
+    // underlight of each CD, which is "the real light source that lets us see the artwork, and
+    // shines through glass like material of CD cases". No ambient.
     //
-    // Filament will not give every bay a spot at this count. So the room spends exactly one,
-    // on whichever record is being looked at, and the frame driver walks it to that bay and
-    // recolours it. The emissive geometry stays for every other bay, which is what it was
-    // always good at.
+    // The underlight has always been emissive geometry: one draw for the whole wall, which is
+    // why every bay could have its own glow. It blooms and it lights nothing. Now it is an
+    // actual Filament light per occupied slot — around a hundred of them at this camera, which
+    // is the case clustered forward rendering exists for, provided each one is small and casts
+    // no shadow. Both hold here.
 
     /**
-     * How far above the board the spill sits — inside the underlight's own glow, so the light
-     * and the thing that appears to be emitting it agree.
+     * How far above the board the bulb sits.
+     *
+     * Higher than it looks like it should be, and inverse-square is why. At 8mm the board
+     * directly beneath the bulb is 8mm away while the middle of the sleeve is about 78mm away,
+     * so the board receives roughly **95 times** the illuminance the artwork does — measured,
+     * the pool clipped over a third of its pixels while the cover sat at 68. Both cannot be
+     * exposed correctly at once from that height, and the artwork is the one that matters.
+     *
+     * Lifting it cuts the near distance far faster than the far one, so the ratio collapses
+     * while the light on the sleeve barely moves. Still low enough to read as coming from under
+     * the record rather than from the shelf above.
      */
-    const val SPILL_LIFT = 0.010f
+    const val UNDER_LIFT = 0.024f
 
     /**
-     * Modest, and deliberately below [SHELF_CANDELA].
+     * How far in FRONT of the case the bulb sits.
      *
-     * This is a coloured bounce off a shelf, not a second key. The reference photographs are
-     * unanimous that the colour in the frame comes from the artwork rather than from the
-     * lighting, so a spill bright enough to tint the record it is under has already gone too
-     * far.
-     *
-     * Found by probe rather than by argument. 26 was the first guess and moved the board it
-     * stands on by 4% — indistinguishable from nothing, and impossible to tell apart from the
-     * light being mis-wired. 300 proved the wiring, put a clear coloured pool on the board and
-     * caught the bottom edge of the case above, and was plainly a hotspot. This sits between
-     * them: the pool reads, the record above it does not turn the colour of its own sleeve.
+     * A record's face is vertical, so a light directly beneath it contributes exactly nothing:
+     * `N·L` is zero. This is the same geometry that has now cost time three separate times in
+     * this file, and it is why the bulb cannot simply stand where the emissive cone stands. Far
+     * enough forward to throw up across the artwork, close enough to still read as coming from
+     * under that record rather than from the room.
      */
-    const val SPILL_CANDELA = 140f
+    const val UNDER_FORWARD = 0.052f
 
-    /** Short: a pool around one bay, dying before it reaches its neighbours' neighbours. */
-    const val SPILL_FALLOFF = 0.14f
+    /**
+     * Bright, because this is a key light now rather than a decoration.
+     *
+     * It is the only thing lighting an album's cover, so what used to be a coloured accent has
+     * to carry the artwork on its own.
+     */
+    const val UNDER_CANDELA = 340f
+
+    /**
+     * Short reach. The pool belongs to one record; a long falloff turns a hundred of these into
+     * ambient light by another name, which is exactly what the owner asked to remove.
+     */
+    const val UNDER_FALLOFF = 0.20f
+
+    /**
+     * How much of the album's own hue the bulb takes, 0 = warm white, 1 = the full hue.
+     *
+     * Held well down on purpose, and this is the tension in the design. `DESIGN.md` wants an
+     * album's colour in its underlight, and when the underlight was decoration that was free.
+     * Now the same light is the only thing illuminating the sleeve, so a fully tinted bulb would
+     * light every cover in a wash of its own dominant colour — a blue record lit blue, which
+     * destroys the artwork it exists to show. A third of the way keeps a visibly coloured pool
+     * on the board, where nothing else competes, and leaves the cover close to neutral.
+     */
+    const val UNDER_TINT = 0.34f
+
+    /**
+     * The same underlight, for the record being held.
+     *
+     * Brighter and longer-reaching than the shelf's, and both for the same reason: the disc
+     * lifts clear of the case to close to full frame height, so what the shelf's light only
+     * has to carry up the face of a sleeve this one has to carry a good deal further. It is
+     * still the album's underlight, not a third kind of light.
+     */
+    const val HELD_UNDER_CANDELA = 520f
+    const val HELD_UNDER_FALLOFF = 0.60f
+
+    /** How far below the disc's rim its underlight sits. */
+    const val DISC_UNDER_DROP = 0.030f
+
+    /** And how far in front of the platter, so the label is lit rather than the edge. */
+    const val DISC_UNDER_FORWARD = 0.055f
+
+    /** The lamp the tint is mixed away toward: ordinary warm tungsten. */
+    val UNDER_WHITE: FloatArray = floatArrayOf(1.0f, 0.86f, 0.72f)
+
 
     /**
      * How many wash lights each row gets, spread across the width of the frame.
@@ -359,14 +405,22 @@ object RoomLighting {
      *
      * Overlapping cones are how a strip is faked out of point sources. Odd, so one of them
      * sits on the browse centre.
+     *
+     * **Five was not enough and the reason is worth keeping.** Filament's spots are round, so
+     * there is no way to make one cone wide across the shelf and tight down the panel — and the
+     * cone has to stay tight, because over a 52mm compartment at 88mm distance the cone edge is
+     * the only thing that grades the gradient at all. Widening it to close the gaps flattens the
+     * gradient, which is the whole picture. So the gaps close by adding sources instead: nine at
+     * a little over half the old spacing, cores overlapping, which is also how a real strip
+     * light is built.
      */
-    const val WASH_COLUMNS = 5
+    const val WASH_COLUMNS = 9
 
     /**
      * How far apart those are. Close enough that the cones overlap into a continuous band at
      * panel distance rather than reading as five separate lamps.
      */
-    const val WASH_COLUMN_SPACING = 0.105f
+    const val WASH_COLUMN_SPACING = 0.058f
 
     const val SHELF_LIGHT_COUNT = 3
 
@@ -633,14 +687,29 @@ object RoomLighting {
      * The sign convention on the vertical term is worth checking on device rather than
      * trusting; if the room looks lit from the floor, flip it.
      */
-    private fun ambientSphericalHarmonics(scheme: RoomScheme): FloatArray {
-        val sh = FloatArray(SH_BANDS * SH_BANDS * 3)
-        for (c in 0..2) {
-            sh[c] = scheme.ambient[c]
-            sh[3 + c] = scheme.ambient[c] * 0.35f
-        }
-        return sh
-    }
+    /**
+     * Irradiance as spherical harmonics — **all zero, on purpose.**
+     *
+     * The owner's lighting design is two lights and no ambient: a backlight per shelf and one
+     * real underlight per album. This is where "no ambient" is actually enforced, and it is
+     * worth being precise about what it removes, because `IndirectLight` does two separate
+     * jobs through one object.
+     *
+     * The *irradiance* half is the ambient — a diffuse fill arriving from every direction at
+     * once, which lands on every surface regardless of where it is or which way it faces. That
+     * is what made the room flat: a fill with no position has no falloff, so nothing can be
+     * further from the light than anything else. It was measured at six-sevenths of the wall's
+     * brightness once. Zeroing these coefficients removes it completely.
+     *
+     * The *reflections* half is kept. `IndirectLight.reflections` is what a glossy surface has
+     * to look at — without it a jewel case's shell mirrors nothing and reads as painted card,
+     * which is most of "it looks like cheap plastic". That is not ambient light in the sense
+     * being removed here: it adds no diffuse fill, and after [buildRoomCubemap] the only thing
+     * in that environment is the backlight, so what the cases reflect is a light that genuinely
+     * exists in the room.
+     */
+    private fun ambientSphericalHarmonics(scheme: RoomScheme): FloatArray =
+        FloatArray(SH_BANDS * SH_BANDS * 3)
 
     /**
      * A 64² cubemap of the room: warm light pooling above, falling to near-black below.
@@ -664,23 +733,11 @@ object RoomLighting {
         val buffer = ByteBuffer.allocateDirect(faceBytes * 6).order(ByteOrder.nativeOrder())
         val floats = buffer.asFloatBuffer()
 
-        // Hoisted: these are six multiplications, not 393k of them.
+        // Hoisted: these are three multiplications, not 393k of them.
         val void = FloatArray(3) { scheme.void[it] * VOID_LEVEL }
-        val lamp = FloatArray(3) { scheme.key[it] * LAMP_LEVEL }
         // Reused across every texel. `faceDirection` used to return a fresh array per
         // texel, which was survivable at 64px and is 393k throwaway allocations at 256.
         val dir = FloatArray(3)
-
-        // Where the two sources sit, as unit directions. The lamp is the real one the scene
-        // is lit by, so its reflection agrees with its shading; the fill is opposite and low.
-        val lampLen = length(floatArrayOf(KEY_POSITION.x, KEY_POSITION.y, KEY_POSITION.z))
-        val lampX = KEY_POSITION.x / lampLen
-        val lampY = KEY_POSITION.y / lampLen
-        val lampZ = KEY_POSITION.z / lampLen
-        val fillLen = length(floatArrayOf(RIM_POSITION.x, RIM_POSITION.y, RIM_POSITION.z))
-        val fillX = RIM_POSITION.x / fillLen
-        val fillY = RIM_POSITION.y / fillLen
-        val fillZ = RIM_POSITION.z / fillLen
 
         for (face in 0 until 6) {
             for (y in 0 until size) {
@@ -704,15 +761,6 @@ object RoomLighting {
                     val ny = dir[1] * invLen
                     val nz = dir[2] * invLen
 
-                    val lampDot = nx * lampX + ny * lampY + nz * lampZ
-                    val lampHit = smoothStep(
-                        LAMP_ANGLE_COS - LAMP_FEATHER, LAMP_ANGLE_COS + LAMP_FEATHER, lampDot
-                    )
-                    val fillDot = nx * fillX + ny * fillY + nz * fillZ
-                    val fillHit = smoothStep(
-                        FILL_ANGLE_COS - FILL_FEATHER, FILL_ANGLE_COS + FILL_FEATHER, fillDot
-                    )
-
                     // The reflected strips: warm horizontal lines repeating up and down the
                     // wall. Elevation angle rather than `ny` directly, so the spacing stays
                     // even instead of bunching up toward the poles, and feathered for the
@@ -726,13 +774,12 @@ object RoomLighting {
                     )
 
                     for (c in 0..2) {
-                        val ambientTerm = void[c] + (lamp[c] - void[c]) * t
-                        floats.put(
-                            ambientTerm +
-                                scheme.key[c] * LAMP_HOT_LEVEL * lampHit +
-                                scheme.rim[c] * FILL_HOT_LEVEL * fillHit +
-                                scheme.key[c] * STRIP_BAND_LEVEL * bandHit
-                        )
+                        // Void plus the backlight, and nothing else. There used to be two
+                        // hot discs in here — a lamp and a fill — reflecting a key light and
+                        // a rim that the room no longer has. A reflection of a light that
+                        // does not exist is a lie the eye reads immediately on a glossy
+                        // surface, and it was reflecting the room as it was two designs ago.
+                        floats.put(void[c] + scheme.key[c] * STRIP_BAND_LEVEL * bandHit)
                     }
                     floats.put(1f)
                 }

@@ -21,7 +21,10 @@ import io.github.sceneview.math.Direction
 import io.github.sceneview.math.Position
 import io.github.sceneview.math.Scale
 import io.github.sceneview.math.Size
+import com.google.android.filament.LightManager
+import dev.romainguy.kotlin.math.Float4
 import io.github.sceneview.node.ImageNode
+import io.github.sceneview.node.LightNode
 import io.github.sceneview.node.ModelNode
 import io.github.sceneview.node.Node
 
@@ -80,6 +83,21 @@ class CaseSlot {
      * affordable at several hundred cases.
      */
     var beamMaterials: Array<MaterialInstance>? = null
+
+    /**
+     * The carrier this album's real underlight hangs from, and the bulb beneath it.
+     *
+     * Two nodes rather than one for the reason `RoomNodes` records: a `LightNode`'s `apply`
+     * block runs against a `LightManager.Builder`, not against the node, so the node cannot be
+     * captured where it is declared — and the carrier is a plain `Node`, so casting *it* to
+     * `LightNode` yields null. The carrier is what moves; the bulb is what takes a colour.
+     */
+    var underCarrier: Node? = null
+    private var underBulb: LightNode? = null
+
+    private fun bulb(): LightNode? =
+        underBulb ?: underCarrier?.childNodes?.firstNotNullOfOrNull { it as? LightNode }
+            ?.also { underBulb = it }
 
     /**
      * Last hue written to [beamMaterials], so binding does not re-push the same colour into
@@ -163,6 +181,13 @@ class CaseSlot {
     fun placeBeam(x: Float, y: Float, z: Float) {
         if (x == beamAtX && y == beamAtY && z == beamAtZ) return
         beam?.position = Position(x, y, z)
+        // The real light rides with the emissive cone, lifted off the board and pushed
+        // forward — see RoomLighting.UNDER_FORWARD for why forward is not optional.
+        underCarrier?.position = Position(
+            x,
+            y + RoomLighting.UNDER_LIFT,
+            z + RoomLighting.UNDER_FORWARD
+        )
         beamAtX = x
         beamAtY = y
         beamAtZ = z
@@ -268,6 +293,18 @@ class CaseSlot {
         appliedBeamHue = hue
 
         val rgb = beamRgb(hue)
+        // The bulb takes a muted version of the same hue. A light's colour is a normalised
+        // tint — brightness is intensityCandela — so beamRgb, which is authored at BEAM_VALUE
+        // for an emissive material, has to come back to a peak of 1 first.
+        bulb()?.let { light ->
+            val peak = maxOf(rgb[0], rgb[1], rgb[2]).coerceAtLeast(1e-4f)
+            light.color = Float4(
+                mixToward(rgb[0] / peak, RoomLighting.UNDER_WHITE[0]),
+                mixToward(rgb[1] / peak, RoomLighting.UNDER_WHITE[1]),
+                mixToward(rgb[2] / peak, RoomLighting.UNDER_WHITE[2]),
+                1f
+            )
+        }
         materials.forEach { instance ->
             val material = instance.material
             if (material.hasParameter(EMISSIVE_PARAM)) {
@@ -290,6 +327,18 @@ class CaseSlot {
      * calls cannot compound into black. [appliedBeamHue] is left alone, which means the next
      * `bind` of this slot restores full brightness on its own.
      */
+    /**
+     * Show or hide the whole underlight — the emissive cone and the light it now stands for.
+     *
+     * One call rather than two writes at four call sites: they are the same fixture, and the
+     * bug where a pooled slot keeps a stale piece of the last album is the single most common
+     * failure in this file.
+     */
+    fun setBeamVisible(visible: Boolean) {
+        beam?.isVisible = visible
+        underCarrier?.isVisible = visible
+    }
+
     fun setBeamGlow(amount: Float) {
         val materials = beamMaterials ?: return
         if (appliedBeamHue.isNaN()) return
@@ -392,6 +441,10 @@ private const val PAPER_REFLECTANCE = 0.5f
  * two speculars on one surface and read as laminate rather than print.
  */
 private const val COVER_ROUGHNESS = 0.60f
+
+/** Mixes a normalised channel toward the warm lamp by [RoomLighting.UNDER_TINT]. */
+internal fun mixToward(hue: Float, white: Float): Float =
+    white + (hue - white) * RoomLighting.UNDER_TINT
 
 private const val BEAM_SATURATION = 0.62f
 
@@ -577,13 +630,13 @@ fun CaseSlots.bind(
             slot.root?.isVisible = false
             slot.body?.name = null
             slot.occupied = false
-            slot.beam?.isVisible = false
+            slot.setBeamVisible(false)
             return@forEachIndexed
         }
 
         val (case, artwork) = binding
         slot.occupied = true
-        slot.beam?.isVisible = true
+        slot.setBeamVisible(true)
 
         // Undo anything the discard animation did to this slot's scale.
         //
@@ -678,6 +731,7 @@ fun SceneScope.CaseSlotNodes(
                 // MaterialInstance back while a texture is still bound to it aborts the
                 // process on the next commit, and these stay bound to the plates' textures for
                 // as long as the scene lives.
+                it.underCarrier = null
                 it.coverMaterial = null
                 it.spineMaterial = null
                 it.backMaterial = null
@@ -707,6 +761,30 @@ fun SceneScope.CaseSlotNodes(
                     isShadowReceiver = false
                 }
             )
+            // The real light this album is lit by. A sibling of the case for the same reason
+            // the emissive cone is one: the case turns, and a light that turned with it would
+            // swing its pool around the bay.
+            //
+            // POINT rather than a spot: the case rotates, so which face needs lighting changes
+            // continuously, and a cone would have to chase it. Hidden until `bind` gives this
+            // slot an album.
+            Node(apply = {
+                slot.underCarrier = this
+                isVisible = false
+            }) {
+                LightNode(
+                    type = LightManager.Type.POINT,
+                    apply = {
+                        intensityCandela(RoomLighting.UNDER_CANDELA)
+                        falloff(RoomLighting.UNDER_FALLOFF)
+                        // Around a hundred of these are on screen at once. Clustered forward
+                        // rendering is fine with that; a hundred shadow casters would not be,
+                        // and there is no shadow map budget remotely near it.
+                        castShadows(false)
+                    }
+                )
+            }
+
             // Mounted HIDDEN, like the active case group and for the same reason. `bind`
             // decides which slots show an album and where they sit, and it runs from a
             // LaunchedEffect — after the first frames. Left visible, every pooled slot

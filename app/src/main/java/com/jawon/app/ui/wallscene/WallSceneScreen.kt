@@ -537,87 +537,35 @@ private class RoomNodes {
     var keyLight: SceneNode? = null
     var rimLight: SceneNode? = null
 
-    /**
-     * The actual `LightNode`s, found beneath the carriers above.
-     *
-     * They cannot simply be captured where they are built: `LightNode`'s `apply` block runs
-     * against a `LightManager.Builder`, not against the node. And the carrier is a plain
-     * `Node`, so casting *it* to `LightNode` yields null — which is exactly how the first
-     * version of this failed. The preference saved, the swatch highlighted, and the room
-     * stayed the colour it was, with nothing anywhere to say why.
-     */
-    private var keyBulb: LightNode? = null
-    private var rimBulb: LightNode? = null
-
-    /**
-     * The one real light the room spends on an album's own colour, and the carrier it hangs
-     * from. See `RoomLighting.SPILL_CANDELA` for why there is exactly one.
-     */
-    var spillLight: SceneNode? = null
-    private var spillBulb: LightNode? = null
-
-    /** The hue currently written to the spill, so an unchanged frame writes nothing. */
-    private var appliedSpillHue = Float.NaN
-
-    /**
-     * Walks the spill to a bay and gives it that album's colour.
-     *
-     * Position every frame, colour only when the album under it changes — the walk is
-     * continuous and the recolour is not, and Filament uploads a light's colour whether or
-     * not it differs.
-     */
-    fun applySpill(x: Float, y: Float, z: Float, hue: Float) {
-        val carrier = spillLight ?: return
-        val bulb = spillBulb ?: bulbUnder(carrier)?.also { spillBulb = it } ?: return
-        carrier.position = Position(x, y + RoomLighting.SPILL_LIFT, z)
-        if (hue != appliedSpillHue) {
-            appliedSpillHue = hue
-            // beamRgb is authored at BEAM_VALUE for an *emissive material*, where the
-            // level is the brightness. A light separates the two: colour is a normalised
-            // tint and intensityCandela carries the brightness, so the peak channel comes
-            // back to 1 and SPILL_CANDELA decides how strong it is.
-            val rgb = beamRgb(hue)
-            val peak = maxOf(rgb[0], rgb[1], rgb[2]).coerceAtLeast(1e-4f)
-            bulb.color = Float4(rgb[0] / peak, rgb[1] / peak, rgb[2] / peak, 1f)
-        }
-    }
-
-    /** Parks the spill when there is nothing under it — an empty wall, or a case open. */
-    fun hideSpill() {
-        spillLight?.isVisible = false
-    }
-
-    fun showSpill() {
-        spillLight?.isVisible = true
-    }
-
-    private fun bulbUnder(carrier: SceneNode?): LightNode? =
-        carrier?.childNodes?.firstNotNullOfOrNull { it as? LightNode }
-
     /** The scheme these lights are currently showing, so the write is skipped when unchanged. */
     private var appliedScheme: RoomScheme? = null
 
     /**
      * Writes a colour scheme onto the lights that already exist.
      *
-     * The lamp and the rim are the two things in the room that carry its colour and can be
-     * changed without rebuilding anything — see [RoomScheme] for what has to wait for a
-     * relaunch and why.
+     * This used to recolour the key and the rim, which were the two lights carrying the room's
+     * colour. Both are gone; the backlights hanging from [keyLight]'s carrier are what carry it
+     * now, and there are `SHELF_LIGHT_COUNT * WASH_COLUMNS` of them rather than one.
      *
-     * Each `LightNode` holds one Filament light entity; `LightManager` addresses it by
-     * instance, so setting the colour is a field write on geometry that never moves.
+     * All of them, not the first one found. An earlier version of this resolved a single bulb
+     * per carrier, which was right when there was a single bulb and would silently recolour one
+     * fifteenth of the shelf now.
+     *
+     * Recolouring in place rather than rebuilding is deliberate: rebuilding means destroying and
+     * recreating scene nodes, and this is the file where node lifetimes have already cost three
+     * separate bugs — trap 1 makes a wholesale scene rebuild a process abort, not a glitch.
      */
     fun applyScheme(scheme: RoomScheme) {
         if (appliedScheme == scheme) return
-        // Resolved once and cached. Nothing to write to yet means the lights are still being
-        // built — the frame driver can run before the first composition of the scene lands —
-        // so this returns without marking the scheme applied, and the next frame tries again.
-        val key = keyBulb ?: bulbUnder(keyLight)?.also { keyBulb = it } ?: return
-        val rim = rimBulb ?: bulbUnder(rimLight)?.also { rimBulb = it } ?: return
-        // The fourth component is unused for a light's colour; SceneView's setter simply
-        // takes a Float4 because the rest of its maths does.
-        key.color = Float4(scheme.key[0], scheme.key[1], scheme.key[2], 1f)
-        rim.color = Float4(scheme.rim[0], scheme.rim[1], scheme.rim[2], 1f)
+        // Nothing to write to yet means the lights are still being built — the frame driver can
+        // run before the first composition of the scene lands — so this returns without marking
+        // the scheme applied, and the next frame tries again.
+        val bulbs = keyLight?.childNodes?.filterIsInstance<LightNode>().orEmpty()
+        if (bulbs.isEmpty()) return
+        // The fourth component is unused for a light's colour; SceneView's setter simply takes
+        // a Float4 because the rest of its maths does.
+        val colour = Float4(scheme.key[0], scheme.key[1], scheme.key[2], 1f)
+        bulbs.forEach { it.color = colour }
         appliedScheme = scheme
     }
 }
@@ -1135,6 +1083,8 @@ fun WallSceneScreen(
         LaunchedEffect(activeArtwork, actNodes, trayModel, lidModel) {
             activeArtwork?.spine?.let { actNodes.spineArt?.bitmap = it }
             activeArtwork?.cover?.let { actNodes.coverArt?.bitmap = it }
+            // The held record's underlight takes its album's colour, exactly as the shelf's do.
+            activeArtwork?.hue?.let { actNodes.setUnderHue(it) }
         }
         LaunchedEffect(heldAlbumId, selectedAlbumId, actNodes, trayModel, lidModel, discModel) {
             val visible = heldAlbumId != null
@@ -1368,7 +1318,7 @@ fun WallSceneScreen(
             // on screen twice.
             slot.discardClock = 0f
             slot.root?.isVisible = false
-            slot.beam?.isVisible = false
+            slot.setBeamVisible(false)
             discardNodes.albumId = case.albumId
             discardNodes.slotX = slot.baseX
             discardNodes.slotY = slot.baseY
@@ -2017,38 +1967,6 @@ fun WallSceneScreen(
                 // Filament only uploads when the value actually changes.
                 roomNodes.applyScheme(roomScheme)
 
-                // Walk the one coloured spill to whichever bay is centred. Nearest by the
-                // same normalised distance the browse magnet uses, so the light settles on
-                // the record the wall settles on rather than on whichever is nearest in raw
-                // metres — rows and columns are on different pitches.
-                run {
-                    var best: com.jawon.app.ui.wallscene.CaseSlot? = null
-                    var bestD = Float.MAX_VALUE
-                    caseSlots.slots.forEach { slot ->
-                        if (!slot.occupied || slot.beamHue.isNaN()) return@forEach
-                        val dx = (slot.beamX - panX.value) / WallDimens.SLOT_PITCH
-                        val dy = (slot.beamY - panY.value) / ROW_PITCH
-                        val d = dx * dx + dy * dy
-                        if (d < bestD) {
-                            bestD = d
-                            best = slot
-                        }
-                    }
-                    val target = best
-                    if (target == null || frame.selected != null) {
-                        // Nothing under it, or a case is open and the deck owns the light.
-                        roomNodes.hideSpill()
-                    } else {
-                        roomNodes.applySpill(
-                            target.beamX,
-                            target.beamY,
-                            target.beamZ,
-                            target.beamHue
-                        )
-                        roomNodes.showSpill()
-                    }
-                }
-
                 // This loop ALWAYS runs, and only the motion is conditional. `bind` no longer
                 // writes root.position at all, so skipping it entirely under reduced motion
                 // would leave every case stacked at the wall's origin.
@@ -2094,7 +2012,7 @@ fun WallSceneScreen(
                             // The underlight stays lit and fades out over the sequence rather
                             // than being cut on the first frame � see CaseDiscard.beamGlow.
                             slot.setBeamGlow(discardBeamGlow)
-                            slot.beam?.isVisible = discardBeamGlow > 0.01f
+                            slot.setBeamVisible(discardBeamGlow > 0.01f)
                             return@forEach
                         }
 
@@ -2298,109 +2216,36 @@ fun WallSceneScreen(
             // rides with the browse position, and `LightNode` exposes no handle of its own
             // that this file can reach. The light keeps its offset inside the group, so
             // moving the group is exactly moving the lamp.
+            // **The carrier stays; the lamp inside it is gone.**
+            //
+            // This held the room's key light — one warm tungsten spot up and to the right,
+            // the single lamp the whole look was built around, and the only shadow caster in
+            // the scene. The owner's lighting design replaces it: two lights and nothing else,
+            // the backlight below and one real underlight per album. A distant lamp lighting
+            // everything is the opposite of that.
+            //
+            // The carrier itself is load-bearing and must not go with it. The frame driver
+            // walks it to the browse position every frame, and the backlight hangs from it —
+            // which is what stops a light parented per row sitting at the wall's centre in x,
+            // lighting the middle few bays of a two-metre row and nothing else.
+            //
+            // Losing the key also loses the room's shadows, since it carried the only shadow
+            // map. Worth knowing before hunting for them.
             Node(apply = { roomNodes.keyLight = this }) {
-            LightNode(
-                type = LightManager.Type.FOCUSED_SPOT,
-                position = RoomLighting.KEY_POSITION,
-                // Aimed back down at the wall's centre from up and to the right.
-                direction = normalize(-RoomLighting.KEY_POSITION),
-                apply = {
-                    color(
-                        RoomLighting.KEY_COLOR[0],
-                        RoomLighting.KEY_COLOR[1],
-                        RoomLighting.KEY_COLOR[2]
-                    )
-                    intensityCandela(RoomLighting.KEY_CANDELA)
-                    spotLightCone(RoomLighting.KEY_CONE_INNER, RoomLighting.KEY_CONE_OUTER)
-                    falloff(RoomLighting.KEY_FALLOFF)
-                    castShadows(true)
-                    // The frame driver walks this along with the browse position.
-                    // Until now this light ran on Filament's stock shadow settings, which
-                    // is what CaseSlots' "a 1024px shadow map is too coarse" complaint was
-                    // really about. Quadrupling the map and sizing the near/far hints to
-                    // the room lets a 10mm spine cast an edge you can actually read.
-                    shadowOptions(
-                        LightManager.ShadowOptions().apply {
-                            // From the *initial* tier: the map is allocated when the light is
-                            // built, so unlike the View options it does not follow a
-                            // mid-session step down. A device that steps down still gets the
-                            // cheaper shadow *filter* immediately, which is the larger of the
-                            // two costs; the map size takes effect on the next launch.
-                            mapSize = initialTier.shadowMapPx
-                            // Drives the PCSS penumbra set in RoomAtmosphere: the larger
-                            // the emitter, the faster its shadow softens with distance.
-                            // A shop spot is small, so the softening is gentle and contact
-                            // stays sharp.
-                            shadowBulbRadius = RoomLighting.KEY_BULB_RADIUS
-                            // The whole room is inside a 1.5m sphere around the lamp;
-                            // without this the map's depth range is spent on empty space
-                            // and the usable precision collapses.
-                            shadowNearHint = RoomLighting.KEY_SHADOW_NEAR
-                            shadowFarHint = RoomLighting.KEY_SHADOW_FAR
-                            // Millimetre geometry needs a proportionally small bias, or
-                            // the lid's shadow detaches from the lid.
-                            constantBias = RoomLighting.KEY_SHADOW_CONSTANT_BIAS
-                            normalBias = RoomLighting.KEY_SHADOW_NORMAL_BIAS
-                        }
-                    )
-                }
-            )
 
-            // **The shelf strips — the thing every reference photograph has and this room
-            // did not.**
+            // **The backlight.** One per row, hung in the top back corner of the shelf and
+            // throwing back and down at the panel behind the records — the gradient the owner's
+            // bookcase photograph is built on, and now one of only two lights in the room.
             //
-            // In a shop each shelf carries its own strip, hung in front of the records and
-            // aimed back down across the artwork. The source is small, local, and in frame,
-            // and the records end up the only lit thing in a room that is otherwise black.
-            // Jawon had one distant lamp doing all of it; the per-bay "underlight" looks like
-            // it should help and cannot, because `beam.glb` is emissive geometry — it glows
-            // and blooms but illuminates nothing.
+            // A row of them across the width rather than one: see RoomLighting.WASH_COLUMNS.
+            // A single cone tight enough to grade the panel vertically leaves a puddle in the
+            // middle of the shelf with darkness either side, where the reference has an evenly
+            // lit panel across the full width of every compartment.
             //
-            // **They live inside the key light's carrier, which the frame driver already moves
-            // to the browse position every frame.** That is deliberate and it is the second
-            // thing the first attempt got wrong: a light parented per *row* sits at the wall's
-            // centre in x, so it lights the middle few bays of a two-metre row and nothing
-            // else, and panning sideways walks straight out of it. Riding the carrier means
-            // the strips light whatever is being looked at. They are approximately rather
-            // than exactly above their rows, because the pan is high-frequency state and
-            // architecture rule 3 forbids it recomposing anything — a broad cone absorbs
-            // the difference.
-            //
-            // No shadows: the key light already tells the single-lamp story, and three more
-            // shadow casters would triple the scarcest resource in the renderer.
+            // The light that used to throw FORWARD from here, across the artwork, is gone with
+            // the key: lighting the records is the underlight's job now.
             repeat(RoomLighting.SHELF_LIGHT_COUNT) { index ->
                 val row = index - RoomLighting.SHELF_LIGHT_COUNT / 2
-                LightNode(
-                    type = LightManager.Type.FOCUSED_SPOT,
-                    position = Position(
-                        0f,
-                        WallDimens.CASE_H / 2f + RoomLighting.SHELF_LIGHT_LIFT +
-                            row * ROW_PITCH,
-                        RoomLighting.SHELF_LIGHT_Z
-                    ),
-                    direction = normalize(
-                        Direction(
-                            RoomLighting.SHELF_DIRECTION[0],
-                            RoomLighting.SHELF_DIRECTION[1],
-                            RoomLighting.SHELF_DIRECTION[2]
-                        )
-                    ),
-                    apply = {
-                        color(
-                            roomScheme.key[0],
-                            roomScheme.key[1],
-                            roomScheme.key[2]
-                        )
-                        intensityCandela(RoomLighting.SHELF_CANDELA)
-                        spotLightCone(
-                            RoomLighting.SHELF_CONE_INNER,
-                            RoomLighting.SHELF_CONE_OUTER
-                        )
-                        falloff(RoomLighting.SHELF_FALLOFF)
-                        castShadows(false)
-                    }
-                )
-
                 // The other half of the same fixture: down and back, into the panel behind
                 // the records. See RoomLighting.WASH_DIRECTION — the forward throw above
                 // cannot light that wall at all, because the wall faces the camera and the
@@ -2444,61 +2289,14 @@ fun WallSceneScreen(
                 }
             }
             }
-            // **The album's own colour, as an actual light.** Every bay's underlight is
-            // emissive geometry — one draw for the whole wall, and the only reason two
-            // hundred albums can each have their own glow — but emissive geometry lights
-            // nothing. The pool measured brighter than the artwork while contributing to no
-            // surface at all. Filament will not hand out a spot per bay at this count, so the
-            // room spends one, and the frame driver walks it to whichever record is being
-            // looked at. See RoomLighting.SPILL_CANDELA.
-            //
-            // A point light, not a spot: it is standing in the middle of what it lights, and
-            // it has to reach the board under it, the case above it and the bays either side.
-            //
-            // Carrier-and-bulb for the same reason the key light has one — a LightNode's
-            // `apply` runs against a LightManager.Builder, so the node is not reachable where
-            // it is declared.
-            Node(apply = {
-                roomNodes.spillLight = this
-                // Nothing to stand over until `bind` has run.
-                isVisible = false
-            }) {
-                LightNode(
-                    type = LightManager.Type.POINT,
-                    apply = {
-                        intensityCandela(RoomLighting.SPILL_CANDELA)
-                        falloff(RoomLighting.SPILL_FALLOFF)
-                        // It is light standing on a shelf. It neither casts nor receives, and
-                        // a shadow-caster here would be the fourth in the room.
-                        castShadows(false)
-                    }
-                )
-            }
+            // The room's one shared coloured spill used to be here — a single light walked to
+            // whichever bay was centred, because Filament would not give every bay its own.
+            // Superseded: every occupied slot now carries a real light of its own. See
+            // CaseSlot.underCarrier and RoomLighting.UNDER_CANDELA.
 
-            // The coloured bounce, low and left — DESIGN.md's "one coloured bounce light".
-            // It does not cast shadows: a second shadow-casting light doubles the cost and
-            // muddies the single-lamp story the key light is telling.
-            //
-            // Wrapped in a carrier `Node` purely so the colour scheme can find it. A
-            // LightNode's `apply` runs against a LightManager.Builder, so the node itself is
-            // not reachable where it is declared; the carrier gives `RoomNodes` a handle to
-            // walk down from. The key light already had one, for the pan.
-            Node(apply = { roomNodes.rimLight = this }) {
-            LightNode(
-                type = LightManager.Type.POINT,
-                position = RoomLighting.RIM_POSITION,
-                apply = {
-                    color(
-                        RoomLighting.RIM_COLOR[0],
-                        RoomLighting.RIM_COLOR[1],
-                        RoomLighting.RIM_COLOR[2]
-                    )
-                    intensityCandela(RoomLighting.RIM_CANDELA)
-                    falloff(RoomLighting.RIM_FALLOFF)
-                    castShadows(false)
-                }
-            )
-            }
+            // DESIGN.md's "one coloured bounce light" — a rim, low and to the left — used to
+            // sit here. Gone with the key, and for the same reason: the room has two lights now
+            // and a coloured bounce from nowhere in particular is not one of them.
 
             // Nothing loaded, no wall. This is what caused the brown flash on launch.
             //
@@ -2763,6 +2561,7 @@ fun WallSceneScreen(
             // Mounted once and hidden when idle, never torn down — see ActiveCaseNodes.
             ActiveCaseNodes(
                 nodes = actNodes,
+                materialLoader = materialLoader,
                 trayModel = trayModel,
                 lidModel = lidModel,
                 discModel = discModel
