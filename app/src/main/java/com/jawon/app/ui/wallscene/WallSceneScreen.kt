@@ -2246,46 +2246,38 @@ fun WallSceneScreen(
             // the key: lighting the records is the underlight's job now.
             repeat(RoomLighting.SHELF_LIGHT_COUNT) { index ->
                 val row = index - RoomLighting.SHELF_LIGHT_COUNT / 2
-                // The other half of the same fixture: down and back, into the panel behind
-                // the records. See RoomLighting.WASH_DIRECTION — the forward throw above
-                // cannot light that wall at all, because the wall faces the camera and the
-                // throw is travelling the same way.
+                // **The LED ribbon itself.** Tucked into the top back corner beside the
+                // tube, emitting down the panel it is stuck to — see RoomLighting.WASH_Z for
+                // why the corner is the right place and not the trap it first looks like.
                 //
-                // A ROW of them, not one. See RoomLighting.WASH_COLUMNS: a single narrow cone
-                // grades the panel vertically the way the reference does and leaves a circular
-                // puddle in the middle of a shelf that should be lit across its whole width.
+                // POINT, with no direction and no cone. A ribbon emits into the hemisphere in
+                // front of it, and the gradient down the panel is made by distance and
+                // incidence rather than by a cone edge — which is what three rounds of
+                // re-aiming a spot could never produce over a 52mm compartment.
+                //
+                // Twenty-one at 24mm, about the pitch of the diodes on a real ribbon and for
+                // the same reason: close to a surface, a point source has a small footprint.
                 repeat(RoomLighting.WASH_COLUMNS) { column ->
-                LightNode(
-                    type = LightManager.Type.FOCUSED_SPOT,
-                    position = Position(
-                        (column - RoomLighting.WASH_COLUMNS / 2) *
-                            RoomLighting.WASH_COLUMN_SPACING,
-                        WallDimens.CASE_H / 2f + RoomLighting.SHELF_LIGHT_LIFT +
-                            row * ROW_PITCH,
-                        RoomLighting.WASH_Z
-                    ),
-                    direction = normalize(
-                        Direction(
-                            RoomLighting.WASH_DIRECTION[0],
-                            RoomLighting.WASH_DIRECTION[1],
-                            RoomLighting.WASH_DIRECTION[2]
-                        )
-                    ),
-                    apply = {
-                        color(
-                            roomScheme.key[0],
-                            roomScheme.key[1],
-                            roomScheme.key[2]
-                        )
-                        intensityCandela(RoomLighting.WASH_CANDELA)
-                        spotLightCone(
-                            RoomLighting.WASH_CONE_INNER,
-                            RoomLighting.WASH_CONE_OUTER
-                        )
-                        falloff(RoomLighting.WASH_FALLOFF)
-                        castShadows(false)
-                    }
-                )
+                    LightNode(
+                        type = LightManager.Type.POINT,
+                        position = Position(
+                            (column - RoomLighting.WASH_COLUMNS / 2) *
+                                RoomLighting.WASH_COLUMN_SPACING,
+                            WallDimens.CASE_H / 2f + RoomLighting.SHELF_LIGHT_LIFT +
+                                row * ROW_PITCH - RoomLighting.WASH_DROP,
+                            RoomLighting.WASH_Z
+                        ),
+                        apply = {
+                            color(
+                                roomScheme.key[0],
+                                roomScheme.key[1],
+                                roomScheme.key[2]
+                            )
+                            intensityCandela(RoomLighting.WASH_CANDELA)
+                            falloff(RoomLighting.WASH_FALLOFF)
+                            castShadows(false)
+                        }
+                    )
                 }
             }
             }
@@ -2498,14 +2490,80 @@ fun WallSceneScreen(
                         }
                     )
 
-                    // **No visible tube.** There used to be an emissive bar here, added on
-                    // the earlier record-shop references, where you can see every fixture. The
-                    // owner's bookcase photograph supersedes those and has no visible source
-                    // at all — and the bar proved the point itself: dimmed under bloom's
-                    // threshold so it would stop glaring, it simply became a flat orange line
-                    // painted across the wall, which is worse than either the lamp it was or
-                    // the fixture it was pretending to be. Nothing replaces it: the board
-                    // above already casts the shadow line that says where the light is.
+                    // **The tube, and the channel it is mounted in.**
+                    //
+                    // One node spanning the whole shelf, so it is one continuous strip rather
+                    // than anything that could read as a row of lamps. See RoomLighting.STRIP_H
+                    // for the three attempts this took and what each got wrong.
+                    //
+                    // Unlit and over bloom's 1.0 threshold, so it goes straight to the output
+                    // and glows. That is the same trick the album underlights' emissive cones
+                    // use, one surface up, and it needs no new asset.
+                    //
+                    // Remembered in this row's key alongside the board, because a CubeNode
+                    // destroys the MaterialInstance it is handed.
+                    val housing = remember(rowIndex, roomScheme) {
+                        materialLoader.createUnlitColorInstance(
+                            dev.romainguy.kotlin.math.Float4(
+                                RoomLighting.HOUSING_COLOR[0],
+                                RoomLighting.HOUSING_COLOR[1],
+                                RoomLighting.HOUSING_COLOR[2],
+                                1f
+                            )
+                        )
+                    }
+                    val tube = remember(rowIndex, roomScheme) {
+                        materialLoader.createUnlitColorInstance(
+                            dev.romainguy.kotlin.math.Float4(
+                                RoomLighting.STRIP_EMISSIVE[0],
+                                RoomLighting.STRIP_EMISSIVE[1],
+                                RoomLighting.STRIP_EMISSIVE[2],
+                                1f
+                            )
+                        )
+                    }
+                    // Where the fixture hangs: the same height the backlight throws from, which
+                    // is a few millimetres under the board above.
+                    val fixtureY = row.centerY + WallDimens.CASE_H / 2f +
+                        RoomLighting.SHELF_LIGHT_LIFT
+
+                    // The channel first, sitting on top of the tube and reaching up to the
+                    // board. This is what makes the fixture read as attached rather than
+                    // floating — see RoomLighting.HOUSING_H.
+                    CubeNode(
+                        size = Size(
+                            layout.wallWidth,
+                            RoomLighting.HOUSING_H,
+                            RoomLighting.HOUSING_D
+                        ),
+                        position = Position(
+                            0f,
+                            fixtureY + (RoomLighting.HOUSING_H + RoomLighting.STRIP_H) / 2f,
+                            RoomLighting.STRIP_Z
+                        ),
+                        materialInstance = housing,
+                        apply = {
+                            isTouchable = false
+                            isShadowCaster = false
+                            isShadowReceiver = false
+                        }
+                    )
+                    CubeNode(
+                        size = Size(
+                            layout.wallWidth,
+                            RoomLighting.STRIP_H,
+                            RoomLighting.STRIP_D
+                        ),
+                        position = Position(0f, fixtureY, RoomLighting.STRIP_Z),
+                        materialInstance = tube,
+                        apply = {
+                            isTouchable = false
+                            // Neither: it is a light fitting. Casting would lay a bar of shadow
+                            // across the records it is there to light.
+                            isShadowCaster = false
+                            isShadowReceiver = false
+                        }
+                    )
 
                     ViewNode(
                         windowManager = viewNodeManager,
