@@ -160,21 +160,24 @@ object RoomLighting {
     /**
      * Where the fixture hangs, front to back.
      *
-     * **Was 0.155 — in front of the sleeves — and is now behind them.** The forward position
-     * was arrived at by arithmetic rather than by looking at the reference: a light directly
-     * above a vertical face gives `N·L = 0`, so the strip had to move somewhere with an angle
-     * on the artwork, and forward was the nearest place that worked.
+     * Where the light that falls on the **records** hangs, front to back.
      *
-     * It works and it is not what the photographs show. In every one of them the fixture is
-     * tucked into the **top back corner** of the bay: hidden behind the lip, throwing down the
-     * back panel and forward across the records, so what you see is a glowing back wall with
-     * the records standing against it. A strip hung out in front of the records is a display
-     * case, not a record shop.
+     * This went to the back corner with the rest of the fixture, and had to come forward
+     * again — the round trip is worth recording, because both positions are right for
+     * different jobs and the mistake was thinking one light could do both.
      *
-     * 18.5mm in front of [WallDimens.WALL_Z], which is close enough to the panel for
-     * [WASH_CANDELA] to pool on it and far enough not to intersect it.
+     * A record turned to face the camera has its normal at roughly +Z. A light mounted behind
+     * it and throwing forward has `N·L` **negative** against that face: it lights the back of
+     * the sleeve, the side against the wall. Proved rather than reasoned, after the fact —
+     * raising this light's intensity from 320 to 1100 candela moved the cover art from 48.2 to
+     * 47.7, which is nothing, and would have been baffling without the geometry to explain it.
+     *
+     * So the fixture is two lights now. [WASH_DIRECTION] stays at the back, close to the panel,
+     * doing the gradient the target photograph is built on. This one hangs at the front lip of
+     * the compartment at the same height and throws back and down across the artwork, which is
+     * the only place a record's face can be lit from.
      */
-    const val SHELF_LIGHT_Z = -0.050f
+    const val SHELF_LIGHT_Z = 0.140f
 
     /**
      * Which way a strip points: down, and back into the shelf.
@@ -187,11 +190,9 @@ object RoomLighting {
     val SHELF_DIRECTION: FloatArray = floatArrayOf(
         0f,
         -(WallDimens.CASE_H / 2f + SHELF_LIGHT_LIFT),
-        // Forward now, not back: the fixture moved behind the records, so the throw has to
-        // cross them from above-behind. Reaching to roughly the front lip of the board keeps
-        // `N·L` on the case fronts comfortably positive — which is the whole reason the
-        // strip was ever put in front of them.
-        WallDimens.CASE_D * 0.9f
+        // Back and down, from the front lip toward the wall — so a sleeve facing the camera
+        // is lit from above-front, which is the only geometry that puts light on its face.
+        -(SHELF_LIGHT_Z - WallDimens.CASE_D / 2f)
     )
 
     /**
@@ -203,7 +204,7 @@ object RoomLighting {
      * what the key light gives it — which is the whole point, and what the reference images
      * show.
      */
-    const val SHELF_CANDELA = 320f
+    const val SHELF_CANDELA = 1100f
 
     /**
      * How fast a strip dies, in metres.

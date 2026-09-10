@@ -16,6 +16,7 @@ import com.jawon.app.ui.wallscene.WallDimens.PLATE_LIFT
 import com.jawon.app.ui.wallscene.WallDimens.PROUD_Z
 import com.jawon.app.ui.wallscene.WallDimens.TRAY_FRONT_Z
 import io.github.sceneview.SceneScope
+import io.github.sceneview.loaders.MaterialLoader
 import io.github.sceneview.math.Direction
 import io.github.sceneview.math.Position
 import io.github.sceneview.math.Scale
@@ -32,6 +33,33 @@ class CaseSlot {
     var body: Node? = null
     var spineArt: ImageNode? = null
     var coverArt: ImageNode? = null
+
+    /**
+     * The lit materials the three art plates are rendered with, one per plate, made once.
+     *
+     * **SceneView's `ImageNode` is unlit, and that was the single biggest thing stopping this
+     * room looking real.** `MaterialLoader.createImageInstance` builds from
+     * `materials/image_texture.filamat`, whose `MAT_SHAD` chunk is `0x00` — unlit — against
+     * `0x01` for `opaque_textured`. Read out of the shipped blob rather than guessed; the file
+     * sizes say it too, since a lit material compiles every lighting variant and runs 1.2-1.4MB
+     * where the unlit ones are 15-115KB.
+     *
+     * So every album cover on the wall rendered at flat texture brightness, ignoring the key
+     * light, the shelf strips, the wash and the spill entirely. The records — the subject of
+     * the whole room — were the one thing in it no light could touch, which is most of what
+     * "it looks like cheap plastic" was describing.
+     *
+     * It was measurable all along and the measurement was being read backwards: across four
+     * separate lighting changes the cover art came out at 106.1, 106.5, 106.9, 107.0. That
+     * looked like the records holding steady while the room came up around them. It was the
+     * covers being untouchable.
+     *
+     * Held per slot and created once, because a node's `apply` runs on every recomposition and
+     * building a `MaterialInstance` in there would leak one per frame.
+     */
+    var coverMaterial: MaterialInstance? = null
+    var spineMaterial: MaterialInstance? = null
+    var backMaterial: MaterialInstance? = null
 
     /** The printed back inlay, generated per album — see [CaseArt.bakeBack]. */
     var backArt: ImageNode? = null
@@ -348,6 +376,23 @@ internal fun beamRgb(hue: Float): FloatArray {
 private const val BEAM_VALUE = 1.75f
 
 /** Coloured, not gelled. See [beamRgb]. */
+/**
+ * The printed card an album's art actually sits on: matt, and an ordinary dielectric.
+ *
+ * **`reflectance` is a 0..1 remap, not a percentage** — `F0 = 0.16 * reflectance²`, so 0.5 is
+ * the ~4% a dielectric really returns, and is also SceneView's own default. Trap 3, which has
+ * already turned this room's wall black once.
+ */
+private const val PAPER_ROUGHNESS = 0.72f
+private const val PAPER_REFLECTANCE = 0.5f
+
+/**
+ * The cover is the one plate seen through the case's clear shell, so it is a touch smoother
+ * than the spine and the inlay — but only a touch. Making the paper itself glossy would stack
+ * two speculars on one surface and read as laminate rather than print.
+ */
+private const val COVER_ROUGHNESS = 0.60f
+
 private const val BEAM_SATURATION = 0.62f
 
 /**
@@ -609,6 +654,7 @@ fun CaseSlots.bind(
 fun SceneScope.CaseSlotNodes(
     slots: CaseSlots,
     size: Int,
+    materialLoader: MaterialLoader,
     caseInstances: List<FilamentInstance>,
     beamInstances: List<FilamentInstance>
 ) {
@@ -628,6 +674,13 @@ fun SceneScope.CaseSlotNodes(
                 it.spineArt = null
                 it.coverArt = null
                 it.backArt = null
+                // The instances themselves are deliberately NOT destroyed. Trap 1: handing a
+                // MaterialInstance back while a texture is still bound to it aborts the
+                // process on the next commit, and these stay bound to the plates' textures for
+                // as long as the scene lives.
+                it.coverMaterial = null
+                it.spineMaterial = null
+                it.backMaterial = null
             }
         }
     }
@@ -689,6 +742,15 @@ fun SceneScope.CaseSlotNodes(
                         apply = {
                             slot.spineArt = this
                             isShadowCaster = false
+                            // Printed paper, and lit — see CaseSlot.coverMaterial.
+                            if (slot.spineMaterial == null) {
+                                slot.spineMaterial = materialLoader.createTextureInstance(
+                                    texture,
+                                    metallic = 0f,
+                                    roughness = PAPER_ROUGHNESS,
+                                    reflectance = PAPER_REFLECTANCE
+                                ).also { materialInstance = it }
+                            }
                         }
                     )
                     // The cover faces +X, matching where the opened case's lid ends up: its
@@ -721,6 +783,19 @@ fun SceneScope.CaseSlotNodes(
                         apply = {
                             slot.coverArt = this
                             isShadowCaster = false
+                            // **The cover is lit now.** See CaseSlot.coverMaterial for what it
+                            // was and why that was the biggest single thing wrong with the
+                            // room. Slightly smoother than the spine, because this is the
+                            // printed inlay seen through the shell — but only slightly: the
+                            // hard sheen belongs to the shell's clearcoat above it.
+                            if (slot.coverMaterial == null) {
+                                slot.coverMaterial = materialLoader.createTextureInstance(
+                                    texture,
+                                    metallic = 0f,
+                                    roughness = COVER_ROUGHNESS,
+                                    reflectance = PAPER_REFLECTANCE
+                                ).also { materialInstance = it }
+                            }
                         }
                     )
                     // The printed back, facing -X. Needed the moment cases began turning a
@@ -735,6 +810,14 @@ fun SceneScope.CaseSlotNodes(
                         apply = {
                             slot.backArt = this
                             isShadowCaster = false
+                            if (slot.backMaterial == null) {
+                                slot.backMaterial = materialLoader.createTextureInstance(
+                                    texture,
+                                    metallic = 0f,
+                                    roughness = PAPER_ROUGHNESS,
+                                    reflectance = PAPER_REFLECTANCE
+                                ).also { materialInstance = it }
+                            }
                         }
                     )
                 }

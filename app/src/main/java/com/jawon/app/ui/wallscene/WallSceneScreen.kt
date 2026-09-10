@@ -2731,6 +2731,7 @@ fun WallSceneScreen(
             // "simplify" this back into a keyed loop over visibleCases.
             CaseSlotNodes(
                 slots = caseSlots,
+                materialLoader = materialLoader,
                 size = casePoolSize,
                 caseInstances = caseInstances,
                 beamInstances = beamInstances
