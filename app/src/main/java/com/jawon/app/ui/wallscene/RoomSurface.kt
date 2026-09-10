@@ -145,9 +145,104 @@ object RoomSurface {
         return out
     }
 
-    /** The wall's surface for one room mode. */
+    /**
+     * The shelf's **back panel**: sawn boards, running vertically, with grain.
+     *
+     * ## Why this replaced the mottle
+     *
+     * The owner's word for the room was that it had a wall with floating shelves in front of it
+     * rather than a cupboard — *shkaf* — and he was right. A record rack is a carcass: boards,
+     * and a back panel of real material that the shelf lights fall on. What was here was a few
+     * percent of irregular luminance noise, which is enough to stop a surface being
+     * mathematically flat and nowhere near enough to say what it is made of. Light landing on it
+     * read as a glow in space.
+     *
+     * ## The stretch, and why tiling is the whole answer
+     *
+     * `docs/materials.md` records that a `CubeNode`'s faces carry 0..1 UVs and `opaque_textured`
+     * has no UV scale, so a texture is stretched across a panel exactly once and **there is no
+     * tiling to be had**. That is true of one node and it is not true of a wall.
+     *
+     * The measurement that forced this: the camera sees about **26cm** of wall across a portrait
+     * phone, while the backing panel is nearly two metres wide. One 512px texture over that is
+     * roughly 77 texels across 1440 screen pixels — one texel per nineteen pixels — so any
+     * detail is a blur before it is drawn. Proved rather than assumed, by replacing the pattern
+     * with hard black-and-white stripes and counting how many reached the screen: one and a half.
+     *
+     * So the panel is a **grid of nodes sharing one texture**, each node a tile of about
+     * [TILE_M] on a side. Each tile gets the full 512px, which is a third of a millimetre per
+     * texel instead of three and a half, and the pattern repeats across the wall the way boards
+     * on a real back panel do.
+     *
+     * ## Which means it has to wrap
+     *
+     * A tile whose edges do not match its neighbour puts a seam every [TILE_M] across the whole
+     * wall — the one artefact guaranteed to be noticed. So everything here is periodic by
+     * construction rather than by luck:
+     *
+     * - Across, the board count is a whole number, so `u = 0` and `u = 1` are both a board edge
+     *   and the seam at a tile join is just another seam between boards.
+     * - Down, the grain's lateral wander is a sum of sines in `v`, which is exactly periodic
+     *   over the tile. This is why it is not the value noise used everywhere else in this file:
+     *   lattice noise does not wrap without being rewritten to, and a sine does it for free.
+     */
+    fun woodTile(color: Color, seed: Int, tintScale: Float): Bitmap {
+        val argb = color.toArgb()
+        val baseR = AndroidColor.red(argb) * tintScale
+        val baseG = AndroidColor.green(argb) * tintScale
+        val baseB = AndroidColor.blue(argb) * tintScale
+
+        val pixels = IntArray(TEX_PX * TEX_PX)
+        for (x in 0 until TEX_PX) {
+            val u = x.toFloat() / TEX_PX * PLANKS_PER_TILE
+            val board = kotlin.math.floor(u).toInt()
+            val withinBoard = u - board
+
+            // Per-board tone. Real boards are cut from different parts of a log and no two
+            // match; a fixed offset per board is what stops a repeating texture reading as
+            // wallpaper. Held small — boards from one rack are the same timber.
+            val tone = 1f + (hash(board, 0, seed) - 0.5f) * 2f * PLANK_TONE
+
+            // The seam: dark at both edges of a board, so two neighbours make one line.
+            val edge = kotlin.math.min(withinBoard, 1f - withinBoard)
+            val seam = 1f - SEAM_DEPTH * (1f - smoothStep01(edge / SEAM_WIDTH))
+
+            // A phase per board, so the grain does not march in step across the panel.
+            val phase = hash(board, 7, seed) * 6.2831855f
+
+            for (y in 0 until TEX_PX) {
+                val v = y.toFloat() / TEX_PX
+
+                // Lateral wander, periodic in v so the tile joins itself top to bottom. Two
+                // harmonics rather than one: a single sine is a wave, two is a wander.
+                val wander =
+                    kotlin.math.sin(v * 6.2831855f + phase) * GRAIN_WARP +
+                        kotlin.math.sin(v * 12.566371f + phase * 1.7f) * GRAIN_WARP * 0.45f
+
+                val across = (withinBoard + wander) * GRAIN_LINES * 6.2831855f
+                val grain = 1f +
+                    (kotlin.math.sin(across) * 0.7f +
+                        kotlin.math.sin(across * 2.3f + phase) * 0.3f) * GRAIN_CONTRAST
+
+                val k = tone * seam * grain
+                pixels[y * TEX_PX + x] = AndroidColor.rgb(
+                    (baseR * k).toInt().coerceIn(0, 255),
+                    (baseG * k).toInt().coerceIn(0, 255),
+                    (baseB * k).toInt().coerceIn(0, 255)
+                )
+            }
+        }
+        return Bitmap.createBitmap(pixels, TEX_PX, TEX_PX, Bitmap.Config.ARGB_8888)
+    }
+
+    /** The old flat-mottle wall, kept for the tests that pin the mean of [mottle]. */
     fun wallBitmap(color: Color, aspect: Float): Bitmap =
         bitmapOf(color, aspect, WALL_CONTRAST, WALL_SEED, tintScale = 1f)
+
+    private fun smoothStep01(t: Float): Float {
+        val c = t.coerceIn(0f, 1f)
+        return c * c * (3f - 2f * c)
+    }
 
     /**
      * The floor's surface.
@@ -236,6 +331,31 @@ object RoomSurface {
     // Fixed seeds, so the room is the same room every launch. Different from each other so the
     // floor's wear is not a mirror of the wall's — which, on two surfaces that meet along a
     // line, would be visible as a pattern continuing across the join.
+    /**
+     * How much wall one tile covers, in metres.
+     *
+     * Small enough that a 512px texture is real detail on it — a third of a millimetre per
+     * texel — and large enough that the whole visible wall is a couple of dozen nodes rather
+     * than hundreds. The camera sees about 26cm of wall, so this is roughly one tile across the
+     * frame.
+     */
+    const val TILE_M = 0.30f
+
+    /** Boards per tile. A whole number, so the pattern wraps at the tile join. */
+    private const val PLANKS_PER_TILE = 3
+
+    /** How dark a seam goes, and how wide it is as a fraction of a board. */
+    private const val SEAM_DEPTH = 0.45f
+    private const val SEAM_WIDTH = 0.030f
+
+    /** How much board-to-board tone varies. Same timber, different cuts. */
+    private const val PLANK_TONE = 0.11f
+
+    /** Grain: how many strokes across a board, how strong, how far they wander. */
+    private const val GRAIN_LINES = 5f
+    private const val GRAIN_CONTRAST = 0.10f
+    private const val GRAIN_WARP = 0.055f
+
     private const val WALL_SEED = 0x5A17
     private const val FLOOR_SEED = 0x10F1
 }

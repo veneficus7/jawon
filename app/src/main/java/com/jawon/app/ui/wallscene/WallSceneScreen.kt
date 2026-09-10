@@ -152,6 +152,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlin.math.abs
+import kotlin.math.ceil
 import kotlin.math.atan2
 import kotlin.math.exp
 import kotlin.math.floor
@@ -337,6 +338,9 @@ internal val FOCUS_MAX_W = 620.dp
 internal val DECK_MAX_W = 600.dp
 
 internal const val WALL_REFLECTANCE = 0.5f
+
+/** Fixed, so the rack is made of the same timber on every launch. */
+private const val WALL_TILE_SEED = 0x5A17
 
 /** A little above the wall: a floor is smoother, and takes the lamp at a grazing angle. */
 internal const val FLOOR_REFLECTANCE = 0.55f
@@ -2370,58 +2374,91 @@ fun WallSceneScreen(
                     //
                     // Remembered in the same scope as the node, for the reason the note above
                     // gives: a CubeNode destroys the MaterialInstance it is handed.
-                    val backing = remember(roomScheme, panelW, panelH) {
-                        val texture = ImageTexture.Builder()
+                    // **The back panel of the rack, tiled.**
+                    //
+                    // One node wearing one texture is what this was, and it could not carry a
+                    // material: `opaque_textured` has no UV scale, so the texture stretches
+                    // across the whole panel exactly once, and the camera sees about 26cm of a
+                    // panel nearly two metres wide. That is one texel per nineteen screen
+                    // pixels — measured, by putting hard stripes on it and counting how many
+                    // reached the frame. One and a half did.
+                    //
+                    // A grid of nodes sharing one texture is the way to tile with a stock
+                    // material. Each tile is about RoomSurface.TILE_M across and gets the whole
+                    // 512px, which is a third of a millimetre per texel rather than three and a
+                    // half millimetres, and RoomSurface.woodTile is built to wrap so the joins
+                    // between tiles read as the seams between boards.
+                    //
+                    // **One texture, many material instances, and that is not an oversight.** A
+                    // CubeNode destroys the MaterialInstance it is handed, so tiles cannot share
+                    // one instance — the first tile to rebuild would kill it for all the others,
+                    // which is exactly the fault that made the shelf boards vanish on import.
+                    // They share the Texture instead, which nothing here destroys, so the memory
+                    // is one bitmap however many tiles there are.
+                    val panelTexture = remember(roomScheme) {
+                        ImageTexture.Builder()
                             // **`COLOR` explicitly, never the default.**
                             //
                             // The bitmap holds sRGB bytes, because that is what `Color.toArgb`
                             // gives. Uploading it as anything but `COLOR` binds an `RGBA8`
                             // rather than an `SRGB8_A8`, so Filament reads those bytes as
                             // *already linear* and never de-gammas them. On a wall whose albedo
-                            // is 2-10% that is roughly a thirteenfold overexposure of the
-                            // largest surface in the room, and it is exactly what turned the
-                            // wall into bright mauve after the reflectance was fixed.
+                            // is a few per cent that is roughly a thirteenfold overexposure of
+                            // the largest surface in the room, and it is what turned the wall
+                            // into bright mauve once before.
                             .bitmap(
-                                RoomSurface.wallBitmap(roomScheme.wall, panelW / panelH),
+                                RoomSurface.woodTile(roomScheme.wall, WALL_TILE_SEED, 1f),
                                 TextureType.COLOR
                             )
                             .build(engine)
-                        materialLoader.createTextureInstance(
-                            texture,
-                            metallic = 0f,
-                            roughness = 0.95f,
-                            // **0.5 is a normal surface, not 0.04.**
-                            //
-                            // This shipped at 0.04 on the reasoning that a dielectric reflects
-                            // about 4% and the wall should be matt. Both halves were right and
-                            // the number was still wrong, because Filament's `reflectance` is not
-                            // a percentage - it is a 0..1 remap, F0 = 0.16 * reflectance^2, where
-                            // **0.5 is the 4% a dielectric actually has**. 0.04 gives 0.026%: a
-                            // surface 156x less reflective than any real material, which returns
-                            // essentially nothing from the lamp. The wall went black, and the
-                            // owner said so within a minute of seeing it.
-                            //
-                            // The lamp is what describes this wall. Its albedo is 2-10% depending
-                            // on the mode, so specular is most of what there is to see; killing it
-                            // does not make the wall matt, it makes the wall absent.
-                            reflectance = WALL_REFLECTANCE
-                        )
                     }
-                    CubeNode(
-                        size = Size(panelW, panelH, 0.01f),
-                        position = Position(
-                            (layout.maxPanX + layout.minPanX) / 2f,
-                            (layout.maxPanY + layout.minPanY) / 2f,
-                            WALL_Z - 0.005f
-                        ),
-                        materialInstance = backing,
-                        apply = {
-                            isTouchable = false
-                            // Takes shadows, casts none - there is nothing behind it.
-                            isShadowReceiver = true
-                            isShadowCaster = false
+                    val tilesX = ceil(panelW / RoomSurface.TILE_M).toInt().coerceIn(1, 64)
+                    val tilesY = ceil(panelH / RoomSurface.TILE_M).toInt().coerceIn(1, 64)
+                    val tileW = panelW / tilesX
+                    val tileH = panelH / tilesY
+                    val panelLeft = (layout.maxPanX + layout.minPanX) / 2f - panelW / 2f
+                    val panelBottom = (layout.maxPanY + layout.minPanY) / 2f - panelH / 2f
+
+                    repeat(tilesY) { ty ->
+                        repeat(tilesX) { tx ->
+                            // Keyed by index, never by anything that can change identity — the
+                            // same discipline the case pool and the shelf boards use, and for
+                            // the same reason: a rebuild must re-point an existing node rather
+                            // than destroy one and take its material with it.
+                            key(tx, ty) {
+                                val tile = remember(roomScheme, tx, ty, tilesX, tilesY) {
+                                    materialLoader.createTextureInstance(
+                                        panelTexture,
+                                        metallic = 0f,
+                                        // Sawn board rather than plaster: smooth enough that
+                                        // the ribbon grazing it picks out the grain instead of
+                                        // dying in a matte field.
+                                        roughness = 0.78f,
+                                        // **0.5 is a normal surface, not 0.04.** Filament's
+                                        // reflectance is a 0..1 remap, F0 = 0.16 * r^2, so 0.5
+                                        // is the ~4% a dielectric actually returns. 0.04 gives
+                                        // 0.026% and turned this wall black once already.
+                                        reflectance = WALL_REFLECTANCE
+                                    )
+                                }
+                                CubeNode(
+                                    size = Size(tileW, tileH, 0.01f),
+                                    position = Position(
+                                        panelLeft + (tx + 0.5f) * tileW,
+                                        panelBottom + (ty + 0.5f) * tileH,
+                                        WALL_Z - 0.005f
+                                    ),
+                                    materialInstance = tile,
+                                    apply = {
+                                        isTouchable = false
+                                        // Takes shadows, casts none — there is nothing behind it.
+                                        isShadowReceiver = true
+                                        isShadowCaster = false
+                                    }
+                                )
+                            }
                         }
-                    )
+                    }
 
                     // **A floor, which this room has never had.**
                     //
