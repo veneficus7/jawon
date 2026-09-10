@@ -37,20 +37,50 @@ representative**. Frame timings are not — never take a performance number from
 
 ---
 
-## 2. A library with real artwork in it
+## 2. A library with real artwork in it, on more than one shelf
 
 The room draws nothing without albums, and a library of blank cases is the worst possible thing
 to judge lighting against: the whole purpose of the shelf strips is to light *artwork*.
 
+`albums.py` is the one list all of this is built from — thirty albums, each with an artist, a
+year, a shelf and a tracklist. It used to be two lists that disagreed (twelve albums of covers
+fetched, seven albums of library built), which meant five covers were downloaded and never used.
+
 ```bash
 python tools/emulator/fetch_covers.py     # MusicBrainz -> Cover Art Archive, CC-licensed art
 python tools/emulator/make_library.py     # silent tagged MP3s carrying those covers
-adb push <scratch>/mp3 /sdcard/Music/
+adb push tools/emulator/mp3/. /sdcard/Music/
 adb shell content call --uri content://media/external --method scan_volume --arg external_primary
 adb shell pm grant com.jawon.app android.permission.READ_MEDIA_AUDIO
 ```
 
-Then **Add → Scan this phone → All → import**.
+Then **Add → Scan this phone → All → import**, and finally:
+
+```bash
+python tools/emulator/make_shelves.py     # sorts the import onto four shelves
+```
+
+**Do not skip that last step, and this is the part worth understanding.** `WallLayout` builds
+one row per *shelf* — `rowCount = shelves.size` — and an import puts everything on one shelf
+called UNSORTED. So a single-shelf library is one row however many albums it holds: one lit
+ledge with two thirds of the frame empty above and below it.
+
+The first fixture here was seven albums on one shelf, and a whole round of judgement was spent
+on a room that "looked empty" and a frame that was "45% black". Both were true and neither was
+about the room. Thirty albums on four shelves is what puts rows above and below the one being
+browsed, which is what the camera was framed for.
+
+`make_shelves.py` edits the database directly rather than driving the shelf manager — a hundred
+taps that test nothing — and refuses to run against anything whose serial does not start with
+`emulator-`, because the same commands pointed at the owner's phone would rewrite his library.
+It needs `adb root`, which a `default` system image allows and a Google Play image does not.
+
+**Cover fetching is flaky and that is not a bug in the script.** The Cover Art Archive redirects
+to archive.org, which 503s under any burst — thirteen of thirty failed on the first run of the
+thirty-album list and every one succeeded on a retry. `fetch_covers.py` backs off and retries,
+and skips anything already on disk, so re-running it is cheap and safe. One album (Kraftwerk's
+*Trans-Europe Express*) genuinely has no front cover at that endpoint, which is a useful thing
+to have in the fixture: it exercises the app's own lookup path.
 
 **Why MP3 and not WAV.** The first attempt wrote WAVs with the ID3 tag in a RIFF `id3 ` chunk.
 Android ignores it: MediaStore came back with the folder name as the album and `<unknown>` as the
@@ -80,3 +110,12 @@ Two rules learned the hard way:
   touch the screen. Nothing compared before this was framed the same way twice, and that alone
   invalidated three rounds of judgement.
 - **Read the number before trusting the eye.** Every time they disagreed here, the number was right.
+- **Two launches do not frame the same thing.** A comparison across two runs once read a case
+  body at 197 and then 60, which no added light can do — the wall had settled on a different
+  album. Boxes are only comparable within a frame, or across frames you have confirmed are
+  framed identically.
+- **Mask the surface you are arguing about.** Three rounds went into a wall gradient measured
+  through boxes that turned out to contain boards and case edges as well as wall. Painting the
+  wall pure magenta for one build, then averaging only the pixels that pass a magenta test,
+  gives the gradient down that surface alone and settled it immediately. It also proves the
+  surface is where you think it is on screen, which was itself wrong once.
