@@ -33,9 +33,117 @@ So: a project, with a reference to aim at, a way to compare, and a staged order.
 
 ---
 
-## 1. The engine audit, and one finding that invalidates existing code
+## 0.5 The reference, and what it actually shows
 
-### 1.1 The trap that governs everything below
+The owner supplied seven reference images on 2026-09-10. They are the target, and
+they are described here rather than linked because a target that lives in a chat
+log is not a target.
+
+**What they are.** Two dark record-shop interiors where each shelf row is lit by
+its own warm strip (one shot from the customer side, one from behind a DJ deck);
+a near-black shelf with a single warm strip inside it grazing down a row of
+sleeves; an offline 3D render of a turntable under a pendant lamp with a visible
+light cone and dust; a cluttered loft lit only by a skylight; a shop with warm
+track spotlights and records hung on the wall; a CD player's orange segment
+display glowing out of focus in total blackness; and a CD rack under a strip
+light with a lit orange genre sign.
+
+**What every one of them has in common, and Jawon does not:**
+
+1. **The light source is in the frame, and it is small and local.** A strip
+   inside the shelf. A pendant with a visible cone. A track spot. A device's own
+   display. Not one abstract key light somewhere off-camera — *practicals*, and
+   you can see them.
+2. **The records are lit; the room is not.** Eighty to ninety per cent of every
+   frame is near-black. The lit area is small and precious, and it is always the
+   sleeves.
+3. **Light falls off fast and visibly.** Every image has a gradient running out
+   of the lit zone into nothing. Nothing is uniformly lit.
+4. **Colour comes from the artwork**, not from the lighting. The light is warm
+   tungsten; the saturation on screen is the album covers.
+
+### The reading that reverses a previous decision
+
+The owner's original complaint was *"even the wall is empty brown, nothing
+aesthetic"*, and the work that followed treated that as *the wall needs to be
+more interesting* — a mottle texture, a grade, a floor.
+
+**The reference says the opposite.** In all seven images the wall is not
+interesting; the wall is *absent*. What reads is lit sleeve faces, a visible
+source, and blackness. The problem with "empty brown" was never that the brown
+was empty — it was that the wall was **visible at all**, filling the frame at
+mid-tone, with the records no brighter than the surface behind them.
+
+That reframes the whole project. The wall texture work already shipped is not
+wrong, but it is far down the list; it is detail on a surface that should be
+falling away into the dark.
+
+### The lighting design the reference implies
+
+This is a *lighting* change before it is a graphics one, and most of it needs no
+new engine feature at all:
+
+- **A practical strip per shelf row**, mounted under the board above, throwing
+  down across the faces of the records — visible in frame as a bright line. This
+  is the single most characteristic thing in the reference and Jawon has nothing
+  like it. Filament's `LightManager` does spot and point lights with real
+  falloff; a row of them along each board is ordinary work.
+- **Jawon's existing underlights point the wrong way.** They glow *up* from
+  beneath each case, which is a games convention, not a shop. The reference lights
+  from *above*, grazing down. Same feature, inverted, and the inverted version is
+  the one that looks like a place.
+- **The wall recedes.** Darker, and lit only by spill. Whatever the wall's
+  material ends up being, it should be at the bottom of the frame's tonal range.
+- **The lamp becomes visible.** Every reference shows its own source. A fixture
+  in frame with a cone under it is worth more than any post-processing.
+- **Emissive readouts, pushed hard.** The CD-display image is the strongest
+  argument in the set for what this app already half has — the deck's CRT and
+  PIXEL glass. Bright emissive against true black with heavy bloom is exactly the
+  look, and it costs nothing.
+
+---
+
+## 1. The engine question, answered
+
+The owner asked whether Filament is the limitation and whether something more
+advanced is needed. **It is not, and the evidence is fairly one-sided.**
+
+**Godot 4's mobile renderer offers exactly one form of indirect lighting:
+`LightmapGI` — baked lightmaps.** SDFGI and VoxelGI are Forward+ only.
+Volumetric fog is Forward+ only; mobile gets distance fog. Godot also uses
+Filament's own horizon specular occlusion model. So switching to Godot would buy
+the same technique this document already recommends for Filament — bake it — with
+a full rewrite attached.
+
+**Unreal on mobile is disqualified by what this app is.** It runs hot and drains
+battery; Google ships an ADPF plugin specifically to manage its thermal
+throttling. Jawon is a *music player* — it is left running with the screen on for
+hours. This project's own trap 8 already records that thermal state invalidates
+frame measurements on this device. An engine whose known mobile characteristic is
+heat is the wrong engine for an app people listen to records on.
+
+**Unity would be a full rewrite**, of an app whose entire architecture is
+"Compose owns 2D, SceneView owns the room, they meet at a ViewModel".
+
+And the sharpest point: **one of the seven references is an offline render.** The
+turntable-under-a-pendant image is path-traced — minutes per frame, not
+milliseconds. No real-time engine on any phone produces that image live. What
+makes it reachable is that **Jawon's room is completely static**, which is the
+condition under which you bake the expensive light once and read it back for
+free. That is §3.1, and it is the same answer on every mobile engine.
+
+The six photographs are not a rendering problem at all. They are lighting design,
+contrast, and materials — and every one of those is available here today.
+
+**Verdict: stay on Filament.** The gap is not the renderer. Revisit only if a
+specific, named effect turns out to be impossible — and the audit below is what
+that judgement should be made against.
+
+---
+
+## 2. The engine audit, and one finding that invalidates existing code
+
+### 2.1 The trap that governs everything below
 
 **A Filament option that the JNI binding does not forward is silently ignored.**
 The Java class has the field, the setter accepts it, the code compiles, the app
@@ -53,7 +161,7 @@ javap -c -p -classpath <filament-android-1.72.1 classes> com.google.android.fila
 I audited the four option structs the room uses. The results change what is
 worth doing.
 
-### 1.2 `BloomOptions.quality` is never forwarded — and a measurement in the repo is wrong
+### 2.2 `BloomOptions.quality` is never forwarded — and a measurement in the repo is wrong
 
 `setBloomOptions` reads eighteen fields and passes them to
 `nSetBloomOptions(JJFFIIIZZFZZFIFFFFF)`. In bytecode order they are: `dirt`,
@@ -78,7 +186,7 @@ never been established. That is worth re-measuring properly, because bloom on a
 1440×3120 panel is genuinely expensive and it is the effect the underlights
 depend on.
 
-### 1.3 What is forwarded and completely unused
+### 2.3 What is forwarded and completely unused
 
 Everything else in `BloomOptions` reaches native. The room uses none of it, and
 it is running the bloom chain already:
@@ -101,7 +209,7 @@ and the disc's specular highlight only. Not a global haze."* Ghosts and
 starbursts are exactly the kind of thing that reads as a demo. The dirt texture
 is the one I would take first and possibly the only one.
 
-### 1.4 What is not available at all
+### 2.4 What is not available at all
 
 - **GTAO.** `setAmbientOcclusionOptions` forwards `quality`, `lowPassFilter`,
   `upsampling`, `bentNormals` and the rest — but not `aoType` and not any
@@ -112,7 +220,7 @@ is the one I would take first and possibly the only one.
   ([discussion #4650](https://github.com/google/filament/discussions/4650)).
   **The maintainers' own suggested workaround is `postLightingColor` with
   `postLightingBlending: multiply`** — which is available to any hand-written
-  material. See §3.1; this matters more here than anywhere else.
+  material. See §4; this matters more here than anywhere else.
 - **Light cookies / gobos / IES profiles.** `LightManager.Builder` has
   `position`, `direction`, `color`, `intensity`, `falloff`, `spotLightCone`,
   `sunAngularRadius/HaloSize/HaloFalloff`, `castShadows`, `shadowOptions`,
@@ -126,7 +234,7 @@ is the one I would take first and possibly the only one.
   read out of the shipped `.filamat`'s `MAT_UIB` chunk. Everything else in
   Filament's material model needs a hand-written `.mat`.
 
-### 1.5 Quietly available and unused
+### 2.5 Quietly available and unused
 
 - **`lightChannel`** — eight channels. A light can be made to affect only some
   objects. This is how you light the *cases* differently from the *room*
@@ -144,12 +252,12 @@ is the one I would take first and possibly the only one.
 
 ---
 
-## 2. Design ideas, in order of how much they change the image
+## 3. Design ideas, in order of how much they change the image
 
 Ordered by impact per unit of risk, and deliberately biased toward things that
 work *with* the existing engine constraints rather than against them.
 
-### 2.1 The room is 100% static — bake the light into it
+### 3.1 The room is 100% static — bake the light into it
 
 Nothing in the room moves except the cases, the disc and the dust. The wall, the
 shelf boards, the floor and the lamp are fixed relative to each other, forever.
@@ -181,7 +289,7 @@ rather than assuming.
 of work in this document, and it is the one that most needs a real decision
 before starting.
 
-### 2.2 Shape the light with an object, not with the light
+### 3.2 Shape the light with an object, not with the light
 
 There is no cookie support, so a shaped pool has to be cast. The room already
 runs PCSS soft shadows with contact hardening; anything placed between the lamp
@@ -192,7 +300,7 @@ of frame — any of these turns a uniform elliptical pool into something with
 *intent*. This is the cheapest available route to "special lighting" as the
 owner used the phrase, and it is geometry rather than shader work.
 
-### 2.3 The dust exists but has nothing to hang in
+### 3.3 The dust exists but has nothing to hang in
 
 DESIGN.md §4 says: *"Dust — slow-drifting motes, visible mainly in the light
 shaft."* **There is no light shaft.** `DustGeometry` scatters 220–900 motes
@@ -210,7 +318,7 @@ Two routes, in increasing cost:
 The first is almost certainly right. It also gives the dust its reason to
 exist, which is otherwise a spec line the implementation does not honour.
 
-### 2.4 Surface imperfection is what the wall is actually missing
+### 3.4 Surface imperfection is what the wall is actually missing
 
 The wall is now a generated mottle at ±8.5% — real variation, and still only
 *albedo*. The stock material has no normal map, so the surface has no relief at
@@ -228,7 +336,7 @@ For this room that means a hand-written material with, at minimum, a **normal
 map** and a **roughness map**. That is one `.mat` and two textures, and it
 would do more for the wall than any amount of further grading.
 
-### 2.5 Give the room a corner
+### 3.5 Give the room a corner
 
 The room is one wall plane, some boards, and now a floor. It has no side walls,
 no ceiling, no corner. A single perpendicular return wall at the edge of the pan
@@ -240,7 +348,7 @@ The constraint is the locked decision that shelf bounds are derived from
 content — a return wall has to be derived the same way, like `WallLayout.floorY`
 already is.
 
-### 2.6 Props, and the argument against most of them
+### 3.6 Props, and the argument against most of them
 
 Environmental storytelling is the obvious next thought and mostly the wrong one
 here: geometry comes from a committed Blender script, every prop is modelling
@@ -255,7 +363,7 @@ dozen objects sitting in the middle distance.
 
 ---
 
-## 3. Advanced graphics elements worth evaluating
+## 4. Advanced graphics elements worth evaluating
 
 Each of these needs a hand-written `.mat`, which is currently a locked decision
 (`dust.mat` is the only one). That decision is worth revisiting *once*, as a
@@ -274,7 +382,7 @@ project decision, rather than being nibbled at.
 
 ---
 
-## 4. Tools
+## 5. Tools
 
 ### Already in the project
 - **Blender** + the committed `tools/models/build_models.py`. All geometry
@@ -323,7 +431,7 @@ Cheap fixes, in order of usefulness:
 
 ---
 
-## 5. A staged order
+## 6. A staged order
 
 Staged so each stage is independently judgeable and independently revertible,
 and so the cheap verified wins land before the expensive speculative ones.
@@ -331,10 +439,13 @@ and so the cheap verified wins land before the expensive speculative ones.
 **Stage 0 — make comparison possible.** The debug pose and the A/B screenshot
 habit. Also: pick the reference image. Nothing else should start first.
 
-**Stage 1 — free wins, no new materials.**
-Remove the inert bloom `quality` line and re-measure bloom's real cost. Add lens
-dirt. Try the light-shaping geometry in front of the lamp. All three are hours,
-not days, and two of them are pure art direction.
+**Stage 1 — the lighting design, no new materials.** This is where the reference
+actually lives. A practical strip per shelf row lighting the sleeves from above;
+the existing underlights inverted to match; the wall pushed down the tonal range
+until it recedes; the lamp given a visible fixture. Then the free post wins:
+remove the inert bloom `quality` line and re-measure bloom properly, and try lens
+dirt. Not one of these needs a `.mat`, and together they are most of the
+difference between the current room and the photographs.
 
 **Stage 2 — the material decision.** Decide, once, whether this project writes
 `.mat` files. If yes: wall/floor normal + roughness first, because it is the
@@ -353,16 +464,19 @@ decision).
 
 ---
 
-## 6. What I need from the owner before starting
+## 7. What I still need from the owner
 
-1. **A reference.** One image. Everything above is technique; the target is
-   taste, and it is not mine to pick.
-2. **Whether the room may have hand-written materials.** Half this document is
-   gated on that one locked decision. It is a real cost — `matc`, a manual build
-   step, committed binaries — and a real ceiling if the answer is no.
-3. **Whether "moody" means darker or richer.** These have pulled in opposite
-   directions three times now. A dark room with more *contrast* and a dark room
-   with more *light in it* are different projects.
+1. ~~A reference.~~ **Supplied 2026-09-10** — seven images, analysed in §0.5.
+   They answered the third question below on their own: *darker*, with the light
+   moved onto the records.
+2. **Whether the room may have hand-written materials.** Still open, and still
+   the gate on half this document. It is a real cost — `matc`, a manual build
+   step, committed binaries — and a real ceiling if the answer is no. Note that
+   Stage 1 no longer depends on it.
+3. **Whether the shelf practicals may change the room's fiction.** The reference
+   lights records from a strip *above* them; Jawon lights them from a pool
+   *below*. The underlight is in `DESIGN.md` as where the app's colour lives, so
+   inverting it is a design decision rather than a tuning one.
 
 ---
 
