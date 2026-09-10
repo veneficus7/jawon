@@ -95,33 +95,51 @@ and a green build says nothing about it.
    from the lamp. On a wall whose albedo is 2–10% the specular *is* the image, so this turned the
    whole wall black — and it built, ran, and passed every test. See `WALL_REFLECTANCE`.
 
-4. **SceneView's `CameraNode` re-aims itself at the world origin.** Panning away
+4. **`ImageNode` is UNLIT, and nothing says so.** `MaterialLoader.createImageInstance`
+   builds from `materials/image_texture.filamat`, whose `MAT_SHAD` chunk is `0x00`
+   against `0x01` for `opaque_textured`. So every `ImageNode` renders its bitmap at
+   flat texture brightness and **no light in the scene can touch it** — no gradient,
+   no falloff, no reflection, no response to anything. All three of a case's art
+   plates were `ImageNode`s, which meant every album cover on the wall was the one
+   thing in the room that could not be lit, through four rounds of lighting work.
+   The file sizes are the quick tell: a lit material compiles every lighting variant
+   and runs 1.2–1.4MB, where the unlit ones are 15–115KB. The fix is to bind a lit
+   instance to the node's own texture (`materialLoader.createTextureInstance(texture, …)`,
+   then `materialInstance = it`), which is safe because `setBitmap` writes pixels into
+   that `Texture` and never touches the material instance, and because
+   `RenderableComponent` never calls `destroyMaterialInstance` — so rebinding cannot
+   trip trap 1. Cache the instance; a node's `apply` runs on every recomposition.
+   **The symptom to recognise: a measurement that will not move.** The cover art read
+   106.1, 106.5, 106.9, 107.0 across four separate lighting changes, and that was
+   read as the records holding steady while the room came up around them.
+
+5. **SceneView's `CameraNode` re-aims itself at the world origin.** Panning away
    from centre tilts the lens back toward it — measured at −8.28° — which shifts
    the *entire view* vertically and makes every position-related bug look like a
    layout bug. The rotation is written every frame; see `LOOK_STRAIGHT_AHEAD`.
 
-5. **Anything the frame driver writes to a pooled node, `bind()` must restore.**
+6. **Anything the frame driver writes to a pooled node, `bind()` must restore.**
    `bind()` handles position, visibility and artwork. The discard animation wrote
    *scale*, nothing put it back, and every album that later reused that slot
    rendered invisible.
 
-6. **`OnGestureListener` has no `onUp`** — nineteen callbacks, not one a plain
+7. **`OnGestureListener` has no `onUp`** — nineteen callbacks, not one a plain
    release. Use `SceneView(onTouchEvent = …)` for that. And the ordering between
    the gesture detector and the raw touch stream is **not guaranteed**, so never
    let two handlers drive the same `Animatable`.
 
-7. **The glTF thickness axis is negated on export**, and getting it wrong renders
+8. **The glTF thickness axis is negated on export**, and getting it wrong renders
    without error. See `docs/models.md`.
 
 ### Measuring on device
 
-8. **Check the thermal state before believing any frame rate.**
+9. **Check the thermal state before believing any frame rate.**
    `adb shell dumpsys thermalservice | grep "Thermal Status"` must read 0. The same
    build measures 124fps cool and 88fps hot; a 22% "regression" was once recorded
    on exactly this mistake. Charging counts too — the battery sat at 42.7°C after an
    afternoon plugged in, which is most of a thermal 3 on its own.
 
-9. **`dumpsys gfxinfo` cannot see this app.** The room is rendered by Filament into its
+10. **`dumpsys gfxinfo` cannot see this app.** The room is rendered by Filament into its
    own surface and never goes through the View system, so gfxinfo counts only the
    Compose overlay: it reported *0 frames* with the deck closed and *43% jank* with it
    open, neither of which meant anything. Measure CPU instead — fields 14+15 of
@@ -132,7 +150,7 @@ and a green build says nothing about it.
    long way with thermal state, so an A/B a minute apart is trustworthy where two runs
    an hour apart are not.
 
-10. **An animation that recomposes nothing can still be the most expensive thing on
+11. **An animation that recomposes nothing can still be the most expensive thing on
     screen.** Reading an animated value inside `graphicsLayer` is the standard advice and
     it is right about *recomposition* — but a large translucent layer over the Filament
     surface still has to be re-blended by the compositor every time its alpha changes.
@@ -140,24 +158,24 @@ and a green build says nothing about it.
     jiffies/10s when made static) for a pulse that was close to invisible. Animate small
     layers, not screen-wide washes.
 
-11. **Samsung's logcat is unusable for app logs** — telephony spam buries them.
+12. **Samsung's logcat is unusable for app logs** — telephony spam buries them.
    Write to `context.filesDir` and read it back with
    `adb shell run-as com.jawon.app cat files/<name>.log`.
 
-12. **`sqlite3` is not on the device.** Copy the database off instead:
+13. **`sqlite3` is not on the device.** Copy the database off instead:
     `adb shell "run-as com.jawon.app cat databases/javon.db" > out.db`.
 
-13. **A case vanishing from the wall proves nothing.** The library spans several
+14. **A case vanishing from the wall proves nothing.** The library spans several
     shelves and the camera frames about one row, so "it disappeared" usually means
     it scrolled. Verify against the database.
 
-14. **One log line beats three screenshots.** Screenshots are expensive and
+15. **One log line beats three screenshots.** Screenshots are expensive and
     ambiguous; `worldToScreenPoint` and a text log settle position questions
     outright. Reach for instrumentation first, not last.
 
 ### The audio pipeline
 
-15. **Toggling `PlaybackParameters` in and out of neutral wedges the player.**
+16. **Toggling `PlaybackParameters` in and out of neutral wedges the player.**
     Setting a pitch or speed *away from* 1.0 is cheap at any amount — an octave
     down measured 14 jiffies per six seconds against a baseline of 10. Crossing
     back and forth through neutral is not: each crossing adds or removes Media3's
@@ -170,18 +188,18 @@ and a green build says nothing about it.
     crossing, not the frequency. The pitch control is withdrawn until there is a way
     to change it that cannot thrash the pipeline.
 
-16. **Measure the playback thread, not the process.** `top` is useless here — the
+17. **Measure the playback thread, not the process.** `top` is useless here — the
     whole process looked idle while one thread burned a core. Find the thread and
     diff `utime+stime` from `/proc/<pid>/task/<tid>/stat` over a fixed interval;
     600 jiffies per six seconds is one full core. `state=R` with an empty
     `syscall` file proves a userspace spin rather than a block.
 
-17. **Nothing was listening for `onPlayerError`,** so a wedged pipeline surfaced
+18. **Nothing was listening for `onPlayerError`,** so a wedged pipeline surfaced
     only as a stuck deck and a hot phone. `PlaybackService` now logs it. Without
     that listener the exception genuinely goes nowhere — Media3 does not log every
     one itself.
 
-18. **Bisect by deleting, not by reading.** Three separate wrong causes were
+19. **Bisect by deleting, not by reading.** Three separate wrong causes were
     argued convincingly from the code before the empty-`setAudioProcessors` test
     settled it in one run: the app's own DSP was innocent the whole time.
 
@@ -223,7 +241,7 @@ and a green build says nothing about it.
 4. **No new 3D or animation dependencies.** SceneView and Filament cover bloom,
    DOF, AO, fog, vignette, grading, shadows and custom materials. Raise it first if
    something seems to need another library.
-5. **No file I/O, metadata parsing or image decoding on the main thread.** Ever.
+6. **No file I/O, metadata parsing or image decoding on the main thread.** Ever.
 6. Use SceneView's **Composable-as-texture** for in-world UI (shelf label plates)
    rather than baking text into bitmaps by hand.
 
@@ -236,7 +254,7 @@ and a green build says nothing about it.
   time the feature was actually exercised.
 - **Plan before coding** anything touching the 3D scene, gestures or animation
   timing.
-- **Instrument before guessing.** See traps 14 and 18.
+- **Instrument before guessing.** See traps 15 and 19.
 - **Read SceneView's source** for API questions rather than guessing at signatures.
 - Values exported from `javon-shelf-prototype.html` are **starting points for
   tuning**, not requirements.

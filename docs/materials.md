@@ -17,7 +17,23 @@ entire settable parameter set:
 | `opaque_textured` | `metallic`, `roughness`, `reflectance`, + `texture` sampler |
 
 **That is all.** There is no `clearCoat`, no `anisotropy`, no normal map, no
-emissive. Those names *do* appear elsewhere in the `.filamat` blob, around offset
+emissive.
+
+**And a third stock material matters more than either of those: `image_texture`,
+which `ImageNode` uses, is UNLIT.** Its `MAT_SHAD` chunk reads `0x00` where
+`opaque_textured`'s reads `0x01`. Nothing in the API says so, and the consequence
+is total — an `ImageNode` writes its bitmap straight to the output and no light in
+the scene reaches it. Every album cover in the room was rendered that way through
+four rounds of lighting work. If a surface has to respond to the room, it cannot be
+a plain `ImageNode`; bind a lit instance to the node's own texture instead, which is
+what `CaseSlots` now does. The shading model is the first thing to check when a
+surface refuses to respond to light, and the quickest tell is size — a lit material
+compiles every lighting variant and runs 1.2-1.4MB, an unlit one 15-115KB.
+
+Reading these chunks is a dozen lines of Python and beats guessing. The `.filamat`
+container is a flat sequence of chunks: an 8-byte type stored as a little-endian
+`uint64` (so the ASCII reads *reversed* in a hex dump — `SREV_TAM` is `MAT_VERS`),
+then a `uint32` size, then the body. Those names *do* appear elsewhere in the `.filamat` blob, around offset
 40k — that is Filament's `MaterialInputs` GLSL struct, which every standard
 material declares whether or not it exposes the field. Grepping the blob for a
 parameter name will mislead you; read the `MAT_UIB` chunk in the header instead.
