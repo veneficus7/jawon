@@ -259,5 +259,6 @@ and a green build says nothing about it.
 | **Adding anything that touches the network, storage or a permission** | `docs/privacy.md` — it is a published promise, not a description. If a change would make a sentence in it untrue, the policy changes *with* that change, in the same commit, or it should not ship. |
 | Questions about the product's intent | `PLAN.md` |
 | Questions about how the room should look | `DESIGN.md` |
+| **Looking at the room without the phone** | `tools/emulator/README.md` — an AVD that reaches the same quality tier the phone does (`HIGH` needs >7GB RAM *and* API 33+, so the two low-spec AVDs land on `LOW`), a library with real cover art in it, and the screenshot-plus-luminance method that settles look arguments the eye gets wrong |
 | **Working on the room's look, or reaching for a Filament feature** | `docs/room-design.md` — the research behind treating the room as its own project. Read §1 before proposing any View option: it records which fields the JNI binding actually forwards, and found that `BloomOptions.quality` is **not** one of them, which makes a measurement in `RoomAtmosphere` wrong. |
 | Exact animation timing and feel | `javon-shelf-prototype.html` — **open it and read the JS**; when a 3D behaviour is ambiguous, the prototype is the source of truth, not your assumption |
