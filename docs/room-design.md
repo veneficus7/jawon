@@ -103,6 +103,65 @@ new engine feature at all:
 
 ---
 
+## 0.6 The eighth reference, which reversed one of §0.5's conclusions
+
+On 2026-09-10 the owner supplied one more photograph and said to match it exactly:
+a domestic bookcase, five compartments, a concealed LED strip in each, a warm
+gradient down every back panel, and **no visible light source anywhere in the
+frame**.
+
+**That reverses §0.5's first bullet.** The seven record-shop references all show
+their fixtures, and "the light source is in the frame, and it is small and local"
+was a fair reading of them. It was also acted on: a strip of emissive geometry
+went in above every row. The bookcase supersedes it, and the bar had already
+started arguing against itself — bright, it clipped to pure white and hung in the
+black like a neon tube; warmed and dimmed under bloom's threshold so it would stop
+glaring, it stopped being a light at all and became a flat orange line painted
+across the wall. A fixture that reads as neither a lamp nor a fitting is worse
+than no fixture. It is gone; the board above casts the shadow line that says where
+the light comes from.
+
+Everything else in §0.5 survives. Notes 2, 3 and 4 — the records are lit and the
+room is not, light falls off fast and visibly, colour comes from the artwork — are
+all *more* true of the bookcase than of the shop interiors.
+
+### What matching it actually required
+
+Three of the four were geometry, and none of them were visible by looking:
+
+- **The fixture was lighting panel the camera cannot see.** It sat just above its
+  own row's records and threw down behind them. The only back panel ever in frame
+  is the `ROW_PITCH - CASE_H - BOARD_H` = 52mm band *above* a row. The fixture
+  belongs at the top of that compartment, under the shelf above, which is where
+  the photograph puts it.
+- **A light in the exact back corner grazes the panel beside it,** so `N·L` is
+  near zero there and the corner is the *darkest* part of the surface — the
+  inverse of the target. It has to sit forward, in the bay.
+- **A wide cone cannot grade a 52mm span at 88mm distance.** Measured 90, 90, 91,
+  90, 90 top to bottom, which is a lightbox. Distance falloff has nothing to work
+  with over that span; the cone edge does the grading.
+- **One wash per row is a puddle.** The shelf lights ride the browse carrier, so
+  each row had exactly one, sitting wherever the user was looking. Five
+  overlapping cones per row is how a strip gets faked out of point sources.
+
+And one that was not geometry: **the panel had nothing to catch light with.**
+Midnight Shop's wall was `0xFF1A1410`, about one per cent reflectance. A surface
+returning a hundredth of what lands on it cannot show a gradient at any intensity,
+and no lighting change was ever going to fix it. The room still reads dark, but
+the darkness comes from falloff now rather than from the surface having nothing to
+give back — which is note 3, and is how the photograph works too.
+
+### The method that settled it
+
+§0.5's reading was done by eye. This one was not, and the difference was decisive:
+**the wall was painted pure magenta for one build**, and the gradient measured by
+averaging only the pixels that pass a magenta test. That isolates one surface out
+of a frame full of boards, case edges and artwork — three earlier rounds had been
+measuring boxes that contained all four — and it also proves the surface is where
+you think it is on screen, which was itself wrong once.
+
+---
+
 ## 1. The engine question, answered
 
 The owner asked whether Filament is the limitation and whether something more
