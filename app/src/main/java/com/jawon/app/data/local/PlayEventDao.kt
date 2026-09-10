@@ -16,6 +16,21 @@ interface PlayEventDao {
     @Query("SELECT * FROM PlayEvent ORDER BY startedAt")
     suspend fun listAll(): List<PlayEvent>
 
+    /**
+     * Every play, watched — what the statistics are derived from.
+     *
+     * **One query, and every period is a filter over it in memory.** The alternative is a query
+     * per window, which costs a round trip on every tap of the period selector and buys nothing:
+     * the rows are tiny, and even years of heavy listening is a few tens of thousands of them.
+     * Doing it this way is what makes switching between "4 weeks" and "all time" instant, which
+     * is most of what that control is for.
+     *
+     * Ordered here rather than in Kotlin so `ListeningStats` can rely on it — the streak walk
+     * assumes dates arrive in order and would silently under-count if they did not.
+     */
+    @Query("SELECT * FROM PlayEvent ORDER BY startedAt")
+    fun watchAll(): Flow<List<PlayEvent>>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertAll(events: List<PlayEvent>)
 

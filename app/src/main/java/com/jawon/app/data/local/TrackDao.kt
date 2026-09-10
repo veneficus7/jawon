@@ -35,6 +35,16 @@ interface TrackDao {
     suspend fun listAll(): List<Track>
 
     /**
+     * The same list, watched — the listening record needs titles for every track it ranks.
+     *
+     * A whole-table flow is defensible here and nowhere else in this app: it is read by one
+     * screen, only while that screen is open, and a track row is small. The alternative is a
+     * query per ranked track, which is ten round trips to print ten titles.
+     */
+    @Query("SELECT * FROM Track ORDER BY albumId, discNumber, trackNumber")
+    fun listAllFlow(): Flow<List<Track>>
+
+    /**
      * One album's tracks, once, in playing order.
      *
      * The same order [getForAlbum] gives, which is what makes the survivor of a de-duplication

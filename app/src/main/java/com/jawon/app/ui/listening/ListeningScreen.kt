@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -17,12 +18,14 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -58,8 +61,12 @@ import java.util.Locale
  * and this app is built around albums. The bar is share-of-the-longest, so the shape of the
  * list says something at a glance whatever the absolute numbers are.
  *
- * Deliberately not a track leaderboard: `PLAN.md` §2 keeps the album as the atomic unit, and
- * this would be the first screen to break that.
+ * **The album stays first, and the rule it came from stays too.** This used to say the screen was
+ * deliberately not a track leaderboard, because `PLAN.md` §2 keeps the album as the atomic unit.
+ * The owner asked for stats.fm-style depth and top tracks are most of what that means, so the
+ * rule is restated rather than dropped: the album is the unit you *play*; a track is something
+ * the record can *report on*. The album leaderboard is still the body of this screen, the two
+ * plain lists are ten rows each below it, and nothing here offers to play a single track.
  */
 @Composable
 fun ListeningScreen(
@@ -95,13 +102,35 @@ fun ListeningScreen(
             ),
             verticalArrangement = Arrangement.spacedBy(2.dp)
         ) {
+            item {
+                PeriodChips(
+                    selected = state.period,
+                    onSelect = viewModel::onPeriodChanged
+                )
+            }
             item { Totals(state) }
+            if (state.byHour.any { it > 0L }) {
+                item { ListeningClock(state) }
+            }
+            item { SectionLabel("ALBUMS") }
             itemsIndexed(state.rows, key = { _, row -> row.albumId }) { index, row ->
                 ListeningRowView(
                     rank = index + 1,
                     row = row,
                     onClick = { onOpenAlbum(row.albumId) }
                 )
+            }
+            if (state.artists.isNotEmpty()) {
+                item { SectionLabel("ARTISTS") }
+                itemsIndexed(state.artists, key = { _, row -> "artist:" + row.name }) { i, row ->
+                    TallyRowView(rank = i + 1, row = row)
+                }
+            }
+            if (state.tracks.isNotEmpty()) {
+                item { SectionLabel("TRACKS") }
+                itemsIndexed(state.tracks, key = { i, row -> "track:" + i + row.name }) { i, row ->
+                    TallyRowView(rank = i + 1, row = row)
+                }
             }
             item { Footnote() }
         }
@@ -152,12 +181,217 @@ private fun Totals(state: ListeningState) {
                 append("ACROSS ")
                 append(state.albumsHeard)
                 append(if (state.albumsHeard == 1) " ALBUM" else " ALBUMS")
+                if (state.daysListened > 0) {
+                    append("  ·  ")
+                    append(state.daysListened)
+                    append(if (state.daysListened == 1) " DAY" else " DAYS")
+                }
             },
             fontFamily = JetBrainsMonoFamily,
             fontSize = 11.sp,
             letterSpacing = 2.sp,
             color = LabelDim,
             modifier = Modifier.padding(top = 6.dp)
+        )
+        // Only when there is one. A row of zeroes is worse than no row: it invites the reader to
+        // work out what they did wrong, when the answer is that they have not listened yet.
+        if (state.currentStreak > 1 || state.longestStreak > 1) {
+            Text(
+                text = buildString {
+                    if (state.currentStreak > 1) {
+                        append(state.currentStreak)
+                        append(" DAYS RUNNING")
+                    }
+                    if (state.longestStreak > state.currentStreak) {
+                        if (isNotEmpty()) append("  ·  ")
+                        append("BEST ")
+                        append(state.longestStreak)
+                    }
+                },
+                fontFamily = JetBrainsMonoFamily,
+                fontSize = 11.sp,
+                letterSpacing = 2.sp,
+                color = LampAmber,
+                modifier = Modifier.padding(top = 4.dp)
+            )
+        }
+    }
+}
+
+/**
+ * How far back the numbers reach.
+ *
+ * Instant, because every window is a filter over rows already in memory — see
+ * `PlayEventDao.watchAll`. That responsiveness is most of what the control is for: a period
+ * selector you have to wait for stops being something you play with, and playing with it is how
+ * you notice that the record you had on repeat in June has not been touched since.
+ */
+@Composable
+private fun PeriodChips(
+    selected: ListeningStats.Period,
+    onSelect: (ListeningStats.Period) -> Unit
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(bottom = 20.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        for (period in ListeningStats.Period.entries) {
+            val active = period == selected
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(3.dp))
+                    .background(if (active) LampAmber.copy(alpha = 0.16f) else CrateRaised)
+                    .clickable { onSelect(period) }
+                    .padding(horizontal = 10.dp, vertical = 7.dp)
+            ) {
+                Text(
+                    text = period.label,
+                    fontFamily = JetBrainsMonoFamily,
+                    fontWeight = if (active) FontWeight.Bold else FontWeight.Normal,
+                    fontSize = 9.sp,
+                    letterSpacing = 1.4.sp,
+                    color = if (active) LampAmber else LabelDim
+                )
+            }
+        }
+    }
+}
+
+/**
+ * When you listen, by hour of the local day.
+ *
+ * **The one number here that says something about the person rather than the collection.** Every
+ * other row is a ranking — which record, which artist, which song — and rankings mostly confirm
+ * what you already knew. The shape of a day does not: that the listening is nearly all after
+ * eleven, or that it stops dead at nine in the morning, is a fact about how the app is actually
+ * used and it is not visible anywhere else in it.
+ *
+ * Bars rather than a ring, despite "clock" — a ring puts midnight and midday opposite each other
+ * and makes a late-night listener's data read as two unrelated clusters. Laid out left to right
+ * from midnight, the same listening is one unmistakable block at the end of the day.
+ */
+@Composable
+private fun ListeningClock(state: ListeningState) {
+    val peak = state.byHour.max().coerceAtLeast(1L)
+
+    Column(Modifier.fillMaxWidth().padding(bottom = 24.dp)) {
+        SectionLabel("WHEN")
+        Row(
+            modifier = Modifier.fillMaxWidth().height(56.dp),
+            horizontalArrangement = Arrangement.spacedBy(2.dp),
+            verticalAlignment = Alignment.Bottom
+        ) {
+            for (hour in 0 until 24) {
+                val share = (state.byHour[hour].toFloat() / peak).coerceIn(0f, 1f)
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        // A floor, so an hour with a little listening is a mark rather than
+                        // nothing: the difference between "rarely" and "never" is the most
+                        // interesting thing on this chart and a proportional bar loses it.
+                        .fillMaxHeight(if (share > 0f) (0.06f + share * 0.94f) else 0.02f)
+                        .background(
+                            if (hour == state.peakHour) LampAmber
+                            else if (share > 0f) LampAmber.copy(alpha = 0.35f)
+                            else CrateEdge
+                        )
+                )
+            }
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            for (label in listOf("00", "06", "12", "18", "23")) {
+                Text(
+                    text = label,
+                    fontFamily = JetBrainsMonoFamily,
+                    fontSize = 8.sp,
+                    letterSpacing = 1.sp,
+                    color = LabelDim
+                )
+            }
+        }
+        state.peakHour?.let { hour ->
+            Text(
+                text = "MOSTLY AROUND %02d:00".format(hour),
+                fontFamily = JetBrainsMonoFamily,
+                fontSize = 10.sp,
+                letterSpacing = 1.6.sp,
+                color = LabelDim,
+                modifier = Modifier.padding(top = 10.dp)
+            )
+        }
+    }
+}
+
+/** Names the block below it. The screen has four now and needed telling apart. */
+@Composable
+private fun SectionLabel(text: String) {
+    Text(
+        text = text,
+        fontFamily = JetBrainsMonoFamily,
+        fontWeight = FontWeight.Bold,
+        fontSize = 10.sp,
+        letterSpacing = 3.sp,
+        color = LampAmber,
+        modifier = Modifier.padding(top = 18.dp, bottom = 10.dp)
+    )
+}
+
+/**
+ * An artist or a track: a rank, a name, a bar, a time.
+ *
+ * Deliberately plainer than the album row, which carries a cover and its patina. These are
+ * *derived* from albums rather than things in the room, and giving them the same weight would say
+ * the app ranks songs, which is the thing the header note is careful about.
+ */
+@Composable
+private fun TallyRowView(rank: Int, row: TallyRow) {
+    Column(Modifier.fillMaxWidth().padding(vertical = 7.dp)) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Text(
+                text = "%02d".format(rank),
+                fontFamily = JetBrainsMonoFamily,
+                fontSize = 11.sp,
+                color = LabelDim
+            )
+            Column(Modifier.weight(1f)) {
+                Text(
+                    text = row.name,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = LabelCream,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                if (row.under.isNotBlank()) {
+                    Text(
+                        text = row.under,
+                        fontFamily = JetBrainsMonoFamily,
+                        fontSize = 9.sp,
+                        letterSpacing = 1.sp,
+                        color = LabelDim,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+            Text(
+                text = shortFormat(row.totalMs),
+                fontFamily = JetBrainsMonoFamily,
+                fontSize = 11.sp,
+                color = LabelDim
+            )
+        }
+        Box(
+            Modifier
+                .padding(top = 6.dp)
+                .fillMaxWidth(row.relative.coerceIn(0.02f, 1f))
+                .height(2.dp)
+                .background(LampAmber.copy(alpha = 0.5f))
         )
     }
 }
