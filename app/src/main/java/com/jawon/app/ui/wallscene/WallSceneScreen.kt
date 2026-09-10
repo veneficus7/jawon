@@ -2326,6 +2326,41 @@ fun WallSceneScreen(
                         castShadows(false)
                     }
                 )
+
+                // The other half of the same fixture: down and back, into the panel behind
+                // the records. See RoomLighting.WASH_DIRECTION — the forward throw above
+                // cannot light that wall at all, because the wall faces the camera and the
+                // throw is travelling the same way.
+                LightNode(
+                    type = LightManager.Type.FOCUSED_SPOT,
+                    position = Position(
+                        0f,
+                        WallDimens.CASE_H / 2f + RoomLighting.SHELF_LIGHT_LIFT +
+                            row * ROW_PITCH,
+                        RoomLighting.SHELF_LIGHT_Z
+                    ),
+                    direction = normalize(
+                        Direction(
+                            RoomLighting.WASH_DIRECTION[0],
+                            RoomLighting.WASH_DIRECTION[1],
+                            RoomLighting.WASH_DIRECTION[2]
+                        )
+                    ),
+                    apply = {
+                        color(
+                            roomScheme.key[0],
+                            roomScheme.key[1],
+                            roomScheme.key[2]
+                        )
+                        intensityCandela(RoomLighting.WASH_CANDELA)
+                        spotLightCone(
+                            RoomLighting.WASH_CONE_INNER,
+                            RoomLighting.WASH_CONE_OUTER
+                        )
+                        falloff(RoomLighting.WASH_FALLOFF)
+                        castShadows(false)
+                    }
+                )
             }
             }
             // The coloured bounce, low and left — DESIGN.md's "one coloured bounce light".
@@ -2561,6 +2596,39 @@ fun WallSceneScreen(
                     //
                     // Remembered in this row's key alongside the board, because a CubeNode
                     // destroys the MaterialInstance it is handed.
+                    // The housing the tube sits in, drawn first and sitting just above it.
+                    // See RoomLighting.HOUSING_H for why the fixture needs a body at all.
+                    val housing = remember(rowIndex, roomScheme) {
+                        materialLoader.createUnlitColorInstance(
+                            dev.romainguy.kotlin.math.Float4(
+                                RoomLighting.HOUSING_COLOR[0],
+                                RoomLighting.HOUSING_COLOR[1],
+                                RoomLighting.HOUSING_COLOR[2],
+                                1f
+                            )
+                        )
+                    }
+                    CubeNode(
+                        size = Size(
+                            layout.wallWidth,
+                            RoomLighting.HOUSING_H,
+                            RoomLighting.HOUSING_D
+                        ),
+                        position = Position(
+                            0f,
+                            row.centerY + WallDimens.CASE_H / 2f +
+                                RoomLighting.SHELF_LIGHT_LIFT +
+                                (RoomLighting.HOUSING_H + RoomLighting.STRIP_H) / 2f,
+                            RoomLighting.STRIP_Z
+                        ),
+                        materialInstance = housing,
+                        apply = {
+                            isTouchable = false
+                            isShadowCaster = false
+                            isShadowReceiver = false
+                        }
+                    )
+
                     val strip = remember(rowIndex, roomScheme) {
                         materialLoader.createUnlitColorInstance(
                             dev.romainguy.kotlin.math.Float4(

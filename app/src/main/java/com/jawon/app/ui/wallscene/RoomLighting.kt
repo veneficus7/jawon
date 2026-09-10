@@ -8,7 +8,10 @@ import io.github.sceneview.environment.Environment
 import io.github.sceneview.math.Position
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import kotlin.math.abs
+import kotlin.math.asin
 import kotlin.math.pow
+import kotlin.math.round
 
 /**
  * The Midnight Shop's light rig — DESIGN.md §1: "A record shop after closing. One warm lamp
@@ -133,7 +136,24 @@ object RoomLighting {
      * So the strip hangs forward of the sleeves and aims back at them, the way track lighting
      * in a shop does. At this distance `N·L` on the face is about 0.74 — from nothing.
      */
-    const val SHELF_LIGHT_Z = 0.155f
+    /**
+     * Where the fixture hangs, front to back.
+     *
+     * **Was 0.155 — in front of the sleeves — and is now behind them.** The forward position
+     * was arrived at by arithmetic rather than by looking at the reference: a light directly
+     * above a vertical face gives `N·L = 0`, so the strip had to move somewhere with an angle
+     * on the artwork, and forward was the nearest place that worked.
+     *
+     * It works and it is not what the photographs show. In every one of them the fixture is
+     * tucked into the **top back corner** of the bay: hidden behind the lip, throwing down the
+     * back panel and forward across the records, so what you see is a glowing back wall with
+     * the records standing against it. A strip hung out in front of the records is a display
+     * case, not a record shop.
+     *
+     * 18.5mm in front of [WallDimens.WALL_Z], which is close enough to the panel for
+     * [WASH_CANDELA] to pool on it and far enough not to intersect it.
+     */
+    const val SHELF_LIGHT_Z = -0.050f
 
     /**
      * Which way a strip points: down, and back into the shelf.
@@ -146,7 +166,11 @@ object RoomLighting {
     val SHELF_DIRECTION: FloatArray = floatArrayOf(
         0f,
         -(WallDimens.CASE_H / 2f + SHELF_LIGHT_LIFT),
-        -(SHELF_LIGHT_Z - WallDimens.CASE_D / 2f)
+        // Forward now, not back: the fixture moved behind the records, so the throw has to
+        // cross them from above-behind. Reaching to roughly the front lip of the board keeps
+        // `N·L` on the case fronts comfortably positive — which is the whole reason the
+        // strip was ever put in front of them.
+        WallDimens.CASE_D * 0.9f
     )
 
     /**
@@ -180,6 +204,40 @@ object RoomLighting {
      * Three — the row being looked at and its two neighbours — spaced a row apart. See the
      * note where they are built for why they follow the *camera* rather than the rows.
      */
+    // ---- The half of the fixture that lights the shelf itself ----------------------
+    //
+    // A strip that illuminates nothing around it reads as fake however bright it is, and that
+    // was measurable rather than a matter of taste: the bar rendered at luminance 50 while the
+    // back panel 19mm behind it sat at **8.2**, indistinguishable from the black void at the
+    // edges of the frame. In the reference photographs the area immediately around the
+    // fixture is the brightest thing after the fixture, and the gradient running down the
+    // back panel out of it is most of what makes those rooms read as rooms.
+    //
+    // [SHELF_DIRECTION] cannot do this job. It aims forward, across the artwork, and the back
+    // panel faces the camera — so the panel's `N·L` against it is negative and the wash would
+    // be exactly zero. It needs its own light aimed **down and back**, into the wall.
+
+    /**
+     * Down and back, into the panel. The backward component is what makes `N·L` positive on a
+     * wall facing the camera; straight down would graze it and light nothing, which is the
+     * same trap that made the first shelf strips measure 146.9 → 147.7.
+     */
+    val WASH_DIRECTION: FloatArray = floatArrayOf(0f, -1f, -0.45f)
+
+    /**
+     * Dimmer than [SHELF_CANDELA] on purpose. This is spill off a fixture, not a second
+     * source, and the records have to stay the brightest thing on the wall — reference note
+     * 2, "the records are lit; the room is not".
+     */
+    const val WASH_CANDELA = 95f
+
+    /** Wide: a pool spreading down the panel, not a second spot. */
+    const val WASH_CONE_INNER = 1.0f
+    const val WASH_CONE_OUTER = 1.5f
+
+    /** Short reach, so the pool fades before it arrives at the row below. */
+    const val WASH_FALLOFF = 0.22f
+
     const val SHELF_LIGHT_COUNT = 3
 
     // ---- The strip you can actually see ---------------------------------------------
@@ -199,18 +257,57 @@ object RoomLighting {
     /** How deep, front to back. Enough to catch the eye edge-on, not enough to be a shelf. */
     const val STRIP_D = 0.014f
 
-    /** Where it sits, front to back — near the front lip of the board, where a real one is. */
-    const val STRIP_Z = 0.052f
+    /** Where it sits, front to back. The tube belongs where the light comes from. */
+    const val STRIP_Z = SHELF_LIGHT_Z
 
     /**
-     * How bright the visible bar is.
+     * How bright the visible bar is, **and what colour it survives as.**
      *
-     * Above bloom's 1.0 threshold so it glows rather than sitting there as a pale rectangle,
-     * and only just: this is a thing you notice at the edge of the frame, not a light box. It
-     * does no lighting of its own — [SHELF_CANDELA] does that — so raising it buys glare and
-     * nothing else.
+     * Above bloom's 1.0 threshold so it glows rather than sitting there as a pale rectangle.
+     * It does no lighting of its own — [SHELF_CANDELA] does that — so raising it buys glare
+     * and nothing else.
+     *
+     * **The first values here were (2.1, 1.65, 1.15) and rendered pure white.** A vertical
+     * luminance profile caught it: at the strip's row the frame read mean 241.4, max 242,
+     * *100% of pixels clipped*, with no channel separation left. The reason is the
+     * tonemapper's shoulder — [RoomGrade] runs ACES, which compresses toward white as values
+     * climb, so three channels all comfortably over 1.0 arrive at the same place. A warm
+     * tungsten strip is the most recognisable thing in the owner's reference photographs, and
+     * it was being thrown away in the last step of the pipeline.
+     *
+     * So the ratio matters more than the level: red stays above the bloom threshold and
+     * glows, green sits near it, blue well under. Same fixture, amber instead of white, and
+     * the bloom halo around it warms with it.
      */
-    val STRIP_EMISSIVE: FloatArray = floatArrayOf(2.1f, 1.65f, 1.15f)
+    val STRIP_EMISSIVE: FloatArray = floatArrayOf(1.7f, 0.86f, 0.32f)
+
+    // ---- The body the strip is mounted in ------------------------------------------
+    //
+    // Without this the fixture is a bar that glows on all six faces, which is a light *box*
+    // and reads as a neon tube hanging in the dark. Every reference photograph shows the
+    // opposite: a dark housing tucked under the board above, and light only on the underside,
+    // pointing down at the records. The housing is what makes the difference between a
+    // luminous rectangle and a thing that is lighting something.
+    //
+    // Slightly deeper and taller than the tube so it reads as holding it, and shadow-neutral
+    // for the same reason the strip is — it sits directly above the records it lights, so
+    // casting would put a bar of shadow across them.
+
+    /** How tall the housing is. Small; this is a channel, not a soffit. */
+    const val HOUSING_H = 0.0075f
+
+    /** How deep, front to back — enough to overhang the tube and hide it from above. */
+    const val HOUSING_D = STRIP_D + 0.006f
+
+    /**
+     * The housing's colour, unlit and dark.
+     *
+     * Unlit rather than a shaded material on purpose: it sits immediately beside a bloom
+     * source, and anything lit there picks up the strip's own glare and turns into a second
+     * bright bar, which is the problem this is here to solve. A flat dark value holds the
+     * line no matter how hot the tube gets.
+     */
+    val HOUSING_COLOR: FloatArray = floatArrayOf(0.035f, 0.030f, 0.026f)
 
     /**
      * The key light's shadow map, in texels per side.
@@ -414,6 +511,41 @@ object RoomLighting {
     private const val FILL_ANGLE_COS = 0.72f
     private const val FILL_FEATHER = 0.22f
 
+    // ---- The strips, in the room the cases reflect --------------------------------
+    //
+    // **This is the thing that was missing, and it is why the strip read as a neon tube
+    // floating in black rather than a fixture in a shop.** The visible bar above each row is
+    // unlit geometry: it contributes nothing to reflections. So every glossy jewel case on
+    // the wall was still reflecting this cubemap's *lamp* — a single overhead cone left over
+    // from the room's earlier lighting design — and nothing anywhere reflected a strip.
+    //
+    // In every one of the owner's reference photographs the giveaway that a rack is lit by a
+    // strip is not the strip itself, it is the **line of it dragged across the glossy face of
+    // every sleeve and lid**. Filament has no real-time area lights, so that reflection can
+    // never come from the light. It has to come from the environment, which is exactly what
+    // an environment map is for — and it costs nothing per frame, because this is baked once
+    // before the first frame and prefiltered into the roughness mip chain.
+    //
+    // Bands rather than one band: the wall is rows of shelves, each with its own strip, so a
+    // case reflects several of them receding. The period is the row pitch seen from browsing
+    // distance — `atan(ROW_PITCH / CAMERA_Z)` is 14.7°, and 16° is within the slop of an
+    // approximation that treats the environment as infinitely far away in the first place.
+
+    /** Angular spacing of the reflected strips, in degrees. See the note above. */
+    private const val STRIP_BAND_PERIOD_DEG = 16f
+
+    /** How thick each reflected line is. A strip, not a glowing horizon. */
+    private const val STRIP_BAND_WIDTH_DEG = 2.4f
+
+    /**
+     * How hot the reflected strips are.
+     *
+     * HDR and well over 1.0, for the same reason [LAMP_HOT_LEVEL] is: a reflection of a dim
+     * source is a dim reflection, and this one has to survive the prefilter blurring it down
+     * the mip chain before anything rough enough to matter ever samples it.
+     */
+    private const val STRIP_BAND_LEVEL = 11f
+
     /**
      * Irradiance as spherical harmonics: 3 bands, 9 coefficients, RGB each.
      *
@@ -442,6 +574,11 @@ object RoomLighting {
      * function of how far up that direction points — which is the whole of the shop's
      * lighting story, and enough for a reflection to read as a room rather than a colour.
      */
+    private val STRIP_BAND_PERIOD_RAD =
+        Math.toRadians(STRIP_BAND_PERIOD_DEG.toDouble()).toFloat()
+    private val STRIP_BAND_HALF_RAD =
+        Math.toRadians(STRIP_BAND_WIDTH_DEG.toDouble() / 2.0).toFloat()
+
     private fun buildRoomCubemap(engine: Engine, size: Int, scheme: RoomScheme): Texture {
         // RGBA float. IBL wants HDR — Filament's specular prefilter rejects an LDR
         // single-level cubemap outright, and the lamp needs headroom above 1.0 anyway if it
@@ -500,12 +637,25 @@ object RoomLighting {
                         FILL_ANGLE_COS - FILL_FEATHER, FILL_ANGLE_COS + FILL_FEATHER, fillDot
                     )
 
+                    // The reflected strips: warm horizontal lines repeating up and down the
+                    // wall. Elevation angle rather than `ny` directly, so the spacing stays
+                    // even instead of bunching up toward the poles, and feathered for the
+                    // same reason the two discs above are — a hard edge here becomes a jagged
+                    // rim once the prefilter blurs it into the mips.
+                    val elevation = asin(ny.coerceIn(-1f, 1f))
+                    val cycle = elevation / STRIP_BAND_PERIOD_RAD
+                    val offBand = abs(cycle - round(cycle)) * STRIP_BAND_PERIOD_RAD
+                    val bandHit = 1f - smoothStep(
+                        STRIP_BAND_HALF_RAD * 0.4f, STRIP_BAND_HALF_RAD, offBand
+                    )
+
                     for (c in 0..2) {
                         val ambientTerm = void[c] + (lamp[c] - void[c]) * t
                         floats.put(
                             ambientTerm +
                                 scheme.key[c] * LAMP_HOT_LEVEL * lampHit +
-                                scheme.rim[c] * FILL_HOT_LEVEL * fillHit
+                                scheme.rim[c] * FILL_HOT_LEVEL * fillHit +
+                                scheme.key[c] * STRIP_BAND_LEVEL * bandHit
                         )
                     }
                     floats.put(1f)

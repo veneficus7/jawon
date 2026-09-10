@@ -15,8 +15,12 @@ interesting. The room is being looked at, not listened to.
 import io
 import os
 import struct
+import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, HERE)
+
+from albums import ALBUMS, safe  # noqa: E402  (needs the path above)
 COVERS = os.path.join(HERE, "covers")
 OUT = os.path.join(HERE, "mp3")
 
@@ -30,24 +34,7 @@ SAMPLES_PER_FRAME = 1152
 SECONDS = 2
 FRAMES = int(SECONDS * 44100 / SAMPLES_PER_FRAME) + 1
 
-ALBUMS = [
-    ("Miles Davis", "Kind of Blue", 1959,
-     ["So What", "Freddie Freeloader", "Blue in Green", "All Blues", "Flamenco Sketches"]),
-    ("Pink Floyd", "The Dark Side of the Moon", 1973,
-     ["Speak to Me", "Breathe", "On the Run", "Time", "The Great Gig in the Sky",
-      "Money", "Us and Them"]),
-    ("Kendrick Lamar", "good kid, m.A.A.d city", 2012,
-     ["Sherane", "Backseat Freestyle", "The Art of Peer Pressure", "Money Trees",
-      "Poetic Justice", "Good Kid"]),
-    ("Radiohead", "In Rainbows", 2007,
-     ["15 Step", "Bodysnatchers", "Nude", "Weird Fishes", "All I Need", "Faust Arp"]),
-    ("Portishead", "Dummy", 1994,
-     ["Mysterons", "Sour Times", "Strangers", "It Could Be Sweet", "Wandering Star", "Numb"]),
-    ("Nina Simone", "Pastel Blues", 1965,
-     ["Be My Husband", "Nobody Knows You", "End of the Line", "Trouble in Mind", "Tell Me More"]),
-    ("Massive Attack", "Mezzanine", 1998,
-     ["Angel", "Risingson", "Teardrop", "Inertia Creeps", "Exchange", "Dissolved Girl"]),
-]
+# The album list lives in albums.py, shared with fetch_covers.py.
 
 
 def latin1(t):
@@ -80,22 +67,14 @@ def tag(artist, album, title, track, year, jpeg):
 SILENCE = (FRAME_HEADER + b"\x00" * (FRAME_BYTES - 4)) * FRAMES
 
 
-def safe(name):
-    keep = " '&()-_,.!"
-    return " ".join("".join(c if (c.isalnum() or c in keep) else " "
-                            for c in name).split()).strip()
-
-
 def cover_for(album):
-    for candidate in (safe(album), album):
-        p = os.path.join(COVERS, "%s.jpg" % candidate)
-        if os.path.exists(p):
-            return io.open(p, "rb").read()
-    return None
+    """One spelling, because `albums.safe` is now what named the file too."""
+    p = os.path.join(COVERS, "%s.jpg" % safe(album))
+    return io.open(p, "rb").read() if os.path.exists(p) else None
 
 
 written = 0
-for artist, album, year, titles in ALBUMS:
+for artist, album, year, _shelf, titles in ALBUMS:
     jpeg = cover_for(album)
     folder = os.path.join(OUT, safe("%s - %s" % (artist, album)))
     os.makedirs(folder, exist_ok=True)

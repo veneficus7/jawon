@@ -13,29 +13,19 @@ and rate-limits to roughly one request a second, so this does both.
 import io
 import json
 import os
+import sys
 import time
 import urllib.parse
 import urllib.request
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+from albums import ALBUMS, safe  # noqa: E402  (needs the path above)
 
 OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "covers")
 os.makedirs(OUT, exist_ok=True)
 
 UA = "Jawon-emulator-fixture/0.5 ( https://github.com/veneficus7/javon )"
-
-ALBUMS = [
-    ("Miles Davis", "Kind of Blue"),
-    ("Pink Floyd", "The Dark Side of the Moon"),
-    ("Kendrick Lamar", "good kid, m.A.A.d city"),
-    ("Radiohead", "In Rainbows"),
-    ("Portishead", "Dummy"),
-    ("The Weeknd", "Starboy"),
-    ("Bill Evans", "Sunday at the Village Vanguard"),
-    ("Nina Simone", "Pastel Blues"),
-    ("Massive Attack", "Mezzanine"),
-    ("Tyler, the Creator", "Flower Boy"),
-    ("Paramore", "This Is Why"),
-    ("Billy Joel", "Piano Man"),
-]
 
 
 def get(url, accept=None):
@@ -56,10 +46,23 @@ def release_group_mbid(artist, album):
     return None
 
 
+def with_retry(url, tries=4):
+    """The Cover Art Archive redirects to archive.org, which 503s under any burst —
+    thirteen of thirty failed that way on the first run of the thirty-album list, and
+    every one of them succeeded on a second attempt. Transient, so back off and retry
+    rather than making the caller run the script twice."""
+    for attempt in range(tries):
+        try:
+            return get(url)
+        except Exception:
+            if attempt == tries - 1:
+                raise
+            time.sleep(2.0 * (attempt + 1))
+
+
 ok = 0
-for artist, album in ALBUMS:
-    safe = "".join(c if (c.isalnum() or c in " -_") else " " for c in album).strip()
-    dest = os.path.join(OUT, "%s.jpg" % safe)
+for artist, album, _year, _shelf, _tracks in ALBUMS:
+    dest = os.path.join(OUT, "%s.jpg" % safe(album))
     if os.path.exists(dest):
         ok += 1
         continue
@@ -69,7 +72,7 @@ for artist, album in ALBUMS:
         if not mbid:
             print("  no mbid   ", album)
             continue
-        art = get("https://coverartarchive.org/release-group/%s/front-500" % mbid)
+        art = with_retry("https://coverartarchive.org/release-group/%s/front-500" % mbid)
         with io.open(dest, "wb") as f:
             f.write(art)
         print("  %-34s %6.0f KB" % (album, len(art) / 1024.0))
