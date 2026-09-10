@@ -2271,6 +2271,62 @@ fun WallSceneScreen(
                     )
                 }
             )
+
+            // **The shelf strips — the thing every reference photograph has and this room
+            // did not.**
+            //
+            // In a shop each shelf carries its own strip, hung in front of the records and
+            // aimed back down across the artwork. The source is small, local, and in frame,
+            // and the records end up the only lit thing in a room that is otherwise black.
+            // Jawon had one distant lamp doing all of it; the per-bay "underlight" looks like
+            // it should help and cannot, because `beam.glb` is emissive geometry — it glows
+            // and blooms but illuminates nothing.
+            //
+            // **They live inside the key light's carrier, which the frame driver already moves
+            // to the browse position every frame.** That is deliberate and it is the second
+            // thing the first attempt got wrong: a light parented per *row* sits at the wall's
+            // centre in x, so it lights the middle few bays of a two-metre row and nothing
+            // else, and panning sideways walks straight out of it. Riding the carrier means
+            // the strips light whatever is being looked at. They are approximately rather
+            // than exactly above their rows, because the pan is high-frequency state and
+            // architecture rule 3 forbids it recomposing anything — a broad cone absorbs
+            // the difference.
+            //
+            // No shadows: the key light already tells the single-lamp story, and three more
+            // shadow casters would triple the scarcest resource in the renderer.
+            repeat(RoomLighting.SHELF_LIGHT_COUNT) { index ->
+                val row = index - RoomLighting.SHELF_LIGHT_COUNT / 2
+                LightNode(
+                    type = LightManager.Type.FOCUSED_SPOT,
+                    position = Position(
+                        0f,
+                        WallDimens.CASE_H / 2f + RoomLighting.SHELF_LIGHT_LIFT +
+                            row * ROW_PITCH,
+                        RoomLighting.SHELF_LIGHT_Z
+                    ),
+                    direction = normalize(
+                        Direction(
+                            RoomLighting.SHELF_DIRECTION[0],
+                            RoomLighting.SHELF_DIRECTION[1],
+                            RoomLighting.SHELF_DIRECTION[2]
+                        )
+                    ),
+                    apply = {
+                        color(
+                            roomScheme.key[0],
+                            roomScheme.key[1],
+                            roomScheme.key[2]
+                        )
+                        intensityCandela(RoomLighting.SHELF_CANDELA)
+                        spotLightCone(
+                            RoomLighting.SHELF_CONE_INNER,
+                            RoomLighting.SHELF_CONE_OUTER
+                        )
+                        falloff(RoomLighting.SHELF_FALLOFF)
+                        castShadows(false)
+                    }
+                )
+            }
             }
             // The coloured bounce, low and left — DESIGN.md's "one coloured bounce light".
             // It does not cast shadows: a second shadow-casting light doubles the cost and
@@ -2494,42 +2550,6 @@ fun WallSceneScreen(
                             isTouchable = false
                             isShadowReceiver = true
                             isShadowCaster = true
-                        }
-                    )
-
-                    // **The shelf's own strip — the thing every reference photograph has.**
-                    //
-                    // Mounted where a real one is: under the board above, just inside the front
-                    // face of the records, throwing straight down across the artwork. It is
-                    // what makes the sleeves the brightest thing in the room instead of the
-                    // wall behind them.
-                    //
-                    // Inside the row's existing `key`, so it is index-keyed like the board and
-                    // the plate beside it — a row change re-points a node that already exists
-                    // rather than destroying one. Casts no shadow: the key light already tells
-                    // the single-lamp story, and a shadow-caster per row would multiply the
-                    // scarcest resource in the renderer by the height of the library.
-                    LightNode(
-                        type = LightManager.Type.FOCUSED_SPOT,
-                        position = Position(
-                            0f,
-                            row.centerY + WallDimens.CASE_H / 2f + RoomLighting.SHELF_LIGHT_LIFT,
-                            RoomLighting.SHELF_LIGHT_Z
-                        ),
-                        direction = Direction(0f, -1f, 0f),
-                        apply = {
-                            color(
-                                roomScheme.key[0],
-                                roomScheme.key[1],
-                                roomScheme.key[2]
-                            )
-                            intensityCandela(RoomLighting.SHELF_CANDELA)
-                            spotLightCone(
-                                RoomLighting.SHELF_CONE_INNER,
-                                RoomLighting.SHELF_CONE_OUTER
-                            )
-                            falloff(RoomLighting.SHELF_FALLOFF)
-                            castShadows(false)
                         }
                     )
 

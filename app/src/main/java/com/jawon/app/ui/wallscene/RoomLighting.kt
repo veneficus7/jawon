@@ -114,45 +114,73 @@ object RoomLighting {
     // Three or four rows are on screen at once, which is an ordinary number of lights.
 
     /**
-     * How far above a row's centre the strip hangs.
+     * How far above a row's cases the strip hangs.
      *
-     * A case is [WallDimens.CASE_H] tall and centred on `row.centerY`, so half of that puts
-     * the light level with the top of the sleeves; the rest is the gap between the top of a
-     * record and the underside of the shelf above it.
+     * Added to `centerY + CASE_H / 2`, so it clears the tops of the sleeves by this much.
      */
     const val SHELF_LIGHT_LIFT = 0.012f
 
     /**
-     * How far forward of the wall the strip sits.
+     * How far **in front of** the records the strip hangs.
      *
-     * Just inside the front face of a case, so the light rakes *down the artwork* rather than
-     * down the gap behind it. Mounted flush to the wall it would light the backs of the
-     * records and the wall, which is precisely the look being moved away from.
+     * **This is the number that makes the light do anything at all, and the first attempt had
+     * it wrong.** A record's face is a vertical plane whose normal points at the viewer. A
+     * light directly above it, aimed straight down, arrives perpendicular to that normal —
+     * `N·L` is *exactly zero* and the artwork receives nothing. The first build of this looked
+     * like it was working because the light pooled beautifully on the horizontal shelf board,
+     * whose normal points straight up at it.
+     *
+     * So the strip hangs forward of the sleeves and aims back at them, the way track lighting
+     * in a shop does. At this distance `N·L` on the face is about 0.74 — from nothing.
      */
-    const val SHELF_LIGHT_Z = 0.048f
+    const val SHELF_LIGHT_Z = 0.155f
 
     /**
-     * Brightness of one shelf strip, in candela.
+     * Which way a strip points: down, and back into the shelf.
      *
-     * Far below [KEY_CANDELA] and much brighter in effect, because illuminance falls with the
-     * square of distance and this sits about 20mm from what it is lighting rather than half a
-     * metre. The two numbers are not comparable and should not be tuned against each other.
+     * Derived from the geometry rather than picked — it is the vector from the light to the
+     * middle of the face it is lighting, given [SHELF_LIGHT_LIFT] and [SHELF_LIGHT_Z]. Change
+     * either of those and this has to be recomputed, which is why the arithmetic is written
+     * out instead of a magic pair of numbers.
      */
-    const val SHELF_CANDELA = 14f
+    val SHELF_DIRECTION: FloatArray = floatArrayOf(
+        0f,
+        -(WallDimens.CASE_H / 2f + SHELF_LIGHT_LIFT),
+        -(SHELF_LIGHT_Z - WallDimens.CASE_D / 2f)
+    )
+
+    /**
+     * Brightness of one strip, in candela.
+     *
+     * Not comparable with [KEY_CANDELA] and should never be tuned against it: illuminance
+     * falls with the square of distance, and this sits about 120mm from what it is lighting
+     * where the lamp sits half a metre away. At this figure a sleeve receives roughly twice
+     * what the key light gives it — which is the whole point, and what the reference images
+     * show.
+     */
+    const val SHELF_CANDELA = 320f
 
     /**
      * How fast a strip dies, in metres.
      *
-     * **Shorter than [WallDimens.ROW_PITCH] on purpose.** A strip that reached the row below
-     * would light those records from above *and* the row above them from beneath, which is
-     * both wrong and cumulative — five rows of it and the room is evenly lit again, which is
-     * the thing this whole change exists to undo.
+     * Wider than the first attempt, because these are no longer one-per-row: three of them
+     * ride the browse position and have to cover whichever rows are on screen. Still short
+     * enough that the light is gone well before the far edge of the wall, which is what keeps
+     * the room dark everywhere the eye is not.
      */
-    const val SHELF_FALLOFF = 0.16f
+    const val SHELF_FALLOFF = 0.30f
 
     /** A broad wash rather than a spot: a strip lights a whole row, not one record. */
-    const val SHELF_CONE_INNER = 0.75f
-    const val SHELF_CONE_OUTER = 1.30f
+    const val SHELF_CONE_INNER = 0.80f
+    const val SHELF_CONE_OUTER = 1.35f
+
+    /**
+     * How many strips ride with the browse position, and how far apart.
+     *
+     * Three — the row being looked at and its two neighbours — spaced a row apart. See the
+     * note where they are built for why they follow the *camera* rather than the rows.
+     */
+    const val SHELF_LIGHT_COUNT = 3
 
     /**
      * The key light's shadow map, in texels per side.
@@ -199,10 +227,25 @@ object RoomLighting {
     /**
      * Lux for the image-based ambient.
      *
-     * This has to carry most of the room: the wall is `#1A1410` and the case bodies
-     * `#2A2622`, deliberately near-black, so they need real light before they read at all.
+     * **This used to be 40,000, and its own comment said why: "this has to carry most of the
+     * room". That was true, and it was the single thing making the room look flat.**
+     *
+     * An image-based ambient is uniform. It lights every surface the same amount wherever that
+     * surface is, so a room carried by it has no falloff anywhere — which is the difference
+     * between a space that is *lit* and one that is merely *illuminated*, and it is why adding
+     * a lamp, a grade, a floor and a wall texture in turn all failed to change the look.
+     *
+     * Measured on the emulator rather than argued: dropping it from 40k to 8k took the wall
+     * from 50.3 to 8.4 in output luminance while the sleeves only fell from 147 to 50 — the
+     * wall was six-sevenths ambient. The same test showed the shelf strips lifting sleeves 58%
+     * while moving the wall by half a unit, which is exactly the behaviour wanted and was
+     * invisible underneath 40k of fill.
+     *
+     * So it is now low enough that local light decides the image, and no lower: this is what
+     * keeps the case bodies (`#2A2622`) and the wall (`#1A1410`) from going to absolute black,
+     * and the reference photographs have shadow detail rather than holes.
      */
-    const val AMBIENT_INTENSITY = 40_000f
+    const val AMBIENT_INTENSITY = 11_000f
 
     /**
      * Builds the room's image-based lighting — **with no asset files at all.**
