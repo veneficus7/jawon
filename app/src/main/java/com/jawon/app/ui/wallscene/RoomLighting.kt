@@ -238,6 +238,46 @@ object RoomLighting {
     /** Short reach, so the pool fades before it arrives at the row below. */
     const val WASH_FALLOFF = 0.22f
 
+    // ---- The underlight, as an actual light ----------------------------------------
+    //
+    // The per-bay underlight has always been emissive geometry, and the comment on it was
+    // honest about the trade: one draw for the whole wall, which is the only way two hundred
+    // albums each get their own glow. What it does not do is *light* anything. It blooms, it
+    // is not in the shading, and so the album colour DESIGN.md calls "where the app's colour
+    // lives" never landed on the board it stands on or on the case standing in it. Measured,
+    // the pool was the brightest object in the room — brighter than the artwork — while
+    // contributing nothing to a single surface.
+    //
+    // Filament will not give every bay a spot at this count. So the room spends exactly one,
+    // on whichever record is being looked at, and the frame driver walks it to that bay and
+    // recolours it. The emissive geometry stays for every other bay, which is what it was
+    // always good at.
+
+    /**
+     * How far above the board the spill sits — inside the underlight's own glow, so the light
+     * and the thing that appears to be emitting it agree.
+     */
+    const val SPILL_LIFT = 0.010f
+
+    /**
+     * Modest, and deliberately below [SHELF_CANDELA].
+     *
+     * This is a coloured bounce off a shelf, not a second key. The reference photographs are
+     * unanimous that the colour in the frame comes from the artwork rather than from the
+     * lighting, so a spill bright enough to tint the record it is under has already gone too
+     * far.
+     *
+     * Found by probe rather than by argument. 26 was the first guess and moved the board it
+     * stands on by 4% — indistinguishable from nothing, and impossible to tell apart from the
+     * light being mis-wired. 300 proved the wiring, put a clear coloured pool on the board and
+     * caught the bottom edge of the case above, and was plainly a hotspot. This sits between
+     * them: the pool reads, the record above it does not turn the colour of its own sleeve.
+     */
+    const val SPILL_CANDELA = 140f
+
+    /** Short: a pool around one bay, dying before it reaches its neighbours' neighbours. */
+    const val SPILL_FALLOFF = 0.14f
+
     const val SHELF_LIGHT_COUNT = 3
 
     // ---- The strip you can actually see ---------------------------------------------

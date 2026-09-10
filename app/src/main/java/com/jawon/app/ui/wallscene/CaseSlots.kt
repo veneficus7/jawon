@@ -148,6 +148,26 @@ class CaseSlot {
     private var beamAtY = Float.NaN
     private var beamAtZ = Float.NaN
 
+    /**
+     * Where this slot's underlight stands, and what colour it is, for the one real light the
+     * room spends on it.
+     *
+     * The emissive geometry above is what every bay gets — one draw for the whole wall, which
+     * is the only reason a wall of two hundred albums can each have their own glow. But
+     * emissive geometry lights nothing: it blooms and it is not in the shading, so the colour
+     * DESIGN.md calls "where the app's colour lives" never actually landed on the board or on
+     * the case standing in it. A Filament spot per bay is not available at this count, so the
+     * room spends exactly one, on whichever record is being looked at, and the frame driver
+     * moves it. See `RoomLighting.SPILL_CANDELA`.
+     *
+     * NaN until [placeBeam] and [setBeamHue] have run, which is how the driver knows there is
+     * nothing to point at yet.
+     */
+    val beamX: Float get() = beamAtX
+    val beamY: Float get() = beamAtY
+    val beamZ: Float get() = beamAtZ
+    val beamHue: Float get() = appliedBeamHue
+
     /** Put this case where it belongs immediately, with no travel. */
     fun snapToTarget() {
         baseX = targetX
@@ -289,7 +309,7 @@ class CaseSlot {
  * wants a shop lit warmly, not a nightclub. The conversion is done here rather than through
  * `android.graphics.Color` because Filament wants linear values and that returns sRGB.
  */
-private fun beamRgb(hue: Float): FloatArray {
+internal fun beamRgb(hue: Float): FloatArray {
     val h = ((hue % 1f) + 1f) % 1f * 6f
     val sector = floor(h).toInt()
     val f = h - sector

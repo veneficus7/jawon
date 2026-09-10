@@ -549,6 +549,48 @@ private class RoomNodes {
     private var keyBulb: LightNode? = null
     private var rimBulb: LightNode? = null
 
+    /**
+     * The one real light the room spends on an album's own colour, and the carrier it hangs
+     * from. See `RoomLighting.SPILL_CANDELA` for why there is exactly one.
+     */
+    var spillLight: SceneNode? = null
+    private var spillBulb: LightNode? = null
+
+    /** The hue currently written to the spill, so an unchanged frame writes nothing. */
+    private var appliedSpillHue = Float.NaN
+
+    /**
+     * Walks the spill to a bay and gives it that album's colour.
+     *
+     * Position every frame, colour only when the album under it changes — the walk is
+     * continuous and the recolour is not, and Filament uploads a light's colour whether or
+     * not it differs.
+     */
+    fun applySpill(x: Float, y: Float, z: Float, hue: Float) {
+        val carrier = spillLight ?: return
+        val bulb = spillBulb ?: bulbUnder(carrier)?.also { spillBulb = it } ?: return
+        carrier.position = Position(x, y + RoomLighting.SPILL_LIFT, z)
+        if (hue != appliedSpillHue) {
+            appliedSpillHue = hue
+            // beamRgb is authored at BEAM_VALUE for an *emissive material*, where the
+            // level is the brightness. A light separates the two: colour is a normalised
+            // tint and intensityCandela carries the brightness, so the peak channel comes
+            // back to 1 and SPILL_CANDELA decides how strong it is.
+            val rgb = beamRgb(hue)
+            val peak = maxOf(rgb[0], rgb[1], rgb[2]).coerceAtLeast(1e-4f)
+            bulb.color = Float4(rgb[0] / peak, rgb[1] / peak, rgb[2] / peak, 1f)
+        }
+    }
+
+    /** Parks the spill when there is nothing under it — an empty wall, or a case open. */
+    fun hideSpill() {
+        spillLight?.isVisible = false
+    }
+
+    fun showSpill() {
+        spillLight?.isVisible = true
+    }
+
     private fun bulbUnder(carrier: SceneNode?): LightNode? =
         carrier?.childNodes?.firstNotNullOfOrNull { it as? LightNode }
 
@@ -1975,6 +2017,38 @@ fun WallSceneScreen(
                 // Filament only uploads when the value actually changes.
                 roomNodes.applyScheme(roomScheme)
 
+                // Walk the one coloured spill to whichever bay is centred. Nearest by the
+                // same normalised distance the browse magnet uses, so the light settles on
+                // the record the wall settles on rather than on whichever is nearest in raw
+                // metres — rows and columns are on different pitches.
+                run {
+                    var best: com.jawon.app.ui.wallscene.CaseSlot? = null
+                    var bestD = Float.MAX_VALUE
+                    caseSlots.slots.forEach { slot ->
+                        if (!slot.occupied || slot.beamHue.isNaN()) return@forEach
+                        val dx = (slot.beamX - panX.value) / WallDimens.SLOT_PITCH
+                        val dy = (slot.beamY - panY.value) / ROW_PITCH
+                        val d = dx * dx + dy * dy
+                        if (d < bestD) {
+                            bestD = d
+                            best = slot
+                        }
+                    }
+                    val target = best
+                    if (target == null || frame.selected != null) {
+                        // Nothing under it, or a case is open and the deck owns the light.
+                        roomNodes.hideSpill()
+                    } else {
+                        roomNodes.applySpill(
+                            target.beamX,
+                            target.beamY,
+                            target.beamZ,
+                            target.beamHue
+                        )
+                        roomNodes.showSpill()
+                    }
+                }
+
                 // This loop ALWAYS runs, and only the motion is conditional. `bind` no longer
                 // writes root.position at all, so skipping it entirely under reduced motion
                 // would leave every case stacked at the wall's origin.
@@ -2363,6 +2437,37 @@ fun WallSceneScreen(
                 )
             }
             }
+            // **The album's own colour, as an actual light.** Every bay's underlight is
+            // emissive geometry — one draw for the whole wall, and the only reason two
+            // hundred albums can each have their own glow — but emissive geometry lights
+            // nothing. The pool measured brighter than the artwork while contributing to no
+            // surface at all. Filament will not hand out a spot per bay at this count, so the
+            // room spends one, and the frame driver walks it to whichever record is being
+            // looked at. See RoomLighting.SPILL_CANDELA.
+            //
+            // A point light, not a spot: it is standing in the middle of what it lights, and
+            // it has to reach the board under it, the case above it and the bays either side.
+            //
+            // Carrier-and-bulb for the same reason the key light has one — a LightNode's
+            // `apply` runs against a LightManager.Builder, so the node is not reachable where
+            // it is declared.
+            Node(apply = {
+                roomNodes.spillLight = this
+                // Nothing to stand over until `bind` has run.
+                isVisible = false
+            }) {
+                LightNode(
+                    type = LightManager.Type.POINT,
+                    apply = {
+                        intensityCandela(RoomLighting.SPILL_CANDELA)
+                        falloff(RoomLighting.SPILL_FALLOFF)
+                        // It is light standing on a shelf. It neither casts nor receives, and
+                        // a shadow-caster here would be the fourth in the room.
+                        castShadows(false)
+                    }
+                )
+            }
+
             // The coloured bounce, low and left — DESIGN.md's "one coloured bounce light".
             // It does not cast shadows: a second shadow-casting light doubles the cost and
             // muddies the single-lamp story the key light is telling.
