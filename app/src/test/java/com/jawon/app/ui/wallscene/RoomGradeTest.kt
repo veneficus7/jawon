@@ -1,6 +1,5 @@
 package com.jawon.app.ui.wallscene
 
-import com.google.android.filament.ToneMapper
 import com.jawon.app.ui.theme.RoomScheme
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
@@ -34,15 +33,51 @@ class RoomGradeTest {
     }
 
     @Test
-    fun `every mode crushes its blacks`() {
-        // The whole point of grading a dark room. A shadow gamma of 1 is no curve at all, and
-        // below 1 would *lift* the shadows — grey mud where the room wants black, which is the
-        // single most likely way for this file to make the room look worse than ungraded.
+    fun `the grade leans the shadows without darkening them`() {
+        // **This test used to assert the opposite, and the opposite was wrong.**
+        //
+        // It required every channel's gamma to be above 1 — "grading a dark room means putting
+        // the black back in". True of a scene with a normal spread of tones, and catastrophic
+        // here: this room is almost entirely shadow, its wall albedo running from 10% down to
+        // zero, so crushing the shadows and crushing the room are the same instruction. The
+        // device answered in one look: the wall went black.
+        //
+        // What the gammas are actually for is the *spread* between channels, which is what makes
+        // shadows lean away from the key light. So the rule is that they average out neutral
+        // while still differing from each other.
         for (scheme in all) {
             val spec = RoomGrade.specFor(scheme)
-            for ((channel, gamma) in spec.shadowGamma.withIndex()) {
-                assertTrue("${scheme.name} channel $channel gamma $gamma", gamma > 1f)
-            }
+            val mean = spec.shadowGamma.average().toFloat()
+
+            assertTrue(
+                "${scheme.name} shadow gamma averages $mean — the grade is darkening the room",
+                mean in 0.94f..1.04f
+            )
+            assertTrue(
+                "${scheme.name} shadow gamma is flat across channels, so nothing leans",
+                spec.shadowGamma.max() - spec.shadowGamma.min() > 0.02f
+            )
+        }
+    }
+
+    @Test
+    fun `no mode touches exposure, and every mode uses the tuned curve`() {
+        // **Both halves of this were learned the hard way, in one look at the device.**
+        //
+        // The room's lamp intensities were found on hardware under Filament's default transform.
+        // A grade that swaps the tone curve silently re-exposes every one of them — AgX did, its
+        // lifted blacks washed the room grey, and adding exposure to compensate only made the
+        // wash brighter. So the curve stays the one the lighting was tuned against and the
+        // exposure stays at zero; this file refines a tuned image rather than replacing it.
+        for (scheme in all) {
+            val spec = RoomGrade.specFor(scheme)
+
+            assertEquals("${scheme.name} exposure", 0f, spec.exposure, 0f)
+            assertEquals(
+                "${scheme.name} must use the curve RoomLighting was tuned under",
+                RoomGrade.Mapper.ACES_LEGACY,
+                spec.mapper
+            )
         }
     }
 
@@ -58,36 +93,23 @@ class RoomGradeTest {
             assertTrue("${scheme.name} temperature", spec.temperature in -0.25f..0.25f)
             assertTrue("${scheme.name} tint", spec.tint in -0.25f..0.25f)
             assertTrue("${scheme.name} highlightScale", spec.highlightScale in 1f..1.1f)
-            // Exposure is deliberately left alone in all four: the render's own exposure and the
-            // lamp intensities in RoomLighting were tuned together on the device, and a stop
-            // here would silently re-tune every one of them.
-            assertEquals("${scheme.name} exposure", 0f, spec.exposure, 0f)
         }
     }
 
     @Test
     fun `the cold modes are not warmed`() {
         // **The one that protects Glacies.** Its whole idea is a cold slate room whose only
-        // warmth is a single orange rim light, and both a positive temperature and AgX's GOLDEN
-        // look would warm the slate too — collapsing the contrast the mode is built on. Officina
-        // is a monitor in the dark and has the same objection.
+        // warmth is a single orange rim light, and a positive temperature would warm the slate
+        // too, collapsing the contrast the mode is built on. Officina is a monitor in the dark
+        // and has the same objection.
         for (scheme in listOf(RoomScheme.COLD_STORAGE, RoomScheme.WORKSHOP, RoomScheme.AFTER_HOURS)) {
             val spec = RoomGrade.specFor(scheme)
             assertTrue("${scheme.name} temperature ${spec.temperature}", spec.temperature <= 0f)
-            assertNotEquals(
-                "${scheme.name} must not use AgX's golden look",
-                ToneMapper.Agx.AgxLook.GOLDEN,
-                spec.look
-            )
         }
     }
 
     @Test
-    fun `only the tungsten room gets the warm look`() {
-        assertEquals(
-            ToneMapper.Agx.AgxLook.GOLDEN,
-            RoomGrade.specFor(RoomScheme.MIDNIGHT_SHOP).look
-        )
+    fun `only the tungsten room is warmed`() {
         assertTrue(RoomGrade.specFor(RoomScheme.MIDNIGHT_SHOP).temperature > 0f)
     }
 
@@ -120,14 +142,15 @@ class RoomGradeTest {
     }
 
     @Test
-    fun `the true-black room crushes hardest`() {
+    fun `the true-black room carries the most contrast`() {
         // Officina is the only mode whose void is an actual black rather than a very dark brown,
-        // so it has no warm floor for its shadows to sit on and nothing to protect.
-        val workshop = RoomGrade.specFor(RoomScheme.WORKSHOP).shadowGamma.min()
+        // so it is the one place contrast can be pushed without taking the room with it. This
+        // used to assert that it *crushed* hardest, which was the same mistake as above.
+        val workshop = RoomGrade.specFor(RoomScheme.WORKSHOP).contrast
         for (scheme in all - RoomScheme.WORKSHOP) {
             assertTrue(
-                "${scheme.name} crushes at least as hard as Officina",
-                RoomGrade.specFor(scheme).shadowGamma.min() < workshop
+                "${scheme.name} has at least as much contrast as Officina",
+                RoomGrade.specFor(scheme).contrast < workshop
             )
         }
     }

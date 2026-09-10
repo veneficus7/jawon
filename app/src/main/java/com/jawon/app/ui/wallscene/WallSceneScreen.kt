@@ -287,6 +287,20 @@ private val LOOK_STRAIGHT_AHEAD = Rotation(0f, 0f, 0f)
  *   see once the print underneath is legible. Worth restoring at a low value if the disc
  *   ever reads as too papery.
  */
+/**
+ * How reflective the room's flat surfaces are, in Filament's own units.
+ *
+ * **Not a percentage.** `reflectance` is remapped as `F0 = 0.16 * reflectance^2`, so the 4% that
+ * an ordinary dielectric reflects is written here as **0.5**, and 0.04 would be 0.026% - a
+ * material that does not exist and that returns nothing from the lamp. Getting this wrong once
+ * turned the wall black; the constant exists so the next person reads the note instead of the
+ * number.
+ */
+internal const val WALL_REFLECTANCE = 0.5f
+
+/** A little above the wall: a floor is smoother, and takes the lamp at a grazing angle. */
+internal const val FLOOR_REFLECTANCE = 0.55f
+
 internal const val DISC_LABEL_METALLIC = 0f
 internal const val DISC_LABEL_ROUGHNESS = 0.78f
 internal const val DISC_LABEL_CLEARCOAT = 0f
@@ -846,13 +860,6 @@ fun WallSceneScreen(
             roomScheme
         }
 
-        // The ground fog follows the floor, and the floor follows the library — a shelf added or
-        // removed moves the bottom of the room. Keyed on the value rather than on the layout, so
-        // a pan or a play count changing does not rebuild the fog struct.
-        remember(filamentView, layout.floorY) {
-            RoomAtmosphere.setFogFloor(filamentView, layout.floorY)
-            layout.floorY
-        }
 
         // DESIGN.md §4: "Respect reduced-motion settings: drop ambient rotation, parallax,
         // and dust; keep press feedback and the open sequence." Android reports this as an
@@ -2316,11 +2323,22 @@ fun WallSceneScreen(
                         materialLoader.createTextureInstance(
                             texture,
                             metallic = 0f,
-                            // Reflectance stays very low and roughness very high: this is painted
-                            // board, and a wall that caught the lamp would pull the eye off the
-                            // records, which are the only things in the room that should shine.
                             roughness = 0.95f,
-                            reflectance = 0.04f
+                            // **0.5 is a normal surface, not 0.04.**
+                            //
+                            // This shipped at 0.04 on the reasoning that a dielectric reflects
+                            // about 4% and the wall should be matt. Both halves were right and
+                            // the number was still wrong, because Filament's `reflectance` is not
+                            // a percentage - it is a 0..1 remap, F0 = 0.16 * reflectance^2, where
+                            // **0.5 is the 4% a dielectric actually has**. 0.04 gives 0.026%: a
+                            // surface 156x less reflective than any real material, which returns
+                            // essentially nothing from the lamp. The wall went black, and the
+                            // owner said so within a minute of seeing it.
+                            //
+                            // The lamp is what describes this wall. Its albedo is 2-10% depending
+                            // on the mode, so specular is most of what there is to see; killing it
+                            // does not make the wall matt, it makes the wall absent.
+                            reflectance = WALL_REFLECTANCE
                         )
                     }
                     CubeNode(
@@ -2364,9 +2382,9 @@ fun WallSceneScreen(
                             // Smoother and a touch more reflective than the wall, deliberately.
                             // A floor seen at a grazing angle is where one lamp shows as a long
                             // soft sheen, and that sheen is most of what tells the eye the
-                            // ground is there at all.
+                            // ground is there at all. Same units correction as the wall above.
                             roughness = 0.72f,
-                            reflectance = 0.12f
+                            reflectance = FLOOR_REFLECTANCE
                         )
                     }
                     CubeNode(

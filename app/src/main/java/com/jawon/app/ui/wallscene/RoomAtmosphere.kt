@@ -44,23 +44,7 @@ object RoomAtmosphere {
     private const val FOG_DENSITY = 0.9f
     private const val FOG_MAX_OPACITY = 0.92f
 
-    /**
-     * How far above the floor slab the densest fog sits.
-     *
-     * Anchoring it at the slab exactly puts the thickest fog inside the geometry, where it is
-     * invisible; a little above and the gradient starts in open air where it can be seen.
-     */
-    private const val FOG_FLOOR_LIFT = 0.02f
 
-    /**
-     * How quickly the ground fog thins going up, per metre.
-     *
-     * High, because the room is small - a case is 142mm, so the whole visible space is a couple
-     * of case heights. A falloff tuned for an outdoor scene would leave the fog either uniform
-     * across the frame or invisible; this puts the transition inside about one shelf of height,
-     * which is where it reads as a layer rather than as a haze.
-     */
-    private const val FOG_HEIGHT_FALLOFF = 7.5f
 
     /**
      * Bloom. DESIGN.md: "subtle, on the lamp and the disc's specular highlight only. Not a
@@ -298,9 +282,9 @@ object RoomAtmosphere {
             density = FOG_DENSITY
             maximumOpacity = FOG_MAX_OPACITY
             color = RoomLighting.VOID_COLOR.copyOf()
-            // Height is set separately, once the layout knows where the floor is - see
-            // [setFogFloor]. Left flat here so the very first frame, which is composed before
-            // any library has loaded, is not fogged from an arbitrary height.
+            // Flat, and this is load-bearing rather than a default - see [setFogFloor]. This
+            // fog is what lifts the far wall off pure black, and any height falloff steep enough
+            // to read as ground fog removes that lift at shelf height.
             heightFalloff = 0f
         }
 
@@ -465,35 +449,23 @@ object RoomAtmosphere {
     fun isApplied(view: View): Boolean = view.bloomOptions.strength == BLOOM_STRENGTH
 
     /**
-     * Lets the fog pool on the floor, now that there is a floor.
+     * Ground fog, tried and withdrawn - and worth keeping the reason.
      *
-     * **This is the other half of adding one.** The fog block above used to carry the line
-     * *"Height fog would need a floor to pool on; this room has none"* - a correct observation
-     * and, for as long as it was true, the reason the room's only depth cue was distance. Fog
-     * that thickens toward the ground is what separates a dark room from a dark void: it gives
-     * the lower half of the frame a gradient the eye reads as air, and it hides the floor's far
-     * edge without a hard line.
+     * Adding a floor made height fog possible for the first time, and the fog block's own comment
+     * had been asking for it. Switching it on made the room **worse**, and the mechanism is the
+     * useful part: the fog here is not decoration, it is what stops the far wall being pure
+     * black. `VOID_COLOR` is a dark warm grey rather than zero, and uniform distance fog lifts
+     * the wall plane toward it. Height fog replaces that lift with an exponential falloff
+     * measured from the ground, and this room is barely half a metre tall - so at any falloff
+     * steep enough to read as a layer, the fog at shelf height drops to near nothing and the
+     * wall loses the only thing keeping it off black.
      *
-     * Called when the layout changes rather than per frame, because [WallLayout.floorY] moves
-     * with the library - a shelf added or removed changes where the bottom of the room is.
-     *
-     * Filament measures `height` in world space and `heightFalloff` as how quickly density
-     * falls off going up from it, so the fog is anchored slightly *above* the floor slab: at the
-     * slab itself the densest fog would sit inside the geometry where none of it is visible.
+     * Doing this properly means *adding* a ground layer to the existing distance fog rather than
+     * swapping one for the other, which Filament's single `FogOptions` cannot express directly.
+     * Kept as a named no-op so the next person finds this note rather than the idea.
      */
-    fun setFogFloor(view: View, floorY: Float) {
-        if (!floorY.isFinite()) return
-        view.fogOptions = View.FogOptions().apply {
-            enabled = true
-            distance = FOG_START
-            density = FOG_DENSITY
-            maximumOpacity = FOG_MAX_OPACITY
-            color = RoomLighting.VOID_COLOR.copyOf()
-            height = floorY + FOG_FLOOR_LIFT
-            heightFalloff = FOG_HEIGHT_FALLOFF
-        }
-        view.dithering = RoomGrade.DITHERING
-    }
+    @Suppress("UNUSED_PARAMETER")
+    fun setFogFloor(view: View, floorY: Float) = Unit
 
     /**
      * The same question, including the grade.
