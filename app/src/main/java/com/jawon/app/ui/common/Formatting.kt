@@ -1,4 +1,6 @@
 package com.jawon.app.ui.common
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
 
 import com.jawon.app.data.local.Track
 import java.util.Locale
@@ -68,3 +70,20 @@ fun qualityReadoutOutput(track: Track, routeLabel: String, outputSampleRateHz: I
     val route = if (routeLabel.isBlank()) "" else " · $routeLabel"
     return "$losslessTag$route$outputPart"
 }
+
+/**
+ * How wide a column of reading matter is allowed to get.
+ *
+ * **The one number a landscape phone needs from every flat screen.** Turned sideways, this device
+ * is 3120px across; a settings paragraph or a listening row stretched over that is a line of text
+ * a foot long, which is not a layout problem so much as a legibility one — the eye loses its place
+ * on the way back to the left margin. Typography has had an answer for centuries and it is about
+ * 65 characters; at this app's mono sizes that lands near 600dp.
+ *
+ * Capping rather than branching on orientation is deliberate, and it is why this is one constant
+ * and not a set of alternate layouts: a phone in portrait is around 411dp across, comfortably
+ * under this, so **no portrait screen changes at all**. There is no second layout to keep in step
+ * and no `if (landscape)` to get wrong. The content simply stops widening once it is as wide as
+ * reading matter should be.
+ */
+val READING_MAX_W: Dp = 600.dp

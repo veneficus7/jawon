@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
@@ -46,6 +47,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import com.jawon.app.ui.common.READING_MAX_W
 import androidx.compose.ui.unit.sp
 import androidx.core.content.FileProvider
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
@@ -1572,6 +1574,10 @@ fun SettingsScreen(
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
                 .navigationBarsPadding()
+                // Centred and capped, so a landscape phone gives this page a readable column
+                // instead of foot-long lines. Portrait is narrower than the cap and unchanged.
+                .widthIn(max = READING_MAX_W)
+                .align(Alignment.CenterHorizontally)
                 .padding(horizontal = 24.dp)
         ) {
             // The title card. The one part that stays centred, because it is a masthead

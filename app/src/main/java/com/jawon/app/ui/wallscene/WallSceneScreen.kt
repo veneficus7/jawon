@@ -50,6 +50,7 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
@@ -302,6 +303,38 @@ private val LOOK_STRAIGHT_AHEAD = Rotation(0f, 0f, 0f)
  * turned the wall black; the constant exists so the next person reads the note instead of the
  * number.
  */
+/**
+ * How wide the flat chrome is allowed to get, whatever the window does.
+ *
+ * **Landscape is not a different layout here, it is the same layout unclamped.** Turn the phone
+ * and the wall gets better — five records across instead of one, which is what a shelf is for —
+ * while every 2D thing over it gets worse in the same motion: the three chrome actions spread to
+ * thirds of a 3120px screen and end up further apart than a thumb can travel, the focus title
+ * stretches into a headline, and the deck becomes a tracklist a metre wide with a 44dp row in it.
+ *
+ * A ceiling fixes all three without an orientation branch, and that is the point of doing it this
+ * way. A phone in portrait is about 411dp across, which is under every number below, so **none of
+ * this changes portrait at all** — there is no second layout to keep in step, and no `if
+ * (landscape)` to get wrong. The controls simply stop growing once they are as wide as a control
+ * should be, and the room keeps the rest.
+ *
+ * The backgrounds are deliberately *not* clamped: the ground under the chrome still spans the
+ * window, so the controls read as sitting on a surface rather than floating in a raft.
+ */
+internal val CHROME_MAX_W = 460.dp
+
+/** The focus label. Wider than the chrome — it is a title, and titles wrap badly when pinched. */
+internal val FOCUS_MAX_W = 620.dp
+
+/**
+ * The deck.
+ *
+ * A tracklist is a column of one-line rows; past about this width the eye has to travel from a
+ * track number on the far left to a duration on the far right across empty space, and the rack's
+ * eight keys become slabs. Both want a column, not a field.
+ */
+internal val DECK_MAX_W = 600.dp
+
 internal const val WALL_REFLECTANCE = 0.5f
 
 /** A little above the wall: a floor is smoother, and takes the lamp at a grazing angle. */
@@ -2538,7 +2571,9 @@ fun WallSceneScreen(
             // whole subject — the browse label would only collide with it.
             FocusLabel(
                 case = focusCase,
-                modifier = Modifier.align(Alignment.TopCenter)
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .widthIn(max = FOCUS_MAX_W)
             )
         }
 
@@ -2668,6 +2703,13 @@ fun WallSceneScreen(
                     .navigationBarsPadding()
                     .padding(top = 44.dp, bottom = 10.dp)
             ) {
+            // Clamped inside the full-width ground above, so the surface still spans the window
+            // while the controls on it stay within reach. See CHROME_MAX_W.
+            Column(
+                modifier = Modifier
+                    .align(Alignment.CenterHorizontally)
+                    .widthIn(max = CHROME_MAX_W)
+            ) {
             nowPlaying?.let { playing ->
                 NowPlayingDisc(
                     nowPlaying = playing,
@@ -2699,6 +2741,7 @@ fun WallSceneScreen(
                 ChromeAction(
                     Icons.Default.Settings, "SETTINGS", onOpenSettings, Modifier.weight(1f)
                 )
+            }
             }
             }
         }
@@ -2803,6 +2846,9 @@ fun WallSceneScreen(
                 sheetFraction = sheetFraction.value,
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
+                    // Capped so a wide window gives the room the extra space rather than
+                    // stretching a column of one-line rows across it. See DECK_MAX_W.
+                    .widthIn(max = DECK_MAX_W)
                     // Three stops, dragged by the header — see DeckDetent.
                     //
                     // This used to be a fixed fraction, and it could not stay one. Everything in

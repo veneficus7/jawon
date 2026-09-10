@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
@@ -34,6 +35,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.jawon.app.ui.common.READING_MAX_W
 import androidx.compose.ui.unit.sp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -83,6 +85,10 @@ fun ListeningScreen(
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
+                // See READING_MAX_W: a landscape window gets a readable column rather than
+                // rows stretched across the whole device. Portrait is unaffected.
+                .widthIn(max = READING_MAX_W)
+                .align(Alignment.CenterHorizontally)
                 .navigationBarsPadding(),
             contentPadding = PaddingValues(
                 start = 20.dp, end = 20.dp, top = 18.dp, bottom = 40.dp
