@@ -67,7 +67,19 @@ object RoomLighting {
      * Candela. A domestic lamp is a few hundred; these are close to their subject, so they
      * do not need to be large. Main tuning knobs — expect to move them on device.
      */
-    const val KEY_CANDELA = 500f
+    /**
+     * The shop lamp.
+     *
+     * **Pulled back from 500 when the shelves got their own lights.** It used to be the only
+     * thing lighting the records, which forced it bright enough to reach every bay — and a lamp
+     * bright enough to do that also lights the wall, which is why the wall sat at mid-tone with
+     * the sleeves no brighter than the surface behind them. The reference images are the
+     * opposite: the room is nearly black and the records carry all the light.
+     *
+     * Now this only has to say *there is a lamp in here*. The reading happens under
+     * [SHELF_CANDELA].
+     */
+    const val KEY_CANDELA = 320f
     const val RIM_CANDELA = 30f
 
     /**
@@ -84,6 +96,63 @@ object RoomLighting {
     /** Metres at which each light has fallen off to nothing. */
     const val KEY_FALLOFF = 6.0f
     const val RIM_FALLOFF = 1.8f
+
+    // ---- The shelf practicals -------------------------------------------------------
+    //
+    // **What every reference image has and this room did not.** In a real shop each shelf
+    // carries its own strip, mounted under the board above and throwing down across the
+    // faces of the records. The light source is *in the frame*, it is small, and it is
+    // local — and the records are the only lit thing in a room that is otherwise black.
+    //
+    // Jawon had one distant spot doing all of it, plus an "underlight" per bay that is
+    // emissive geometry: it glows and blooms, but it does not *illuminate* anything. So the
+    // sleeves were lit by a lamp two feet away and nothing else, which is why they read at
+    // the same brightness as the wall behind them.
+    //
+    // These are real Filament lights, one per visible row. The comment on `beam.glb` is
+    // still true — Filament will not give every *album* a spot — but a row is not an album.
+    // Three or four rows are on screen at once, which is an ordinary number of lights.
+
+    /**
+     * How far above a row's centre the strip hangs.
+     *
+     * A case is [WallDimens.CASE_H] tall and centred on `row.centerY`, so half of that puts
+     * the light level with the top of the sleeves; the rest is the gap between the top of a
+     * record and the underside of the shelf above it.
+     */
+    const val SHELF_LIGHT_LIFT = 0.012f
+
+    /**
+     * How far forward of the wall the strip sits.
+     *
+     * Just inside the front face of a case, so the light rakes *down the artwork* rather than
+     * down the gap behind it. Mounted flush to the wall it would light the backs of the
+     * records and the wall, which is precisely the look being moved away from.
+     */
+    const val SHELF_LIGHT_Z = 0.048f
+
+    /**
+     * Brightness of one shelf strip, in candela.
+     *
+     * Far below [KEY_CANDELA] and much brighter in effect, because illuminance falls with the
+     * square of distance and this sits about 20mm from what it is lighting rather than half a
+     * metre. The two numbers are not comparable and should not be tuned against each other.
+     */
+    const val SHELF_CANDELA = 14f
+
+    /**
+     * How fast a strip dies, in metres.
+     *
+     * **Shorter than [WallDimens.ROW_PITCH] on purpose.** A strip that reached the row below
+     * would light those records from above *and* the row above them from beneath, which is
+     * both wrong and cumulative — five rows of it and the room is evenly lit again, which is
+     * the thing this whole change exists to undo.
+     */
+    const val SHELF_FALLOFF = 0.16f
+
+    /** A broad wash rather than a spot: a strip lights a whole row, not one record. */
+    const val SHELF_CONE_INNER = 0.75f
+    const val SHELF_CONE_OUTER = 1.30f
 
     /**
      * The key light's shadow map, in texels per side.

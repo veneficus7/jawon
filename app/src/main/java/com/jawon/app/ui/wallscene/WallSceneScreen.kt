@@ -127,6 +127,7 @@ import com.google.android.filament.android.TextureHelper
 import dev.romainguy.kotlin.math.normalize
 import io.github.sceneview.SceneView
 import io.github.sceneview.collision.Vector3
+import io.github.sceneview.math.Direction
 import io.github.sceneview.math.Position
 import io.github.sceneview.math.Rotation
 import io.github.sceneview.math.Scale
@@ -2493,6 +2494,42 @@ fun WallSceneScreen(
                             isTouchable = false
                             isShadowReceiver = true
                             isShadowCaster = true
+                        }
+                    )
+
+                    // **The shelf's own strip — the thing every reference photograph has.**
+                    //
+                    // Mounted where a real one is: under the board above, just inside the front
+                    // face of the records, throwing straight down across the artwork. It is
+                    // what makes the sleeves the brightest thing in the room instead of the
+                    // wall behind them.
+                    //
+                    // Inside the row's existing `key`, so it is index-keyed like the board and
+                    // the plate beside it — a row change re-points a node that already exists
+                    // rather than destroying one. Casts no shadow: the key light already tells
+                    // the single-lamp story, and a shadow-caster per row would multiply the
+                    // scarcest resource in the renderer by the height of the library.
+                    LightNode(
+                        type = LightManager.Type.FOCUSED_SPOT,
+                        position = Position(
+                            0f,
+                            row.centerY + WallDimens.CASE_H / 2f + RoomLighting.SHELF_LIGHT_LIFT,
+                            RoomLighting.SHELF_LIGHT_Z
+                        ),
+                        direction = Direction(0f, -1f, 0f),
+                        apply = {
+                            color(
+                                roomScheme.key[0],
+                                roomScheme.key[1],
+                                roomScheme.key[2]
+                            )
+                            intensityCandela(RoomLighting.SHELF_CANDELA)
+                            spotLightCone(
+                                RoomLighting.SHELF_CONE_INNER,
+                                RoomLighting.SHELF_CONE_OUTER
+                            )
+                            falloff(RoomLighting.SHELF_FALLOFF)
+                            castShadows(false)
                         }
                     )
 

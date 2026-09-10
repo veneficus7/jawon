@@ -301,26 +301,26 @@ object RoomAtmosphere {
         // at this panel's 1440x3120, a lot of both. It also runs on every frame of every screen,
         // including a wall that is doing nothing.
         //
-        // Measured back to back on the S25 Ultra, thermal 2-3, ten seconds a run, summed across
-        // the FEngine threads:
+        // **The `quality` line that used to be here did nothing, and the measurement that
+        // justified it measured noise.** `View.setBloomOptions` reads eighteen fields and
+        // passes them to `nSetBloomOptions`; `quality` is not one of them — checked in the
+        // bytecode, the same way `AmbientOcclusionOptions.aoType` was. The numbers recorded
+        // against it (MEDIUM 234 jiffies, off 186, LOW 172) said so on their own terms, and
+        // were read the wrong way: **LOW came out cheaper than switching bloom off entirely**,
+        // which is impossible for a setting that is on, and is the signature of three runs
+        // separated by thermal drift rather than by a change.
         //
-        //     MEDIUM   234 jiffies
-        //     off      186
-        //     LOW      172
+        // So the real cost of bloom in this room has never been established. It has been
+        // running at Filament's default quality throughout. See `docs/room-design.md` §2.2.
         //
-        // LOW is not merely cheaper than MEDIUM — it landed at or below the cost of switching
-        // bloom *off entirely*, which says the whole of the saving is in the quality level and
-        // none of it in having the effect at all. A 26% cut in the room's continuous CPU for a
-        // glow the owner confirmed still reads correctly on the device.
-        //
-        // Not tier-gated, deliberately: this is now cheap enough on the flagship that the lower
-        // tiers have nothing left to give up here, and the underlight is the one thing in the
-        // room that cannot be turned off without the wall ceasing to look like Jawon.
+        // Everything else in the struct *is* forwarded and none of it is used — lens dirt,
+        // flare, starburst, ghosts, halo, chromatic aberration. For a dark room whose subject
+        // is one lamp and some small glowing things, that is the best look-per-unit-of-work in
+        // the engine.
         view.bloomOptions = View.BloomOptions().apply {
             enabled = true
             strength = BLOOM_STRENGTH
             threshold = true
-            quality = View.QualityLevel.LOW
         }
 
         // **Draw the room smaller than the screen, and let Filament put it back.**
