@@ -35,6 +35,7 @@ import androidx.compose.animation.core.exponentialDecay
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -48,11 +49,14 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
@@ -74,6 +78,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.Color as ComposeColor
@@ -651,6 +656,7 @@ fun WallSceneScreen(
     viewModel: WallSceneViewModel = hiltViewModel()
 ) {
     val layout by viewModel.layout.collectAsStateWithLifecycle()
+    val nowPlaying by viewModel.nowPlaying.collectAsStateWithLifecycle()
     val roomScheme by viewModel.roomScheme.collectAsStateWithLifecycle()
     val caseSpin by viewModel.caseSpin.collectAsStateWithLifecycle()
     val eqAvailable by viewModel.eqAvailable.collectAsStateWithLifecycle()
@@ -2642,7 +2648,10 @@ fun WallSceneScreen(
             // straight under the icons when they lived up there), and on a phone this tall
             // the bottom is the only comfortable reach. navigationBarsPadding keeps it off
             // the system nav, which it was sitting on.
-            Row(
+            // The now-playing bar and the chrome share one column and one gradient, so the
+            // bar sits *on* the same ground the icons do rather than floating above it on a
+            // second wash of its own — which was the first attempt and read as two bars.
+            Column(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .fillMaxWidth()
@@ -2657,7 +2666,27 @@ fun WallSceneScreen(
                         )
                     )
                     .navigationBarsPadding()
-                    .padding(top = 44.dp, bottom = 10.dp),
+                    .padding(top = 44.dp, bottom = 10.dp)
+            ) {
+            nowPlaying?.let { playing ->
+                NowPlayingDisc(
+                    nowPlaying = playing,
+                    isPlaying = deck.isPlaying,
+                    onOpen = {
+                        // Pan to the record first, for the same reason search does — see the
+                        // note on FRONT_GAP in `openCase`. Without it the sequence starts from
+                        // whatever framing browsing happened to leave behind.
+                        layout.cases.firstOrNull { it.albumId == playing.albumId }?.let { target ->
+                            scope.launch { panX.animateTo(target.x, animationSpec = FLIP_SPRING) }
+                            scope.launch { panY.animateTo(target.y, animationSpec = FLIP_SPRING) }
+                        }
+                        openCase(playing.albumId)
+                    },
+                    onPlayPause = viewModel::onPlayPause
+                )
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.Bottom
             ) {
                 // Even thirds rather than a huddle in the middle: three wide targets across
@@ -2670,6 +2699,7 @@ fun WallSceneScreen(
                 ChromeAction(
                     Icons.Default.Settings, "SETTINGS", onOpenSettings, Modifier.weight(1f)
                 )
+            }
             }
         }
 
@@ -3385,6 +3415,116 @@ private fun WaitingForRecords(onAddAlbum: () -> Unit, modifier: Modifier = Modif
                 fontSize = 14.sp,
                 letterSpacing = 1.6.sp,
                 color = LampAmber
+            )
+        }
+    }
+}
+
+/**
+ * The record that is still on, turning at the bottom of the wall while you browse.
+ *
+ * **The gap this fills.** Closing a case closed the only thing that said what was playing. The
+ * music kept going — the notification knew, the shelf's case sat proud in its slot — but the room
+ * itself gave you nothing to look at and nothing to tap, so getting back to the record you were
+ * listening to meant finding its case again by eye. That is a poor trade for an app whose whole
+ * argument is that a library is a place you can look around in.
+ *
+ * The disc is [DiscArt.bakeFace]'s own bake, the same one the room mounts on the spindle, turning
+ * at [OpenSequence.SPIN_DEG_PER_S] — the same rate. So this is not an icon standing in for the
+ * record; it is the record, seen small and further away, and the two are physically consistent
+ * if you close a case and watch it shrink into the corner.
+ *
+ * ## How it is animated, and why not the obvious way
+ *
+ * The angle is a `MutableFloatState` advanced from `withFrameNanos`, read **only inside
+ * `graphicsLayer`**. That deferred read is what keeps a 60-times-a-second value out of
+ * composition: Compose skips straight to the draw phase and re-rasterises one small layer.
+ * `rememberInfiniteTransition` would be the tidier-looking answer and is worse here, because it
+ * keeps running when the music stops — and a disc that spins while the record is paused says
+ * something false.
+ *
+ * ENGINEERING.md trap 10 is the reason for the size discipline as well as the read discipline: a
+ * *large* translucent animated layer costs the compositor a re-blend every frame however little
+ * it recomposes. This one is 44dp.
+ */
+@Composable
+private fun NowPlayingDisc(
+    nowPlaying: WallSceneViewModel.NowPlaying,
+    isPlaying: Boolean,
+    onOpen: () -> Unit,
+    onPlayPause: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val angle = remember { mutableFloatStateOf(0f) }
+
+    // Advances only while the record is actually turning, and keeps its angle when it stops —
+    // resuming picks up where it left off rather than snapping to zero, which is what a platter
+    // does.
+    LaunchedEffect(isPlaying) {
+        if (!isPlaying) return@LaunchedEffect
+        var previous = 0L
+        while (true) {
+            withFrameNanos { now ->
+                if (previous != 0L) {
+                    val seconds = (now - previous) / 1_000_000_000f
+                    angle.floatValue =
+                        (angle.floatValue + seconds * OpenSequence.SPIN_DEG_PER_S) % 360f
+                }
+                previous = now
+            }
+        }
+    }
+
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .clickable(onClick = onOpen)
+            .padding(horizontal = 20.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        val disc = nowPlaying.disc
+        if (disc != null) {
+            Image(
+                bitmap = disc.asImageBitmap(),
+                contentDescription = null,
+                modifier = Modifier
+                    .size(44.dp)
+                    .graphicsLayer { rotationZ = angle.floatValue }
+            )
+        } else {
+            // Artwork can still be baking, and a row that changed height when it arrived would
+            // shove the chrome down a frame after appearing.
+            Spacer(Modifier.size(44.dp))
+        }
+
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(2.dp)
+        ) {
+            Text(
+                text = nowPlaying.title.uppercase(Locale.ROOT),
+                style = JawonTextStyle.mono.copy(fontSize = 10.sp),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                text = nowPlaying.artist,
+                style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = 9.sp),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+
+        // Its own target, and deliberately not the row's: pausing without losing your place on
+        // the wall is the thing you want most often from a bar like this, and making the whole
+        // row open the deck would put a case in the way of it.
+        IconButton(onClick = onPlayPause, modifier = Modifier.size(40.dp)) {
+            Icon(
+                imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                contentDescription = if (isPlaying) "Pause" else "Play",
+                tint = LampAmber,
+                modifier = Modifier.size(22.dp)
             )
         }
     }

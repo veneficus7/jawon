@@ -25,6 +25,7 @@ import com.jawon.app.playback.SleepTimer
 import com.jawon.app.ui.common.qualityReadoutSource
 import com.jawon.app.ui.theme.RoomScheme
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -39,8 +40,10 @@ import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import javax.inject.Inject
 
 /** What the in-room deck needs to draw itself. */
@@ -623,6 +626,56 @@ class WallSceneViewModel @Inject constructor(
      */
     fun onScrub(trackIndex: Int, positionMs: Long) =
         viewModelScope.launch { playbackRepository.seekTo(trackIndex, positionMs) }
+
+    // ---- The record still turning while you browse ----------------------------------
+
+    /**
+     * What the mini-player needs: which record is on, and the disc to spin for it.
+     *
+     * The disc bitmap is baked here rather than read from `CaseArtCache`, and the reason is the
+     * whole point of the feature. That cache holds the forty-odd cases nearest the frustum and
+     * trims the rest, so the album you are *listening to* is the first thing it drops once you
+     * pan away from it — which is exactly the moment a now-playing bar has to draw something.
+     */
+    data class NowPlaying(
+        val albumId: String,
+        val title: String,
+        val artist: String,
+        /** Null while it is still being baked, or if the album has no artwork at all. */
+        val disc: android.graphics.Bitmap?
+    )
+
+    /**
+     * The record that is on, or null when nothing is.
+     *
+     * Keyed on the album id alone, so this does not re-run on transport ticks — `deck` re-emits
+     * on every playback event and re-baking a disc at that rate would be image decoding on a
+     * flow, which is the file-I/O rule in a different costume.
+     */
+    @Suppress("OPT_IN_USAGE")
+    val nowPlaying: StateFlow<NowPlaying?> = _nowPlayingAlbumId
+        // No `distinctUntilChanged` — a StateFlow already conflates equal values, and applying
+        // it is both a no-op and deprecated for exactly that reason.
+        .mapLatest { albumId ->
+            if (albumId == null) return@mapLatest null
+            withContext(Dispatchers.IO) {
+                val album = albumDao.findById(albumId) ?: return@withContext null
+                NowPlaying(
+                    albumId = albumId,
+                    title = album.title,
+                    artist = album.artist,
+                    // The same bake the room's own disc uses, so the small one is the same
+                    // object seen further away rather than a second drawing of it.
+                    disc = runCatching {
+                        DiscArt.bakeFace(
+                            face = CaseArt.loadCoverSquare(album.discFaceUri),
+                            fallback = CaseArt.loadCoverSquare(album.caseCoverUri)
+                        )
+                    }.getOrNull()
+                )
+            }
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
     // ---- Keeping a streamed record on the phone ------------------------------------
     //
