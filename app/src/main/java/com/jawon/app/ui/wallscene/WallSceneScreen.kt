@@ -136,6 +136,7 @@ import io.github.sceneview.rememberRenderer
 import io.github.sceneview.rememberView
 import io.github.sceneview.rememberViewNodeManager
 import dev.romainguy.kotlin.math.Float4
+import com.google.android.filament.utils.TextureType
 import io.github.sceneview.texture.ImageTexture
 import io.github.sceneview.node.LightNode
 import io.github.sceneview.node.Node as SceneNode
@@ -2318,7 +2319,19 @@ fun WallSceneScreen(
                     // gives: a CubeNode destroys the MaterialInstance it is handed.
                     val backing = remember(roomScheme, panelW, panelH) {
                         val texture = ImageTexture.Builder()
-                            .bitmap(RoomSurface.wallBitmap(roomScheme.wall, panelW / panelH))
+                            // **`COLOR` explicitly, never the default.**
+                            //
+                            // The bitmap holds sRGB bytes, because that is what `Color.toArgb`
+                            // gives. Uploading it as anything but `COLOR` binds an `RGBA8`
+                            // rather than an `SRGB8_A8`, so Filament reads those bytes as
+                            // *already linear* and never de-gammas them. On a wall whose albedo
+                            // is 2-10% that is roughly a thirteenfold overexposure of the
+                            // largest surface in the room, and it is exactly what turned the
+                            // wall into bright mauve after the reflectance was fixed.
+                            .bitmap(
+                                RoomSurface.wallBitmap(roomScheme.wall, panelW / panelH),
+                                TextureType.COLOR
+                            )
                             .build(engine)
                         materialLoader.createTextureInstance(
                             texture,
@@ -2372,8 +2385,10 @@ fun WallSceneScreen(
                     val floorDepth = FLOOR_REACH - WALL_Z
                     val floorSurface = remember(roomScheme, panelW, floorDepth) {
                         val texture = ImageTexture.Builder()
+                            // sRGB, for the same reason as the wall above.
                             .bitmap(
-                                RoomSurface.floorBitmap(roomScheme.wall, panelW / floorDepth)
+                                RoomSurface.floorBitmap(roomScheme.wall, panelW / floorDepth),
+                                TextureType.COLOR
                             )
                             .build(engine)
                         materialLoader.createTextureInstance(
