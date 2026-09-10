@@ -121,7 +121,28 @@ object RoomLighting {
      *
      * Added to `centerY + CASE_H / 2`, so it clears the tops of the sleeves by this much.
      */
-    const val SHELF_LIGHT_LIFT = 0.012f
+    /**
+     * How far above the top of a row's cases the fixture hangs — **and this was the geometric
+     * error underneath every other one on this fixture.**
+     *
+     * At 12mm the strip sat just above its own row's records, which means it threw down
+     * *behind them*, onto panel the records themselves hide. Nothing lit the band of wall that
+     * is actually visible, and every attempt to fix the gradient by re-aiming or re-levelling
+     * the light was tuning something the camera could not see. Measured on a masked-out wall,
+     * the visible band ran 63.6 at its top to 87.9 at its bottom — brightening *downward*,
+     * away from the fixture, because it was being lit by spill rather than by the light meant
+     * for it.
+     *
+     * A row occupies `CASE_H` of a `ROW_PITCH`, so the compartment above the records is
+     * `ROW_PITCH - CASE_H - BOARD_H` = 52mm tall, and that band is the only back panel the
+     * camera ever sees. The owner's target photograph puts the strip at the top of that
+     * compartment, tucked under the shelf above — which lights the band directly, hottest at
+     * the top and dying downward, and grazes the tops of the records on the way past.
+     *
+     * 48mm leaves the tube a few millimetres clear of the board above rather than intersecting
+     * it.
+     */
+    const val SHELF_LIGHT_LIFT = 0.048f
 
     /**
      * How far **in front of** the records the strip hangs.
@@ -218,24 +239,71 @@ object RoomLighting {
     // be exactly zero. It needs its own light aimed **down and back**, into the wall.
 
     /**
-     * Down and back, into the panel. The backward component is what makes `N·L` positive on a
-     * wall facing the camera; straight down would graze it and light nothing, which is the
-     * same trap that made the first shelf strips measure 146.9 → 147.7.
+     * Back and down, into the panel — and *mostly back*, which is the third correction to this
+     * number and the one that finally aims it at the right place.
+     *
+     * The axis has to land near the **top** of the panel, because that is where the target
+     * photograph is brightest. Where it lands is pure geometry: from [WASH_Z], 88mm out from
+     * the panel, an axis of (0, -0.55, -1) meets it 49mm below the fixture — a third of the
+     * way down a 142mm bay, which measured as a nearly flat panel (63.8 at the top, 74.0 at
+     * the bottom) rather than the gradient in the photograph. Flattening the throw to -0.25
+     * brings that down to about 22mm, which is inside the band of panel that is actually
+     * visible above the records.
      */
-    val WASH_DIRECTION: FloatArray = floatArrayOf(0f, -1f, -0.45f)
+    val WASH_DIRECTION: FloatArray = floatArrayOf(0f, -0.10f, -1f)
 
     /**
-     * Dimmer than [SHELF_CANDELA] on purpose. This is spill off a fixture, not a second
-     * source, and the records have to stay the brightest thing on the wall — reference note
-     * 2, "the records are lit; the room is not".
+     * How far forward of the panel the wash hangs, and **the whole reason this is a separate
+     * number from [SHELF_LIGHT_Z].**
+     *
+     * The owner's target photograph has the panel hottest at the very top of each bay, dying
+     * downward toward the shelf below. A light in the exact back corner produces the *inverse*
+     * of that, and it is the N·L trap for the third time in this file: a source 18mm from a
+     * wall and aimed down grazes it, so `N·L` is near zero at the corner and only opens up
+     * further down. Measured on a wall temporarily painted magenta so it could be masked out
+     * of the frame and read on its own: 43.7 at the top of the bay, rising to 92 in the
+     * middle. Exactly upside down.
+     *
+     * Moved forward into the bay, the geometry inverts with it. The top of the panel is now
+     * nearly face-on to the light and close to it; the bottom is further away and oblique.
+     * That is roughly a 4.5:1 falloff top to bottom before any cone or distance term, which is
+     * the gradient in the photograph.
      */
-    const val WASH_CANDELA = 95f
+    const val WASH_Z = 0.020f
 
-    /** Wide: a pool spreading down the panel, not a second spot. */
-    const val WASH_CONE_INNER = 1.0f
-    const val WASH_CONE_OUTER = 1.5f
+    /**
+     * **This is the light in the target photograph, not a spill off something else.**
+     *
+     * It was 95 — a supporting value, on the reading that the strip was the source and this
+     * was overflow. The bookcase photograph inverts that: the panel is the brightest thing in
+     * the bay, the records stand against it, and the fixture itself is invisible. So this
+     * carries the bay now, and [SHELF_CANDELA] is what keeps the artwork off a silhouette.
+     *
+     * Much lower than the 520 it briefly was, and that is [WASH_Z]'s doing rather than a
+     * change of mind: from the back corner the light was grazing the panel and most of it went
+     * nowhere, so the number had to be enormous to show at all. Throwing across the bay puts
+     * the same light on the surface at a useful angle and a fraction of the distance.
+     */
+    const val WASH_CANDELA = 800f
 
-    /** Short reach, so the pool fades before it arrives at the row below. */
+    /**
+     * Narrow, and narrowed twice.
+     *
+     * A near-hemispherical cone spread the light evenly over the whole panel — measured at 90,
+     * 90, 91, 90, 90 down the visible band, which is a lightbox rather than a gradient. The
+     * compartment is only 52mm tall and the panel is 88mm away, so distance falloff alone
+     * cannot grade anything over that span: the *cone edge* has to do it. Tight, aimed just
+     * under the board above, so the band is hot where the photograph is hot and the light has
+     * run out by the tops of the records.
+     */
+    const val WASH_CONE_INNER = 0.20f
+    const val WASH_CONE_OUTER = 0.55f
+
+    /**
+     * Long enough to reach down the panel, short enough that the bottom of a bay is visibly
+     * darker than the top. The gradient IS the picture — an evenly lit panel would be a
+     * lightbox, which is the failure the visible bar already was.
+     */
     const val WASH_FALLOFF = 0.22f
 
     // ---- The underlight, as an actual light ----------------------------------------
@@ -278,76 +346,43 @@ object RoomLighting {
     /** Short: a pool around one bay, dying before it reaches its neighbours' neighbours. */
     const val SPILL_FALLOFF = 0.14f
 
+    /**
+     * How many wash lights each row gets, spread across the width of the frame.
+     *
+     * **One is a pool, not a band.** The shelf lights are positioned per *row* and ride the
+     * browse carrier, so each row had exactly one wash sitting at whatever the user is looking
+     * at — and once its cone was narrowed enough to grade the panel vertically, what it left
+     * was a soft circular puddle in the middle of the shelf with darkness either side. The
+     * target photograph has an evenly lit panel across the full width of every compartment,
+     * because a real compartment is a closed box with a strip running its whole width.
+     *
+     * Overlapping cones are how a strip is faked out of point sources. Odd, so one of them
+     * sits on the browse centre.
+     */
+    const val WASH_COLUMNS = 5
+
+    /**
+     * How far apart those are. Close enough that the cones overlap into a continuous band at
+     * panel distance rather than reading as five separate lamps.
+     */
+    const val WASH_COLUMN_SPACING = 0.105f
+
     const val SHELF_LIGHT_COUNT = 3
 
-    // ---- The strip you can actually see ---------------------------------------------
+    // ---- There is no visible fixture, and that is the design ------------------------
     //
-    // **Every reference photograph shows its own source.** A strip inside the shelf, a pendant,
-    // a track spot, a device's display — the light is small, local, and *in the frame*. A room
-    // lit by something you cannot see reads as lit by nothing, which is most of the difference
-    // between the wall as it was and the photographs.
+    // This is where an emissive bar and its housing used to be. They were added on the earlier
+    // record-shop references, where the strip is in the frame and you can see it — a fair
+    // reading of those photographs, and the constants and their reasoning are in git.
     //
-    // Geometry rather than an emissive material from a `.glb`, because it needs no new asset:
-    // an unlit colour above 1.0 goes straight to the output and blooms, since `RoomAtmosphere`
-    // runs bloom thresholded at 1.0. Same trick the underlight uses, one surface up.
+    // The owner's bookcase photograph supersedes them: it has **no visible source at all**,
+    // only a panel glowing warm behind the objects. The bar made the argument for itself on
+    // the way out. Bright, it was a white-clipped tube hanging in black; warmed and dimmed
+    // under bloom's threshold so it would stop glaring, it stopped being a light and became a
+    // flat orange line painted across the wall. A fixture that reads as neither a lamp nor a
+    // fitting is worse than no fixture, and the board above already casts the shadow line that
+    // says where the light comes from.
 
-    /** How thick the bar is. A strip, not a soffit. */
-    const val STRIP_H = 0.0035f
-
-    /** How deep, front to back. Enough to catch the eye edge-on, not enough to be a shelf. */
-    const val STRIP_D = 0.014f
-
-    /** Where it sits, front to back. The tube belongs where the light comes from. */
-    const val STRIP_Z = SHELF_LIGHT_Z
-
-    /**
-     * How bright the visible bar is, **and what colour it survives as.**
-     *
-     * Above bloom's 1.0 threshold so it glows rather than sitting there as a pale rectangle.
-     * It does no lighting of its own — [SHELF_CANDELA] does that — so raising it buys glare
-     * and nothing else.
-     *
-     * **The first values here were (2.1, 1.65, 1.15) and rendered pure white.** A vertical
-     * luminance profile caught it: at the strip's row the frame read mean 241.4, max 242,
-     * *100% of pixels clipped*, with no channel separation left. The reason is the
-     * tonemapper's shoulder — [RoomGrade] runs ACES, which compresses toward white as values
-     * climb, so three channels all comfortably over 1.0 arrive at the same place. A warm
-     * tungsten strip is the most recognisable thing in the owner's reference photographs, and
-     * it was being thrown away in the last step of the pipeline.
-     *
-     * So the ratio matters more than the level: red stays above the bloom threshold and
-     * glows, green sits near it, blue well under. Same fixture, amber instead of white, and
-     * the bloom halo around it warms with it.
-     */
-    val STRIP_EMISSIVE: FloatArray = floatArrayOf(1.7f, 0.86f, 0.32f)
-
-    // ---- The body the strip is mounted in ------------------------------------------
-    //
-    // Without this the fixture is a bar that glows on all six faces, which is a light *box*
-    // and reads as a neon tube hanging in the dark. Every reference photograph shows the
-    // opposite: a dark housing tucked under the board above, and light only on the underside,
-    // pointing down at the records. The housing is what makes the difference between a
-    // luminous rectangle and a thing that is lighting something.
-    //
-    // Slightly deeper and taller than the tube so it reads as holding it, and shadow-neutral
-    // for the same reason the strip is — it sits directly above the records it lights, so
-    // casting would put a bar of shadow across them.
-
-    /** How tall the housing is. Small; this is a channel, not a soffit. */
-    const val HOUSING_H = 0.0075f
-
-    /** How deep, front to back — enough to overhang the tube and hide it from above. */
-    const val HOUSING_D = STRIP_D + 0.006f
-
-    /**
-     * The housing's colour, unlit and dark.
-     *
-     * Unlit rather than a shaded material on purpose: it sits immediately beside a bloom
-     * source, and anything lit there picks up the strip's own glare and turns into a second
-     * bright bar, which is the problem this is here to solve. A flat dark value holds the
-     * line no matter how hot the tube gets.
-     */
-    val HOUSING_COLOR: FloatArray = floatArrayOf(0.035f, 0.030f, 0.026f)
 
     /**
      * The key light's shadow map, in texels per side.
@@ -412,7 +447,7 @@ object RoomLighting {
      * keeps the case bodies (`#2A2622`) and the wall (`#1A1410`) from going to absolute black,
      * and the reference photographs have shadow detail rather than holes.
      */
-    const val AMBIENT_INTENSITY = 11_000f
+    const val AMBIENT_INTENSITY = 6_500f
 
     /**
      * Builds the room's image-based lighting — **with no asset files at all.**

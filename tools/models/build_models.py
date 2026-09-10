@@ -519,17 +519,43 @@ def build_closed_case():
     # The highlight survives all three: RoomLighting's hot lamp is what makes this read as
     # glass (see the note above), and it still does — it is now a sheen across the cover rather
     # than a shutter over it.
+    #
+    # ---- Half of that retreat has now been given back, and the reason it was made is why ----
+    #
+    # Read the paragraph above again: the retreat was not about physics, it was about *what
+    # there was to reflect*. "Half the presentation would be spent showing you a reflection of
+    # an unlit room instead of the record" — a case tilted to a grazing angle mirrored a dark
+    # room, and a dark mirror over album art is a dark blue slab where a cover should be.
+    #
+    # That premise expired. `RoomLighting.STRIP_BAND_LEVEL` puts the shelf strips into the
+    # environment the cases reflect, so the grazing reflection is now a **warm line running
+    # across the sleeve** — the exact thing that makes a rack of jewel cases in a lit shop read
+    # as jewel cases, and the owner's word for what was missing was "cheap plastic". Reflecting
+    # something is what separates polystyrene from painted card, and until the bands existed
+    # there was nothing to reflect.
+    #
+    # So: back toward the real numbers, not all the way to them.
+    #
+    # - ior 1.24 -> 1.42. Polystyrene is 1.59; this keeps fresnel climbing more gently than
+    #   life, because the wall turns the cases for you and a real case is one you can tilt back.
+    # - coat 0.28 -> 0.55. The second lobe is what reads as a hard surface over a soft one.
+    # - roughness 0.09 -> 0.055, so the reflected strip arrives as a line rather than a smear.
+    #   A blurred highlight is the single most reliable tell of cheap CG plastic.
+    #
+    # Alpha is untouched at 0.16. It is the one number in here that was never about reflections
+    # — it is how much of the printed inlay reads through the shell, and the cover art is what
+    # the wall exists to show.
     obj.data.materials.append(
         principled(
             "JewelCaseClear",
             base_color=(0.90, 0.94, 1.0),
             metallic=0.0,
-            roughness=0.09,
-            coat=0.28,
-            coat_roughness=0.04,
+            roughness=0.055,
+            coat=0.55,
+            coat_roughness=0.03,
             alpha=0.16,
             blend=True,
-            ior=1.24,
+            ior=1.42,
         )
     )
     return obj

@@ -2405,13 +2405,19 @@ fun WallSceneScreen(
                 // the records. See RoomLighting.WASH_DIRECTION — the forward throw above
                 // cannot light that wall at all, because the wall faces the camera and the
                 // throw is travelling the same way.
+                //
+                // A ROW of them, not one. See RoomLighting.WASH_COLUMNS: a single narrow cone
+                // grades the panel vertically the way the reference does and leaves a circular
+                // puddle in the middle of a shelf that should be lit across its whole width.
+                repeat(RoomLighting.WASH_COLUMNS) { column ->
                 LightNode(
                     type = LightManager.Type.FOCUSED_SPOT,
                     position = Position(
-                        0f,
+                        (column - RoomLighting.WASH_COLUMNS / 2) *
+                            RoomLighting.WASH_COLUMN_SPACING,
                         WallDimens.CASE_H / 2f + RoomLighting.SHELF_LIGHT_LIFT +
                             row * ROW_PITCH,
-                        RoomLighting.SHELF_LIGHT_Z
+                        RoomLighting.WASH_Z
                     ),
                     direction = normalize(
                         Direction(
@@ -2435,6 +2441,7 @@ fun WallSceneScreen(
                         castShadows(false)
                     }
                 )
+                }
             }
             }
             // **The album's own colour, as an actual light.** Every bay's underlight is
@@ -2693,78 +2700,14 @@ fun WallSceneScreen(
                         }
                     )
 
-                    // **The strip, made visible.** The shelf lights above do the lighting;
-                    // this is the fixture doing it, which every reference photograph shows and
-                    // this room never had. Unlit and above bloom's 1.0 threshold, so it goes
-                    // straight to the output and glows — the same trick the underlight uses,
-                    // one surface up, and it needs no new asset.
-                    //
-                    // Remembered in this row's key alongside the board, because a CubeNode
-                    // destroys the MaterialInstance it is handed.
-                    // The housing the tube sits in, drawn first and sitting just above it.
-                    // See RoomLighting.HOUSING_H for why the fixture needs a body at all.
-                    val housing = remember(rowIndex, roomScheme) {
-                        materialLoader.createUnlitColorInstance(
-                            dev.romainguy.kotlin.math.Float4(
-                                RoomLighting.HOUSING_COLOR[0],
-                                RoomLighting.HOUSING_COLOR[1],
-                                RoomLighting.HOUSING_COLOR[2],
-                                1f
-                            )
-                        )
-                    }
-                    CubeNode(
-                        size = Size(
-                            layout.wallWidth,
-                            RoomLighting.HOUSING_H,
-                            RoomLighting.HOUSING_D
-                        ),
-                        position = Position(
-                            0f,
-                            row.centerY + WallDimens.CASE_H / 2f +
-                                RoomLighting.SHELF_LIGHT_LIFT +
-                                (RoomLighting.HOUSING_H + RoomLighting.STRIP_H) / 2f,
-                            RoomLighting.STRIP_Z
-                        ),
-                        materialInstance = housing,
-                        apply = {
-                            isTouchable = false
-                            isShadowCaster = false
-                            isShadowReceiver = false
-                        }
-                    )
-
-                    val strip = remember(rowIndex, roomScheme) {
-                        materialLoader.createUnlitColorInstance(
-                            dev.romainguy.kotlin.math.Float4(
-                                RoomLighting.STRIP_EMISSIVE[0],
-                                RoomLighting.STRIP_EMISSIVE[1],
-                                RoomLighting.STRIP_EMISSIVE[2],
-                                1f
-                            )
-                        )
-                    }
-                    CubeNode(
-                        size = Size(
-                            layout.wallWidth,
-                            RoomLighting.STRIP_H,
-                            RoomLighting.STRIP_D
-                        ),
-                        position = Position(
-                            0f,
-                            row.centerY + WallDimens.CASE_H / 2f +
-                                RoomLighting.SHELF_LIGHT_LIFT,
-                            RoomLighting.STRIP_Z
-                        ),
-                        materialInstance = strip,
-                        apply = {
-                            isTouchable = false
-                            // Neither: it is a light fixture. Casting would put a bar of shadow
-                            // across the records it is supposed to be lighting.
-                            isShadowCaster = false
-                            isShadowReceiver = false
-                        }
-                    )
+                    // **No visible tube.** There used to be an emissive bar here, added on
+                    // the earlier record-shop references, where you can see every fixture. The
+                    // owner's bookcase photograph supersedes those and has no visible source
+                    // at all — and the bar proved the point itself: dimmed under bloom's
+                    // threshold so it would stop glaring, it simply became a flat orange line
+                    // painted across the wall, which is worse than either the lamp it was or
+                    // the fixture it was pretending to be. Nothing replaces it: the board
+                    // above already casts the shadow line that says where the light is.
 
                     ViewNode(
                         windowManager = viewNodeManager,

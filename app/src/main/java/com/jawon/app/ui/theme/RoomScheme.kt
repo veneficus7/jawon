@@ -94,7 +94,21 @@ enum class RoomScheme(
         rim = floatArrayOf(0.941f, 0.663f, 0.235f),
         ambient = floatArrayOf(0.251f, 0.192f, 0.165f),
         void = floatArrayOf(0.071f, 0.055f, 0.043f),
-        wall = Color(0xFF1A1410),
+        // **Lifted from 0xFF1A1410, which was about one per cent reflectance.**
+        //
+        // The owner's target photograph is a bookcase with a concealed strip in each bay: the
+        // back panel is light oak and carries a warm gradient, hottest where the fixture is and
+        // dying toward the shelf below, and that gradient is the whole picture. A one per cent
+        // panel cannot show it. Light falling on a surface that returns a hundredth of it is
+        // not a lighting problem with a lighting fix — at that albedo the wash would have to be
+        // a hundred times stronger to read, and everything else in the room would blow out
+        // first.
+        //
+        // The room stays dark, because darkness now comes from *falloff* rather than from the
+        // surface having nothing to give back — which is reference note 3, "light falls off
+        // fast and visibly", and is how the photograph works too: the lit bays glow and the
+        // wood between them goes black.
+        wall = Color(0xFF56422F),
         board = Color(0xFF2F2318),
         accent = MidnightPalette.lampAmber,
         plate = DeckPlate.GLASS,
@@ -130,7 +144,8 @@ enum class RoomScheme(
         rim = floatArrayOf(0.800f, 0.376f, 0.118f),
         ambient = floatArrayOf(0.114f, 0.133f, 0.157f),
         void = floatArrayOf(0.031f, 0.039f, 0.051f),
-        wall = Color(0xFF0C0E11),
+        // Lifted with the others — see MIDNIGHT_SHOP's wall for the reasoning.
+        wall = Color(0xFF2C333B),
         // The board is the one surface the hot rim actually grazes, and at the wall's own value
         // it had nothing to catch the light with — a rim light needs something to land on or it
         // is only a colour in the air. Lifted just far enough off the wall behind it that the
@@ -161,7 +176,9 @@ enum class RoomScheme(
         rim = floatArrayOf(1.0f, 0.176f, 0.584f),
         ambient = floatArrayOf(0.043f, 0.055f, 0.110f),
         void = floatArrayOf(0.020f, 0.020f, 0.039f),
-        wall = Color(0xFF05050A),
+        // Lifted with the others, and least of the three: this room is the darkest by
+        // design and the lit bays have to stay the only thing in it.
+        wall = Color(0xFF15151F),
         board = Color(0xFF12121F),
         accent = Color(0xFF22E6FF),
         plate = DeckPlate.GLASS,
