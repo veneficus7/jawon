@@ -344,8 +344,13 @@ object RoomLighting {
      * change of mind: from the back corner the light was grazing the panel and most of it went
      * nowhere, so the number had to be enormous to show at all. Throwing across the bay puts
      * the same light on the surface at a useful angle and a fraction of the distance.
+     *
+     * Half as bright again, 2026-09-12: the owner asked for a stronger tube that throws more of
+     * its colour down the back panel. With the ribbon tilted into the panel (see
+     * [WASH_DIRECTION]) the extra reaches the top of the gradient first, right where the light
+     * has to read as coming from the tube.
      */
-    const val WASH_CANDELA = 64f
+    const val WASH_CANDELA = 96f
 
     /**
      * Narrow, narrowed twice, and then widened again once the tube came back.
@@ -424,22 +429,38 @@ object RoomLighting {
      * this file, and it is why the bulb cannot simply stand where the emissive cone stands. Far
      * enough forward to throw up across the artwork, close enough to still read as coming from
      * under that record rather than from the room.
+     *
+     * **Nearly twice as far out since 2026-09-12**, when the art plates left the room's light
+     * channel and this became the only light on a cover. From 52mm the top of a sleeve is ~5x
+     * dimmer than its foot — a white hotspot at the bottom of every cover and a dim band across
+     * the top, both plain on the owner's phone once the ceiling spots stopped filling in. From
+     * 95mm the ratio is ~2.3x: still lit from below, which is the look, but the whole of the
+     * artwork reads. It can go this far because the light reaches only the plates now (see
+     * [UNDER_LIGHT_CHANNEL]), so there is nothing else in front of the record for it to hit.
      */
-    const val UNDER_FORWARD = 0.052f
+    const val UNDER_FORWARD = 0.095f
 
     /**
      * Bright, because this is a key light now rather than a decoration.
      *
      * It is the only thing lighting an album's cover, so what used to be a coloured accent has
      * to carry the artwork on its own.
+     *
+     * Doubled with [UNDER_FORWARD]: from 95mm out instead of 52mm, the middle of a sleeve is
+     * about half as brightly lit per candela (further away, though more squarely faced), so this
+     * keeps the artwork where it was tuned while taking the hotspot off its foot.
      */
-    const val UNDER_CANDELA = 780f
+    const val UNDER_CANDELA = 1_500f
 
     /**
      * Short reach. The pool belongs to one record; a long falloff turns a hundred of these into
      * ambient light by another name, which is exactly what the owner asked to remove.
+     *
+     * 0.22 with the bulb 95mm out: the far top corner of its own sleeve is ~0.16m away, so the
+     * whole cover is inside the reach with a margin — `falloff` is a hard cutoff (trap 6), and a
+     * corner past it would go black — and it is barely longer than it was.
      */
-    const val UNDER_FALLOFF = 0.20f
+    const val UNDER_FALLOFF = 0.22f
 
     /**
      * The light channel the album underlights live on — and the end of a day spent fighting
@@ -464,6 +485,21 @@ object RoomLighting {
      * should not, and a point lights a record whichever way it has turned.
      */
     const val UNDER_LIGHT_CHANNEL = 1
+
+    /**
+     * The channel everything else lives on — Filament's default, 0 — which the ribbon and the
+     * ceiling spots light. **The art plates leave it (2026-09-12)** and keep only
+     * [UNDER_LIGHT_CHANNEL].
+     *
+     * The ceiling spots showed why. At a strength where their pools and shadows could be seen,
+     * the top row's covers — nearest the track — came out behind a grey-white wash, and the
+     * owner's own design had already said what lights a record: "the underlight of each CD
+     * album, that should be the real light source that lets us see the artwork". So the spots
+     * light the room — the timber, the panel, the brick, the cases' bodies and edges, and
+     * every shadow — and each cover is lit by its own album's light alone. The ribbon never
+     * reached a cover's face anyway (it is behind it: N·L below zero), so nothing is lost there.
+     */
+    const val ROOM_LIGHT_CHANNEL = 0
 
     /**
      * How much of the album's own hue the bulb takes, 0 = warm white, 1 = the full hue.
@@ -572,8 +608,85 @@ object RoomLighting {
      * exactly what happens under a real ribbon: a soft, shallow shadow rather than a hard one.
      * `RoomAtmosphere`'s soft-shadow settings — PCSS and the penumbra scales — have been sitting
      * unused since the key light went and apply to this.
+     *
+     * **No longer used to cast, as of 2026-09-12.** A spot with an 86° half-angle spreads its
+     * shadow map across 172° of view, so each texel covers centimetres of panel and the shadow
+     * it drew was too soft to see — a friend of the owner's said the room had no shadows at all,
+     * which was fair. The ceiling spots cast now ([CEILING_SPOT_CANDELA]); kept so the note
+     * above survives.
      */
     const val WASH_SHADOW_COLUMN = WASH_COLUMNS / 2
+
+    // ---- The third light: ceiling spots --------------------------------------------------
+    //
+    // The owner's choice for a third light, from four offered: warm spots on a shop ceiling
+    // track. They are what a friend's first impression was missing — "no shadows" — and what a
+    // record shop is lit by: pools of light down the racks from above, each throwing the
+    // records' shadows down the panel behind them.
+    //
+    // A pool of [CEILING_SPOT_COUNT], snapped to a fixed grid along the rack exactly as the
+    // ribbon is (trap 5, "a light that is part of the furniture must be positioned by the
+    // furniture"): the fittings are at fixed places on the ceiling and a pan only changes which
+    // of them exist. See RoomNodes.placeSpots.
+
+    /** How many spots are live at once: the one over the view and one either side of it. */
+    const val CEILING_SPOT_COUNT = 3
+
+    /** How far apart the fittings are along the ceiling track. The pools just overlap. */
+    const val CEILING_SPOT_SPACING = 0.55f
+
+    /** How far above the top of the rack the track runs — out of frame, as a ceiling is. */
+    const val CEILING_SPOT_RISE = 0.30f
+
+    /** How far in front of the rack the track runs: over the aisle, aimed back at the records. */
+    const val CEILING_SPOT_Z = 0.42f
+
+    /**
+     * How bright each spot is, in candela.
+     *
+     * "Moody but readable" was the owner's choice: the rack, the wall and the decor visible, the
+     * darkness only at the edges of the frame.
+     *
+     * **2400 was invisible.** On the owner's phone, in Vigilia, an empty bay showed no pool of
+     * light at all: at 0.6m that is ~6,700 lux against the ~100,000 the ribbon puts on the panel
+     * beside it and the 80,000–300,000 the underlights put on the covers, on a panel whose
+     * albedo is about one percent. A light has to dominate *somewhere* for its shadows to exist.
+     * At 8000cd a pool on the panel is 10–20% of the ribbon's peak — plainly there, still well
+     * under the covers, so the artwork stays the brightest thing in the room.
+     */
+    const val CEILING_SPOT_CANDELA = 8_000f
+
+    /**
+     * Beam, as half-angles from the spot's axis: 26° at the edge.
+     *
+     * It was 35°, which at 0.6m made pools that overlapped into one lit run — and, once the fog
+     * went in, three cones that between them filled the entire frame, so there was no dark air
+     * left to see a beam against and the fog read as a grey veil. Narrower, each spot is a cone
+     * you can see in the haze and a pool you can see on the rack, with shadow between them — a
+     * record shop at night rather than one with the house lights up.
+     */
+    const val CEILING_SPOT_INNER = 0.26f
+    const val CEILING_SPOT_OUTER = 0.46f
+
+    /** Reach: past the bottom of a tall rack, so no row sits beyond the cutoff (trap 6). */
+    const val CEILING_SPOT_FALLOFF = 2.5f
+
+    /**
+     * Each spot's shadow map, in texels per side: 1024, not the old key light's 2048.
+     *
+     * The key light needed 2048 because one map covered the whole lit wall, so a 10mm spine got
+     * only a few texels. A spot's map covers only its own cone — at 26° and about 0.6m that is a
+     * pool some 0.6m across — so 1024 is already about 0.6mm a texel on the rack, finer than the
+     * key light ever managed, for a quarter of the memory. Three of them at 2048 would be ~50MB
+     * of depth texture; at 1024 it is ~12MB.
+     *
+     * The spots take the key light's other shadow settings unchanged — [KEY_BULB_RADIUS] for the
+     * contact hardening, [KEY_SHADOW_NEAR], and the millimetre-scale biases, which are what stop
+     * a lid's shadow detaching from the lid — because they were tuned for a small shop spot at
+     * about this distance from this rack, which is exactly what these are. Only the far hint
+     * changes, to the spots' own reach, so a tall rack's bottom row is still inside the map.
+     */
+    const val CEILING_SPOT_SHADOW_PX = 1024
 
     /**
      * How many rows of the rack carry a live ribbon at once — four, and never positioned by the
@@ -919,8 +1032,15 @@ object RoomLighting {
      * literally zero, which is not what a dark room looks like — a dark room has shadow detail,
      * and film that clips its blacks reads as cheap rather than as moody. A sixth of what was
      * there lifts the floor off absolute black without competing with either light.
+     *
+     * **Raised to two fifths, 2026-09-12**, on a friend of the owner's first impression: too dark
+     * to see the shelf, and most of the room a black void. The owner chose "moody but readable".
+     * The flatness argument above still holds, which is why this stops well short of the old
+     * level and why the room also got things for the light to fall on — a brick wall, and
+     * ceiling spots that cast shadows (see [CEILING_SPOT_CANDELA]). Ambient alone would have
+     * lifted the void into a grey one.
      */
-    private const val AMBIENT_FILL = 0.17f
+    private const val AMBIENT_FILL = 0.40f
 
     /**
      * Irradiance as spherical harmonics: 3 bands, 9 coefficients, RGB each.

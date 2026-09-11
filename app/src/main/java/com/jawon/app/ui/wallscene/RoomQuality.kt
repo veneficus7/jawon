@@ -214,6 +214,24 @@ enum class QualityTier {
         }
 
     /**
+     * Steps per pixel for the volumetric fog (fog.mat), or 0 for no fog at all.
+     *
+     * **The most expensive thing in the room per pixel, and it is every pixel.** The fog is a
+     * raymarch — for each pixel the shader walks the view ray through the air in front of the
+     * rack, sampling density and the fittings' light at every step — over a quad that fills the
+     * frame. Fourteen steps on HIGH is enough for a spot's cone to read as a smooth volume with
+     * the per-pixel dither dissolving the steps into grain; seven on MEDIUM keeps the beams at
+     * half the cost and a coarser grain. LOW has none: the floor of the tier system is the
+     * device that cannot afford anything, and the room is whole without it.
+     */
+    val fogSteps: Int
+        get() = when (this) {
+            HIGH -> 14
+            MEDIUM -> 7
+            LOW -> 0
+        }
+
+    /**
      * Dust motes per square metre of wall.
      *
      * Never zero, and thinned rather than cut. Every mote is a blended quad, so the cost is

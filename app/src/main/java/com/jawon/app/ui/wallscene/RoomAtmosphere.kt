@@ -481,9 +481,17 @@ object RoomAtmosphere {
         // PCSS samples a variable penumbra per pixel and is the expensive one. PCF is a
         // fixed kernel — the shadow lands in the same place and is the same darkness, it
         // just no longer hardens at the contact point.
-        view.setShadowType(
-            if (tier.softShadows) View.ShadowType.PCSS else View.ShadowType.PCF
-        )
+        //
+        // **PCF on every tier now, and the reason is not cost.** PCSS samples its penumbra with
+        // a rotated pattern that changes per pixel, which Filament expects temporal
+        // anti-aliasing to average out — and this room has no TAA (see the dynamic resolution
+        // note above). So the moment the ceiling spots gave the room a shadow worth seeing, the
+        // top board's shadow edge crossed the covers below it as a grainy, stippled band, on the
+        // owner's phone. It also bought nothing real: a spot's bulb is 25mm across and 0.6m
+        // away, so the true penumbra on a panel 60mm behind a case is ~2.5mm — which PCF over a
+        // 1024px map of a 26° cone draws cleanly. (QualityTier.softShadows is left in place,
+        // unread, until TAA is.)
+        view.setShadowType(View.ShadowType.PCF)
         view.softShadowOptions = View.SoftShadowOptions().apply {
             penumbraScale = PENUMBRA_SCALE
             penumbraRatioScale = PENUMBRA_RATIO_SCALE

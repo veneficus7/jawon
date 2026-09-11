@@ -1,9 +1,25 @@
 # Custom Filament materials
 
-**Jawon ships exactly one:** `materials/dust.mat`, compiled to
-`assets/materials/dust.filamat`, which animates every dust mote in the vertex
-shader from a single `time` uniform. Everything else in the room uses SceneView's
-stock materials.
+**Jawon ships two:**
+
+- `materials/dust.mat` → `assets/materials/dust.filamat`, which animates every
+  dust mote in the vertex shader from a single `time` uniform — and, since
+  2026-09-12, lights each mote in its fragment shader from where the room's
+  fittings are (the strips and the ceiling spots), because the owner asked for
+  dust that catches the light and an unlit additive sprite cannot be shaded by
+  Filament's own lights.
+- `materials/fog.mat` → `assets/materials/fog.filamat`, a raymarched volumetric
+  fog lit by the same fittings. **Built and parked**: switched off at the owner's
+  call behind `RoomAir.FOG_ENABLED`, after a first tuning that veiled the room.
+
+Both use `getUserWorldPosition()` for anything positioned in the room: Filament's
+own world space in shaders is camera-relative, so comparing it against a fitting's
+position would be wrong by exactly where the camera is. Everything else in the
+room uses SceneView's stock materials.
+
+The `matc` used for both was Filament 1.72.1's, extracted to
+`C:\Users\loh\tools\filament-1.72.1\bin\matc.exe` on the owner's machine (outside
+the repo, as below).
 
 ## What the stock materials can and cannot do
 

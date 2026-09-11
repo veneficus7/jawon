@@ -200,4 +200,156 @@ object RoomAir {
 
     private fun srgb(linear: Float): Int =
         (linear.coerceIn(0f, 1f).pow(1f / 2.2f) * 255f).toInt()
+
+    // ---- Moving fog ---------------------------------------------------------------------
+
+    /**
+     * **Off, at the owner's call on 2026-09-12: "just remove fog for now".** A switch, not a
+     * deletion, for the reason `Features.kt` gives: the raymarcher, its material and FogAir stay
+     * built and tested, and bringing the fog back is this one line.
+     *
+     * Where it was when it went, so the next attempt starts from the lesson: the first tuning
+     * put the room behind a milky veil (a colourful cover at 0.10 saturation), and it was pulled
+     * back before anyone saw the second. Keep it sparse, keep extinction low, and remember it
+     * is the most expensive thing in the room per pixel — see [QualityTier.fogSteps].
+     */
+    const val FOG_ENABLED = false
+
+    /**
+     * The fog volume, front to back: from just behind where the disc settles when a record is
+     * open (FOCUS_DISC puts it about 0.23m out) back to the rack's front plane. The quad the
+     * shader draws from hangs at the front; each ray ends at the back.
+     */
+    const val FOG_FRONT_Z = 0.20f
+    const val FOG_BACK_Z = WallDimens.BOARD_D / 2f
+
+    /**
+     * How the fog is lit and how much it veils (fog.mat's `gain`): scattering from the strips,
+     * from the ceiling spots, and extinction. The fog crosses 13cm of air in front of the rack,
+     * so these are large per metre and small over the distance it actually spans.
+     *
+     * **The first values put the room behind a milky veil**, measured on the owner's phone: a
+     * colourful cover at 0.10 saturation, the dark gaps between cases at 82 instead of near
+     * black, the air above the rack at 62. The fog was both veiling everything (extinction 3)
+     * and adding grey light over it everywhere. Now it veils about a third as much and scatters
+     * less, so it reads as light in the air rather than as a filter over the room.
+     */
+    const val FOG_STRIP_GAIN = 5.0f
+    const val FOG_SPOT_GAIN = 2.4f
+    const val FOG_EXTINCTION = 1.1f
+
+    /** Overall density: half, with fog.mat's sparser threshold making the gaps between wisps. */
+    const val FOG_DENSITY = 0.5f
+
+    /**
+     * How much of the lamp colour fog far from any fitting scatters. Nearly nothing: fog that
+     * glows where there is no light is the grey veil, not haze. The fittings light it.
+     */
+    const val FOG_AMBIENT = 0.008f
+
+    /** The fog's density texture: tiling value noise, sampled twice at two scales in fog.mat. */
+    const val FOG_NOISE_PX = 256
+    private const val FOG_NOISE_SEED = 0x0F06
+
+    /**
+     * Soft tiling noise for the fog to be made of: two octaves of value noise whose lattices
+     * wrap at the texture's edge, so the shader can scroll it forever without a seam.
+     * Greyscale in every channel; fog.mat reads red.
+     */
+    fun fogNoise(): Bitmap {
+        val n = FOG_NOISE_PX
+        val pixels = IntArray(n * n)
+        for (y in 0 until n) for (x in 0 until n) {
+            val broad = periodic(x / 32f, y / 32f, n / 32, FOG_NOISE_SEED)
+            val fine = periodic(x / 12.8f, y / 12.8f, 20, FOG_NOISE_SEED + 1)
+            val g = ((broad * 0.7f + fine * 0.3f) * 255f).toInt().coerceIn(0, 255)
+            pixels[y * n + x] = AndroidColor.rgb(g, g, g)
+        }
+        return Bitmap.createBitmap(pixels, n, n, Bitmap.Config.ARGB_8888)
+    }
+
+    private fun periodic(x: Float, y: Float, period: Int, seed: Int): Float {
+        val xi = kotlin.math.floor(x).toInt()
+        val yi = kotlin.math.floor(y).toInt()
+        val xf = x - xi
+        val yf = y - yi
+        val sx = xf * xf * (3f - 2f * xf)
+        val sy = yf * yf * (3f - 2f * yf)
+        fun h(a: Int, b: Int): Float {
+            var v = Math.floorMod(a, period) * 374_761_393 + Math.floorMod(b, period) * 668_265_263 +
+                seed * 1_274_126_177
+            v = (v xor (v shr 13)) * 1_274_126_177
+            v = v xor (v shr 16)
+            return (v and 0xFFFFFF) / 0xFFFFFF.toFloat()
+        }
+        val top = h(xi, yi) + (h(xi + 1, yi) - h(xi, yi)) * sx
+        val bottom = h(xi, yi + 1) + (h(xi + 1, yi + 1) - h(xi, yi + 1)) * sx
+        return top + (bottom - top) * sy
+    }
+}
+
+/**
+ * How stirred the room's air is, and where the fog has drifted to — the "interacting" in the
+ * owner's "real moving interacting fog".
+ *
+ * The fog sheets are part of the room, so a pan already slides them against the rack by
+ * parallax. This adds what air does when something moves through it: it is dragged a little
+ * the way the view moved, and it churns while the motion lasts, then settles. Two numbers
+ * written to fog.mat once a frame; nothing per pixel on the CPU.
+ *
+ * Plain Kotlin, driven by the frame clock and the pan, so it is tested without a device.
+ */
+class FogAir {
+    /** Accumulated drag, in metres of noise space. Only ever eased, so it never snaps. */
+    var windX = 0f
+        private set
+    var windY = 0f
+        private set
+
+    /** 0 = still air, 1 = fully stirred. */
+    var stir = 0f
+        private set
+
+    private var lastClock = Float.NaN
+    private var lastPanX = 0f
+    private var lastPanY = 0f
+
+    fun update(clock: Float, panX: Float, panY: Float) {
+        if (lastClock.isNaN()) {
+            lastClock = clock
+            lastPanX = panX
+            lastPanY = panY
+            return
+        }
+        val dt = (clock - lastClock).coerceIn(0f, 0.1f)
+        lastClock = clock
+        if (dt <= 0f) return
+        val dx = panX - lastPanX
+        val dy = panY - lastPanY
+        lastPanX = panX
+        lastPanY = panY
+
+        // Drag: the air follows the view a fraction of the way.
+        windX += dx * DRAG
+        windY += dy * DRAG
+
+        // Stir: how fast the view is moving, against a brisk swipe, eased in fast and out slow
+        // — air takes a moment to settle after something has gone through it.
+        val speed = kotlin.math.sqrt(dx * dx + dy * dy) / dt
+        val target = (speed / BRISK_M_PER_S).coerceIn(0f, 1f)
+        val rate = if (target > stir) RISE_PER_S else SETTLE_PER_S
+        stir += (target - stir) * (1f - kotlin.math.exp(-rate * dt))
+    }
+
+    companion object {
+        /** How much of the pan the air is dragged by. */
+        const val DRAG = 0.35f
+
+        /** A pan this fast, in metres per second, stirs the air fully. */
+        const val BRISK_M_PER_S = 0.6f
+
+        /** How quickly stirring builds, and how slowly it dies away, per second. */
+        const val RISE_PER_S = 6f
+        const val SETTLE_PER_S = 0.8f
+    }
 }

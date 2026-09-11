@@ -17,6 +17,22 @@
 // quad, for the round sprite falloff) and the vertex colour's red channel is the mote's
 // drift phase, shared by all four of its corners so they move together.
 //
+// **The motes catch the room's light (2026-09-12).** The owner's note: "the dust effects that
+// going up should also reflect light cause they also a physical particles." They were a
+// constant glow in one colour, in every room, whatever lit them. An unlit additive sprite
+// cannot be shaded by Filament's lights, and a lit one would shade a flat quad facing the
+// camera — N·L against a beam coming from above and behind is close to nothing — so the
+// light is worked out here, from the two fittings whose places the room knows exactly:
+//
+//   - the strips, one per compartment, repeating every row pitch up the rack; a mote in the
+//     air under one takes its colour, fading with the drop below it and with the distance out
+//     from the rack;
+//   - the ceiling spots, repeating every fitting pitch along the track; a mote inside a spot's
+//     beam takes the lamp colour, softened at the beam's edge and by distance.
+//
+// Bright enough in the beams to cross bloom's threshold, so dust in a spot sparkles the way
+// dust in a real one does.
+//
 // Compiled by hand with a version-matched matc. See docs/materials.md.
 
 material {
@@ -35,6 +51,7 @@ material {
             name : time
         },
         {
+            // What a mote shows with no fitting near it: a faint catch of the room's ambient.
             type : float3,
             name : tint
         },
@@ -43,8 +60,41 @@ material {
             // how the reduced-motion setting switches dust off.
             type : float,
             name : opacity
+        },
+        {
+            // The strips: their light's colour (RoomScheme.tubeLight), the height of one strip's
+            // diodes, and the row pitch they repeat at.
+            type : float3,
+            name : stripColor
+        },
+        {
+            type : float2,
+            name : stripYPitch
+        },
+        {
+            // The ceiling spots: the lamp colour (RoomScheme.key), the track's height and depth
+            // with the fitting pitch, the beam's axis, and cos(outer), cos(inner).
+            type : float3,
+            name : spotColor
+        },
+        {
+            type : float3,
+            name : spotYZPitch
+        },
+        {
+            type : float3,
+            name : spotDir
+        },
+        {
+            type : float2,
+            name : spotCone
+        },
+        {
+            // How much each fitting lights the dust: strips, spots.
+            type : float2,
+            name : gain
         }
-    ],
+    ]
 }
 
 vertex {
@@ -75,8 +125,33 @@ fragment {
         float twinkle = 0.35 + 0.65 *
             (sin(materialParams.time * 0.9 + phase * 3.0) * 0.5 + 0.5);
 
+        // The user's world, not Filament's camera-relative rendering space: the fittings are
+        // at absolute places in the room.
+        vec3 p = getUserWorldPosition();
+
+        // Under a strip. `below` is how far this mote hangs below the nearest strip above it;
+        // the air right under a strip is the brightest there is, and the light thins out both
+        // downward and outward from the rack, which sits at about z = 0.
+        float pitch = materialParams.stripYPitch.y;
+        float below = mod(materialParams.stripYPitch.x - p.y, pitch);
+        float stripLit = exp(-below / 0.045) * exp(-max(p.z + 0.04, 0.0) / 0.09);
+
+        // Inside a spot's beam. The nearest fitting along the track, then the angle off its
+        // axis against the cone, and a soft inverse-square so near motes outshine far ones.
+        float spacing = materialParams.spotYZPitch.z;
+        float fx = p.x - floor(p.x / spacing + 0.5) * spacing;
+        vec3 toMote = vec3(fx, p.y - materialParams.spotYZPitch.x, p.z - materialParams.spotYZPitch.y);
+        float dist = max(length(toMote), 0.05);
+        float cosA = dot(toMote / dist, materialParams.spotDir);
+        float beam = smoothstep(materialParams.spotCone.x, materialParams.spotCone.y, cosA)
+            / (dist * dist * 4.0 + 0.3);
+
+        vec3 light = materialParams.tint
+            + materialParams.stripColor * stripLit * materialParams.gain.x
+            + materialParams.spotColor * beam * materialParams.gain.y;
+
         material.baseColor = vec4(
-            materialParams.tint * falloff * twinkle * materialParams.opacity,
+            light * falloff * twinkle * materialParams.opacity,
             1.0
         );
     }

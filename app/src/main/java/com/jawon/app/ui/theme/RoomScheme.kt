@@ -89,6 +89,15 @@ enum class RoomScheme(
     val wall: Color,
     /** The shelf boards themselves. */
     val board: Color,
+    /**
+     * The room's own wall, behind and around the rack: painted brick in this colour.
+     *
+     * The room had no wall until a friend of the owner's said it was too dark to see the shelf
+     * and looked like a void — the frame outside the rack was literally nothing. Each is darker
+     * than this room's [wall] (the rack's own back panel), so the rack is still the lit object
+     * in the room and the brick is where it stands.
+     */
+    val brick: Color,
     /** The 2D accent — labels, the version stamp, confirm buttons. */
     val accent: Color,
     /**
@@ -138,6 +147,8 @@ enum class RoomScheme(
         // wood between them goes black.
         wall = Color(0xFF56422F),
         board = Color(0xFF2F2318),
+        // Oxblood, the colour of a shop's back wall that has been painted over a few times.
+        brick = Color(0xFF3A2620),
         accent = MidnightPalette.lampAmber,
         plate = DeckPlate.GLASS,
         glass = DeckWindowGlass.AMBER,
@@ -184,6 +195,8 @@ enum class RoomScheme(
         // is only a colour in the air. Lifted just far enough off the wall behind it that the
         // shelf edge reads as a lit surface rather than as a line.
         board = Color(0xFF1A2028),
+        // Cold grey paint over brick — a loading bay, not a living room.
+        brick = Color(0xFF34383D),
         // Molten orange, so the room and the machine in it agree about what colour the app is.
         accent = Color(0xFFFF6B1A),
         plate = DeckPlate.BRUSHED,
@@ -216,6 +229,8 @@ enum class RoomScheme(
         // design and the lit bays have to stay the only thing in it.
         wall = Color(0xFF15151F),
         board = Color(0xFF12121F),
+        // Deep indigo paint: a bar's back room after closing.
+        brick = Color(0xFF22222F),
         accent = Color(0xFF22E6FF),
         plate = DeckPlate.GLASS,
         glass = DeckWindowGlass.CRT,
@@ -250,6 +265,8 @@ enum class RoomScheme(
         // darkest a panel has been and still shown its gradient on the owner's phone.
         wall = Color(0xFF141C17),
         board = Color(0xFF07140B),
+        // Near-black green over brick: a workshop wall behind a bench of equipment.
+        brick = Color(0xFF1D2520),
         accent = Color(0xFF00FF41),
         plate = DeckPlate.CHROME,
         glass = DeckWindowGlass.PIXEL,

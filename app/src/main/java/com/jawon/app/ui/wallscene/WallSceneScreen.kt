@@ -120,6 +120,10 @@ import com.jawon.app.ui.wallscene.WallDimens.TAN_HALF_FOV
 import com.jawon.app.ui.wallscene.WallDimens.WALL_Z
 import com.google.android.filament.LightManager
 import com.google.android.filament.RenderableManager
+import com.google.android.filament.Engine
+import com.google.android.filament.MaterialInstance
+import io.github.sceneview.geometries.Geometry
+import io.github.sceneview.geometries.UvCoordinate
 import com.google.android.filament.Renderer
 import com.google.android.filament.Texture
 import com.google.android.filament.TextureSampler
@@ -348,6 +352,63 @@ private const val BOARD_TILE_SEED = 0x2C41
 /** How thick the rack's end panels are. Shelving stock, same as a board. */
 private const val SIDE_T = 0.018f
 
+/** Fixed, so the room's brick is laid the same way every launch. */
+private const val BRICK_TILE_SEED = 0x6B1C
+
+/**
+ * The room's wall sits just behind the rack's back panel — whose tiles are 10mm deep, their
+ * front face at WALL_Z — so the rack stands against it rather than inside it.
+ */
+private const val ROOM_WALL_T = 0.010f
+private const val ROOM_WALL_Z = WALL_Z - 0.012f - ROOM_WALL_T / 2f
+
+/**
+ * How far past the camera's reach the room goes, so no edge of wall or floor can ever come
+ * into frame, at any zoom or any pan.
+ */
+private const val ROOM_MARGIN = 0.10f
+
+/**
+ * Painted brick: rough, and well under a plain dielectric's reflectance (trap 3 — 0.5 is the 4%
+ * an ordinary surface reflects) because paint over brick is matt.
+ *
+ * It was 0.35, and the wall came out striped: bright bands of the tube's colour, one course
+ * deep, a shelf-height apart, across brick nothing was lighting. They were the room's
+ * environment map — which carries a bright band per strip on purpose, for the glossy cases to
+ * reflect (RoomLighting.STRIP_BAND_LEVEL) — reflected off the brick. Matt paint shows none of
+ * that; at 0.12 (F0 ≈ 0.2%) it is gone, and the brick is lit by what actually lights it.
+ */
+private const val BRICK_REFLECTANCE = 0.12f
+
+/**
+ * The clear shell of every jewel case, as the glTF names it (tools/models/build_models.py).
+ */
+private const val SHELL_MATERIAL = "JewelCaseClear"
+
+/**
+ * **What clear plastic actually does: transmit almost everything and reflect the rest.**
+ *
+ * The model's shell is a near-white (0.90, 0.94, 1.0) at 16% opacity (22% on the held lid).
+ * Lit, that is a milky film over the artwork, and once the ceiling spots were bright enough to
+ * see, the top row's covers came out behind a grey-white wash — with a dark band across the top
+ * of each where the board above shadowed the film. Real polystyrene scatters next to nothing:
+ * it passes ~92% of the light behind it and adds a reflection on top. So the shell's own colour
+ * goes to near black, and its opacity to 8% — the 8% a clear surface loses — and what it shows
+ * is only its reflections: the strips' lines in the glass and a spot's glint, which are what
+ * made it read as plastic in the first place. Applied at load, so the model files are untouched.
+ */
+private const val SHELL_TINT = 0.03f
+private const val SHELL_ALPHA = 0.08f
+
+/** Makes a model's clear shell clear. See [SHELL_TINT]. */
+private fun clearTheShell(instances: Array<MaterialInstance>) {
+    instances.forEach { instance ->
+        if (instance.name == SHELL_MATERIAL && instance.material.hasParameter("baseColorFactor")) {
+            instance.setParameter("baseColorFactor", SHELL_TINT, SHELL_TINT, SHELL_TINT, SHELL_ALPHA)
+        }
+    }
+}
+
 /**
  * How the haze sheets sample their gradient: filtered both ways so its 256 rows blend into one
  * smooth fade, and clamped so the fade's first row cannot wrap round to meet its last.
@@ -569,6 +630,32 @@ private class RoomNodes {
     /** The ribbon's per-row carriers, beneath [keyLight]. See [placeRibbon]. */
     val ribbonRows = arrayOfNulls<SceneNode>(RoomLighting.SHELF_LIGHT_COUNT)
 
+    /**
+     * The ceiling spots' carrier. Only its X is written here; its height and depth come from the
+     * layout, on a node beneath it, so composition and the frame driver never write the same
+     * field. Rebuilt with the rack, which is why [placeSpots] compares identity as well as X.
+     */
+    var spotRig: SceneNode? = null
+    private var placedSpotRig: SceneNode? = null
+    private var placedSpotX = Float.NaN
+
+    /**
+     * Keeps the ceiling spots over the view — on the ceiling's own grid, never at the raw pan.
+     * Trap 5, "a light that is part of the furniture must be positioned by the furniture": the
+     * fittings sit every [RoomLighting.CEILING_SPOT_SPACING] along the track, and a pan only
+     * swaps which three of them are live, a whole fitting at a time.
+     */
+    fun placeSpots(panX: Float) {
+        val rig = spotRig ?: return
+        val pitch = RoomLighting.CEILING_SPOT_SPACING
+        val x = kotlin.math.round(panX / pitch) * pitch
+        if (rig !== placedSpotRig || x != placedSpotX) {
+            rig.position = Position(x, 0f, 0f)
+            placedSpotRig = rig
+            placedSpotX = x
+        }
+    }
+
     private var placedX = Float.NaN
     private var placedY = Float.NaN
     private var placedPair = Int.MIN_VALUE
@@ -685,6 +772,79 @@ private const val DISC_MIP_LEVELS = 10
 /** Built from `app/src/main/materials/dust.mat`; see `docs/materials.md`. */
 private const val DUST_MATERIAL_ASSET = "materials/dust.filamat"
 
+/** The volumetric fog. Hand-compiled like dust.filamat; see fog.mat and docs/materials.md. */
+private const val FOG_MATERIAL_ASSET = "materials/fog.filamat"
+
+/**
+ * The fog samples its noise with wrapping on, so it can scroll forever. Lazy for trap 23 —
+ * "never construct a Filament object at file or object level" — a plain `val` here is built
+ * before Filament's library loads and crashes the app on launch.
+ */
+private val FOG_SAMPLER by lazy {
+    TextureSampler(
+        TextureSampler.MinFilter.LINEAR,
+        TextureSampler.MagFilter.LINEAR,
+        TextureSampler.WrapMode.REPEAT
+    )
+}
+
+/**
+ * Tells a self-lit material — dust.mat and fog.mat both are — where the room's fittings are and
+ * what colour they shine: the strips (one per compartment, repeating every row pitch) and the
+ * ceiling spots (repeating every fitting pitch along the track, all aimed the same way). The
+ * very numbers the real LightNodes are built from, so a lit mote or a lit wisp of fog is lit by
+ * the light that is actually there.
+ */
+private fun MaterialInstance.setFittingLight(scheme: RoomScheme, rows: List<RowLayout>) {
+    val firstRow = rows.firstOrNull()
+    val stripY = (firstRow?.centerY ?: 0f) + WallDimens.CASE_H / 2f +
+        RoomLighting.SHELF_LIGHT_LIFT - RoomLighting.WASH_DROP
+    val rackTopY = (firstRow?.boardY ?: 0f) + ROW_PITCH
+    val rackBottomY = (rows.lastOrNull()?.boardY ?: 0f) - BOARD_H / 2f
+    val spotY = rackTopY + RoomLighting.CEILING_SPOT_RISE
+    // The same axis the spots are built with.
+    val aim = normalize(
+        Direction(0f, (rackTopY + rackBottomY) / 2f - spotY, WALL_Z - RoomLighting.CEILING_SPOT_Z)
+    )
+    val strip = scheme.tubeLight
+    val lamp = scheme.key
+    setParameter("stripColor", strip[0], strip[1], strip[2])
+    setParameter("stripYPitch", stripY, ROW_PITCH)
+    setParameter("spotColor", lamp[0], lamp[1], lamp[2])
+    setParameter("spotYZPitch", spotY, RoomLighting.CEILING_SPOT_Z, RoomLighting.CEILING_SPOT_SPACING)
+    setParameter("spotDir", aim.x, aim.y, aim.z)
+    setParameter(
+        "spotCone",
+        kotlin.math.cos(RoomLighting.CEILING_SPOT_OUTER),
+        kotlin.math.cos(RoomLighting.CEILING_SPOT_INNER)
+    )
+}
+
+/**
+ * The fog volume's front face: one quad at [RoomAir.FOG_FRONT_Z] facing the camera, the
+ * surface every fog ray starts from. uv0 runs 0..1 across it so fog.mat can fade its edges.
+ */
+private fun buildFogVolume(
+    engine: Engine,
+    left: Float,
+    right: Float,
+    bottom: Float,
+    top: Float
+): Geometry {
+    val z = RoomAir.FOG_FRONT_Z
+    val facing = Direction(z = 1f)
+    val corners = listOf(
+        Position(left, bottom, z) to UvCoordinate(0f, 0f),
+        Position(right, bottom, z) to UvCoordinate(1f, 0f),
+        Position(right, top, z) to UvCoordinate(1f, 1f),
+        Position(left, top, z) to UvCoordinate(0f, 1f)
+    )
+    return Geometry.Builder(RenderableManager.PrimitiveType.TRIANGLES)
+        .vertices(corners.map { (p, uv) -> Geometry.Vertex(position = p, normal = facing, uvCoordinate = uv) })
+        .indices(listOf(0, 1, 2, 0, 2, 3))
+        .build(engine)
+}
+
 /**
  * The case and disc geometry, generated by `tools/models/build_models.py`.
  *
@@ -744,6 +904,17 @@ private const val MAX_CASE_SLOTS = 512
  * notice them individually.
  */
 private const val DUST_OPACITY = 0.32f
+
+/**
+ * How the motes are lit (dust.mat): a faint catch of the lamp colour everywhere, a third of
+ * the old constant glow so the lit ones stand out, and then what the fittings add. A mote right
+ * under a strip is three times the old glow in the strip's colour; one in the middle of a spot's
+ * beam, close to the fitting, is a few times brighter again and crosses bloom's threshold — dust
+ * sparkling in a spot, which is what the owner described.
+ */
+private const val DUST_UNLIT = 0.35f
+private const val DUST_STRIP_GAIN = 3.0f
+private const val DUST_SPOT_GAIN = 2.2f
 
 
 /**
@@ -1127,6 +1298,16 @@ fun WallSceneScreen(
         val discModel = rememberModelInstance(modelLoader, DISC_MODEL_ASSET)
         val shardsModel = rememberModelInstance(modelLoader, DISC_SHARDS_MODEL_ASSET)
 
+        // Every jewel case's shell made clear — the shelf's and the held lid's. See SHELL_TINT.
+        // Once each: the instances live for the scene, and the held lid arrives when it loads.
+        remember(caseInstances) {
+            caseInstances.forEach { clearTheShell(it.materialInstances) }
+            caseInstances
+        }
+        LaunchedEffect(lidModel) {
+            lidModel?.let { clearTheShell(it.materialInstances) }
+        }
+
         // Sized to the wall so density holds as the library grows, and rebuilt only when
         // those dimensions actually change — which is when albums are added, not per frame.
         val dustGeometry = remember(engine, layout.wallWidth, layout.wallHeight) {
@@ -1155,6 +1336,75 @@ fun WallSceneScreen(
                 setParameter("opacity", if (reduceMotion) 0f else DUST_OPACITY)
                 setParameter("time", 0f)
             }
+        }
+
+        // **What lights the dust**: the strips and the ceiling spots, in this room's colours and
+        // at the rack's own positions, so a mote glints where a real one would — under a strip,
+        // or crossing a spot's beam. See dust.mat for why it is worked out there rather than by
+        // Filament's lights. Rewritten when the room or the rack's shape changes, never per frame.
+        remember(dustMaterial, roomScheme, layout.rows) {
+            val lamp = roomScheme.key
+            dustMaterial.setFittingLight(roomScheme, layout.rows)
+            dustMaterial.setParameter(
+                "tint",
+                lamp[0] * DUST_UNLIT,
+                lamp[1] * DUST_UNLIT,
+                lamp[2] * DUST_UNLIT
+            )
+            dustMaterial.setParameter("gain", DUST_STRIP_GAIN, DUST_SPOT_GAIN)
+            roomScheme
+        }
+
+        // **The volumetric fog** — see fog.mat. One material instance for the life of the
+        // scene, fed the same fittings as the dust, and one quad at the front of the fog volume
+        // covering everywhere the camera can reach. Nothing at all on LOW, which has no steps.
+        // Zero steps is no fog: the node stays hidden and the frame driver writes nothing.
+        val fogSteps = if (RoomAir.FOG_ENABLED) initialTier.fogSteps else 0
+        val fogNoise = remember(engine) {
+            ImageTexture.Builder()
+                .bitmap(RoomAir.fogNoise(), TextureType.DATA)
+                .build(engine)
+        }
+        val fogMaterial = remember(materialLoader) {
+            val material = materialLoader.createMaterial(FOG_MATERIAL_ASSET)
+            materialLoader.createInstance(material).apply {
+                setParameter("noise", fogNoise, FOG_SAMPLER)
+                setParameter("time", 0f)
+                setParameter("wind", 0f, 0f)
+                setParameter("stir", 0f)
+                setParameter("opacity", if (fogSteps > 0) RoomAir.FOG_DENSITY else 0f)
+                setParameter("stepsBack", fogSteps.toFloat(), RoomAir.FOG_BACK_Z)
+                setParameter(
+                    "gain",
+                    RoomAir.FOG_STRIP_GAIN,
+                    RoomAir.FOG_SPOT_GAIN,
+                    RoomAir.FOG_EXTINCTION
+                )
+            }
+        }
+        remember(fogMaterial, roomScheme, layout.rows) {
+            val lamp = roomScheme.key
+            fogMaterial.setFittingLight(roomScheme, layout.rows)
+            fogMaterial.setParameter(
+                "base",
+                lamp[0] * RoomAir.FOG_AMBIENT,
+                lamp[1] * RoomAir.FOG_AMBIENT,
+                lamp[2] * RoomAir.FOG_AMBIENT
+            )
+            roomScheme
+        }
+        val fogAir = remember { FogAir() }
+        val fogGeometry = remember(engine, layout.minPanX, layout.maxPanX, layout.minPanY, layout.maxPanY, halfW, halfH) {
+            buildFogVolume(
+                engine,
+                left = layout.minPanX - halfW - RoomAir.FOG_FRONT_Z,
+                right = layout.maxPanX + halfW + RoomAir.FOG_FRONT_Z,
+                bottom = layout.floorY,
+                top = layout.maxPanY + halfH + RoomAir.FOG_FRONT_Z
+            )
+        }
+        DisposableEffect(fogGeometry) {
+            onDispose { engine.safeDestroyGeometry(fogGeometry) }
         }
 
         val fonts = remember(context) { CaseArt.Fonts(context) }
@@ -1946,6 +2196,16 @@ fun WallSceneScreen(
                 // per mote, which is what DESIGN.md asks for.
                 if (!reduceMotion) dustMaterial.setParameter("time", sequence.clock)
 
+                // The fog drifts with the clock and is dragged and stirred by the pan — three
+                // uniform writes, and FogAir's few lines of arithmetic. Held still with reduced
+                // motion: the fog stays, its movement goes.
+                if (fogSteps > 0 && !reduceMotion) {
+                    fogAir.update(sequence.clock, panX.value, panY.value)
+                    fogMaterial.setParameter("time", sequence.clock)
+                    fogMaterial.setParameter("wind", fogAir.windX, fogAir.windY)
+                    fogMaterial.setParameter("stir", fogAir.stir)
+                }
+
                 // Take the room's own atmosphere back off SceneView.
                 //
                 // SceneView writes a `RenderQuality` preset over this View from a
@@ -2059,6 +2319,7 @@ fun WallSceneScreen(
                 // exactly (panX, panY) here, which dragged the whole lit pattern across the
                 // fixed timber on every swipe — see RoomLighting.SHELF_LIGHT_COUNT.
                 roomNodes.placeRibbon(panX.value, panY.value, layout.rows.size)
+                roomNodes.placeSpots(panX.value)
 
                 // Recolour the bulbs in place rather than rebuilding the lights.
                 //
@@ -2399,12 +2660,10 @@ fun WallSceneScreen(
                                 RoomLighting.WASH_CONE_OUTER
                             )
                             falloff(RoomLighting.WASH_FALLOFF)
-                            // One diode per ribbon casts, and only on the tier that can afford
-                            // it. See RoomLighting.WASH_SHADOW_COLUMN.
-                            castShadows(
-                                column == RoomLighting.WASH_SHADOW_COLUMN &&
-                                    initialTier.shadowsOnFixtures
-                            )
+                            // None of the ribbon casts any more: the ceiling spots do, with a
+                            // beam narrow enough for the shadow to be sharp enough to see. See
+                            // RoomLighting.WASH_SHADOW_COLUMN for why the ribbon's was not.
+                            castShadows(false)
                         }
                     )
                 }
@@ -2461,6 +2720,17 @@ fun WallSceneScreen(
                 ImageTexture.Builder()
                     .bitmap(
                         RoomAir.haze(roomScheme.tubeLight, RoomAir.HAZE_FRONT_ALPHA, RoomAir.HAZE_FRONT_H),
+                        TextureType.COLOR
+                    )
+                    .build(engine)
+            }
+
+            // **The room's own wall: painted brick**, one texture for every tile, in this room's
+            // colour. See RoomSurface.brickTile, and the wall itself below.
+            val brickTexture = remember(roomScheme) {
+                ImageTexture.Builder()
+                    .bitmap(
+                        RoomSurface.brickTile(roomScheme.brick, BRICK_TILE_SEED),
                         TextureType.COLOR
                     )
                     .build(engine)
@@ -2702,6 +2972,125 @@ fun WallSceneScreen(
                         }
                     }
 
+                    // **The room itself: a brick wall the rack stands against.**
+                    //
+                    // Until now there was nothing outside the rack. A friend of the owner's said
+                    // the room was too dark to see the shelf and looked like a black void, and
+                    // with one shelf of records that was most of the frame, literally empty.
+                    //
+                    // Sized to what the camera can reach — the whole pan range plus a frame in
+                    // each direction at the furthest zoom, then a margin — and not a metre more.
+                    // A fixed 24m wall was tried once for the rack's own panel and browsing fell
+                    // to 31fps: it is a shadow receiver, and the shadows are tuned to a scene
+                    // about 1.5m across (see the note on this block above).
+                    //
+                    // Tiled with the rack's own discipline: one shared texture, every tile its
+                    // own MaterialInstance because a CubeNode destroys the one it is handed.
+                    // Tiles hidden entirely behind the rack are skipped rather than drawn and
+                    // depth-rejected.
+                    val rackLeft = -panelW / 2f - SIDE_T
+                    val rackRight = panelW / 2f + SIDE_T
+                    val roomLeft = minOf(layout.minPanX - halfW, rackLeft) - ROOM_MARGIN
+                    val roomRight = maxOf(layout.maxPanX + halfW, rackRight) + ROOM_MARGIN
+                    val roomBottom = layout.floorY
+                    val roomTop = maxOf(layout.maxPanY + halfH, rackTopY + BOARD_H) + ROOM_MARGIN
+                    val tile = RoomSurface.TILE_M
+                    val brickCols = ceil((roomRight - roomLeft) / tile).toInt().coerceIn(1, 160)
+                    val brickRows = ceil((roomTop - roomBottom) / tile).toInt().coerceIn(1, 48)
+                    for (by in 0 until brickRows) {
+                        for (bx in 0 until brickCols) {
+                            val x0 = roomLeft + bx * tile
+                            val y0 = roomBottom + by * tile
+                            val hidden = x0 >= rackLeft && x0 + tile <= rackRight &&
+                                y0 >= rackBottomY && y0 + tile <= rackTopY
+                            if (!hidden) key("brick", bx, by) {
+                                val brick = remember(roomScheme, bx, by) {
+                                    materialLoader.createTextureInstance(
+                                        brickTexture,
+                                        metallic = 0f,
+                                        roughness = 0.9f,
+                                        reflectance = BRICK_REFLECTANCE
+                                    )
+                                }
+                                CubeNode(
+                                    size = Size(tile, tile, ROOM_WALL_T),
+                                    position = Position(x0 + tile / 2f, y0 + tile / 2f, ROOM_WALL_Z),
+                                    materialInstance = brick,
+                                    apply = {
+                                        isTouchable = false
+                                        isShadowReceiver = true
+                                        isShadowCaster = false
+                                    }
+                                )
+                            }
+                        }
+                    }
+
+                    // **The ceiling spots** — the third light, and the room's shadow casters.
+                    // See RoomLighting.CEILING_SPOT_CANDELA. The outer node's X is the frame
+                    // driver's (RoomNodes.placeSpots, snapped to the track's grid); this inner
+                    // one holds the height and depth, which come from the rack. Aimed at the
+                    // middle of the rack's back panel, so a tall rack is lit top to bottom.
+                    val spotY = rackTopY + RoomLighting.CEILING_SPOT_RISE
+                    val spotAimY = (rackTopY + rackBottomY) / 2f
+                    Node(apply = { roomNodes.spotRig = this }) {
+                        Node(position = Position(0f, spotY, RoomLighting.CEILING_SPOT_Z)) {
+                            repeat(RoomLighting.CEILING_SPOT_COUNT) { i ->
+                                val centre = i == RoomLighting.CEILING_SPOT_COUNT / 2
+                                LightNode(
+                                    type = LightManager.Type.FOCUSED_SPOT,
+                                    position = Position(
+                                        (i - RoomLighting.CEILING_SPOT_COUNT / 2) *
+                                            RoomLighting.CEILING_SPOT_SPACING,
+                                        0f,
+                                        0f
+                                    ),
+                                    direction = normalize(
+                                        Direction(
+                                            0f,
+                                            spotAimY - spotY,
+                                            WALL_Z - RoomLighting.CEILING_SPOT_Z
+                                        )
+                                    ),
+                                    apply = {
+                                        color(roomScheme.key[0], roomScheme.key[1], roomScheme.key[2])
+                                        intensityCandela(RoomLighting.CEILING_SPOT_CANDELA)
+                                        spotLightCone(
+                                            RoomLighting.CEILING_SPOT_INNER,
+                                            RoomLighting.CEILING_SPOT_OUTER
+                                        )
+                                        falloff(RoomLighting.CEILING_SPOT_FALLOFF)
+                                        // All three at HIGH, the one over the view at MEDIUM,
+                                        // none at LOW: a shadow map is a pass per casting light.
+                                        castShadows(
+                                            initialTier.shadowsOnFixtures &&
+                                                (centre || initialTier == QualityTier.HIGH)
+                                        )
+                                        // **Shadows tuned for this room, not Filament's
+                                        // defaults**, which are sized for metre-scale scenes:
+                                        // at 1024px over a whole generic depth range with
+                                        // metre-scale bias, a case's shadow came out blurred
+                                        // and pushed off the case. See
+                                        // RoomLighting.CEILING_SPOT_SHADOW_PX.
+                                        shadowOptions(
+                                            LightManager.ShadowOptions().apply {
+                                                mapSize = minOf(
+                                                    RoomLighting.CEILING_SPOT_SHADOW_PX,
+                                                    initialTier.shadowMapPx
+                                                )
+                                                shadowBulbRadius = RoomLighting.KEY_BULB_RADIUS
+                                                shadowNearHint = RoomLighting.KEY_SHADOW_NEAR
+                                                shadowFarHint = RoomLighting.CEILING_SPOT_FALLOFF
+                                                constantBias = RoomLighting.KEY_SHADOW_CONSTANT_BIAS
+                                                normalBias = RoomLighting.KEY_SHADOW_NORMAL_BIAS
+                                            }
+                                        )
+                                    }
+                                )
+                            }
+                        }
+                    }
+
                     // **A floor, which this room has never had.**
                     //
                     // RoomAtmosphere's own fog comment said so outright: "Height fog would need a
@@ -2715,11 +3104,14 @@ fun WallSceneScreen(
                     // lifetime, and from the wall's own colour darkened, so it belongs to
                     // whichever of the four modes is showing without being tuned four times.
                     val floorDepth = FLOOR_REACH - WALL_Z
-                    val floorSurface = remember(roomScheme, panelW, floorDepth) {
+                    // Wall to wall now, not rack-wide: with a room around the rack, a floor that
+                    // stopped at the rack's ends was a slab floating in front of a wall.
+                    val floorW = roomRight - roomLeft
+                    val floorSurface = remember(roomScheme, floorW, floorDepth) {
                         val texture = ImageTexture.Builder()
                             // sRGB, for the same reason as the wall above.
                             .bitmap(
-                                RoomSurface.floorBitmap(roomScheme.wall, panelW / floorDepth),
+                                RoomSurface.floorBitmap(roomScheme.wall, floorW / floorDepth),
                                 TextureType.COLOR
                             )
                             .build(engine)
@@ -2735,9 +3127,9 @@ fun WallSceneScreen(
                         )
                     }
                     CubeNode(
-                        size = Size(panelW, FLOOR_T, floorDepth),
+                        size = Size(floorW, FLOOR_T, floorDepth),
                         position = Position(
-                            (layout.maxPanX + layout.minPanX) / 2f,
+                            (roomLeft + roomRight) / 2f,
                             layout.floorY,
                             // Centred between the wall and the floor's far reach, so the slab
                             // runs from behind the shelving to past the camera.
@@ -2978,6 +3370,22 @@ fun WallSceneScreen(
                     isShadowCaster = false
                     isShadowReceiver = false
                     isVisible = !reduceMotion
+                }
+            )
+            // The volumetric fog: one quad, raymarched per pixel by fog.mat. Absent on LOW.
+            // Kept on with reduced motion — it is atmosphere, not movement — but held still;
+            // see the frame driver.
+            MeshNode(
+                primitiveType = RenderableManager.PrimitiveType.TRIANGLES,
+                vertexBuffer = fogGeometry.vertexBuffer,
+                indexBuffer = fogGeometry.indexBuffer,
+                boundingBox = fogGeometry.boundingBox,
+                materialInstance = fogMaterial,
+                apply = {
+                    isTouchable = false
+                    isShadowCaster = false
+                    isShadowReceiver = false
+                    isVisible = fogSteps > 0
                 }
             )
 

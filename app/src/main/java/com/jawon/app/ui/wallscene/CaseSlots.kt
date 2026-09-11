@@ -843,6 +843,13 @@ fun SceneScope.CaseSlotNodes(
                                         RoomLighting.UNDER_LIGHT_CHANNEL,
                                         true
                                     )
+                                    // Off the room's own channel: the art is lit by its underlight and nothing
+                                    // else. See RoomLighting.ROOM_LIGHT_CHANNEL.
+                                    renderableManager.setLightChannel(
+                                        renderableInstance,
+                                        RoomLighting.ROOM_LIGHT_CHANNEL,
+                                        false
+                                    )
                                 }
                             }
                         }
@@ -898,6 +905,13 @@ fun SceneScope.CaseSlotNodes(
                                         RoomLighting.UNDER_LIGHT_CHANNEL,
                                         true
                                     )
+                                    // Off the room's own channel: the art is lit by its underlight and nothing
+                                    // else. See RoomLighting.ROOM_LIGHT_CHANNEL.
+                                    renderableManager.setLightChannel(
+                                        renderableInstance,
+                                        RoomLighting.ROOM_LIGHT_CHANNEL,
+                                        false
+                                    )
                                 }
                             }
                         }
@@ -929,6 +943,13 @@ fun SceneScope.CaseSlotNodes(
                                         renderableInstance,
                                         RoomLighting.UNDER_LIGHT_CHANNEL,
                                         true
+                                    )
+                                    // Off the room's own channel: the art is lit by its underlight and nothing
+                                    // else. See RoomLighting.ROOM_LIGHT_CHANNEL.
+                                    renderableManager.setLightChannel(
+                                        renderableInstance,
+                                        RoomLighting.ROOM_LIGHT_CHANNEL,
+                                        false
                                     )
                                 }
                             }

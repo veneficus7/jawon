@@ -214,6 +214,82 @@ object RoomSurface {
     }
 
     /** The old flat-mottle wall, kept for the tests that pin the mean of [mottle]. */
+    /**
+     * **Painted brick, for the room's own wall — the one behind and around the rack.**
+     *
+     * The room had no wall. Outside the rack's back panel there was nothing to draw, so most of
+     * the frame was black: a friend of the owner's said he could not see the shelf for the dark,
+     * and that the room looked like a void. A record shop's rack stands against a wall, and
+     * painted brick is the shop wall — it has a pattern the eye reads as a surface at any light
+     * level, and a ceiling spot raking across it shows it off.
+     *
+     * One [TILE_M] tile holds whole bricks so it wraps: two per course, [BRICK_COURSES] courses,
+     * the running bond offset by exactly half a brick, which also wraps because two halves make
+     * a brick. Every random term is taken modulo the tile, so neighbouring tiles meet with no
+     * seam. Mortar is darker than the face — no normal map is available (see ENGINEERING.md's
+     * custom-materials row), so the recess is carried in the albedo, softened over a couple of
+     * texels so the joints do not shimmer.
+     */
+    fun brickTile(color: Color, seed: Int): Bitmap {
+        val argb = color.toArgb()
+        val baseR = AndroidColor.red(argb).toFloat()
+        val baseG = AndroidColor.green(argb).toFloat()
+        val baseB = AndroidColor.blue(argb).toFloat()
+        val brickW = TEX_PX / 2f
+        val courseH = TEX_PX / BRICK_COURSES.toFloat()
+        val joint = BRICK_JOINT_PX
+
+        val pixels = IntArray(TEX_PX * TEX_PX)
+        for (y in 0 until TEX_PX) {
+            val course = (y / courseH).toInt()
+            val inCourseY = y - course * courseH
+            val offset = if (course % 2 == 1) brickW / 2f else 0f
+            for (x in 0 until TEX_PX) {
+                val sx = (x + offset) % TEX_PX
+                val brick = (sx / brickW).toInt() % 2
+                val inBrickX = sx - brick * brickW
+
+                // Distance to the nearest joint, in texels, both ways.
+                val dx = minOf(inBrickX, brickW - inBrickX)
+                val dy = minOf(inCourseY, courseH - inCourseY)
+                val d = minOf(dx, dy)
+                val face = smooth(joint * 0.5f - 1f, joint * 0.5f + 1f, d)
+
+                // Each brick its own tone — keyed on (brick, course), both already modulo the tile.
+                val tone = 1f + (hash(brick, course, seed) - 0.5f) * 2f * BRICK_TONE
+                // Fine texture across the face: periodic value noise, 16 cells a tile.
+                val grain = 1f + (periodicNoise(x / 32f, y / 32f, 16, seed + 7) - 0.5f) * 2f * BRICK_GRAIN
+
+                val k = MORTAR_LEVEL + (tone * grain - MORTAR_LEVEL) * face
+                pixels[y * TEX_PX + x] = AndroidColor.rgb(
+                    (baseR * k).toInt().coerceIn(0, 255),
+                    (baseG * k).toInt().coerceIn(0, 255),
+                    (baseB * k).toInt().coerceIn(0, 255)
+                )
+            }
+        }
+        return Bitmap.createBitmap(pixels, TEX_PX, TEX_PX, Bitmap.Config.ARGB_8888)
+    }
+
+    private fun smooth(e0: Float, e1: Float, x: Float): Float {
+        val t = ((x - e0) / (e1 - e0)).coerceIn(0f, 1f)
+        return t * t * (3f - 2f * t)
+    }
+
+    /** [valueNoise], but its lattice wraps every [period] cells, so a tile of it tiles. */
+    private fun periodicNoise(x: Float, y: Float, period: Int, seed: Int): Float {
+        val xi = kotlin.math.floor(x).toInt()
+        val yi = kotlin.math.floor(y).toInt()
+        val xf = x - xi
+        val yf = y - yi
+        val sx = xf * xf * (3f - 2f * xf)
+        val sy = yf * yf * (3f - 2f * yf)
+        fun h(a: Int, b: Int) = hash(Math.floorMod(a, period), Math.floorMod(b, period), seed)
+        val top = h(xi, yi) + (h(xi + 1, yi) - h(xi, yi)) * sx
+        val bottom = h(xi, yi + 1) + (h(xi + 1, yi + 1) - h(xi, yi + 1)) * sx
+        return top + (bottom - top) * sy
+    }
+
     fun wallBitmap(color: Color, aspect: Float): Bitmap =
         bitmapOf(color, aspect, WALL_CONTRAST, WALL_SEED, tintScale = 1f)
 
@@ -325,6 +401,23 @@ object RoomSurface {
     private const val VENEER_WANDER = 0.018f
 
     private const val TWO_PI = 6.2831855f
+
+    /**
+     * Brick courses per tile: six, so a course is 50mm and a brick 150mm — a little under a
+     * standard 215x65 brick, in about its proportion, which keeps the pattern legible in a frame
+     * that is only 26cm wide.
+     */
+    const val BRICK_COURSES = 6
+
+    /** Mortar joint width in texels: 12, about 7mm at [TILE_M] over [TEX_PX]. */
+    private const val BRICK_JOINT_PX = 12f
+
+    /** How dark the mortar is against the brick face — the recess, carried in the albedo. */
+    private const val MORTAR_LEVEL = 0.55f
+
+    /** Brick-to-brick tone spread, and the fine grain across each face. Paint evens both out. */
+    private const val BRICK_TONE = 0.10f
+    private const val BRICK_GRAIN = 0.05f
 
     private const val WALL_SEED = 0x5A17
     private const val FLOOR_SEED = 0x10F1

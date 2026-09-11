@@ -1,0 +1,193 @@
+// Volumetric fog: light that travels through the air in front of the rack.
+//
+// The owner, 2026-09-12: "real moving interacting fog would look so cinematic with lights we
+// have", and then, on seeing the plan for layered sheets: "i need volumetric fog, or else my
+// lights cant realistically travel through fog". Sheets fake the look of haze; they cannot put
+// a beam *through* it. So this raymarches.
+//
+// One quad hangs at the front of the fog volume (FOG_FRONT_Z, in front of the rack and behind
+// where the disc settles). For each pixel it covers, the shader walks the view ray from that
+// quad back to the rack's front plane in `steps` steps, and at every step it
+//
+//   - reads the fog's density from a tiling noise texture, sheared through depth so the
+//     noise varies in three dimensions, drifting on its own and dragged and churned by the pan
+//     (`wind`, `stir`, from FogAir);
+//   - works out how much light reaches that point of air from the room's fittings, from where
+//     they actually are: each ceiling spot's cone (the nearest fitting on the track, its axis,
+//     its inner and outer angle, inverse-square), and the strip above each compartment
+//     (brightest just under it and near the rack, fading down and out);
+//   - adds that light, scattered toward the camera, and loses some of what is behind to the
+//     density it just crossed.
+//
+// So a spot's beam is a lit cone hanging in the air with real perspective and depth, and the
+// light *in* the fog is exactly the light the room has — the same positions, angles and colours
+// the real LightNodes are built from, and the same model dust.mat uses for the motes.
+//
+// **What it cannot do**: Filament gives a custom material no access to its shadow maps, so a
+// beam is not cut off by something standing in it. The volume ends at the rack's front plane,
+// which is where almost everything the beams would hit is.
+//
+// The start of each ray is offset by a per-pixel dither so the steps do not band. Premultiplied
+// transparent blending: the fog adds the light it scattered and veils what is behind it by
+// what it absorbed.
+//
+// Compiled by hand with a version-matched matc. See docs/materials.md.
+
+material {
+    name : Fog,
+    requires : [
+        uv0
+    ],
+    shadingModel : unlit,
+    blending : transparent,
+    depthWrite : false,
+    parameters : [
+        {
+            type : sampler2d,
+            name : noise
+        },
+        {
+            type : float,
+            name : time
+        },
+        {
+            type : float2,
+            name : wind
+        },
+        {
+            type : float,
+            name : stir
+        },
+        {
+            // Master density. Zero hides the fog.
+            type : float,
+            name : opacity
+        },
+        {
+            // Steps per ray (tier), and the z of the volume's back — the rack's front plane.
+            type : float2,
+            name : stepsBack
+        },
+        {
+            // What fog nowhere near a fitting scatters: a faint catch of the room's ambient.
+            type : float3,
+            name : base
+        },
+        {
+            type : float3,
+            name : stripColor
+        },
+        {
+            type : float2,
+            name : stripYPitch
+        },
+        {
+            type : float3,
+            name : spotColor
+        },
+        {
+            type : float3,
+            name : spotYZPitch
+        },
+        {
+            type : float3,
+            name : spotDir
+        },
+        {
+            type : float2,
+            name : spotCone
+        },
+        {
+            // Scattering from the strips, from the spots, and extinction (how much it veils).
+            type : float3,
+            name : gain
+        }
+    ]
+}
+
+fragment {
+    // Density of the fog at a point of the room, 0..1.
+    float fogDensity(vec3 q, float t, vec2 wind, float stir) {
+        // Two octaves, each sheared through depth so the noise changes along the ray as well
+        // as across the screen — the cheap way to get three dimensions out of one 2D texture.
+        vec2 broadUv = q.xy * 2.2 + vec2(q.z * 1.7, -q.z * 1.1)
+            + vec2(t * 0.011, t * 0.004) + wind * 0.8;
+        float broad = texture(materialParams_noise, broadUv).r;
+        vec2 warp = (vec2(broad, texture(materialParams_noise, broadUv.yx + 0.37).r) - 0.5)
+            * (0.12 + 0.55 * stir);
+        vec2 fineUv = q.xy * 5.1 + vec2(-q.z * 2.3, q.z * 1.9)
+            + vec2(-t * 0.019, t * 0.007) + wind * 1.4 + warp;
+        float fine = texture(materialParams_noise, fineUv).r;
+        // Sparse: wisps with clear air between them. The first threshold (0.28) filled most of
+        // the volume and the room came out behind a uniform milky veil — cover saturation
+        // measured 0.10 on the owner's phone. Real haze has holes in it; that is what lets a
+        // beam read as a beam.
+        return smoothstep(0.42, 0.92, broad * 0.62 + fine * 0.38);
+    }
+
+    // Light arriving at a point of air from the room's fittings.
+    vec3 lightAt(vec3 q) {
+        // The strips: the air just under one, near the rack, is the brightest there is.
+        float pitch = materialParams.stripYPitch.y;
+        float below = mod(materialParams.stripYPitch.x - q.y, pitch);
+        float strip = exp(-below / 0.06) * exp(-max(q.z + 0.04, 0.0) / 0.12);
+
+        // The ceiling spots: the nearest fitting along the track, then the cone.
+        float spacing = materialParams.spotYZPitch.z;
+        float fx = q.x - floor(q.x / spacing + 0.5) * spacing;
+        vec3 toQ = vec3(fx, q.y - materialParams.spotYZPitch.x, q.z - materialParams.spotYZPitch.y);
+        float dist = max(length(toQ), 0.05);
+        float cosA = dot(toQ / dist, materialParams.spotDir);
+        float beam = smoothstep(materialParams.spotCone.x, materialParams.spotCone.y, cosA)
+            / (dist * dist * 3.0 + 0.25);
+
+        return materialParams.base
+            + materialParams.stripColor * strip * materialParams.gain.x
+            + materialParams.spotColor * beam * materialParams.gain.y;
+    }
+
+    void material(inout MaterialInputs material) {
+        prepareMaterial(material);
+
+        // The ray: from the camera through this pixel of the front quad, in the room's own
+        // coordinates (not Filament's camera-relative rendering space) so it meets the
+        // fittings where they are.
+        vec3 start = getUserWorldPosition();
+        vec3 dir = normalize(getWorldPosition() - getWorldCameraPosition());
+        float backZ = materialParams.stepsBack.y;
+        // How far along the ray until it reaches the rack's front plane.
+        // (Named `span`, not `length`: shadowing GLSL's built-in is legal and some mobile
+        // drivers still get it wrong.)
+        float span = dir.z < -0.001 ? (backZ - start.z) / dir.z : 0.0;
+        span = clamp(span, 0.0, 0.6);
+
+        float steps = materialParams.stepsBack.x;
+        float stepLen = span / max(steps, 1.0);
+        // Interleaved gradient noise: a per-pixel offset for where the first step lands, so the
+        // step pattern dissolves into grain instead of drawing contour bands.
+        float dither = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));
+
+        float t = materialParams.time;
+        vec2 wind = materialParams.wind;
+        float stir = materialParams.stir;
+        float extinction = materialParams.gain.z;
+
+        vec3 scattered = vec3(0.0);
+        float transmittance = 1.0;
+        for (int i = 0; i < 24; i++) {
+            if (float(i) >= steps) break;
+            vec3 q = start + dir * ((float(i) + dither) * stepLen);
+            float density = fogDensity(q, t, wind, stir) * materialParams.opacity;
+            float absorbed = density * extinction * stepLen;
+            scattered += transmittance * lightAt(q) * density * stepLen;
+            transmittance *= exp(-absorbed);
+        }
+
+        // Never a visible edge to the volume: fade out over the outer tenth of the quad.
+        vec2 e = getUV0();
+        float edge = smoothstep(0.0, 0.1, e.x) * smoothstep(1.0, 0.9, e.x)
+            * smoothstep(0.0, 0.1, e.y) * smoothstep(1.0, 0.9, e.y);
+
+        material.baseColor = vec4(scattered * edge, (1.0 - transmittance) * edge);
+    }
+}
