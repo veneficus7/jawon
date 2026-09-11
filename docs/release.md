@@ -179,7 +179,12 @@ gh release create v0.4 jawon-0.4-beta.apk --title "Jawon 0.4 beta" --notes "…"
    nothing else, so getting it wrong either hides the release or offers it
    forever.
 
-6. Push. `latest.json` is read from the default branch, not from the release, so
+6. **If `docs/privacy.md` changed since the last release, copy it over `PRIVACY.md`
+   in the releases repo**, in the same commit as `latest.json`. That copy is the
+   public policy, and nothing reminds anyone it exists: it was still the
+   4 September text, naming three uses of the network, when 0.6 beta was built
+   with seven.
+7. Push. `latest.json` is read from the default branch, not from the release, so
    unlike the APK it does have to be committed.
 
 ### It will not appear for about five minutes
