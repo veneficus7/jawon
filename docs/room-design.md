@@ -177,7 +177,7 @@ a full rewrite attached.
 **Unreal on mobile is disqualified by what this app is.** It runs hot and drains
 battery; Google ships an ADPF plugin specifically to manage its thermal
 throttling. Jawon is a *music player* — it is left running with the screen on for
-hours. This project's own trap 8 already records that thermal state invalidates
+hours. This project's own trap 12 already records that thermal state invalidates
 frame measurements on this device. An engine whose known mobile characteristic is
 heat is the wrong engine for an app people listen to records on.
 

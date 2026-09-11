@@ -79,7 +79,7 @@ class CoverArtFetcher @Inject constructor() {
     /**
      * Diagnostic trail, in debug builds, to a file rather than to logcat.
      *
-     * `ENGINEERING.md` trap 9: on the Samsung test device telephony spam buries app logs, so a
+     * `ENGINEERING.md` trap 15: on the Samsung test device telephony spam buries app logs, so a
      * `Log.w` here is effectively invisible. Read it back with:
      *   `adb shell run-as com.jawon.app cat files/coverart.log`
      */

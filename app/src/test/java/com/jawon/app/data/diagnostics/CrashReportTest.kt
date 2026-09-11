@@ -143,7 +143,7 @@ class CrashReportTest {
     @Test
     fun `a burst of non-fatals does not evict the fatal underneath them`() {
         // The realistic failure this cap has to survive. A wedged audio pipeline emits
-        // onPlayerError repeatedly (see trap 15), and if that burst pushed the originating
+        // onPlayerError repeatedly (see trap 19), and if that burst pushed the originating
         // crash out of the file, the log would describe the symptom and lose the cause.
         //
         // The cap is sized for roughly sixteen reports, so a dozen non-fatals must not be

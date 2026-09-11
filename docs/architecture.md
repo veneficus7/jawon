@@ -119,7 +119,7 @@ Split the same way `ui/wallscene` is — the maths is separate from the plumbing
 | `SleepTimer.kt`, `PlayerVolume.kt` | Small, and exactly what they say. |
 | `StreamCache.kt` | The bounded LRU disk cache streamed audio is read through, and the `DataSource.Factory` the player and the crossfade tail share. **Only the network branch is cached** — local `content://` files go straight through, since copying them would be the wrong failure on a phone short of space. This is what makes the scratch seek instantly on a streamed track. |
 
-**Read trap 15 in `ENGINEERING.md` before touching anything that sets
+**Read trap 19 in `ENGINEERING.md` before touching anything that sets
 `PlaybackParameters`.** The pitch control was withdrawn because crossing 1.0
 repeatedly reconfigures Media3's time-stretcher and wedges the playback thread at
 a full core with no progress at all. That is the most expensive lesson in this
@@ -182,7 +182,7 @@ that only asserts "it did not throw" would have passed that.
 - **The frame driver and `bind()` share the pooled nodes.** Binding decides *which
   album and where*; the frame decides *how it is floating right now*. Anything one
   writes, the other must not stomp — and anything the frame writes, `bind` must
-  restore (trap 5).
+  restore (trap 9).
 - **Two effects write to the active case's nodes**, and both are keyed on the model
   instances because the models load asynchronously. A new effect writing to those
   nodes needs the same key, or it runs against null handles and silently does

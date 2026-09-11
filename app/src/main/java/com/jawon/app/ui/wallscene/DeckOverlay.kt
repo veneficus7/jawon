@@ -279,7 +279,7 @@ fun DeckOverlay(
         // *Vertically* it drags the sheet. The tracklist and the rack below both scroll
         // vertically, and a sheet claiming vertical drags anywhere on its surface would argue
         // with them over every gesture — with the winner depending on which handler gets the
-        // pointer first, the ordering ENGINEERING.md's trap 6 warns is not guaranteed.
+        // pointer first, the ordering ENGINEERING.md's trap 10 warns is not guaranteed.
         //
         // *Horizontally* it turns the page, and that had to be added. The pager works on its own
         // content, which on the SOUND side is wall-to-wall horizontal sliders — and those quite
@@ -779,7 +779,7 @@ private fun ProgressRow(
  *   the target is [TRANSPORT_TOUCH] tall because that is what a thumb needs. A press anywhere
  *   seeks there directly rather than requiring the marker to be caught first.
  *
- * One gesture handler, deliberately — trap 6 in ENGINEERING.md is two of them fighting over the same
+ * One gesture handler, deliberately — trap 10 in ENGINEERING.md is two of them fighting over the same
  * value, and a press-then-drag written as a single `awaitEachGesture` cannot get into that
  * argument with itself.
  */

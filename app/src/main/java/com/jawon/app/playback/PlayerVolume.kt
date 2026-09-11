@@ -9,7 +9,7 @@ import androidx.media3.common.Player
  * envelope, from silence up to full across a track boundary, and ReplayGain wants to hold it
  * at whatever level a record's tags ask for. Written independently they overwrite each other:
  * the crossfade's next step would wipe the levelling, and the levelling would land mid-fade
- * and step on the envelope. This is `ENGINEERING.md` trap 6 in the audio layer rather than the
+ * and step on the envelope. This is `ENGINEERING.md` trap 10 in the audio layer rather than the
  * scene — two sources driving one value, with no guaranteed ordering between them.
  *
  * So neither writes it. Each sets its own factor here and this multiplies them, which also

@@ -72,6 +72,10 @@ and a green build says nothing about it.
 
 **These cost real time to find. Read them before debugging anything similar.**
 
+**Cite a trap by its title as well as its number.** The numbers move whenever one is added,
+and they have: an audit on 2026-09-11 found "Samsung's logcat is unusable" cited as trap 9,
+trap 11 and trap 15 in three different files, each correct in the era it was written.
+
 ### Filament and SceneView
 
 1. **Never destroy an `ImageNode`.** On the pinned SceneView version, `destroy()`
@@ -113,33 +117,56 @@ and a green build says nothing about it.
    106.1, 106.5, 106.9, 107.0 across four separate lighting changes, and that was
    read as the records holding steady while the room came up around them.
 
-5. **SceneView's `CameraNode` re-aims itself at the world origin.** Panning away
+5. **A light that is part of the furniture must be positioned by the furniture.** The shelf
+   ribbon's lights hung from a carrier the frame driver moved to `(panX, panY)` every frame,
+   while the tube they belong to was drawn at a fixed place on each shelf. At rest they lined
+   up, so every screenshot looked right; during any swipe the lit pattern slid across the
+   fixed timber and the gradient detached from its tube. The owner described it exactly —
+   "the back wall is moving separately from the shelf" — and it took a *held* drag to see
+   (`adb shell input motionevent DOWN/MOVE` with no `UP`, so the wall cannot settle). A
+   bounded set of lights that follows the view is fine; it must **snap to the geometry's own
+   grid**, never sit at the raw pan. See `RoomNodes.placeRibbon`.
+
+6. **Filament's `falloff` is a hard cutoff radius, not a soft decay.** Past it a light
+   contributes exactly zero. A ribbon at 0.12 on a 19cm panel produced a clean gradient and
+   then a dead-flat floor across the bottom 40% — which reads as a second, unlit wall.
+   Make it longer than the surface and let inverse-square shape the gradient.
+
+7. **Light channels are the tool for "this light may only touch these surfaces".** A day
+   went into constraining the album underlights with cone angles, and every fix traded one
+   surface for another — as points they washed the back panel, as upward spots they put a
+   hotspot in every case's glass. `LightManager.Builder.lightChannel` and
+   `RenderableManager.setLightChannel` both forward to native in this Filament; a light
+   reaches only renderables sharing a channel with it. Reach for these before re-aiming a
+   light. See `RoomLighting.UNDER_LIGHT_CHANNEL`.
+
+8. **SceneView's `CameraNode` re-aims itself at the world origin.** Panning away
    from centre tilts the lens back toward it — measured at −8.28° — which shifts
    the *entire view* vertically and makes every position-related bug look like a
    layout bug. The rotation is written every frame; see `LOOK_STRAIGHT_AHEAD`.
 
-6. **Anything the frame driver writes to a pooled node, `bind()` must restore.**
+9. **Anything the frame driver writes to a pooled node, `bind()` must restore.**
    `bind()` handles position, visibility and artwork. The discard animation wrote
    *scale*, nothing put it back, and every album that later reused that slot
    rendered invisible.
 
-7. **`OnGestureListener` has no `onUp`** — nineteen callbacks, not one a plain
+10. **`OnGestureListener` has no `onUp`** — nineteen callbacks, not one a plain
    release. Use `SceneView(onTouchEvent = …)` for that. And the ordering between
    the gesture detector and the raw touch stream is **not guaranteed**, so never
    let two handlers drive the same `Animatable`.
 
-8. **The glTF thickness axis is negated on export**, and getting it wrong renders
+11. **The glTF thickness axis is negated on export**, and getting it wrong renders
    without error. See `docs/models.md`.
 
 ### Measuring on device
 
-9. **Check the thermal state before believing any frame rate.**
+12. **Check the thermal state before believing any frame rate.**
    `adb shell dumpsys thermalservice | grep "Thermal Status"` must read 0. The same
    build measures 124fps cool and 88fps hot; a 22% "regression" was once recorded
    on exactly this mistake. Charging counts too — the battery sat at 42.7°C after an
    afternoon plugged in, which is most of a thermal 3 on its own.
 
-10. **`dumpsys gfxinfo` cannot see this app.** The room is rendered by Filament into its
+13. **`dumpsys gfxinfo` cannot see this app.** The room is rendered by Filament into its
    own surface and never goes through the View system, so gfxinfo counts only the
    Compose overlay: it reported *0 frames* with the deck closed and *43% jank* with it
    open, neither of which meant anything. Measure CPU instead — fields 14+15 of
@@ -150,7 +177,7 @@ and a green build says nothing about it.
    long way with thermal state, so an A/B a minute apart is trustworthy where two runs
    an hour apart are not.
 
-11. **An animation that recomposes nothing can still be the most expensive thing on
+14. **An animation that recomposes nothing can still be the most expensive thing on
     screen.** Reading an animated value inside `graphicsLayer` is the standard advice and
     it is right about *recomposition* — but a large translucent layer over the Filament
     surface still has to be re-blended by the compositor every time its alpha changes.
@@ -158,24 +185,24 @@ and a green build says nothing about it.
     jiffies/10s when made static) for a pulse that was close to invisible. Animate small
     layers, not screen-wide washes.
 
-12. **Samsung's logcat is unusable for app logs** — telephony spam buries them.
+15. **Samsung's logcat is unusable for app logs** — telephony spam buries them.
    Write to `context.filesDir` and read it back with
    `adb shell run-as com.jawon.app cat files/<name>.log`.
 
-13. **`sqlite3` is not on the device.** Copy the database off instead:
+16. **`sqlite3` is not on the device.** Copy the database off instead:
     `adb shell "run-as com.jawon.app cat databases/javon.db" > out.db`.
 
-14. **A case vanishing from the wall proves nothing.** The library spans several
+17. **A case vanishing from the wall proves nothing.** The library spans several
     shelves and the camera frames about one row, so "it disappeared" usually means
     it scrolled. Verify against the database.
 
-15. **One log line beats three screenshots.** Screenshots are expensive and
+18. **One log line beats three screenshots.** Screenshots are expensive and
     ambiguous; `worldToScreenPoint` and a text log settle position questions
     outright. Reach for instrumentation first, not last.
 
 ### The audio pipeline
 
-16. **Toggling `PlaybackParameters` in and out of neutral wedges the player.**
+19. **Toggling `PlaybackParameters` in and out of neutral wedges the player.**
     Setting a pitch or speed *away from* 1.0 is cheap at any amount — an octave
     down measured 14 jiffies per six seconds against a baseline of 10. Crossing
     back and forth through neutral is not: each crossing adds or removes Media3's
@@ -188,18 +215,18 @@ and a green build says nothing about it.
     crossing, not the frequency. The pitch control is withdrawn until there is a way
     to change it that cannot thrash the pipeline.
 
-17. **Measure the playback thread, not the process.** `top` is useless here — the
+20. **Measure the playback thread, not the process.** `top` is useless here — the
     whole process looked idle while one thread burned a core. Find the thread and
     diff `utime+stime` from `/proc/<pid>/task/<tid>/stat` over a fixed interval;
     600 jiffies per six seconds is one full core. `state=R` with an empty
     `syscall` file proves a userspace spin rather than a block.
 
-18. **Nothing was listening for `onPlayerError`,** so a wedged pipeline surfaced
+21. **Nothing was listening for `onPlayerError`,** so a wedged pipeline surfaced
     only as a stuck deck and a hot phone. `PlaybackService` now logs it. Without
     that listener the exception genuinely goes nowhere — Media3 does not log every
     one itself.
 
-19. **Bisect by deleting, not by reading.** Three separate wrong causes were
+22. **Bisect by deleting, not by reading.** Three separate wrong causes were
     argued convincingly from the code before the empty-`setAudioProcessors` test
     settled it in one run: the app's own DSP was innocent the whole time.
 
@@ -241,7 +268,7 @@ and a green build says nothing about it.
 4. **No new 3D or animation dependencies.** SceneView and Filament cover bloom,
    DOF, AO, fog, vignette, grading, shadows and custom materials. Raise it first if
    something seems to need another library.
-6. **No file I/O, metadata parsing or image decoding on the main thread.** Ever.
+9. **No file I/O, metadata parsing or image decoding on the main thread.** Ever.
 6. Use SceneView's **Composable-as-texture** for in-world UI (shelf label plates)
    rather than baking text into bitmaps by hand.
 
@@ -254,7 +281,7 @@ and a green build says nothing about it.
   time the feature was actually exercised.
 - **Plan before coding** anything touching the 3D scene, gestures or animation
   timing.
-- **Instrument before guessing.** See traps 15 and 19.
+- **Instrument before guessing.** See traps 18 and 22.
 - **Read SceneView's source** for API questions rather than guessing at signatures.
 - Values exported from `javon-shelf-prototype.html` are **starting points for
   tuning**, not requirements.

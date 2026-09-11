@@ -2938,7 +2938,7 @@ fun WallSceneScreen(
         }
 
         // Search, only while browsing. Like the crate flip it is a Compose overlay with its
-        // own pointer input, so the scene never sees these events (ENGINEERING.md trap 6), and it
+        // own pointer input, so the scene never sees these events (ENGINEERING.md trap 10), and it
         // lands on a record through the same `animateTo` the flip and the magnet use.
         if (selectedAlbumId == null) {
             WallSearchBar(
@@ -2969,7 +2969,7 @@ fun WallSceneScreen(
         //
         // `animateTo` on the same `Animatable`s the magnet uses, which is what keeps this safe:
         // starting one cancels whatever settle was in flight rather than fighting it, so the
-        // two can never both be driving the wall (ENGINEERING.md trap 6).
+        // two can never both be driving the wall (ENGINEERING.md trap 10).
         if (selectedAlbumId == null) {
             CrateFlip(
                 layout = layout,
@@ -3356,7 +3356,7 @@ private const val SEARCH_MIN_ALBUMS = 2
  * describe what is at each position, the way the dividers in a real crate describe the crate
  * rather than reordering it.
  *
- * Its own `pointerInput`, deliberately. `ENGINEERING.md` trap 6 is that the gesture detector and
+ * Its own `pointerInput`, deliberately. `ENGINEERING.md` trap 10 is that the gesture detector and
  * the raw touch stream have no guaranteed ordering and must never drive the same `Animatable`;
  * this sits in front of the `SceneView` as a Compose overlay, so the scene never sees these
  * events at all and there is nothing to race.
@@ -3810,7 +3810,7 @@ private fun WaitingForRecords(onAddAlbum: () -> Unit, modifier: Modifier = Modif
  * keeps running when the music stops — and a disc that spins while the record is paused says
  * something false.
  *
- * ENGINEERING.md trap 10 is the reason for the size discipline as well as the read discipline: a
+ * ENGINEERING.md trap 14 is the reason for the size discipline as well as the read discipline: a
  * *large* translucent animated layer costs the compositor a re-blend every frame however little
  * it recomposes. This one is 44dp.
  */

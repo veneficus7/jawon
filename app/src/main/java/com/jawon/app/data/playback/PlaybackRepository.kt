@@ -241,7 +241,7 @@ class PlaybackRepository @Inject constructor(
                 )
             )
             // Debug builds only, and written to filesDir rather than logcat — on the test
-            // device Samsung's telephony spam buries app logs (ENGINEERING.md trap 9). This is the
+            // device Samsung's telephony spam buries app logs (ENGINEERING.md trap 15). This is the
             // only way to see that history is accumulating before any screen reads it, and
             // history is the one thing here that cannot be reconstructed if it silently
             // fails. Read it back with:

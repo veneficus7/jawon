@@ -174,7 +174,7 @@ class CaseSlot {
      *
      * Guarded here rather than at the call site so the last-written place travels with the slot,
      * which is what makes it correct across pooling: a slot handed to a new album has a new
-     * [baseX], so the comparison fails and the beam is placed. Trap 5 in ENGINEERING.md is the same
+     * [baseX], so the comparison fails and the beam is placed. Trap 9 in ENGINEERING.md is the same
      * hazard from the other direction — this is the frame driver writing *less*, not `bind`
      * restoring less.
      */

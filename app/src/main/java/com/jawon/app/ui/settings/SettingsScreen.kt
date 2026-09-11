@@ -491,7 +491,7 @@ private fun shareCrashReport(context: Context, uri: android.net.Uri) {
  * What went wrong, and a way to send it.
  *
  * **This section exists because the app has no other way of telling anyone.** No analytics by
- * design, and logcat is unreachable on a tester's phone — see trap 11. Without this, a crash on
+ * design, and logcat is unreachable on a tester's phone — see trap 15. Without this, a crash on
  * someone else's device is simply never heard about, which is roughly where the project has
  * been for fifteen-odd installs.
  *

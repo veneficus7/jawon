@@ -187,7 +187,7 @@ class PlaybackService : MediaSessionService() {
                     error
                 )
                 // And to a file, because the line above reaches nobody. On the test hardware
-                // logcat is buried by telephony spam (trap 11), and on a tester's phone there
+                // logcat is buried by telephony spam (trap 15), and on a tester's phone there
                 // is no logcat at all — this is the only route by which a wedged pipeline
                 // becomes something the owner can read. The error code name is in the message
                 // because it is the part that identifies the failure at a glance.

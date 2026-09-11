@@ -22,7 +22,7 @@ import javax.inject.Singleton
  * that has ever come back is three testers saying it was "not that smooth". If it had crashed
  * for any of them, there was no route by which anyone would have found out: the app has no
  * analytics by design, the testers are not going to run `adb`, and logcat is useless here
- * anyway — see trap 11 in `ENGINEERING.md`, Samsung's telephony spam buries app logs entirely.
+ * anyway — see trap 15 in `ENGINEERING.md`, Samsung's telephony spam buries app logs entirely.
  *
  * So: write it to a file, and give the user a button that shares it.
  *
@@ -35,7 +35,7 @@ import javax.inject.Singleton
  * will experience as broken without any exception reaching them. `onPlayerError` is the
  * motivating case and the reason this class has [record] at all: a wedged audio pipeline shows
  * up as a deck stuck at `0:00` and a phone that gets hot, and until now the throwable behind it
- * went to `Log.e` and therefore nowhere. Trap 15 is the long version of that story.
+ * went to `Log.e` and therefore nowhere. Trap 19 is the long version of that story.
  *
  * ## Constraints that shaped this
  *

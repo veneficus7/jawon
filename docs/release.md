@@ -274,10 +274,10 @@ Honest list, in the order they matter:
    why. Fifteen-odd people have run Jawon, and the total signal that ever came back
    was three of them saying it was "not that smooth". A crash on any of those phones
    would have been *completely silent*: there is no analytics by design, testers are
-   not going to run `adb`, and logcat is unusable on Samsung anyway (trap 11).
+   not going to run `adb`, and logcat is unusable on Samsung anyway (trap 15).
 
    Non-fatals go through the same file. `onPlayerError` is the motivating case —
-   the wedged pipeline in trap 15 presents as a deck stuck at `0:00` and a hot
+   the wedged pipeline in trap 19 presents as a deck stuck at `0:00` and a hot
    phone, and the throwable behind it previously reached only `Log.e`.
 
    **Still needs one check on a device**, and no unit test can supply it: force a
@@ -397,7 +397,7 @@ tiers were designed to rescue. Two consequences worth writing down —
 
 The one thing this does **not** establish is what the S23 reports were actually
 about, since those devices sit above the ones now running smoothly. Thermal state
-(trap 8) is the obvious candidate and was never ruled out.
+(trap 12) is the obvious candidate and was never ruled out.
 
 ### The Note 9 did not crash — it was refused
 
