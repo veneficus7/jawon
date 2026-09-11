@@ -547,6 +547,55 @@ private class RoomNodes {
     var keyLight: SceneNode? = null
     var rimLight: SceneNode? = null
 
+    /** The ribbon's per-row carriers, beneath [keyLight]. See [placeRibbon]. */
+    val ribbonRows = arrayOfNulls<SceneNode>(RoomLighting.SHELF_LIGHT_COUNT)
+
+    private var placedX = Float.NaN
+    private var placedY = Float.NaN
+    private var placedPair = Int.MIN_VALUE
+    private var placedRowCount = -1
+
+    /**
+     * Parks the ribbon on the rack, never on the camera.
+     *
+     * Horizontally the carrier snaps to the diode pitch, so each diode sits at a fixed place on
+     * the shelf and a pan only changes which diodes exist at the far edges of a 51cm window —
+     * about 12cm outside a 26cm frame. Vertically it snaps to the midpoint between the two
+     * rows either side of the view, so the four ribbon rows are always four real tubes.
+     *
+     * Rows of the rack that do not exist have their ribbon switched off: above the top shelf it
+     * would light the top of the cap, below the bottom one the floor. Hiding a carrier reaches
+     * its lights — SceneView's `updateVisibility` walks the children and takes their entities
+     * out of the scene, checked in the bytecode.
+     *
+     * Both writes are skipped when nothing changed, which is almost every frame at rest.
+     */
+    fun placeRibbon(panX: Float, panY: Float, rowCount: Int) {
+        val carrier = keyLight ?: return
+        val pitch = RoomLighting.WASH_COLUMN_SPACING
+        val x = kotlin.math.round(panX / pitch) * pitch
+
+        // Row centres are ((rowCount - 1) / 2 - k) * ROW_PITCH; see WallLayout.rowCenterY.
+        val top = (rowCount - 1) / 2f * ROW_PITCH
+        val pair = kotlin.math.floor((top - panY) / ROW_PITCH).toInt()
+            .coerceIn(-1, (rowCount - 1).coerceAtLeast(0))
+        val y = top - (pair + 0.5f) * ROW_PITCH
+
+        if (x != placedX || y != placedY) {
+            carrier.position = Position(x, y, 0f)
+            placedX = x
+            placedY = y
+        }
+        if (pair != placedPair || rowCount != placedRowCount) {
+            // Ribbon row i hangs (1.5 - i) pitches above the carrier: rack row pair - 1 + i.
+            ribbonRows.forEachIndexed { i, node ->
+                node?.isVisible = (pair - 1 + i) in 0 until rowCount
+            }
+            placedPair = pair
+            placedRowCount = rowCount
+        }
+    }
+
     /** The scheme these lights are currently showing, so the write is skipped when unchanged. */
     private var appliedScheme: RoomScheme? = null
 
@@ -570,7 +619,11 @@ private class RoomNodes {
         // Nothing to write to yet means the lights are still being built — the frame driver can
         // run before the first composition of the scene lands — so this returns without marking
         // the scheme applied, and the next frame tries again.
-        val bulbs = keyLight?.childNodes?.filterIsInstance<LightNode>().orEmpty()
+        // Two levels down now: the carrier holds a node per ribbon row, and the rows hold the
+        // diodes. A walk of the carrier's direct children finds no lights at all, and would
+        // leave the scheme unapplied forever without a word.
+        val bulbs = keyLight?.childNodes.orEmpty()
+            .flatMap { row -> row.childNodes.filterIsInstance<LightNode>() }
         if (bulbs.isEmpty()) return
         // The fourth component is unused for a light's colour; SceneView's setter simply takes
         // a Float4 because the rest of its maths does.
@@ -1965,7 +2018,10 @@ fun WallSceneScreen(
                 // Walk the lamp along with the browse position. Panning is frozen while a
                 // case is open, so during the open sequence this holds the light still.
                 // The group's offset IS the pan; the lamp keeps its own offset inside it.
-                roomNodes.keyLight?.position = Position(panX.value, panY.value, 0f)
+                // The ribbon belongs to the rack, not to the camera. It used to be parked at
+                // exactly (panX, panY) here, which dragged the whole lit pattern across the
+                // fixed timber on every swipe — see RoomLighting.SHELF_LIGHT_COUNT.
+                roomNodes.placeRibbon(panX.value, panY.value, layout.rows.size)
 
                 // Recolour the bulbs in place rather than rebuilding the lights.
                 //
@@ -2255,29 +2311,35 @@ fun WallSceneScreen(
             // The light that used to throw FORWARD from here, across the artwork, is gone with
             // the key: lighting the records is the underlight's job now.
             repeat(RoomLighting.SHELF_LIGHT_COUNT) { index ->
-                val row = index - RoomLighting.SHELF_LIGHT_COUNT / 2
-                // **The LED ribbon itself.** Tucked into the top back corner beside the
-                // tube, emitting down the panel it is stuck to — see RoomLighting.WASH_Z for
-                // why the corner is the right place and not the trap it first looks like.
+                // One carrier per ribbon row, so a row of the rack that does not exist can be
+                // switched off whole — see RoomNodes.placeRibbon. Ribbon row `index` sits
+                // (1.5 - index) row pitches above the carrier, which the frame driver parks on
+                // the midpoint between the two rows either side of the view; that lands the
+                // four ribbon rows exactly on four real shelves' tubes.
+                Node(
+                    position = Position(
+                        0f,
+                        (1.5f - index) * ROW_PITCH +
+                            WallDimens.CASE_H / 2f + RoomLighting.SHELF_LIGHT_LIFT -
+                            RoomLighting.WASH_DROP,
+                        0f
+                    ),
+                    apply = { roomNodes.ribbonRows[index] = this }
+                ) {
+                // **The LED ribbon itself**, inside the tube, emitting down the panel the tube
+                // lies against. Aimed straight down with a cone short of the 90° where the board
+                // above begins, so it lights the panel and not the shelf it hangs from.
                 //
-                // Aimed straight down, with a cone wide enough to graze the panel and short of
-                // the 90° where the shelf board above starts — see RoomLighting.WASH_CONE_OUTER.
-                // As a POINT light each diode lit that board as hard as it lit the panel, and
-                // twenty-one of them put a row of dots along the fixture.
-                //
-                // The gradient down the panel still comes from distance and incidence, not from
-                // the cone: the cone is only there to stop light going upward.
-                //
-                // Twenty-one at 24mm, about the pitch of the diodes on a real ribbon and for
-                // the same reason: close to a surface, a point source has a small footprint.
+                // Every diode here is at a fixed place on the shelf: the carrier above is
+                // snapped to the diode pitch, so a pan never slides the pattern across the
+                // timber. See RoomLighting.SHELF_LIGHT_COUNT for what it did before.
                 repeat(RoomLighting.WASH_COLUMNS) { column ->
                     LightNode(
                         type = LightManager.Type.FOCUSED_SPOT,
                         position = Position(
                             (column - RoomLighting.WASH_COLUMNS / 2) *
                                 RoomLighting.WASH_COLUMN_SPACING,
-                            WallDimens.CASE_H / 2f + RoomLighting.SHELF_LIGHT_LIFT +
-                                row * ROW_PITCH - RoomLighting.WASH_DROP,
+                            0f,
                             RoomLighting.WASH_Z
                         ),
                         direction = normalize(
@@ -2299,15 +2361,15 @@ fun WallSceneScreen(
                                 RoomLighting.WASH_CONE_OUTER
                             )
                             falloff(RoomLighting.WASH_FALLOFF)
-                            // One diode per ribbon casts, and only on the tier that can
-                            // afford it. See RoomLighting.WASH_SHADOW_COLUMN for why one of
-                            // twenty-seven is the right number rather than a compromise.
+                            // One diode per ribbon casts, and only on the tier that can afford
+                            // it. See RoomLighting.WASH_SHADOW_COLUMN.
                             castShadows(
                                 column == RoomLighting.WASH_SHADOW_COLUMN &&
                                     initialTier.shadowsOnFixtures
                             )
                         }
                     )
+                }
                 }
             }
             }
@@ -2331,6 +2393,21 @@ fun WallSceneScreen(
             // Gated on `loaded` rather than on having content, which is what it used to be.
             // That older test also caught the genuinely-empty library, so a new user's first
             // screen had no wall either � see WallLayout.loaded.
+            // **The rack's timber, built once for every board, the cap and the ends.**
+            //
+            // It was built inside the per-row block, which meant a fresh 512px texture for
+            // every visible row — five of the same bitmap, a megabyte each. One is enough: tiles
+            // share a Texture safely, and only a MaterialInstance may not be shared (a CubeNode
+            // destroys the instance it is handed).
+            val rackTimber = remember(roomScheme) {
+                ImageTexture.Builder()
+                    .bitmap(
+                        RoomSurface.veneerTile(roomScheme.board, BOARD_TILE_SEED, grainAlongX = true),
+                        TextureType.COLOR
+                    )
+                    .build(engine)
+            }
+
             if (layout.loaded) {
                 // Sized to what the CAMERA can reach, not to what the content occupies.
                 //
@@ -2425,7 +2502,11 @@ fun WallSceneScreen(
                             // the largest surface in the room, and it is what turned the wall
                             // into bright mauve once before.
                             .bitmap(
-                                RoomSurface.woodTile(roomScheme.wall, WALL_TILE_SEED, 1f),
+                                RoomSurface.veneerTile(
+                                    roomScheme.wall,
+                                    WALL_TILE_SEED,
+                                    grainAlongX = true
+                                ),
                                 TextureType.COLOR
                             )
                             .build(engine)
@@ -2490,14 +2571,15 @@ fun WallSceneScreen(
                     // Spanning the whole run, from under the bottom board to the top of the top
                     // compartment, so the rack has a top and a bottom as well as two ends.
                     // The same extent the back panel uses, so the carcass cannot come apart.
-                    val rackTop = rackTopY
+                    // Up to the top of the cap below, so the ends and the cap meet at the corners.
+                    val rackTop = rackTopY + BOARD_H / 2f
                     val rackBottom = rackBottomY
-                    val rackHeight = panelH
+                    val rackHeight = (rackTop - rackBottom).coerceAtLeast(ROW_PITCH)
                     listOf(-1f, 1f).forEach { side ->
                         key(side) {
                             val cheek = remember(roomScheme, side, rackHeight) {
                                 materialLoader.createTextureInstance(
-                                    panelTexture,
+                                    rackTimber,
                                     metallic = 0.04f,
                                     roughness = 0.82f,
                                     reflectance = WALL_REFLECTANCE
@@ -2511,6 +2593,48 @@ fun WallSceneScreen(
                                     0f
                                 ),
                                 materialInstance = cheek,
+                                apply = {
+                                    isTouchable = false
+                                    isShadowReceiver = true
+                                    isShadowCaster = true
+                                }
+                            )
+                        }
+                    }
+
+                    // **The cap: a board over the top shelf.**
+                    //
+                    // The rack had none, so the top row's compartment was open to the dark and its
+                    // tube had nothing to be mounted under. The owner caught it before it shipped:
+                    // "the most top shelf will not have shelf above it to attach a tube to". Every
+                    // other shelf's tube hangs from the board of the row above; this is the board
+                    // the top row's hangs from. It sits exactly where the next row's board would,
+                    // one pitch above the top row's own, and spans the ends as well so the three
+                    // pieces close into a carcass.
+                    //
+                    // Tiled for the reason every other board is, and each segment owns its own
+                    // MaterialInstance for the reason every other board's does.
+                    val capW = layout.wallWidth + SIDE_T * 2f
+                    val capTiles = ceil(capW / RoomSurface.TILE_M).toInt().coerceIn(1, 64)
+                    val capSegW = capW / capTiles
+                    repeat(capTiles) { cx ->
+                        key("cap", cx) {
+                            val capSegment = remember(roomScheme, cx, capTiles) {
+                                materialLoader.createTextureInstance(
+                                    rackTimber,
+                                    metallic = 0.04f,
+                                    roughness = 0.82f,
+                                    reflectance = WALL_REFLECTANCE
+                                )
+                            }
+                            CubeNode(
+                                size = Size(capSegW, BOARD_H, BOARD_D),
+                                position = Position(
+                                    -capW / 2f + (cx + 0.5f) * capSegW,
+                                    rackTopY,
+                                    0f
+                                ),
+                                materialInstance = capSegment,
                                 apply = {
                                     isTouchable = false
                                     isShadowReceiver = true
@@ -2602,22 +2726,7 @@ fun WallSceneScreen(
                     // wide, so one node puts a couple of texels on every centimetre. Each
                     // segment is about RoomSurface.TILE_M and gets the whole bitmap.
                     //
-                    // The grain runs ALONG the board, which is why this asks for the across
-                    // variant. A shelf wearing the back panel's upright boards would have its
-                    // grain running the short way across the plank, and nothing sawn does that.
-                    val boardTexture = remember(roomScheme) {
-                        ImageTexture.Builder()
-                            .bitmap(
-                                RoomSurface.woodTile(
-                                    roomScheme.board,
-                                    BOARD_TILE_SEED,
-                                    1f,
-                                    acrossInstead = true
-                                ),
-                                TextureType.COLOR
-                            )
-                            .build(engine)
-                    }
+                    // The grain runs along the board — see RoomSurface.veneerTile.
                     val boardTiles =
                         ceil(layout.wallWidth / RoomSurface.TILE_M).toInt().coerceIn(1, 64)
                     val boardW = layout.wallWidth / boardTiles
@@ -2630,7 +2739,7 @@ fun WallSceneScreen(
                             // boards vanish on import once already.
                             val segment = remember(roomScheme, bx, boardTiles) {
                                 materialLoader.createTextureInstance(
-                                    boardTexture,
+                                    rackTimber,
                                     metallic = 0.04f,
                                     roughness = 0.82f,
                                     reflectance = WALL_REFLECTANCE
@@ -2653,28 +2762,19 @@ fun WallSceneScreen(
                         }
                     }
 
-                    // **The tube, and the channel it is mounted in.**
+                    // **The tube.** One node spanning the whole shelf, so it is one continuous
+                    // strip rather than anything that could read as a row of lamps.
                     //
-                    // One node spanning the whole shelf, so it is one continuous strip rather
-                    // than anything that could read as a row of lamps. See RoomLighting.STRIP_H
-                    // for the three attempts this took and what each got wrong.
+                    // In the corner, touching both surfaces of it: flush under the board above
+                    // (RoomLighting.SHELF_LIGHT_LIFT) and lying against the panel behind
+                    // (RoomLighting.STRIP_Z). There is no bracket any more. The one that was
+                    // here covered 8.7mm of panel under the tube with a dark unlit plate, so the
+                    // brightest part of the gradient was hidden and what showed was a dark band
+                    // and then a glow — the reason the light did not look like it came from here.
                     //
-                    // Unlit and over bloom's 1.0 threshold, so it goes straight to the output
-                    // and glows. That is the same trick the album underlights' emissive cones
-                    // use, one surface up, and it needs no new asset.
-                    //
-                    // Remembered in this row's key alongside the board, because a CubeNode
+                    // Unlit and over bloom's 1.0 threshold, so it goes straight to the output and
+                    // glows. Remembered in this row's key alongside the board, because a CubeNode
                     // destroys the MaterialInstance it is handed.
-                    val housing = remember(rowIndex, roomScheme) {
-                        materialLoader.createUnlitColorInstance(
-                            dev.romainguy.kotlin.math.Float4(
-                                RoomLighting.HOUSING_COLOR[0],
-                                RoomLighting.HOUSING_COLOR[1],
-                                RoomLighting.HOUSING_COLOR[2],
-                                1f
-                            )
-                        )
-                    }
                     val tube = remember(rowIndex, roomScheme) {
                         materialLoader.createUnlitColorInstance(
                             dev.romainguy.kotlin.math.Float4(
@@ -2685,45 +2785,22 @@ fun WallSceneScreen(
                             )
                         )
                     }
-                    // Where the fixture hangs: the same height the backlight throws from, which
-                    // is a few millimetres under the board above.
-                    val fixtureY = row.centerY + WallDimens.CASE_H / 2f +
-                        RoomLighting.SHELF_LIGHT_LIFT
-
-                    // The bracket first: a plate lying flat against the back panel with the
-                    // tube standing off the front of it. Screwed to the wall rather than to the
-                    // shelf above, because the topmost shelf in a library has no shelf above
-                    // it — see RoomLighting.HOUSING_H.
-                    CubeNode(
-                        size = Size(
-                            layout.wallWidth,
-                            RoomLighting.HOUSING_H,
-                            RoomLighting.HOUSING_D
-                        ),
-                        position = Position(
-                            0f,
-                            fixtureY - RoomLighting.HOUSING_RISE,
-                            RoomLighting.HOUSING_Z
-                        ),
-                        materialInstance = housing,
-                        apply = {
-                            isTouchable = false
-                            isShadowCaster = false
-                            isShadowReceiver = false
-                        }
-                    )
                     CubeNode(
                         size = Size(
                             layout.wallWidth,
                             RoomLighting.STRIP_H,
                             RoomLighting.STRIP_D
                         ),
-                        position = Position(0f, fixtureY, RoomLighting.STRIP_Z),
+                        position = Position(
+                            0f,
+                            row.centerY + WallDimens.CASE_H / 2f + RoomLighting.SHELF_LIGHT_LIFT,
+                            RoomLighting.STRIP_Z
+                        ),
                         materialInstance = tube,
                         apply = {
                             isTouchable = false
                             // Neither: it is a light fitting. Casting would lay a bar of shadow
-                            // across the records it is there to light.
+                            // across the panel it is there to light.
                             isShadowCaster = false
                             isShadowReceiver = false
                         }
@@ -2731,6 +2808,11 @@ fun WallSceneScreen(
 
                     ViewNode(
                         windowManager = viewNodeManager,
+                        // Unlit. The plate sits on the front edge of a board, which in the
+                        // two-light room nothing reaches: the ribbon grazes it from above and
+                        // behind at N.L = 0, and the underlights are confined to the artwork. A
+                        // label that has to be read cannot depend on light that is not there.
+                        unlit = true,
                         position = Position(row.plateX, row.boardY, BOARD_D / 2f + PLATE_LIFT),
                         apply = {
                             pxPerUnits = PLATE_PX_PER_UNIT
@@ -3502,12 +3584,16 @@ private fun ShelfPlate(name: String, accentHue: Float) {
     Box(
         modifier = Modifier
             .size(widthDp, heightDp)
-            .background(ComposeColor.hsl(accentHue * 360f, 0.18f, 0.86f)),
+            // Dark card, ivory type — an engraved plate rather than a sticker. The old pale
+            // pastel only read when the key light was washing the front of every board; lit by
+            // nothing in the two-light room, it came out a grey smudge. The node is unlit now
+            // (see where it is mounted), so these are the colours that reach the screen.
+            .background(ComposeColor.hsl(accentHue * 360f, 0.22f, 0.13f)),
         contentAlignment = Alignment.Center
     ) {
         Text(
             text = name.uppercase(Locale.ROOT),
-            color = ComposeColor(0xFF17120F),
+            color = ComposeColor(0xFFE6D6B5),
             fontFamily = JetBrainsMonoFamily,
             fontWeight = FontWeight.Medium,
             fontSize = textSize,

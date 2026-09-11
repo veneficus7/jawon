@@ -765,27 +765,24 @@ fun SceneScope.CaseSlotNodes(
             // the emissive cone is one: the case turns, and a light that turned with it would
             // swing its pool around the bay.
             //
-            // POINT rather than a spot: the case rotates, so which face needs lighting changes
-            // continuously, and a cone would have to chase it. Hidden until `bind` gives this
-            // slot an album.
+            // A POINT, and on its own light channel — see RoomLighting.UNDER_LIGHT_CHANNEL.
+            // Only the case's printed plates share that channel, so the point can light the
+            // artwork whichever way the case has turned without reaching the back panel behind
+            // it or reflecting in the glass in front of it. Hidden until `bind` gives this slot
+            // an album.
             Node(apply = {
                 slot.underCarrier = this
                 isVisible = false
             }) {
                 LightNode(
-                    type = LightManager.Type.FOCUSED_SPOT,
-                    direction = io.github.sceneview.math.Direction(
-                        RoomLighting.UNDER_DIRECTION[0],
-                        RoomLighting.UNDER_DIRECTION[1],
-                        RoomLighting.UNDER_DIRECTION[2]
-                    ),
+                    type = LightManager.Type.POINT,
                     apply = {
                         intensityCandela(RoomLighting.UNDER_CANDELA)
-                        spotLightCone(
-                            RoomLighting.UNDER_CONE_INNER,
-                            RoomLighting.UNDER_CONE_OUTER
-                        )
                         falloff(RoomLighting.UNDER_FALLOFF)
+                        // Off the room's default channel and onto its own. A light that
+                        // stayed on channel 0 as well would still reach everything.
+                        lightChannel(0, false)
+                        lightChannel(RoomLighting.UNDER_LIGHT_CHANNEL, true)
                         // Around a hundred of these are on screen at once. Clustered forward
                         // rendering is fine with that; a hundred shadow casters would not be,
                         // and there is no shadow map budget remotely near it.
@@ -836,7 +833,17 @@ fun SceneScope.CaseSlotNodes(
                                     metallic = 0f,
                                     roughness = PAPER_ROUGHNESS,
                                     reflectance = PAPER_REFLECTANCE
-                                ).also { materialInstance = it }
+                                ).also {
+                                    materialInstance = it
+                                    // Lit by this album's own underlight, which nothing but a
+                                    // case's printed plates may be. See
+                                    // RoomLighting.UNDER_LIGHT_CHANNEL.
+                                    renderableManager.setLightChannel(
+                                        renderableInstance,
+                                        RoomLighting.UNDER_LIGHT_CHANNEL,
+                                        true
+                                    )
+                                }
                             }
                         }
                     )
@@ -881,7 +888,17 @@ fun SceneScope.CaseSlotNodes(
                                     metallic = 0f,
                                     roughness = COVER_ROUGHNESS,
                                     reflectance = PAPER_REFLECTANCE
-                                ).also { materialInstance = it }
+                                ).also {
+                                    materialInstance = it
+                                    // Lit by this album's own underlight, which nothing but a
+                                    // case's printed plates may be. See
+                                    // RoomLighting.UNDER_LIGHT_CHANNEL.
+                                    renderableManager.setLightChannel(
+                                        renderableInstance,
+                                        RoomLighting.UNDER_LIGHT_CHANNEL,
+                                        true
+                                    )
+                                }
                             }
                         }
                     )
@@ -903,7 +920,17 @@ fun SceneScope.CaseSlotNodes(
                                     metallic = 0f,
                                     roughness = PAPER_ROUGHNESS,
                                     reflectance = PAPER_REFLECTANCE
-                                ).also { materialInstance = it }
+                                ).also {
+                                    materialInstance = it
+                                    // Lit by this album's own underlight, which nothing but a
+                                    // case's printed plates may be. See
+                                    // RoomLighting.UNDER_LIGHT_CHANNEL.
+                                    renderableManager.setLightChannel(
+                                        renderableInstance,
+                                        RoomLighting.UNDER_LIGHT_CHANNEL,
+                                        true
+                                    )
+                                }
                             }
                         }
                     )

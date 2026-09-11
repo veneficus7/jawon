@@ -146,100 +146,64 @@ object RoomSurface {
     }
 
     /**
-     * The shelf's **back panel**: sawn boards, running vertically, with grain.
+     * A sheet of veneered board: long grain, no seams, no board-to-board banding.
      *
-     * ## Why this replaced the mottle
+     * **This replaced a boards-with-seams generator for every surface of the rack, and the reason is on the owner's
+     * phone.** The boards-with-seams pattern drew a dark seam and a tone step every 10cm across
+     * a panel that the camera sees 26cm of, and under a ribbon grazing it from above those read
+     * as vertical folds — a theatre curtain, not a cupboard back. Real rack backs are a sheet:
+     * plywood or veneered board, with grain and without joins every hand's width.
      *
-     * The owner's word for the room was that it had a wall with floating shelves in front of it
-     * rather than a cupboard — *shkaf* — and he was right. A record rack is a carcass: boards,
-     * and a back panel of real material that the shelf lights fall on. What was here was a few
-     * percent of irregular luminance noise, which is enough to stop a surface being
-     * mathematically flat and nowhere near enough to say what it is made of. Light landing on it
-     * read as a glow in space.
+     * The grain runs along [grainAlongX] — along the shelves and along the back panel both, so
+     * the whole carcass is one timber running one way, which is what a cabinet made from one
+     * sheet looks like. Horizontal grain also stops the panel's figure fighting the ribbon's
+     * gradient, which runs vertically: a pattern that varies in the same direction as the light
+     * reads as the light, one that varies across it reads as stripes.
      *
-     * ## The stretch, and why tiling is the whole answer
+     * ## Wrapping, which is still the whole constraint
      *
-     * `docs/materials.md` records that a `CubeNode`'s faces carry 0..1 UVs and `opaque_textured`
-     * has no UV scale, so a texture is stretched across a panel exactly once and **there is no
-     * tiling to be had**. That is true of one node and it is not true of a wall.
+     * The rack is tiled ([TILE_M] per node, one texture shared), so every term here is exactly
+     * periodic over the tile:
      *
-     * The measurement that forced this: the camera sees about **26cm** of wall across a portrait
-     * phone, while the backing panel is nearly two metres wide. One 512px texture over that is
-     * roughly 77 texels across 1440 screen pixels — one texel per nineteen pixels — so any
-     * detail is a blur before it is drawn. Proved rather than assumed, by replacing the pattern
-     * with hard black-and-white stripes and counting how many reached the screen: one and a half.
+     * - Across the grain, three sines at whole-number frequencies (13, 29 and 61 cycles per
+     *   tile). Whole numbers make them wrap; three unrelated ones beat against each other into
+     *   figure instead of pinstripe.
+     * - Along the grain, a wander added to the across coordinate — a sum of sines in the along
+     *   coordinate, periodic by construction — so the lines bend the way grain does.
+     * - A slow swell, one cycle per tile each way, so the sheet is not uniformly toned.
      *
-     * So the panel is a **grid of nodes sharing one texture**, each node a tile of about
-     * [TILE_M] on a side. Each tile gets the full 512px, which is a third of a millimetre per
-     * texel instead of three and a half, and the pattern repeats across the wall the way boards
-     * on a real back panel do.
-     *
-     * ## Which means it has to wrap
-     *
-     * A tile whose edges do not match its neighbour puts a seam every [TILE_M] across the whole
-     * wall — the one artefact guaranteed to be noticed. So everything here is periodic by
-     * construction rather than by luck:
-     *
-     * - Across, the board count is a whole number, so `u = 0` and `u = 1` are both a board edge
-     *   and the seam at a tile join is just another seam between boards.
-     * - Down, the grain's lateral wander is a sum of sines in `v`, which is exactly periodic
-     *   over the tile. This is why it is not the value noise used everywhere else in this file:
-     *   lattice noise does not wrap without being rewritten to, and a sine does it for free.
+     * Contrast is deliberately low. Grain is a few percent of albedo at a metre in any real
+     * timber; what reads as *wood* is that it is there at all, not how strong it is.
      */
-    fun woodTile(
-        color: Color,
-        seed: Int,
-        tintScale: Float,
-        /**
-         * Which way the boards run.
-         *
-         * The back panel's boards stand upright; a shelf's board lies along its length, and its
-         * grain with it. Same generator, axes swapped on the way out — a shelf wearing the back
-         * panel's texture would have its grain running across the board, which is the one thing
-         * no sawn timber does.
-         */
-        acrossInstead: Boolean = false
-    ): Bitmap {
+    fun veneerTile(color: Color, seed: Int, grainAlongX: Boolean): Bitmap {
         val argb = color.toArgb()
-        val baseR = AndroidColor.red(argb) * tintScale
-        val baseG = AndroidColor.green(argb) * tintScale
-        val baseB = AndroidColor.blue(argb) * tintScale
+        val baseR = AndroidColor.red(argb).toFloat()
+        val baseG = AndroidColor.green(argb).toFloat()
+        val baseB = AndroidColor.blue(argb).toFloat()
+        val p0 = hash(0, 3, seed) * TWO_PI
+        val p1 = hash(1, 3, seed) * TWO_PI
+        val p2 = hash(2, 3, seed) * TWO_PI
+        val p3 = hash(3, 3, seed) * TWO_PI
 
         val pixels = IntArray(TEX_PX * TEX_PX)
-        for (x in 0 until TEX_PX) {
-            val u = x.toFloat() / TEX_PX * PLANKS_PER_TILE
-            val board = kotlin.math.floor(u).toInt()
-            val withinBoard = u - board
+        for (y in 0 until TEX_PX) {
+            for (x in 0 until TEX_PX) {
+                // a runs across the grain, b along it; both 0..1 over the tile.
+                val a = (if (grainAlongX) y else x).toFloat() / TEX_PX
+                val b = (if (grainAlongX) x else y).toFloat() / TEX_PX
 
-            // Per-board tone. Real boards are cut from different parts of a log and no two
-            // match; a fixed offset per board is what stops a repeating texture reading as
-            // wallpaper. Held small — boards from one rack are the same timber.
-            val tone = 1f + (hash(board, 0, seed) - 0.5f) * 2f * PLANK_TONE
+                val wander = kotlin.math.sin(b * TWO_PI + p0) * VENEER_WANDER +
+                    kotlin.math.sin(b * 2f * TWO_PI + p1) * VENEER_WANDER * 0.4f
+                val w = a + wander
+                val grain =
+                    kotlin.math.sin(w * 13f * TWO_PI + p2) * 0.50f +
+                        kotlin.math.sin(w * 29f * TWO_PI + p3) * 0.32f +
+                        kotlin.math.sin(w * 61f * TWO_PI) * 0.18f
+                val swell = kotlin.math.sin(a * TWO_PI + p1) * 0.5f +
+                    kotlin.math.sin(b * TWO_PI + p2) * 0.5f
 
-            // The seam: dark at both edges of a board, so two neighbours make one line.
-            val edge = kotlin.math.min(withinBoard, 1f - withinBoard)
-            val seam = 1f - SEAM_DEPTH * (1f - smoothStep01(edge / SEAM_WIDTH))
-
-            // A phase per board, so the grain does not march in step across the panel.
-            val phase = hash(board, 7, seed) * 6.2831855f
-
-            for (y in 0 until TEX_PX) {
-                val v = y.toFloat() / TEX_PX
-
-                // Lateral wander, periodic in v so the tile joins itself top to bottom. Two
-                // harmonics rather than one: a single sine is a wave, two is a wander.
-                val wander =
-                    kotlin.math.sin(v * 6.2831855f + phase) * GRAIN_WARP +
-                        kotlin.math.sin(v * 12.566371f + phase * 1.7f) * GRAIN_WARP * 0.45f
-
-                val across = (withinBoard + wander) * GRAIN_LINES * 6.2831855f
-                val grain = 1f +
-                    (kotlin.math.sin(across) * 0.7f +
-                        kotlin.math.sin(across * 2.3f + phase) * 0.3f) * GRAIN_CONTRAST
-
-                val k = tone * seam * grain
-                val index = if (acrossInstead) x * TEX_PX + y else y * TEX_PX + x
-                pixels[index] = AndroidColor.rgb(
+                val k = 1f + grain * VENEER_GRAIN + swell * VENEER_SWELL
+                pixels[y * TEX_PX + x] = AndroidColor.rgb(
                     (baseR * k).toInt().coerceIn(0, 255),
                     (baseG * k).toInt().coerceIn(0, 255),
                     (baseB * k).toInt().coerceIn(0, 255)
@@ -253,10 +217,6 @@ object RoomSurface {
     fun wallBitmap(color: Color, aspect: Float): Bitmap =
         bitmapOf(color, aspect, WALL_CONTRAST, WALL_SEED, tintScale = 1f)
 
-    private fun smoothStep01(t: Float): Float {
-        val c = t.coerceIn(0f, 1f)
-        return c * c * (3f - 2f * c)
-    }
 
     /**
      * The floor's surface.
@@ -355,20 +315,16 @@ object RoomSurface {
      */
     const val TILE_M = 0.30f
 
-    /** Boards per tile. A whole number, so the pattern wraps at the tile join. */
-    private const val PLANKS_PER_TILE = 3
 
-    /** How dark a seam goes, and how wide it is as a fraction of a board. */
-    private const val SEAM_DEPTH = 0.45f
-    private const val SEAM_WIDTH = 0.030f
 
-    /** How much board-to-board tone varies. Same timber, different cuts. */
-    private const val PLANK_TONE = 0.11f
 
-    /** Grain: how many strokes across a board, how strong, how far they wander. */
-    private const val GRAIN_LINES = 5f
-    private const val GRAIN_CONTRAST = 0.10f
-    private const val GRAIN_WARP = 0.055f
+
+    /** How strong the grain is, how strong the swell, and how far the grain wanders. */
+    private const val VENEER_GRAIN = 0.075f
+    private const val VENEER_SWELL = 0.045f
+    private const val VENEER_WANDER = 0.018f
+
+    private const val TWO_PI = 6.2831855f
 
     private const val WALL_SEED = 0x5A17
     private const val FLOOR_SEED = 0x10F1

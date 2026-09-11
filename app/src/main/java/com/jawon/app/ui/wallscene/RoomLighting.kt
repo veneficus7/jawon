@@ -122,43 +122,43 @@ object RoomLighting {
      * Added to `centerY + CASE_H / 2`, so it clears the tops of the sleeves by this much.
      */
     /**
-     * The top **back** corner of a shelf compartment, front to back — where the fixture is
-     * mounted, and one named constant so nothing can drift away from it.
+     * Where the LED ribbon sits, front to back: **at the front-bottom edge of the tube.**
      *
-     * 18.5mm in front of [WallDimens.WALL_Z]: hard against the panel, far enough not to
-     * intersect it. Both halves of the fixture live here — the tube you can see and the ribbon
-     * that lights the panel — because they are the same object.
+     * The tube is the fixture and the ribbon is what is inside it, so the light has to leave
+     * from the tube — anywhere else and the gradient on the panel belongs to some other light.
+     * The tube now lies hard against the back panel (see [STRIP_Z]), 16mm deep, and its
+     * diffuser faces down; the front edge of that diffuser is where a real strip's light
+     * appears to come from, 15mm off the panel.
      *
-     * **This existed as `STRIP_Z = SHELF_LIGHT_Z` and that was a bug.** `SHELF_LIGHT_Z` had
-     * meanwhile moved to the *front* lip, where the light that falls on the records has to hang,
-     * so the visible tube silently moved with it and mounted itself on the wrong edge of the
-     * shelf. It built, it ran, and it looked like a strip light floating in front of the
-     * records instead of tucked behind them.
+     * This used to be its own number, and the tube, the bracket and the ribbon each had their
+     * own idea of where the corner was. The tube ended up 15mm in front of the plate it was
+     * meant to be screwed to, and the owner's read — that the light on the panel "is not coming
+     * from the tube" — was correct. Stated in terms of [WallDimens.WALL_Z] now, the same way the
+     * tube is, so the two cannot drift apart.
      */
-    const val CORNER_Z = -0.050f
+    const val CORNER_Z = WallDimens.WALL_Z + 0.015f
 
     /**
-     * How far above the top of a row's cases the fixture hangs — **and this was the geometric
-     * error underneath every other one on this fixture.**
+     * How far above the top of a row's records the fixture hangs: **flush against the
+     * underside of the board above.**
      *
-     * At 12mm the strip sat just above its own row's records, which means it threw down
-     * *behind them*, onto panel the records themselves hide. Nothing lit the band of wall that
-     * is actually visible, and every attempt to fix the gradient by re-aiming or re-levelling
-     * the light was tuning something the camera could not see. Measured on a masked-out wall,
-     * the visible band ran 63.6 at its top to 87.9 at its bottom — brightening *downward*,
-     * away from the fixture, because it was being lit by spill rather than by the light meant
-     * for it.
+     * A row occupies `CASE_H` of a `ROW_PITCH`, so the compartment over the records is
+     * `ROW_PITCH - CASE_H - BOARD_H` = 52mm tall, and the top of that compartment is the
+     * underside of the next board up. The tube's centre sits half a tube below it, so its top
+     * face touches the board: attached to the shelf above and, through [STRIP_Z], to the panel
+     * behind — both surfaces of the corner at once, which is what "in the corner" means.
      *
-     * A row occupies `CASE_H` of a `ROW_PITCH`, so the compartment above the records is
-     * `ROW_PITCH - CASE_H - BOARD_H` = 52mm tall, and that band is the only back panel the
-     * camera ever sees. The owner's target photograph puts the strip at the top of that
-     * compartment, tucked under the shelf above — which lights the band directly, hottest at
-     * the top and dying downward, and grazes the tops of the records on the way past.
+     * History worth keeping. At 12mm the fixture sat just above its own row's records and
+     * threw its light down *behind* them, onto panel the camera cannot see. At 48mm it hung 3mm
+     * under the board with a dark bracket bridging the gap and — the part that mattered — that
+     * bracket also covered 8.7mm of panel *below* the tube, so the gradient began after a dark
+     * band. That band is what made the light read as coming from somewhere else.
      *
-     * 48mm leaves the tube a few millimetres clear of the board above rather than intersecting
-     * it.
+     * Every row has a board above it now, including the top one: see the rack's cap in
+     * `WallSceneScreen`.
      */
-    const val SHELF_LIGHT_LIFT = 0.048f
+    const val SHELF_LIGHT_LIFT =
+        WallDimens.ROW_PITCH - WallDimens.CASE_H - WallDimens.BOARD_H - 0.0011f
 
     /**
      * How far **in front of** the records the strip hangs.
@@ -281,12 +281,18 @@ object RoomLighting {
     /**
      * How wide the ribbon throws, as angles from straight down.
      *
-     * The outer angle is the load-bearing one: 1.45 rad is 83°, comfortably short of the 90°
-     * where the shelf board above begins, and wide enough to reach the panel from a few
-     * millimetres below the fixture down.
+     * The outer angle is the load-bearing one: 1.50 rad is 86°, short of the 90° where the shelf
+     * board above begins.
+     *
+     * **The inner angle has to be nearly as wide, or the brightest strip of wall is the wrong
+     * one.** At 60° inner, the panel within ~9mm under the diodes sat in the cone's soft edge —
+     * a point 5mm down and 15mm back is 72° off straight down — so the profile measured 79, 72
+     * right under the tube and only peaked at 152 further down. A gradient that starts with a
+     * dip reads as light arriving from somewhere below the fixture. At 74° inner the panel
+     * touching the tube is at full strength, which is where a ribbon's light is brightest.
      */
-    const val WASH_CONE_INNER = 1.05f
-    const val WASH_CONE_OUTER = 1.45f
+    const val WASH_CONE_INNER = 1.30f
+    const val WASH_CONE_OUTER = 1.50f
 
 
     /**
@@ -322,7 +328,7 @@ object RoomLighting {
      * nowhere, so the number had to be enormous to show at all. Throwing across the bay puts
      * the same light on the surface at a useful angle and a fraction of the distance.
      */
-    const val WASH_CANDELA = 46f
+    const val WASH_CANDELA = 64f
 
     /**
      * Narrow, narrowed twice, and then widened again once the tube came back.
@@ -344,22 +350,26 @@ object RoomLighting {
      */
 
     /**
-     * Long enough to reach down the panel, short enough that the bottom of a bay is visibly
-     * darker than the top. The gradient IS the picture — an evenly lit panel would be a
-     * lightbox, which is the failure the visible bar already was.
+     * How far each diode reaches, and **why it has to be longer than the compartment is tall.**
+     *
+     * Filament's `falloff` is not a soft decay — it is the radius at which the light is cut to
+     * exactly zero. At 0.12m the ribbon measured a clean gradient from the tube down, and then a
+     * dead-flat 5.5 for the whole bottom 40% of the panel: the panel runs about 19cm from the
+     * tube to the board below, and everything past 12cm was outside every diode's reach at
+     * once. That flat floor is what made the lower half of each compartment read as a separate,
+     * unlit wall.
+     *
+     * Longer than the compartment, so the shape of the gradient is left to inverse-square and
+     * incidence — which already make it steep near the tube and long at the bottom — and never
+     * to a cutoff.
      */
-    const val WASH_FALLOFF = 0.12f
+    const val WASH_FALLOFF = 0.26f
 
     /**
-     * How far below the tube the diodes sit.
-     *
-     * Nearly nothing now. This was 7mm, trying to buy distance from the shelf board above so
-     * the diodes would stop punching hotspots into it — which helped and could never be
-     * enough, because a point light was going to keep lighting that board however far away it
-     * got. [WASH_CONE_OUTER] excludes the board outright, so the sources can sit where the
-     * owner asked them to be: in the tube.
+     * How far below the tube's centre the diodes sit: just clear of its bottom face, which is
+     * the diffuser the light leaves through. Half the tube's 2.2mm plus a millimetre.
      */
-    const val WASH_DROP = 0.003f
+    const val WASH_DROP = 0.0021f
 
     // ---- The underlight: one real light per album ----------------------------------
     //
@@ -415,25 +425,28 @@ object RoomLighting {
     const val UNDER_FALLOFF = 0.20f
 
     /**
-     * How wide the underlight throws, as angles from straight up.
+     * The light channel the album underlights live on — and the end of a day spent fighting
+     * this light with cone angles.
      *
-     * **It was a POINT light, and that was quietly wrecking the back panel.** A point light
-     * radiates into a sphere, so each of the hundred-odd underlights was throwing as much light
-     * backwards at the panel 120mm behind it as upwards at the record it exists for — inside its
-     * own falloff, so all of it landed. The owner saw the result before I did: the gradient on
-     * the back panel was not coming from the tube, and most of it was not. It was a hundred
-     * album underlights washing the wall from in front.
+     * The underlight has one job, lighting the artwork, and kept doing three others. As a point
+     * light it washed the back panel from 120mm in front of it, so the gradient the tube is
+     * supposed to own came mostly from a hundred records. Narrowed to an upward spot it stopped
+     * doing that and kept putting its own reflection — a bright blob — into the middle of every
+     * case's glossy shell, over the art. Each fix by geometry traded one surface for another,
+     * because geometry cannot say *which surfaces* a light is allowed to touch.
      *
-     * Aimed up with a cone that reaches the sleeve and not the panel. A wall point 50mm above
-     * the bulb sits about 67° off the up axis; the sleeve directly above is at 0°. An outer
-     * angle of 0.9 rad — 52° — takes the record and leaves the wall to the ribbon, which is
-     * whose job it is.
+     * Light channels can. A Filament light only reaches renderables that share a channel with
+     * it, so the underlight lives on this channel alone and only the things it exists for opt
+     * in: the three printed plates of every case, the held case's plates, and the disc label.
+     * The back panel, the shelf boards and the case body never do — so the panel's gradient is
+     * the tube's and nothing else's, and the shell reflects the room rather than a bulb 50mm
+     * away. `RenderableManager.setLightChannel` and `LightManager.Builder.lightChannel` both
+     * forward to native in this Filament (checked in the bytecode, per trap 2's lesson).
+     *
+     * So it is a POINT light again: within its channel there is nothing it can reach that it
+     * should not, and a point lights a record whichever way it has turned.
      */
-    const val UNDER_CONE_INNER = 0.50f
-    const val UNDER_CONE_OUTER = 0.90f
-
-    /** Straight up, at the record standing over it. */
-    val UNDER_DIRECTION: FloatArray = floatArrayOf(0f, 1f, 0f)
+    const val UNDER_LIGHT_CHANNEL = 1
 
     /**
      * How much of the album's own hue the bulb takes, 0 = warm white, 1 = the full hue.
@@ -545,7 +558,30 @@ object RoomLighting {
      */
     const val WASH_SHADOW_COLUMN = WASH_COLUMNS / 2
 
-    const val SHELF_LIGHT_COUNT = 3
+    /**
+     * How many rows of the rack carry a live ribbon at once — four, and never positioned by the
+     * camera.
+     *
+     * **The ribbon used to ride the camera, and that was the bug under most of this fixture's
+     * complaints.** Every ribbon light hung from one carrier the frame driver moved to
+     * `(panX, panY)` every frame, while the tube it belongs to was drawn at a fixed place on
+     * each shelf. At rest the two lined up. During any swipe the whole lit pattern slid across
+     * the fixed timber with the camera — the owner's "the back wall is moving separately from
+     * the shelf" — and on a vertical swipe the gradient visibly detached from the tube and
+     * drifted, which is "the light is not coming from the tube".
+     *
+     * Now the carrier is **snapped to the rack**: horizontally to the diode pitch, so every diode
+     * sits at a fixed place on the shelf and a pan only swaps which diodes exist at the far
+     * edges, well out of frame; vertically to the midpoint between the two rows either side of
+     * the view, so the four ribbon rows land exactly on four real tubes. Four rather than three
+     * because the frame is about 2.8 rows tall: with three, the moment the nearest row changed
+     * mid-swipe a partly visible compartment at the edge of the frame lost its light. With four,
+     * the row that changes is always outside the frame.
+     *
+     * A row of the rack that does not exist — above the top shelf, below the bottom one — has
+     * its ribbon switched off rather than left lighting empty space.
+     */
+    const val SHELF_LIGHT_COUNT = 4
 
     // ---- The tube you can see ------------------------------------------------------
     //
@@ -598,57 +634,20 @@ object RoomLighting {
      */
     val STRIP_EMISSIVE: FloatArray = floatArrayOf(3.10f, 1.62f, 0.62f)
 
-    /**
-     * The bracket the tube is mounted on, and the reason the fixture reads as *attached*.
-     *
-     * **It used to bridge upward to the shelf board above, and that was a design error the
-     * owner spotted before it shipped:** the topmost shelf in a library has no shelf above it,
-     * so the top row's fixture would have been bolted to thin air. Attaching a fixture to
-     * something that may not exist is not a tuning problem, it is a wrong choice of anchor.
-     *
-     * The back panel is the anchor instead. Every compartment has one, including the top, and a
-     * ribbon stuck to the back wall near the top of a bay is what the real thing usually is
-     * anyway. So this is a plate lying against the panel with the tube standing off the front
-     * of it, running the full width of the shelf.
-     *
-     * The alternative considered and rejected was moving the fixture to the *bottom* back
-     * corner, where every row has its own board to attach to. It solves the anchor and costs
-     * the whole effect: records stand 142mm tall on that board, so the tube would sit behind
-     * their base and never be seen at all, and the gradient would inverted to brightest at the
-     * floor of the bay.
-     */
-    const val HOUSING_H = 0.0130f
-
-    /** Deep enough to reach from the tube back to the panel it is screwed to. */
-    const val HOUSING_D = 0.0060f
-
-    /** Where that plate sits: hard against the panel, just behind the tube. */
-    const val HOUSING_Z = WallDimens.WALL_Z + HOUSING_D / 2f + 0.0005f
-
-    /** And how far up the plate the tube is mounted — a little above centre, like a real one. */
-    const val HOUSING_RISE = 0.0022f
 
     /**
-     * Where the tube sits, front to back — **derived from the bracket, so the two touch.**
+     * Where the tube sits, front to back: **lying against the back panel**, half a millimetre
+     * off it.
      *
-     * This was `CORNER_Z`, which put the tube 15mm in front of the plate it is supposed to be
-     * screwed to, with clear air between them. The owner's read was that the tube "is not in
-     * the corner" and is not attached, and that is exactly what a 15mm gap looks like: the
-     * bracket lies against the panel, the tube floats in the bay, and nothing says they are one
-     * fitting.
-     *
-     * Derived rather than typed, so no future edit to either can open that gap again.
+     * There was a bracket plate between the two, and it did more harm than anything else in the
+     * fixture: unlit and dark, it covered the panel from 4.3mm above the tube to 8.7mm below it,
+     * so the brightest part of the gradient — the panel immediately under the diodes, where a
+     * ribbon's light is strongest — was hidden behind it, and what showed was a dark band and
+     * then a glow. Removed. The tube touches the panel behind it and the board above it
+     * ([SHELF_LIGHT_LIFT]), and the panel is lit right up to its lower edge.
      */
-    const val STRIP_Z = HOUSING_Z + HOUSING_D / 2f + STRIP_D / 2f
+    const val STRIP_Z = WallDimens.WALL_Z + STRIP_D / 2f + 0.0005f
 
-    /**
-     * Dark, and unlit rather than shaded.
-     *
-     * It sits immediately beside a bloom source, and anything lit there picks up the tube's own
-     * glare and becomes a second bright bar — which is the problem the housing exists to solve.
-     * A flat dark value holds the line however hot the tube gets.
-     */
-    val HOUSING_COLOR: FloatArray = floatArrayOf(0.030f, 0.026f, 0.022f)
 
 
     /**

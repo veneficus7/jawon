@@ -601,11 +601,22 @@ def build_beam():
     # A real volumetric shaft wants additive blending, which wants a hand-written `.mat` and
     # the 735MB toolchain that entails (docs/materials.md). Until then the pool alone does the
     # job: it blooms, so it reads as a genuine source, and the eye supplies the rest.
+    # The emitter, not the pool — and the change is the owner's complaint made geometric.
+    #
+    # This was r_base * 2.6: a 68mm disc of emission driven past bloom's threshold, standing
+    # in for the pool of light an underlight throws. Two things went wrong with that once the
+    # underlight became a real Filament light. It is a hard-edged, clipped, flat ellipse — a
+    # glowing hockey puck under every record — and its bloom spread upward over the lower half
+    # of every sleeve as a milky veil, which is most of why the covers "are not vivid enough".
+    #
+    # So it is the size of the LED a display puck actually has. Small enough that its bloom is
+    # a glint rather than a haze, bright enough to read as the source the record is lit from.
+    # The real light does the lighting; this only has to be seen.
     pool = []
     for i in range(segments):
         a = 2.0 * math.pi * i / segments
-        pool.append(bm.verts.new((math.cos(a) * r_base * 2.6,
-                                  math.sin(a) * r_base * 2.6, 0.0006)))
+        pool.append(bm.verts.new((math.cos(a) * r_base * 0.85,
+                                  math.sin(a) * r_base * 0.85, 0.0006)))
     bm.faces.new(tuple(pool))
     bm.normal_update()
     bm.to_mesh(obj.data)

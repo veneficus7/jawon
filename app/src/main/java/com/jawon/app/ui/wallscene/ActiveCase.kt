@@ -211,6 +211,11 @@ fun SceneScope.ActiveCaseNodes(
                     intensityCandela(RoomLighting.HELD_UNDER_CANDELA)
                     falloff(RoomLighting.HELD_UNDER_FALLOFF)
                     castShadows(false)
+                    // The album's own channel, the same as on the shelf — see
+                    // RoomLighting.UNDER_LIGHT_CHANNEL. Only the plates and the disc label
+                    // opt in, so this cannot put a hotspot in the lid's glass.
+                    lightChannel(0, false)
+                    lightChannel(RoomLighting.UNDER_LIGHT_CHANNEL, true)
                 }
             )
         }
@@ -249,7 +254,14 @@ fun SceneScope.ActiveCaseNodes(
                         metallic = 0f,
                         roughness = ACT_PAPER_ROUGHNESS,
                         reflectance = ACT_PAPER_REFLECTANCE
-                    ).also { materialInstance = it }
+                    ).also {
+                        materialInstance = it
+                        renderableManager.setLightChannel(
+                            renderableInstance,
+                            RoomLighting.UNDER_LIGHT_CHANNEL,
+                            true
+                        )
+                    }
                 }
             }
         )
@@ -285,7 +297,14 @@ fun SceneScope.ActiveCaseNodes(
                             metallic = 0f,
                             roughness = ACT_COVER_ROUGHNESS,
                             reflectance = ACT_PAPER_REFLECTANCE
-                        ).also { materialInstance = it }
+                        ).also {
+                        materialInstance = it
+                        renderableManager.setLightChannel(
+                            renderableInstance,
+                            RoomLighting.UNDER_LIGHT_CHANNEL,
+                            true
+                        )
+                    }
                     }
                 }
             )
@@ -333,6 +352,11 @@ fun SceneScope.ActiveCaseNodes(
                     intensityCandela(RoomLighting.HELD_UNDER_CANDELA)
                     falloff(RoomLighting.HELD_UNDER_FALLOFF)
                     castShadows(false)
+                    // The album's own channel, the same as on the shelf — see
+                    // RoomLighting.UNDER_LIGHT_CHANNEL. Only the plates and the disc label
+                    // opt in, so this cannot put a hotspot in the lid's glass.
+                    lightChannel(0, false)
+                    lightChannel(RoomLighting.UNDER_LIGHT_CHANNEL, true)
                 }
             )
         }
@@ -362,6 +386,19 @@ fun SceneScope.ActiveCaseNodes(
                 isShadowReceiver = true
                 name = DISC_NODE_NAME
                 nodes.discMesh = this
+                // The disc is lit by its album's underlight, the carrier riding it above — so
+                // its renderables join that light's channel. A glTF model, so this is its
+                // entities rather than a single node's instance.
+                val rm = engine.renderableManager
+                discModel.entities.forEach { entity ->
+                    if (rm.hasComponent(entity)) {
+                        rm.setLightChannel(
+                            rm.getInstance(entity),
+                            RoomLighting.UNDER_LIGHT_CHANNEL,
+                            true
+                        )
+                    }
+                }
             }
         )
     }
