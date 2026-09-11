@@ -230,6 +230,21 @@ trap 11 and trap 15 in three different files, each correct in the era it was wri
     argued convincingly from the code before the empty-`setAudioProcessors` test
     settled it in one run: the app's own DSP was innocent the whole time.
 
+### Filament and SceneView, continued
+
+*Numbered at the end so the numbers above stay where they are cited.*
+
+23. **Never construct a Filament object at file or object level.** A top-level
+    `private val HAZE_SAMPLER = TextureSampler(…)` in `WallSceneScreen.kt` crashed
+    the app **on launch** on the owner's phone — `UnsatisfiedLinkError: No
+    implementation found for … TextureSampler.nCreateSampler` — because a file's
+    top-level vals are built in its static initialiser, which runs the first time
+    anything in the file is touched, before Filament has loaded its native library.
+    It built, and all 662 unit tests passed, because none of them loads Filament;
+    only a launch finds it. Use `by lazy`, or build it inside the scene. The same
+    applies to any `Texture`, `MaterialInstance`, `Material` or light builder in an
+    `object` or companion.
+
 ---
 
 ## Locked decisions — do not relitigate

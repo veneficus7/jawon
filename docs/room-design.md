@@ -232,6 +232,11 @@ worth doing.
 
 **`quality` is not among them.** It is never read.
 
+**Nor is `anamorphism`** — the one knob for a horizontally stretched, anamorphic
+bloom. Set it and nothing happens. The owner asked for an anamorphic lens on
+2026-09-11; from this build's bloom it cannot be had at all, and any anamorphic
+streak in the room would have to be drawn as geometry.
+
 `RoomAtmosphere` currently sets `quality = QualityLevel.LOW` and carries a
 comment justifying it with a measurement: MEDIUM 234 jiffies, off 186, LOW 172,
 concluding *"the whole of the saving is in the quality level."* That conclusion
@@ -254,7 +259,7 @@ it is running the bloom chain already:
 | Field | What it gives |
 |---|---|
 | `dirt` + `dirtStrength` | A **lens dirt texture** modulating the bloom. The single most recognisable "shot through a real lens" cue there is, and it costs one texture sample on a pass already running. |
-| `lensFlare`, `ghostCount`, `ghostSpacing`, `ghostThreshold` | Anamorphic ghosts down the axis from a bright source — the lamp. |
+| `lensFlare`, `ghostCount`, `ghostSpacing`, `ghostThreshold` | Ghosts mirrored through the centre of the frame from a bright source. **Not anamorphic** — that is `anamorphism`, which is not forwarded (§2.2). |
 | `starburst` | The streak a real iris makes on a point highlight. |
 | `haloThickness`, `haloRadius`, `haloThreshold` | A ring around bright sources. |
 | `chromaticAberration` | Colour fringing on the bloom only, not the whole frame. |
@@ -268,6 +273,13 @@ engine. It needs no new geometry, no material, no asset except one dirt texture.
 and the disc's specular highlight only. Not a global haze."* Ghosts and
 starbursts are exactly the kind of thing that reads as a demo. The dirt texture
 is the one I would take first and possibly the only one.
+
+**Taken, 2026-09-11, at the owner's request** ("real fog … lens dirt, anamorphic
+lens and stuff to polish up the look"): `dirt` with a procedural texture
+(`RoomAir.dirt`), the lens flare at a threshold only the strips reach, and two more
+bloom `levels` for a wider, fog-like halo. The fog itself is not in this table
+because Filament has no volumetric lighting for spots or points — the lit air under
+each strip is drawn, as two haze sheets per compartment (`RoomAir.haze`).
 
 ### 2.4 What is not available at all
 

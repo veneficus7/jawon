@@ -1,5 +1,6 @@
 package com.jawon.app.ui.wallscene
 
+import com.google.android.filament.Texture
 import com.google.android.filament.View
 
 /**
@@ -57,6 +58,45 @@ object RoomAtmosphere {
      * why the room has to be able to ask whether its own settings are still in force.
      */
     const val BLOOM_STRENGTH = 0.28f
+
+    /**
+     * How far the glow spreads: blur levels, against Filament's default of six.
+     *
+     * The owner asked for fog, and the single strongest thing fog does to a light is give it a
+     * wide soft halo. Filament has no volumetric lighting to do that properly (see [RoomAir]),
+     * but each bloom level doubles the blur's reach, so two more levels turn a tight glow round
+     * the strip into light hanging in the air around it. The added levels are at a sixteenth and
+     * a thirty-second of the bloom's resolution, which is why this is cheap.
+     */
+    private const val BLOOM_LEVELS = 8
+
+    /**
+     * Lens dirt. Filament **multiplies** the bloom by [RoomAir.dirt] times this where it
+     * composites, so the marks on the lens appear only where light falls through them — the
+     * strip's halo, a hot highlight — and the rest of the frame stays clean.
+     *
+     * The inverse of [RoomAir.DIRT_CLEAN], so clean glass passes the bloom at exactly 1. At 0.9
+     * over a black texture, which is what shipped first, it multiplied the bloom by nothing
+     * across almost the whole frame. A test pins the product.
+     */
+    const val LENS_DIRT_STRENGTH = 2.5f
+
+    /**
+     * Lens flare, from Filament's bloom: ghosts mirrored through the centre of the frame, a
+     * halo ring, a starburst and a little colour fringing on both.
+     *
+     * The threshold is the load-bearing number. Filament's default of 10 is for sunlight; here
+     * nothing is that bright, so at the default there would be no flare at all. At this level
+     * only the strips and the hottest highlights reach it — the album art and the lit panel
+     * stay below, so the flare comes from the lights and nothing else. Few, faint ghosts: this
+     * is an expensive lens catching a strip light, not a lens-flare filter.
+     */
+    private const val FLARE_THRESHOLD = 2.2f
+    private const val FLARE_GHOSTS = 3
+    private const val FLARE_GHOST_SPACING = 0.55f
+    private const val FLARE_HALO_THICKNESS = 0.06f
+    private const val FLARE_HALO_RADIUS = 0.42f
+    private const val FLARE_CHROMATIC_ABERRATION = 0.004f
 
     /**
      * Depth of field.
@@ -275,7 +315,7 @@ object RoomAtmosphere {
      * The one thing that cannot be re-applied is the IBL, which is baked once; see
      * [QualityTier.cubemapPx].
      */
-    fun apply(view: View, tier: QualityTier) {
+    fun apply(view: View, tier: QualityTier, lensDirt: Texture? = null) {
         view.fogOptions = View.FogOptions().apply {
             enabled = true
             distance = FOG_START
@@ -321,6 +361,20 @@ object RoomAtmosphere {
             enabled = true
             strength = BLOOM_STRENGTH
             threshold = true
+            levels = BLOOM_LEVELS
+            // Null until RoomAir has built it off the main thread; the frame driver re-applies
+            // once it lands, because isApplied compares it.
+            dirt = lensDirt
+            dirtStrength = LENS_DIRT_STRENGTH
+            lensFlare = true
+            starburst = true
+            chromaticAberration = FLARE_CHROMATIC_ABERRATION
+            ghostCount = FLARE_GHOSTS
+            ghostSpacing = FLARE_GHOST_SPACING
+            ghostThreshold = FLARE_THRESHOLD
+            haloThickness = FLARE_HALO_THICKNESS
+            haloRadius = FLARE_HALO_RADIUS
+            haloThreshold = FLARE_THRESHOLD
         }
 
         // **Draw the room smaller than the screen, and let Filament put it back.**
@@ -358,7 +412,13 @@ object RoomAtmosphere {
         view.dynamicResolutionOptions = View.DynamicResolutionOptions().apply {
             enabled = true
             homogeneousScaling = true
-            quality = View.QualityLevel.LOW
+            // SGSR wherever MSAA is on. Options.h's condition for it — "a well anti-aliased
+            // (MSAA or TAA), noise free scene" — is exactly what the tiers with MSAA now are, and
+            // the owner's readout showed why it matters: at HIGH his S25 Ultra was drawing the
+            // room at 81% and an S23 at MEDIUM at 55%, both stretched back up by a bilinear blit
+            // that softens every edge and re-steps the ones MSAA had just smoothed. SGSR
+            // reconstructs edges instead. LOW keeps FXAA, and FXAA keeps the bilinear blit.
+            quality = if (tier.msaaSamples > 1) View.QualityLevel.MEDIUM else View.QualityLevel.LOW
             minScale = tier.minRenderScale
             maxScale = tier.maxRenderScale
         }
@@ -368,10 +428,13 @@ object RoomAtmosphere {
         // The cases' rims are thinner than a pixel and were rasterising as dashes; four coverage
         // samples draw them as lines. See [QualityTier.msaaSamples] for the evidence.
         //
-        // `customResolve` because this room's highlights run well past 1.0 — the tube, the
-        // bloom-bound emissives, the specular on the glass — and a plain box resolve of HDR
-        // samples lets one hot sample dominate the pixel, which rings a dark halo round every
-        // bright edge. The custom resolve tonemaps before it averages.
+        // **No `customResolve`, and it was on for one release.** It tonemaps each sample before
+        // averaging, which resolves HDR edges more cleanly — and on a tiling GPU it defeats the
+        // reason MSAA is affordable at all: the samples can no longer resolve in tile memory, so
+        // all four go out to DRAM and back for a separate resolve pass over the full frame. On
+        // the owner's S25 Ultra the room then sat at an 81% render scale — the GPU out of
+        // budget — and the phone "getting hot pretty fast". The hardware resolve is free; the
+        // price is that the very brightest thin edges resolve a little harder.
         //
         // FXAA goes off when MSAA is on. It works on the finished image, so over edges MSAA has
         // already resolved it only smears — the spine lettering and the printed art are exactly
@@ -385,7 +448,7 @@ object RoomAtmosphere {
         view.multiSampleAntiAliasingOptions = View.MultiSampleAntiAliasingOptions().apply {
             enabled = msaa
             sampleCount = tier.msaaSamples
-            customResolve = msaa
+            customResolve = false
         }
         view.antiAliasing = if (msaa) View.AntiAliasing.NONE else View.AntiAliasing.FXAA
 
@@ -505,6 +568,14 @@ object RoomAtmosphere {
      */
     fun isApplied(view: View, grading: RoomGrading): Boolean =
         isApplied(view) && grading.isBound(view)
+
+    /**
+     * And the lens dirt, which arrives a moment after the first frame — it is built off the
+     * main thread — so [apply] runs once without it and has to run again when it lands. An
+     * identity check: Filament's getter hands back the very struct [apply] set.
+     */
+    fun isApplied(view: View, grading: RoomGrading, lensDirt: Texture?): Boolean =
+        isApplied(view, grading) && view.bloomOptions.dirt === lensDirt
 
     /**
      * Depth of field, on only while a case is open.

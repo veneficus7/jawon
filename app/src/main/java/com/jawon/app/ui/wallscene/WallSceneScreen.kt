@@ -348,6 +348,25 @@ private const val BOARD_TILE_SEED = 0x2C41
 /** How thick the rack's end panels are. Shelving stock, same as a board. */
 private const val SIDE_T = 0.018f
 
+/**
+ * How the haze sheets sample their gradient: filtered both ways so its 256 rows blend into one
+ * smooth fade, and clamped so the fade's first row cannot wrap round to meet its last.
+ *
+ * **Lazy, and it has to be.** A `TextureSampler` is made in native code, and a top-level `val`
+ * here is initialised in this file's static initialiser — which runs the first time anything in
+ * the file is touched, before Filament has loaded its library. As a plain `val` this crashed the
+ * app on launch with `UnsatisfiedLinkError: … TextureSampler.nCreateSampler`, on the owner's
+ * phone, while every unit test passed (none of them loads Filament). See ENGINEERING.md trap 23,
+ * "never construct a Filament object at file or object level".
+ */
+private val HAZE_SAMPLER by lazy {
+    TextureSampler(
+        TextureSampler.MinFilter.LINEAR,
+        TextureSampler.MagFilter.LINEAR,
+        TextureSampler.WrapMode.CLAMP_TO_EDGE
+    )
+}
+
 /** A little above the wall: a floor is smoother, and takes the lamp at a grazing angle. */
 internal const val FLOOR_REFLECTANCE = 0.55f
 
@@ -941,8 +960,20 @@ fun WallSceneScreen(
         // new one is bound.
         val grading = remember { RoomGrading() }
 
-        remember(filamentView, tier) {
-            RoomAtmosphere.apply(filamentView, tier)
+        // The lens dirt, built off the main thread — a few million falloff evaluations is too
+        // much work to put in front of the first frame — and uploaded here once it exists.
+        // State rather than a plain value so the frame driver below reads the texture that is
+        // current, not the null it was composed with. See RoomAir.dirt.
+        var lensDirt by remember { mutableStateOf<Texture?>(null) }
+        LaunchedEffect(engine) {
+            val dirt = withContext(Dispatchers.Default) { RoomAir.dirt() }
+            lensDirt = ImageTexture.Builder()
+                .bitmap(dirt, TextureType.DATA)
+                .build(engine)
+        }
+
+        remember(filamentView, tier, lensDirt) {
+            RoomAtmosphere.apply(filamentView, tier, lensDirt)
             tier
         }
 
@@ -1927,8 +1958,8 @@ fun WallSceneScreen(
                 // being fixed *is* an ordering assumption and there is no reason to replace it
                 // with a shorter one. Costs a float compare per frame and self-heals if
                 // SceneView ever writes the preset again.
-                if (!RoomAtmosphere.isApplied(filamentView, grading)) {
-                    RoomAtmosphere.apply(filamentView, tier)
+                if (!RoomAtmosphere.isApplied(filamentView, grading, lensDirt)) {
+                    RoomAtmosphere.apply(filamentView, tier, lensDirt)
                     grading.bind(filamentView, engine, roomScheme)
                     // `apply` leaves depth of field and contact shading in their browsing
                     // state. Clearing the latch makes the crossing below re-decide rather than
@@ -2415,6 +2446,26 @@ fun WallSceneScreen(
                     .build(engine)
             }
 
+            // **The lit air under every strip**, one texture per sheet depth, shared by every row
+            // for the timber's reason. Rebuilt with the room, so the haze is always the tube's
+            // colour. See RoomAir.haze — the bitmaps are 8x256 and cost nothing to make here.
+            val hazeBackTexture = remember(roomScheme) {
+                ImageTexture.Builder()
+                    .bitmap(
+                        RoomAir.haze(roomScheme.tubeLight, RoomAir.HAZE_BACK_ALPHA, RoomAir.HAZE_BACK_H),
+                        TextureType.COLOR
+                    )
+                    .build(engine)
+            }
+            val hazeFrontTexture = remember(roomScheme) {
+                ImageTexture.Builder()
+                    .bitmap(
+                        RoomAir.haze(roomScheme.tubeLight, RoomAir.HAZE_FRONT_ALPHA, RoomAir.HAZE_FRONT_H),
+                        TextureType.COLOR
+                    )
+                    .build(engine)
+            }
+
             if (layout.loaded) {
                 // Sized to what the CAMERA can reach, not to what the content occupies.
                 //
@@ -2811,6 +2862,64 @@ fun WallSceneScreen(
                             isTouchable = false
                             // Neither: it is a light fitting. Casting would lay a bar of shadow
                             // across the panel it is there to light.
+                            isShadowCaster = false
+                            isShadowReceiver = false
+                        }
+                    )
+
+                    // **The air under the tube: two sheets of lit haze.** Filament cannot light
+                    // the air itself (RoomAir says why), so this is drawn — a tall sheet in the
+                    // gap behind the records and a short one near the front of the shelf, both
+                    // hanging from the tube and fading down. Part of the rack, in this row's key
+                    // like the tube, so the haze belongs to the furniture and can never slide
+                    // across it the way the old ribbon did (trap 5, "a light that is part of the
+                    // furniture must be positioned by the furniture").
+                    //
+                    // PlaneNodes, not ImageNodes, though the material is the same unlit blended
+                    // one ImageNode uses: rows come and go with the library, and an ImageNode
+                    // that goes aborts the process (trap 1, "never destroy an ImageNode"). A
+                    // PlaneNode destroys only the instance it is handed, and the texture it
+                    // samples belongs to the room above, not to it.
+                    val hazeBack = remember(rowIndex, roomScheme) {
+                        materialLoader.createImageInstance(hazeBackTexture, HAZE_SAMPLER)
+                    }
+                    val hazeFront = remember(rowIndex, roomScheme) {
+                        materialLoader.createImageInstance(hazeFrontTexture, HAZE_SAMPLER)
+                    }
+                    val tubeCentreY =
+                        row.centerY + WallDimens.CASE_H / 2f + RoomLighting.SHELF_LIGHT_LIFT
+                    val tubeBottomY = tubeCentreY - RoomLighting.STRIP_H / 2f
+                    val boardAboveY = tubeCentreY + RoomLighting.STRIP_H / 2f
+                    // Facing the room, stated. A SceneView plane does not face +Z by default —
+                    // every ImageNode in this codebase passes the normal for that reason — and
+                    // the first build of these lay flat as shelves, edge-on to the camera and
+                    // invisible, with nothing to say they were there at all.
+                    PlaneNode(
+                        size = Size(layout.wallWidth, RoomAir.HAZE_BACK_H, 0f),
+                        normal = Direction(z = 1f),
+                        materialInstance = hazeBack,
+                        position = Position(
+                            0f,
+                            tubeBottomY - RoomAir.HAZE_BACK_H / 2f,
+                            RoomAir.HAZE_BACK_Z
+                        ),
+                        apply = {
+                            isTouchable = false
+                            isShadowCaster = false
+                            isShadowReceiver = false
+                        }
+                    )
+                    PlaneNode(
+                        size = Size(layout.wallWidth, RoomAir.HAZE_FRONT_H, 0f),
+                        normal = Direction(z = 1f),
+                        materialInstance = hazeFront,
+                        position = Position(
+                            0f,
+                            boardAboveY - RoomAir.HAZE_FRONT_H / 2f,
+                            RoomAir.HAZE_FRONT_Z
+                        ),
+                        apply = {
+                            isTouchable = false
                             isShadowCaster = false
                             isShadowReceiver = false
                         }

@@ -275,8 +275,25 @@ object RoomLighting {
     // along the shelf — horizontal continuity is still overlap between neighbours, and the
     // cone edge lands far enough away to leave no scallop.
 
-    /** Straight down, parallel to the panel it grazes. */
-    val WASH_DIRECTION: FloatArray = floatArrayOf(0f, -1f, 0f)
+    /**
+     * **Down, and 25° back into the panel** — not straight down.
+     *
+     * Straight down left a dark, scalloped seam directly under the tube, and it was the tell the
+     * owner kept describing: tube, then a dark line, then the glow — light that plainly did not
+     * start at the fixture. The geometry is exact. The diodes sit 15mm in front of the panel, so
+     * the panel a few millimetres under them is 75–85° off a straight-down axis: in the cone's
+     * soft edge, fading to nothing at the outer angle, and scalloped because a point between two
+     * diodes is further off-axis than one beneath a diode. The seam measured 75 against a peak
+     * of 183 eleven millimetres further down, and it only got more visible once the haze lit the
+     * air under it.
+     *
+     * Tilting the axis toward the panel moves that strip into the middle of the cone. The panel
+     * level with the diodes is then 65° off-axis — inside the inner angle, full strength — and
+     * the brightest wall is the wall touching the tube, which is where a real strip's light is
+     * strongest. The board above stays dark: every point of its underside in front of the diodes
+     * is now more than 90° off-axis, and the strip behind them is hidden under the tube itself.
+     */
+    val WASH_DIRECTION: FloatArray = floatArrayOf(0f, -0.9063f, -0.4226f)
 
     /**
      * How wide the ribbon throws, as angles from straight down.
