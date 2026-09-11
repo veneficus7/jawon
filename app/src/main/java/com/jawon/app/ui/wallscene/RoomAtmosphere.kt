@@ -339,18 +339,18 @@ object RoomAtmosphere {
         // Qualcomm's SGSR at MEDIUM and AMD's FSR1 above that, and the better-sounding ones
         // are the wrong choice for this room. `Options.h` is explicit: *"FSR1 and SGSR
         // require a well anti-aliased (MSAA or TAA), noise free scene. Avoid FXAA and
-        // dithering."* This room runs FXAA. Both are sharpening reconstruction filters, and
-        // what they would reconstruct is FXAA's own smearing, amplified. A bilinear blit does
-        // not sharpen and cannot amplify anything — the caveat is scoped to the two that do.
+        // dithering."* This room ran FXAA on every tier when that was written, and still does on
+        // LOW. Both are sharpening reconstruction filters, and what they would reconstruct is
+        // FXAA's own smearing, amplified. A bilinear blit does not sharpen and cannot amplify
+        // anything — the caveat is scoped to the two that do.
         //
-        // Switching the room to MSAA or TAA to unlock them was investigated and rejected:
-        // TAA is barely bound on Android — `nSetTemporalAntiAliasingOptions` forwards three
-        // of its sixteen fields, the upscaling factor is not among them, and one of the three
-        // is deprecated as having no effect — and MSAA antialiases geometry edges, which is
-        // not what aliases here. The spine lettering, the cover art and the printed disc face
-        // are *textures*, and the lids are glossy clearcoat; MSAA addresses neither, would
-        // need `customResolve` to resolve this room's above-1.0 highlights correctly, and
-        // multiplies tile memory on a 1440p tiler. FXAA stays.
+        // TAA was investigated and rejected, and that still stands: it is barely bound on
+        // Android — `nSetTemporalAntiAliasingOptions` forwards three of its sixteen fields,
+        // the upscaling factor is not among them, and one of the three is deprecated as having
+        // no effect. MSAA was rejected at the same time on the grounds that geometry is not
+        // what aliases here, and **that part was wrong** — see [QualityTier.msaaSamples] and
+        // the block below. The upscaler stays LOW regardless: at HIGH the ceiling is 1.0, so it
+        // only runs when a hot phone has already pulled the scale down.
         //
         // `homogeneousScaling` so the room never stretches: an anisotropic drop is visible in
         // a way a uniform one is not. Sharpness is Filament's own default and applies only at
@@ -362,6 +362,32 @@ object RoomAtmosphere {
             minScale = tier.minRenderScale
             maxScale = tier.maxRenderScale
         }
+
+        // **Edges: MSAA where the tier has it, FXAA where it does not — never both.**
+        //
+        // The cases' rims are thinner than a pixel and were rasterising as dashes; four coverage
+        // samples draw them as lines. See [QualityTier.msaaSamples] for the evidence.
+        //
+        // `customResolve` because this room's highlights run well past 1.0 — the tube, the
+        // bloom-bound emissives, the specular on the glass — and a plain box resolve of HDR
+        // samples lets one hot sample dominate the pixel, which rings a dark halo round every
+        // bright edge. The custom resolve tonemaps before it averages.
+        //
+        // FXAA goes off when MSAA is on. It works on the finished image, so over edges MSAA has
+        // already resolved it only smears — the spine lettering and the printed art are exactly
+        // what it would blur.
+        //
+        // Written here and not once at startup, because SceneView's `RenderQuality` preset writes
+        // both fields too (checked in the bytecode: `applyRenderQuality` sets the MSAA options
+        // and `setAntiAliasing(FXAA)`), and it lands after this. [isApplied] notices the preset
+        // and the frame driver re-applies — which now restores these along with the bloom.
+        val msaa = tier.msaaSamples > 1
+        view.multiSampleAntiAliasingOptions = View.MultiSampleAntiAliasingOptions().apply {
+            enabled = msaa
+            sampleCount = tier.msaaSamples
+            customResolve = msaa
+        }
+        view.antiAliasing = if (msaa) View.AntiAliasing.NONE else View.AntiAliasing.FXAA
 
         // On from the first frame, at browsing quality — the full configuration arrives when a
         // case does. It used to be off entirely here; see [setAmbientOcclusion] for why that was

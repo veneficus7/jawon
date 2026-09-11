@@ -625,9 +625,11 @@ private class RoomNodes {
         val bulbs = keyLight?.childNodes.orEmpty()
             .flatMap { row -> row.childNodes.filterIsInstance<LightNode>() }
         if (bulbs.isEmpty()) return
-        // The fourth component is unused for a light's colour; SceneView's setter simply takes
-        // a Float4 because the rest of its maths does.
-        val colour = Float4(scheme.key[0], scheme.key[1], scheme.key[2], 1f)
+        // The tube's colour, as where the diodes are built. The fourth component is unused for a
+        // light's colour; SceneView's setter simply takes a Float4 because the rest of its maths
+        // does.
+        val light = scheme.tubeLight
+        val colour = Float4(light[0], light[1], light[2], 1f)
         bulbs.forEach { it.color = colour }
         appliedScheme = scheme
     }
@@ -1145,7 +1147,11 @@ fun WallSceneScreen(
         // blank whenever the art resolved faster than the geometry.
         LaunchedEffect(activeArtwork, actNodes, trayModel, lidModel) {
             activeArtwork?.spine?.let { actNodes.spineArt?.bitmap = it }
-            activeArtwork?.cover?.let { actNodes.coverArt?.bitmap = it }
+            activeArtwork?.cover?.let {
+                actNodes.coverArt?.bitmap = it
+                // The inside of the lid wears the same art. See ActiveCaseNodes.coverBack.
+                actNodes.coverBack?.bitmap = it
+            }
             // The held record's underlight takes its album's colour, exactly as the shelf's do.
             activeArtwork?.hue?.let { actNodes.setUnderHue(it) }
         }
@@ -2350,11 +2356,12 @@ fun WallSceneScreen(
                             )
                         ),
                         apply = {
-                            color(
-                                roomScheme.key[0],
-                                roomScheme.key[1],
-                                roomScheme.key[2]
-                            )
+                            // The tube's colour — these diodes are the light inside it. They
+                            // took the room's key colour while the tube stayed amber, and in
+                            // every room but Vesper the wall was lit a different colour from
+                            // the fixture lighting it. See RoomScheme.tube.
+                            val light = roomScheme.tubeLight
+                            color(light[0], light[1], light[2])
                             intensityCandela(RoomLighting.WASH_CANDELA)
                             spotLightCone(
                                 RoomLighting.WASH_CONE_INNER,
@@ -2773,14 +2780,17 @@ fun WallSceneScreen(
                     // and then a glow — the reason the light did not look like it came from here.
                     //
                     // Unlit and over bloom's 1.0 threshold, so it goes straight to the output and
-                    // glows. Remembered in this row's key alongside the board, because a CubeNode
-                    // destroys the MaterialInstance it is handed.
+                    // glows — in this room's own colour (RoomScheme.tube), which is also the
+                    // colour of the light the ribbon throws, so the two cannot disagree.
+                    // Remembered in this row's key alongside the board, because a CubeNode
+                    // destroys the MaterialInstance it is handed; keyed on the scheme, so a room
+                    // change rebuilds it in the new colour.
                     val tube = remember(rowIndex, roomScheme) {
                         materialLoader.createUnlitColorInstance(
                             dev.romainguy.kotlin.math.Float4(
-                                RoomLighting.STRIP_EMISSIVE[0],
-                                RoomLighting.STRIP_EMISSIVE[1],
-                                RoomLighting.STRIP_EMISSIVE[2],
+                                roomScheme.tube[0],
+                                roomScheme.tube[1],
+                                roomScheme.tube[2],
                                 1f
                             )
                         )

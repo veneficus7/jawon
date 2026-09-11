@@ -65,11 +65,26 @@ class ActiveCaseNodes {
     var coverArt: ImageNode? = null
 
     /**
-     * The lit materials the two art plates are rendered with. See `CaseSlot.coverMaterial` —
+     * The same artwork again, facing the other way: the inside of the lid.
+     *
+     * [coverArt] faces out through the clear front, and a plate is drawn from one side only.
+     * The lid swings open to 123°, well past the 90° at which that side turns away from the
+     * viewer — so for the whole of playback the open lid showed its clear plastic and nothing
+     * else, which the owner reported. Neither the lit material nor the unlit one before it is
+     * double-sided (their `MAT_DOSS` chunks are both zero), so this was never visible. A second
+     * plate rather than a double-sided material, because the far side of a single plate shows
+     * its image mirrored; turned 180° instead, it reads the right way round, as a booklet does
+     * when you open the case.
+     */
+    var coverBack: ImageNode? = null
+
+    /**
+     * The lit materials the art plates are rendered with. See `CaseSlot.coverMaterial` —
      * SceneView's `ImageNode` is unlit, so without these the held case's artwork is the one
      * surface in the room that ignores the light falling on it.
      */
     var coverMaterial: com.google.android.filament.MaterialInstance? = null
+    var coverBackMaterial: com.google.android.filament.MaterialInstance? = null
     var spineMaterial: com.google.android.filament.MaterialInstance? = null
 
     /**
@@ -164,11 +179,13 @@ fun SceneScope.ActiveCaseNodes(
             nodes.discMesh = null
             nodes.spineArt = null
             nodes.coverArt = null
+            nodes.coverBack = null
             nodes.underCarrier = null
             nodes.discUnderCarrier = null
-            // Not destroyed — trap 1. They stay bound to the plates' textures for as long as
-            // the scene lives.
+            // Not destroyed — trap 1 (never destroy an ImageNode). They stay bound to the
+            // plates' textures for as long as the scene lives.
             nodes.coverMaterial = null
+            nodes.coverBackMaterial = null
             nodes.spineMaterial = null
         }
     }
@@ -308,6 +325,41 @@ fun SceneScope.ActiveCaseNodes(
                     }
                 }
             )
+            // The inside of the lid: the same art, turned to face into the case — see
+            // ActiveCaseNodes.coverBack. Closed, it faces the tray and is never seen; from about
+            // 90° open it is what the lid shows, and at the full 123° it is square-ish to the
+            // viewer. A hair behind the front plate so the two never share a depth.
+            //
+            // A 180° turn about Y and not a flipped normal, because a rotation keeps the image
+            // reading left to right from its new side, where a reflection would mirror it.
+            // Its bitmap is written wherever [coverArt]'s is, and lit and channelled the same.
+            ImageNode(
+                bitmap = blankCover,
+                size = Size(CASE_D, CASE_H, 0f),
+                normal = Direction(z = 1f),
+                position = Position(CASE_D / 2f, 0f, 0.0026f - LID_BACK_GAP),
+                rotation = Rotation(0f, 180f, 0f),
+                apply = {
+                    isTouchable = false
+                    isShadowCaster = false
+                    nodes.coverBack = this
+                    if (nodes.coverBackMaterial == null) {
+                        nodes.coverBackMaterial = materialLoader.createTextureInstance(
+                            texture,
+                            metallic = 0f,
+                            roughness = ACT_COVER_ROUGHNESS,
+                            reflectance = ACT_PAPER_REFLECTANCE
+                        ).also {
+                            materialInstance = it
+                            renderableManager.setLightChannel(
+                                renderableInstance,
+                                RoomLighting.UNDER_LIGHT_CHANNEL,
+                                true
+                            )
+                        }
+                    }
+                }
+            )
             // Clear polycarbonate front, closing flush with the case's outer face.
             //
             // Also at local zero, and that is the point: the build script gives the lid
@@ -413,3 +465,10 @@ fun SceneScope.ActiveCaseNodes(
 private const val ACT_PAPER_ROUGHNESS = 0.72f
 private const val ACT_PAPER_REFLECTANCE = 0.5f
 private const val ACT_COVER_ROUGHNESS = 0.60f
+
+/**
+ * How far behind the front inlay the lid's inside plate sits: 0.3mm, the thickness of a card.
+ * The two face opposite ways, so neither is ever drawn over the other — the gap is only so they
+ * never sit at one depth, where the depth test would decide between them pixel by pixel.
+ */
+private const val LID_BACK_GAP = 0.0003f

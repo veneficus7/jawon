@@ -619,20 +619,11 @@ object RoomLighting {
     const val STRIP_D = 0.016f
 
 
-    /**
-     * How bright the tube is, and **what colour it survives as**.
-     *
-     * Well over bloom's 1.0 threshold so it glows hard, with the channels held far apart so the
-     * tonemapper's shoulder cannot compress it back to white — the ratio is what keeps a bright
-     * tube amber instead of a white bar, and it is the first thing lost when the level is raised.
-     * Raised with [STRIP_H] halved: a thinner source can carry more emission for the same glare,
-     * because glare is area times brightness. The first version of this was
-     * (2.1, 1.65, 1.15) and rendered a pure white bar: three channels comfortably over 1.0 all
-     * arrive at the same place on an ACES curve, and a warm tungsten strip — the single most
-     * recognisable thing in every reference — was being thrown away in the last step of the
-     * pipeline.
-     */
-    val STRIP_EMISSIVE: FloatArray = floatArrayOf(3.10f, 1.62f, 0.62f)
+    // How bright the tube is and what colour it survives as is the room's, not this file's:
+    // see `RoomScheme.tube`, which carries the reasoning that used to live here (channels held
+    // apart so the ACES shoulder cannot turn it into a white bar, raised when STRIP_H was
+    // halved because glare is area times brightness). It was a single amber for every room,
+    // and in the three that were not Vesper the tube disagreed with the light it threw.
 
 
     /**
@@ -958,6 +949,8 @@ object RoomLighting {
 
         // Hoisted: these are three multiplications, not 393k of them.
         val void = FloatArray(3) { scheme.void[it] * VOID_LEVEL }
+        // And this one allocates on every read, so it is read once.
+        val stripColour = FloatArray(3) { scheme.tubeLight[it] * STRIP_BAND_LEVEL }
         // Reused across every texel. `faceDirection` used to return a fresh array per
         // texel, which was survivable at 64px and is 393k throwaway allocations at 256.
         val dir = FloatArray(3)
@@ -984,8 +977,8 @@ object RoomLighting {
                     val ny = dir[1] * invLen
                     val nz = dir[2] * invLen
 
-                    // The reflected strips: warm horizontal lines repeating up and down the
-                    // wall. Elevation angle rather than `ny` directly, so the spacing stays
+                    // The reflected strips: horizontal lines in the tube's own colour,
+                    // repeating up and down the wall. Elevation angle rather than `ny` directly, so the spacing stays
                     // even instead of bunching up toward the poles, and feathered for the
                     // same reason the two discs above are — a hard edge here becomes a jagged
                     // rim once the prefilter blurs it into the mips.
@@ -1002,7 +995,10 @@ object RoomLighting {
                         // a rim that the room no longer has. A reflection of a light that
                         // does not exist is a lie the eye reads immediately on a glossy
                         // surface, and it was reflecting the room as it was two designs ago.
-                        floats.put(void[c] + scheme.key[c] * STRIP_BAND_LEVEL * bandHit)
+                        //
+                        // The tube's colour, not the key's, for the same reason: this line is
+                        // the tube seen in a case's glass, so it cannot be any other colour.
+                        floats.put(void[c] + stripColour[c] * bandHit)
                     }
                     floats.put(1f)
                 }

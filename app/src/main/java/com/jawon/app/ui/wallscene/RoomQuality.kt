@@ -190,6 +190,30 @@ enum class QualityTier {
         }
 
     /**
+     * Multisample anti-aliasing: coverage samples per pixel, or 1 for none (FXAA instead).
+     *
+     * **What aliases in this room is geometry, and that is MSAA's job.** The owner reported
+     * jagged edges, and a 3x crop of his screenshot shows why: the rims of the cases are
+     * thinner than a pixel, so they rasterise as broken dashes along each edge, and the case
+     * outlines step. FXAA works on the finished image and cannot reconstruct a line that was
+     * never drawn continuously; four coverage samples per pixel draw it. It was ruled out once
+     * on the grounds that the room's aliasing was all in textures — true of the spine lettering,
+     * and not of the thing he was looking at.
+     *
+     * Four on HIGH, two on MEDIUM. Both are cheap where it matters: on a tiling GPU the extra
+     * samples live and resolve in tile memory, and Filament renders through
+     * `EXT_multisampled_render_to_texture` so they never reach DRAM. LOW keeps FXAA — the
+     * floor of the tier system is the device that cannot afford anything, and the room's
+     * record there is that it has never been the one anybody needed.
+     */
+    val msaaSamples: Int
+        get() = when (this) {
+            HIGH -> 4
+            MEDIUM -> 2
+            LOW -> 1
+        }
+
+    /**
      * Dust motes per square metre of wall.
      *
      * Never zero, and thinned rather than cut. Every mote is a blended quad, so the cost is

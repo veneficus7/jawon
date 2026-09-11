@@ -53,6 +53,32 @@ enum class RoomScheme(
     val displayName: String,
     /** The lamp. Linear-ish RGB, matching `RoomLighting.KEY_COLOR`'s scale. */
     val key: FloatArray,
+    /**
+     * **The strip light's colour — this room's own, and no other room's.**
+     *
+     * The tube along the top of every shelf is the room's light now, and it was the one thing
+     * that did not change with the room: a fixed amber in all four, while the light it threw
+     * came from [key]. On the owner's phone, in Vigilia, that was an orange tube over a cool
+     * lavender panel — the tube plainly not being what lit the wall, which was his standing
+     * complaint about the fixture. So the tube and its light are one value now, and each room
+     * has its own: amber in Vesper, ice in Glacies, cyan in Vigilia, phosphor in Officina.
+     *
+     * This is the **emissive**, in the unlit material's linear units, and two rules shape
+     * every entry:
+     *
+     * - **One channel dominant and the rest held well below it.** Three channels comfortably
+     *   over 1.0 all arrive at the same place on the ACES shoulder, and the tube renders as a
+     *   white bar — the first version of the amber, (2.1, 1.65, 1.15), did exactly that. The
+     *   ratio is what survives tonemapping as a colour.
+     * - **The same brightness in every room**, about 1.9 in luminance (Rec. 709 weights). A green
+     *   at the amber's channel values would be a third brighter, because the eye is most
+     *   sensitive to green; equal luminance means switching rooms changes the colour of the
+     *   light and not how much of it there is.
+     *
+     * The light the tube throws is this with its brightest channel scaled to 1 — see
+     * [tubeLight] — so the panel's gradient is always the tube's colour.
+     */
+    val tube: FloatArray,
     /** The coloured bounce, low and to the left. */
     val rim: FloatArray,
     /** Ambient fill — baked into the IBL, so this one waits for a relaunch. */
@@ -91,6 +117,8 @@ enum class RoomScheme(
     MIDNIGHT_SHOP(
         displayName = "Vesper",
         key = floatArrayOf(1.0f, 0.824f, 0.627f),
+        // Tungsten amber — the tube this room has always had, unchanged.
+        tube = floatArrayOf(3.10f, 1.62f, 0.62f),
         rim = floatArrayOf(0.941f, 0.663f, 0.235f),
         ambient = floatArrayOf(0.251f, 0.192f, 0.165f),
         void = floatArrayOf(0.071f, 0.055f, 0.043f),
@@ -141,6 +169,11 @@ enum class RoomScheme(
         //
         // Same discipline as After Hours, opposite temperatures.
         key = floatArrayOf(0.878f, 0.906f, 0.949f),
+        // Ice: a cold white with the blue held just far enough ahead to survive the shoulder
+        // as a tint. Deliberately pale, and that paleness is what keeps it apart from Vigilia's
+        // cyan — this room's own history is two modes reading as one idea in two blues. The
+        // light here is cold; only the readouts burn.
+        tube = floatArrayOf(1.45f, 1.95f, 3.10f),
         rim = floatArrayOf(0.800f, 0.376f, 0.118f),
         ambient = floatArrayOf(0.114f, 0.133f, 0.157f),
         void = floatArrayOf(0.031f, 0.039f, 0.051f),
@@ -173,6 +206,9 @@ enum class RoomScheme(
         // below — a strongly coloured lamp fights the artwork it is lighting — so the colour
         // lives in the rim, where there is no album cover to ruin.
         key = floatArrayOf(0.800f, 0.949f, 1.0f),
+        // Electric cyan, the room's own accent: fully saturated where Glacies is pale. You read
+        // this room by the cyan, and now the cyan is the light the shelves are lit by.
+        tube = floatArrayOf(0.12f, 2.26f, 3.60f),
         rim = floatArrayOf(1.0f, 0.176f, 0.584f),
         ambient = floatArrayOf(0.043f, 0.055f, 0.110f),
         void = floatArrayOf(0.020f, 0.020f, 0.039f),
@@ -199,16 +235,40 @@ enum class RoomScheme(
         // Phosphor, not daylight. The key is a cold green-white and the bounce is pure emerald,
         // so a sleeve on the shelf reads the way a photograph does on a monitor in a dark room.
         key = floatArrayOf(0.784f, 1.0f, 0.847f),
+        // Phosphor green. Lower than the others in its dominant channel because green is the
+        // brightest thing the eye sees: at the amber's 3.1 this tube would be a third brighter
+        // than every other room's.
+        tube = floatArrayOf(0.33f, 2.48f, 0.76f),
         rim = floatArrayOf(0.0f, 0.902f, 0.294f),
         ambient = floatArrayOf(0.055f, 0.129f, 0.078f),
         void = floatArrayOf(0.0f, 0.0f, 0.0f),
-        wall = Color(0xFF000000),
+        // **Lifted off true black, and only the panel.** The void and the fog stay black —
+        // that is still this room. But the panel is what the tube lights, and a surface with
+        // zero albedo returns nothing whatever lands on it: the strip would have glowed over a
+        // wall that stayed dead black, which is the tube failing to emit in the one room built
+        // around emitted light. Near-black green, about as dark as Vigilia's panel, which is the
+        // darkest a panel has been and still shown its gradient on the owner's phone.
+        wall = Color(0xFF141C17),
         board = Color(0xFF07140B),
         accent = Color(0xFF00FF41),
         plate = DeckPlate.CHROME,
         glass = DeckWindowGlass.PIXEL,
         palette = WorkshopPalette
     );
+
+    /**
+     * The colour of the light the tube throws: [tube] with its brightest channel scaled to 1.
+     *
+     * Everything the strip lights takes its colour from here — the diodes on the panel and the
+     * strip's reflection baked into the room's cubemap — so the gradient on the wall and the
+     * line in every glossy case are the tube's colour by construction, never a second value
+     * that can drift away from it. How *bright* the light is stays `RoomLighting.WASH_CANDELA`.
+     */
+    val tubeLight: FloatArray
+        get() {
+            val peak = maxOf(tube[0], tube[1], tube[2])
+            return floatArrayOf(tube[0] / peak, tube[1] / peak, tube[2] / peak)
+        }
 
     companion object {
         /** Tolerant of a stored name that no longer exists, e.g. after a scheme is renamed. */
