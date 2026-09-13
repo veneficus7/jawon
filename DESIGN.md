@@ -25,15 +25,34 @@ everywhere else, dust hanging in the light. Warm, quiet, and slightly private �
 the feeling of being somewhere you're not strictly supposed to be after hours.
 
 Chosen over the warmer daylight alternative for three reasons: the bloom and the
-underlights read strongest against deep warm black; a dark room is the right one
+lit bays read strongest against deep warm black; a dark room is the right one
 for headphone listening at night, which is when this app gets used; and it costs
 almost nothing on OLED.
 
-**Where the saturated colour lives: the underlights.** Every album levitates in
-its own pool of coloured light, taken from the cover's dominant hue unless the
-user picks one. That is the app's colour, and because the shelves carry it,
-everything else stays warm, dark and disciplined. Do not add competing colour to
-the chrome.
+**Where the saturated colour lives: each album's own bay.** Every album stands
+in its own light, coloured from the cover's dominant hue unless the user picks
+one. That is the app's colour, and because the shelves carry it, everything else
+stays warm, dark and disciplined. Do not add competing colour to the chrome.
+
+> **The fixture changed on 2026-09-13; the principle did not.** It used to be an
+> *underlight* — a pool on the board beneath each record, with a bulb in front of
+> the artwork throwing up across it. The owner asked for it to go: "maybe just
+> remove all underlights and add some other creative type exclusive light for
+> each album?" Offered four arrangements that real rooms use, he chose the
+> **vitrine**: two strips down the sides of the bay, the way a museum lights an
+> object in a case.
+>
+> Three reasons it is better, and only the first is taste. Nothing in a shop is
+> lit from below — it is the angle a torch under the chin makes. One light under
+> a sleeve puts five times as much on the brightest part of the artwork as on the
+> dimmest, which is what "the underlights for CD cases are washing the CD cover
+> arts" was; two at the sides bring that to 1.5. And a light in front of a record
+> writes a hard reflection of itself into the artwork now that the covers are
+> glossy again, while a light out in the 25mm channel between two records is
+> *beyond the cover's edge*, where it has no reflection on it at all.
+>
+> The arithmetic is in `ui/wallscene/VitrineGeometry.kt` and its test, because
+> all three of those claims can be checked without a device.
 
 > **The disc used to carry it, and no longer does.** This section originally made
 > a rainbow diffraction sweep the boldest element in the app. It was built in M8

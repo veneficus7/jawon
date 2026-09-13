@@ -18,7 +18,7 @@
 > | **minSdk 29** (§10 row 1) | **28**, since 0.2 beta. The reasoning — that 29 is where scoped storage settles into one code path — turned out not to apply: every file arrives as a content URI through SAF or MediaStore, so there was no legacy branch to write. Lowering it was one line, and a tester's Note 9 can now install. |
 > | **One room: Midnight Shop** (§10 row 5) | **One room, four modes** — Midnight Shop, Cold Storage, After Hours, Workshop. The locked decision rules out building more *rooms*, not lighting the one room differently; a mode owns the light, the 2D palette, the deck's material and the glass in its window. |
 > | An **iridescent** CD | No rainbow. Built, then removed on the owner's call. Anisotropy — the colourless directional sweep — is still wanted. |
-> | Cases sit **spines out** like books | They levitate, turn slowly to present themselves, and stand in their own coloured underlight. |
+> | Cases sit **spines out** like books | They levitate, turn slowly to present themselves, and stand in their own lit bay, coloured from the cover. |
 > | The user **uploads two images per album** | The cover is pulled from the files' own tags automatically. Uploading either image is now an override, not a step. |
 > | A 2D Wall and Deck screen | Deleted. The room is the app — it is the start destination, it browses, and it plays. |
 > | The prototype is `crate-shelf-v2.html` | The file is `javon-shelf-prototype.html`. |

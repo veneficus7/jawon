@@ -85,19 +85,28 @@ class CaseSlot {
     var beamMaterials: Array<MaterialInstance>? = null
 
     /**
-     * The carrier this album's real underlight hangs from, and the bulb beneath it.
+     * The carrier this bay's vitrine strips hang from, and the pair of lights under it.
      *
-     * Two nodes rather than one for the reason `RoomNodes` records: a `LightNode`'s `apply`
-     * block runs against a `LightManager.Builder`, not against the node, so the node cannot be
-     * captured where it is declared — and the carrier is a plain `Node`, so casting *it* to
-     * `LightNode` yields null. The carrier is what moves; the bulb is what takes a colour.
+     * Separate nodes rather than one for the reason `RoomNodes` records: a `LightNode`'s
+     * `apply` block runs against a `LightManager.Builder`, not against the node, so the node
+     * cannot be captured where it is declared — and the carrier is a plain `Node`, so casting
+     * *it* to `LightNode` yields null. The carrier is what moves; the bulbs take a colour.
+     *
+     * **Two of them since 2026-09-13**, one per side of the bay. See
+     * `RoomLighting.UNDER_SIDE`: a light out in the channel between records is past the edge
+     * of the cover, which is what keeps its reflection off the artwork.
      */
     var underCarrier: Node? = null
-    private var underBulb: LightNode? = null
+    private var underBulbs: List<LightNode>? = null
 
-    private fun bulb(): LightNode? =
-        underBulb ?: underCarrier?.childNodes?.firstNotNullOfOrNull { it as? LightNode }
-            ?.also { underBulb = it }
+    private fun bulbs(): List<LightNode> =
+        underBulbs ?: underCarrier?.childNodes.orEmpty()
+            // Grandchildren, not children: each bulb hangs from a little node of its own that
+            // carries its side offset, because a LightNode's `apply` builds a light rather
+            // than a node and cannot be given a position.
+            .flatMap { it.childNodes + it }
+            .filterIsInstance<LightNode>()
+            .also { if (it.isNotEmpty()) underBulbs = it }
 
     /**
      * Last hue written to [beamMaterials], so binding does not re-push the same colour into
@@ -296,15 +305,14 @@ class CaseSlot {
         // The bulb takes a muted version of the same hue. A light's colour is a normalised
         // tint — brightness is intensityCandela — so beamRgb, which is authored at BEAM_VALUE
         // for an emissive material, has to come back to a peak of 1 first.
-        bulb()?.let { light ->
-            val peak = maxOf(rgb[0], rgb[1], rgb[2]).coerceAtLeast(1e-4f)
-            light.color = Float4(
-                mixToward(rgb[0] / peak, RoomLighting.UNDER_WHITE[0]),
-                mixToward(rgb[1] / peak, RoomLighting.UNDER_WHITE[1]),
-                mixToward(rgb[2] / peak, RoomLighting.UNDER_WHITE[2]),
-                1f
-            )
-        }
+        val peak = maxOf(rgb[0], rgb[1], rgb[2]).coerceAtLeast(1e-4f)
+        val tint = Float4(
+            mixToward(rgb[0] / peak, RoomLighting.UNDER_WHITE[0]),
+            mixToward(rgb[1] / peak, RoomLighting.UNDER_WHITE[1]),
+            mixToward(rgb[2] / peak, RoomLighting.UNDER_WHITE[2]),
+            1f
+        )
+        bulbs().forEach { it.color = tint }
         materials.forEach { instance ->
             val material = instance.material
             if (material.hasParameter(EMISSIVE_PARAM)) {
@@ -341,7 +349,8 @@ class CaseSlot {
         // not switch off a light in it": SceneView's visibility reaches renderables and never a
         // light. So an empty slot's bulb kept shining wherever the slot was parked, on the
         // covers around it. Dark by intensity, and back to full when the slot has an album.
-        bulb()?.setIntensityCandela(if (visible) RoomLighting.UNDER_CANDELA else 0f)
+        val candela = if (visible) RoomLighting.UNDER_CANDELA else 0f
+        bulbs().forEach { it.setIntensityCandela(candela) }
     }
 
     fun setBeamGlow(amount: Float) {
@@ -799,21 +808,30 @@ fun SceneScope.CaseSlotNodes(
                 slot.underCarrier = this
                 isVisible = false
             }) {
-                LightNode(
-                    type = LightManager.Type.POINT,
-                    apply = {
-                        intensityCandela(RoomLighting.UNDER_CANDELA)
-                        falloff(RoomLighting.UNDER_FALLOFF)
-                        // Off the room's default channel and onto its own. A light that
-                        // stayed on channel 0 as well would still reach everything.
-                        lightChannel(0, false)
-                        lightChannel(RoomLighting.UNDER_LIGHT_CHANNEL, true)
-                        // Around a hundred of these are on screen at once. Clustered forward
-                        // rendering is fine with that; a hundred shadow casters would not be,
-                        // and there is no shadow map budget remotely near it.
-                        castShadows(false)
+                // One per side of the bay, standing where the emissive strips stand. The
+                // offset is the whole design — see RoomLighting.UNDER_SIDE.
+                for (side in intArrayOf(-1, 1)) {
+                    Node(position = Position(side * RoomLighting.UNDER_SIDE, 0f, 0f)) {
+                        LightNode(
+                            type = LightManager.Type.POINT,
+                            apply = {
+                                intensityCandela(RoomLighting.UNDER_CANDELA)
+                                falloff(RoomLighting.UNDER_FALLOFF)
+                                // Off the room's default channel and onto its own. A light
+                                // that stayed on channel 0 as well would still reach
+                                // everything.
+                                lightChannel(0, false)
+                                lightChannel(RoomLighting.UNDER_LIGHT_CHANNEL, true)
+                                // Two hundred of these exist at this camera and Filament
+                                // frustum-culls them down to the bays on screen. Clustered
+                                // forward rendering is fine with that; two hundred shadow
+                                // casters would not be, and there is no shadow map budget
+                                // remotely near it.
+                                castShadows(false)
+                            }
+                        )
                     }
-                )
+                }
             }
 
             // Mounted HIDDEN, like the active case group and for the same reason. `bind`

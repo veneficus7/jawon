@@ -3,7 +3,7 @@
 A local-first Android music player where the library is a **room**, not a list.
 
 A wall of shelves holds CD jewel cases that levitate, turn, and glow in their own
-underlight. Tap one and it pulls out of its slot, turns to face you, opens, and lifts the
+lit bay. Tap one and it pulls out of its slot, turns to face you, opens, and lifts the
 disc out to spin up into playback. Turn the spinning disc to scrub. When the record
 finishes, the case closes itself and puts you back on the wall.
 

@@ -1457,6 +1457,23 @@ fun WallSceneScreen(
         val neonMaterial = remember(materialLoader) {
             materialLoader.createMaterial(NEON_MATERIAL_ASSET)
         }
+        // **The records that hang framed on the brick** — the ones he plays, by the same wear
+        // the wall already ages the cases by. Their covers are decoded off the main thread (a
+        // file read and a bitmap decode; architecture rule 9) and uploaded once. See WallDecor.
+        val framedChoice = remember(layout.cases) { WallDecor.chooseAlbums(layout.cases) }
+        var framedAlbums by remember { mutableStateOf<List<FramedAlbum>>(emptyList()) }
+        LaunchedEffect(engine, framedChoice) {
+            framedAlbums = framedChoice.mapNotNull { case ->
+                val cover = withContext(Dispatchers.IO) {
+                    CaseArt.loadCoverSquare(case.coverPath)
+                } ?: return@mapNotNull null
+                FramedAlbum(
+                    case.albumId,
+                    ImageTexture.Builder().bitmap(cover, TextureType.COLOR).build(engine)
+                )
+            }
+        }
+
         var neonMask by remember { mutableStateOf<Texture?>(null) }
         LaunchedEffect(engine, fonts) {
             val face = fonts.display ?: return@LaunchedEffect
@@ -3197,6 +3214,41 @@ fun WallSceneScreen(
                                         )
                                     }
                                 )
+                                // **The wall washer on the same head** — see
+                                // RoomLighting.WASHER_CANDELA. Turned off the rack and onto the
+                                // brick above it, so the neon sign and the framed records have
+                                // something lighting them at all. No shadows: a washer exists to
+                                // make a flat wall even.
+                                LightNode(
+                                    type = LightManager.Type.FOCUSED_SPOT,
+                                    position = Position(
+                                        (i - RoomLighting.CEILING_SPOT_COUNT / 2) *
+                                            RoomLighting.CEILING_SPOT_SPACING,
+                                        0f,
+                                        0f
+                                    ),
+                                    direction = normalize(
+                                        Direction(
+                                            0f,
+                                            rackTopY + RoomLighting.WASHER_AIM_ABOVE_CAP - spotY,
+                                            WALL_Z - RoomLighting.CEILING_SPOT_Z
+                                        )
+                                    ),
+                                    apply = {
+                                        color(
+                                            roomScheme.key[0],
+                                            roomScheme.key[1],
+                                            roomScheme.key[2]
+                                        )
+                                        intensityCandela(RoomLighting.WASHER_CANDELA)
+                                        spotLightCone(
+                                            RoomLighting.WASHER_CONE_INNER,
+                                            RoomLighting.WASHER_CONE_OUTER
+                                        )
+                                        falloff(RoomLighting.WASHER_FALLOFF)
+                                        castShadows(false)
+                                    }
+                                )
                             }
                         }
                     }
@@ -3242,6 +3294,17 @@ fun WallSceneScreen(
                             }
                         )
                     }
+
+                    // **The framed records**, in the band the washers light, spread along the
+                    // wall with the middle left to the sign. See WallDecor.
+                    FramedAlbums(
+                        prints = framedAlbums,
+                        timber = rackTimber,
+                        materialLoader = materialLoader,
+                        positions = WallDecor.slots(roomLeft, roomRight),
+                        bandY = rackTopY + RoomLighting.WASHER_AIM_ABOVE_CAP,
+                        wallZ = ROOM_WALL_Z + ROOM_WALL_T / 2f
+                    )
 
                     // **A floor, which this room has never had.**
                     //

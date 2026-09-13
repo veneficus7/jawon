@@ -550,6 +550,24 @@ decision).
    *below*. The underlight is in `DESIGN.md` as where the app's colour lives, so
    inverting it is a design decision rather than a tuning one.
 
+   **Answered 2026-09-13, and the answer was neither above nor below.** The owner
+   removed the underlight outright — "maybe just remove all underlights and add
+   some other creative type exclusive light for each album?" — and chose, from
+   four arrangements real rooms use, the **vitrine**: two strips down the sides of
+   each bay, as a museum lights an object in a case. The shelf practical from the
+   reference is in as well (`RoomLighting.RAIL_*`), so a record is now lit from
+   above by the rack and from both sides by its own bay. Nothing lights it from
+   below any more.
+
+   What settled it was not taste but a number nobody had computed. A light in
+   *front* of a record — above, below, either — has a mirror image on the cover,
+   and once `CaseSlots.COVER_ROUGHNESS` came down to 0.16 that image is a hard
+   clipped highlight sitting on the artwork. A light in the 25mm channel between
+   two records is past the cover's own edge, and a plate has no reflection of a
+   source beyond its edge. That is the whole argument for the vitrine, and it is
+   in `ui/wallscene/VitrineGeometry.kt` with a test, along with the evenness it
+   buys: 5.1:1 across a sleeve from one light beneath it, 1.5:1 from the pair.
+
 ---
 
 ## Sources

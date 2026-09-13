@@ -1,5 +1,6 @@
 package com.jawon.app.ui.wallscene
 
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import kotlin.math.acos
@@ -60,10 +61,26 @@ class RoomRailTest {
     }
 
     @Test
-    fun `the rail is the working light and the underlight is the accent`() {
-        // The owner's complaint was the underlight washing the artwork; it only stopped doing
-        // that because the rail took over. If this ever inverts, the wash is back.
-        assertTrue(RoomLighting.UNDER_CANDELA < RoomLighting.RAIL_CANDELA)
+    fun `the rail lights a sleeve from above and the vitrine from the sides`() {
+        // This used to assert that the rail outshone the underlight, on the reasoning that the
+        // underlight only stopped washing the artwork because the rail took the job off it.
+        // **That inverted deliberately on 2026-09-13** and the reasoning went with it: there is
+        // no underlight any more, the vitrine's pair is the key light on a cover, and what
+        // stops it washing is not being outshone but being *even* — 1.54:1 across a sleeve
+        // against the underlight's 5.1:1, from beyond the cover's own edge. `VitrineGeometry`
+        // holds that, and `VitrineGeometryTest` guards it.
+        //
+        // What is still worth pinning here is that the two are different kinds of light and
+        // both survive. The rail rakes down a sleeve from the shelf edge above it; the vitrine
+        // lights it from the sides. A record lit only from its sides has no top-to-bottom
+        // modelling at all, and one lit only from above is the shop-shelf look this room
+        // already had.
+        assertTrue("the rail should still be a real light", RoomLighting.RAIL_CANDELA > 100f)
+        assertTrue("the vitrine should be the key light", RoomLighting.UNDER_CANDELA > 200f)
+
+        // Both on the plates' channel, and neither on the room's: nothing about this pair may
+        // reach the back panel, whose gradient belongs to the tube alone.
+        assertEquals(1, RoomLighting.UNDER_LIGHT_CHANNEL)
     }
 
     @Test

@@ -567,92 +567,88 @@ def build_closed_case():
 
 def build_beam():
     """
-    A cone of light standing on the shelf, plus the pool it throws on the board.
+    The two strips that light an album's bay — a vitrine, not an underlight.
 
-    **Geometry, not a light.** Filament will not give every album a real spot: shadow-casting
-    lights are the scarcest resource in the renderer, and even non-shadowing ones are capped
-    well below the number of bays a wide library has. A cone of emissive, alpha-blended
-    geometry costs one draw, looks the same from the front, and can be handed to as many
-    slots as there are albums.
+    **Geometry, not a light.** Filament will not give every album real fixtures: shadow-casting
+    lights are the scarcest resource in the renderer, and even non-shadowing ones are capped.
+    Emissive strips cost one draw and can be handed to as many slots as there are albums; the
+    two real lights that go with them are built in `CaseSlots`.
 
     Modelled standing at the origin so `CaseSlots` can drop it at a bay's base with no
     transform. Height runs along **Blender Z**, which the Y-up export turns into the app's
-    +Y — building it along Blender Y instead produces a beam that hangs downwards through
-    the shelf, which is exactly what the first attempt did.
+    +Y — building it along Blender Y instead produces strips hanging downwards through the
+    shelf, which is exactly what the first attempt at the old beam did.
 
-    Vertex colours carry the fade: opaque-ish at the emitter, transparent at the top, so the
-    beam dissolves into the room instead of ending in a hard rim. gltfio multiplies COLOR_0
-    into base colour, so this needs no shader and no `.mat`.
+    ## Why strips down the sides, and not a pool underneath
+
+    There was a glowing disc on the board here, standing for a puck light under the record,
+    and the owner's verdict after living with it was "maybe just remove all underlights". He
+    is right, and the reason is that no shop lights a record from below: it is the angle a
+    torch under the chin makes, it bleaches the bottom of a sleeve, and once the covers were
+    given back their gloss it wrote a hard white reflection of itself into the artwork.
+
+    A museum lights an object in a case from the *sides* of the case, and that is what these
+    are. The geometry makes it possible: the bay pitch is `SLOT_PITCH` 150mm and a face-on
+    cover is `CASE_D` 125mm wide, so there is a 25mm channel between neighbouring records
+    with nothing in it. A strip in that channel sits **outside the cover's own edge**, which
+    is the whole trick — the mirror image of a light beyond the edge of a flat glossy plate
+    lands off the plate, so these can be as bright as they like and never put a hotspot on the
+    artwork. Two of them, one per side, and the cover is lit evenly from both.
+
+    Clearance: the strips' inner faces are 67.5mm from the bay's axis and a case turning a
+    full circle sweeps `SLOT_SWEEP`/2 = 62.7mm, so a record clears them by ~5mm at any angle.
     """
     obj = new_mesh_object("beam")
     bm = bmesh.new()
 
-    r_base = 0.013
-    segments = 28
+    # The channel between two records, in app metres. See the clearance note above.
+    x_centre = 0.0695
+    thickness = 0.004
 
-    # NO SHAFT.
-    #
-    # There was a truncated cone here standing between the board and the album, and it never
-    # worked. glTF has no additive blend mode, so a shaft can only ever be alpha-composited
-    # over the scene — which means it *occludes* rather than adds, and reads as a solid
-    # low-opacity object standing on the shelf rather than as light. Faint enough not to
-    # occlude and it disappears; bright enough to see and it is a plastic cone.
-    #
-    # A real volumetric shaft wants additive blending, which wants a hand-written `.mat` and
-    # the 735MB toolchain that entails (docs/materials.md). Until then the pool alone does the
-    # job: it blooms, so it reads as a genuine source, and the eye supplies the rest.
-    # The emitter, not the pool — and the change is the owner's complaint made geometric.
-    #
-    # This was r_base * 2.6: a 68mm disc of emission driven past bloom's threshold, standing
-    # in for the pool of light an underlight throws. Two things went wrong with that once the
-    # underlight became a real Filament light. It is a hard-edged, clipped, flat ellipse — a
-    # glowing hockey puck under every record — and its bloom spread upward over the lower half
-    # of every sleeve as a milky veil, which is most of why the covers "are not vivid enough".
-    #
-    # So it is the size of the LED a display puck actually has. Small enough that its bloom is
-    # a glint rather than a haze, bright enough to read as the source the record is lit from.
-    # The real light does the lighting; this only has to be seen.
-    pool = []
-    for i in range(segments):
-        a = 2.0 * math.pi * i / segments
-        pool.append(bm.verts.new((math.cos(a) * r_base * 0.85,
-                                  math.sin(a) * r_base * 0.85, 0.0006)))
-    bm.faces.new(tuple(pool))
+    # Standing from just above the board to a little over the top of a sleeve, so the strip
+    # reads as the height of the compartment rather than as a mark beside the record.
+    height = 0.166
+    y_centre = height / 2.0 + 0.002
+
+    # Proud of the record's face, which is what lets the light rake ACROSS the artwork
+    # instead of grazing it. A case is only CASE_W (10mm) deep in plan when it is face-on,
+    # and the now-playing one stands PROUD_Z (22mm) forward of that, so 48mm of strip keeps
+    # the record inside its own vitrine even when it is presenting itself.
+    depth = 0.048
+    z_centre = 0.012
+
+    for side in (-1.0, 1.0):
+        box(bm, side * x_centre, az(z_centre), y_centre, thickness, depth, height)
+
     bm.normal_update()
     bm.to_mesh(obj.data)
     bm.free()
 
-    # No bevel and no triangulate pass: this is a soft volume, and beveling it would only
-    # round edges that are meant to be invisible.
-    bpy.context.view_layer.objects.active = obj
-    obj.select_set(True)
-    bpy.ops.object.shade_smooth()
-    obj.select_set(False)
-
-    # The pool where the beam meets the board, and the reason any of this glows.
+    # The strips glow, and the reason any of this reads as light.
     #
     # `RoomAtmosphere` runs bloom with `threshold = true`, which means **only values above
-    # 1.0 bloom at all**. The first beam emitted at 0.3 and therefore could not glow no
-    # matter how it was tuned — it was always going to sit there as a low-opacity cone.
+    # 1.0 bloom at all**. The first beam here emitted at 0.3 and therefore could not glow no
+    # matter how it was tuned.
     #
-    # Splitting the beam in two is what lets both things be true at once: the shaft stays
-    # faint so it does not occlude the album behind it (glTF has no additive blend, so a
-    # bright surface hides what is behind it), while the pool is driven well past 1.0 and
-    # blooms into an actual pool of light. Emission is not damped by alpha or vertex colour,
-    # so it had to be a separate material rather than a gradient.
-    pool_mat = principled(
-        "UnderlightPool",
+    # Lower than the 4.5 the old pool ran at, because there is far more of it: two strips are
+    # 0.0013m2 of emitter against the disc's 0.0004m2, so the same figure would put three and
+    # a half times the light into bloom and bring back the milky veil over the lower half of
+    # every sleeve that shrinking the disc was meant to cure.
+    #
+    # Opaque, unlike the disc, which was alpha-blended so it could fade out. A strip is a
+    # physical thing in the gap between two records; there is nothing behind it to show
+    # through, and an opaque emitter cannot sort wrongly against its neighbours.
+    strip_mat = principled(
+        "VitrineStrip",
         base_color=(1.0, 0.824, 0.627),
         metallic=0.0,
         roughness=1.0,
-        alpha=0.85,
-        blend=True,
     )
-    pb = pool_mat.node_tree.nodes["Principled BSDF"]
+    pb = strip_mat.node_tree.nodes["Principled BSDF"]
     pb.inputs["Emission Color"].default_value = (1.0, 0.86, 0.70, 1.0)
     # Exported as KHR_materials_emissive_strength. Above the bloom threshold on purpose.
-    pb.inputs["Emission Strength"].default_value = 4.5
-    obj.data.materials.append(pool_mat)
+    pb.inputs["Emission Strength"].default_value = 2.4
+    obj.data.materials.append(strip_mat)
     return obj
 
 

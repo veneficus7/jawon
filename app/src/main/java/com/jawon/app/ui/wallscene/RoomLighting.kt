@@ -393,33 +393,52 @@ object RoomLighting {
      */
     const val WASH_DROP = 0.0021f
 
-    // ---- The underlight: one real light per album ----------------------------------
+    // ---- The vitrine: two lights down the sides of every bay -------------------------
     //
-    // **The owner's lighting design, stated plainly: two lights and nothing else.** A backlight
-    // in the top back corner of each shelf giving a gradient on the panel, and this — the
-    // underlight of each CD, which is "the real light source that lets us see the artwork, and
-    // shines through glass like material of CD cases". No ambient.
+    // **The owner's lighting design began as two lights and nothing else.** A backlight in the
+    // top back corner of each shelf giving a gradient on the panel, and an underlight for each
+    // CD, "the real light source that lets us see the artwork, and shines through glass like
+    // material of CD cases".
     //
-    // The underlight has always been emissive geometry: one draw for the whole wall, which is
-    // why every bay could have its own glow. It blooms and it lights nothing. Now it is an
-    // actual Filament light per occupied slot — around a hundred of them at this camera, which
-    // is the case clustered forward rendering exists for, provided each one is small and casts
-    // no shadow. Both hold here.
+    // **The underlight is gone as of 2026-09-13**, on the owner's own reading of it: "maybe
+    // just remove all underlights and add some other creative type exclusive light for each
+    // album?" Offered four fixtures that real rooms use, he chose the vitrine — the way a
+    // museum lights an object in a case, from strips down the sides of the case rather than
+    // from anything beneath it.
+    //
+    // Three things were wrong with lighting a record from below, and only the first was taste.
+    // (1) Nothing in a shop is lit that way; it is the angle a torch under the chin makes.
+    // (2) One light 95mm below the middle of a sleeve puts **five times** as much on the
+    // brightest part of the artwork as on the dimmest — computed, not remembered, and visible
+    // as a bleached bottom edge: "the underlights for CD cases are washing the CD cover arts".
+    // (3) Once the covers were given their gloss back (`CaseSlots.COVER_ROUGHNESS`), a bulb in
+    // front of the artwork wrote a hard clipped reflection of itself into it — the exact
+    // failure this file already records from the first spot-shaped underlight.
+    //
+    // The bay's own dimensions are what make the vitrine possible. `SLOT_PITCH` is 150mm and a
+    // face-on cover is `CASE_D` 125mm wide, so there is a 25mm channel between neighbouring
+    // records. A light in that channel is **beyond the cover's own edge**, and the mirror image
+    // of a light past the edge of a flat glossy plate lands off the plate: these can be as
+    // bright as the artwork needs and can never put a hotspot on it. Two of them, one per side,
+    // and the evenness across a sleeve goes from **5.1:1 to 1.54:1** — 1.52 once the
+    // neighbouring bays' strips fill in the edges, since a strip stands in the channel between
+    // two records and lights both. See [VitrineGeometry], which computes all three.
+    //
+    // Two lights per bay instead of one, so around two hundred exist at this camera — but
+    // Filament frustum-culls lights before froxelising and these reach 260mm, so what is
+    // actually submitted is the two dozen bays on screen. Small, and neither casts a shadow.
 
     /**
-     * How far above the board the bulb sits.
+     * How far above the board the pair sits: the middle of the record, which is the middle of
+     * the strips they stand for.
      *
-     * Higher than it looks like it should be, and inverse-square is why. At 8mm the board
-     * directly beneath the bulb is 8mm away while the middle of the sleeve is about 78mm away,
-     * so the board receives roughly **95 times** the illuminance the artwork does — measured,
-     * the pool clipped over a third of its pixels while the cover sat at 68. Both cannot be
-     * exposed correctly at once from that height, and the artwork is the one that matters.
-     *
-     * Lifting it cuts the near distance far faster than the far one, so the ratio collapses
-     * while the light on the sleeve barely moves. Still low enough to read as coming from under
-     * the record rather than from the shelf above.
+     * The old underlight sat at 24mm, near the board, and that height is the whole of why it
+     * washed. Illuminance falls with the square of the distance, so a light level with the foot
+     * of a sleeve is far closer to it than to its head. Level with the *middle* those two
+     * distances are equal by construction, and a sleeve's corners are the only part of it that
+     * falls off at all.
      */
-    const val UNDER_LIFT = 0.024f
+    const val UNDER_LIFT = WallDimens.CASE_H / 2f
 
     /**
      * How far in FRONT of the case the bulb sits.
@@ -438,7 +457,23 @@ object RoomLighting {
      * artwork reads. It can go this far because the light reaches only the plates now (see
      * [UNDER_LIGHT_CHANNEL]), so there is nothing else in front of the record for it to hit.
      */
-    const val UNDER_FORWARD = 0.095f
+    const val UNDER_FORWARD = 0.115f
+
+    /**
+     * How far to each side of the bay's axis the pair sits - the 25mm channel between records.
+     *
+     * **This number is the whole design.** A face-on cover is `CASE_D` 125mm wide, so its edge
+     * is 62.5mm from the axis; a light at 69.5mm is 7mm *outside* it. On a flat glossy plate
+     * the reflection of a source appears where that source's mirror image is, so a source past
+     * the plate's edge has no reflection on the plate at all. That is what lets these be the
+     * artwork's key light without writing a highlight across it - which nothing standing in
+     * front of a record can do.
+     *
+     * It is also the largest offset the bay allows. A case turns a full circle inside its bay
+     * and sweeps `SLOT_SWEEP`/2 = 62.7mm, while the strips' inner faces are at 67.5mm, so a
+     * record clears them by 4.8mm at every angle. See `tools/models/build_models.py`.
+     */
+    const val UNDER_SIDE = 0.0695f
 
     /**
      * Bright, because this is a key light now rather than a decoration.
@@ -458,17 +493,20 @@ object RoomLighting {
      * belongs to, the reason a case reads as levitating. Bright enough to see; nowhere near
      * bright enough to matter to the artwork above it.
      */
-    const val UNDER_CANDELA = 280f
+    const val UNDER_CANDELA = 340f
 
     /**
-     * Short reach. The pool belongs to one record; a long falloff turns a hundred of these into
+     * Short reach. The light belongs to one bay; a long falloff turns two hundred of these into
      * ambient light by another name, which is exactly what the owner asked to remove.
      *
-     * 0.22 with the bulb 95mm out: the far top corner of its own sleeve is ~0.16m away, so the
-     * whole cover is inside the reach with a margin — `falloff` is a hard cutoff (trap 6), and a
-     * corner past it would go black — and it is barely longer than it was.
+     * 0.26 with the pair 115mm out and 69.5mm to the side: the far corner of a strip's *own*
+     * sleeve is 0.20m away, so the whole cover is inside the reach with a margin — `falloff` is
+     * a hard cutoff (trap 6) and a corner past it would go black. The near edge of the next
+     * record along sits at 0.21m and only just inside, which is the right place to stop: a
+     * little of a record's colour reaching its neighbour is what a rack of lit bays looks like,
+     * and a lot of it is every cover wearing everybody else's.
      */
-    const val UNDER_FALLOFF = 0.22f
+    const val UNDER_FALLOFF = 0.26f
 
     /**
      * The light channel the album underlights live on — and the end of a day spent fighting
@@ -769,6 +807,32 @@ object RoomLighting {
      * changes, to the spots' own reach, so a tall rack's bottom row is still inside the map.
      */
     const val CEILING_SPOT_SHADOW_PX = 1024
+
+    // ---- The wall washers: what lights the decor -----------------------------------------
+    //
+    // The spots are aimed at the rack, so their pools stop about 6cm above its cap and the brick
+    // above — where the neon sign hangs and the framed records hang beside it — is lit by nothing
+    // but ambient. Anything hung there would be a dark rectangle.
+    //
+    // A shop hangs a second head on the same track for exactly this, turned to wash the wall
+    // rather than the goods. These ride the spots' carrier, so they share its grid and its
+    // snapping, and they cast no shadows: a washer exists to make a flat wall even.
+
+    /** How high above the top of the rack the washers aim: the middle of the decor band. */
+    const val WASHER_AIM_ABOVE_CAP = 0.16f
+
+    /** Wide, because the band is wide and a washer must not scallop it. */
+    const val WASHER_CONE_INNER = 0.45f
+    const val WASHER_CONE_OUTER = 0.80f
+
+    /**
+     * Dimmer than a spot: the wall is the backdrop, and the records have to stay the brightest
+     * thing in the room. Enough that a framed sleeve reads and the brick's courses show.
+     */
+    const val WASHER_CANDELA = 1_400f
+
+    /** Past the wall it washes, so no part of the band ends at a cutoff (trap 6). */
+    const val WASHER_FALLOFF = 1.6f
 
     /**
      * How many rows of the rack carry a live ribbon at once — four, and never positioned by the
@@ -1121,8 +1185,16 @@ object RoomLighting {
      * level and why the room also got things for the light to fall on — a brick wall, and
      * ceiling spots that cast shadows (see [CEILING_SPOT_CANDELA]). Ambient alone would have
      * lifted the void into a grey one.
+     *
+     * **Doubled again, 2026-09-13**, on the owner's second reading of the same room: "the scene
+     * is still so dark that coverarts cant show their true beautifull colors." Two fifths was
+     * measured against the *room* reading as a room; it was never measured against a sleeve
+     * reading as its own artwork, and the covers are the only surface in here that came with
+     * its own colours already in it. Four fifths, with half of it arriving from above
+     * ([AMBIENT_FROM_ABOVE]) rather than from all directions at once, which is the part that
+     * keeps the falloff the flatness argument is about.
      */
-    private const val AMBIENT_FILL = 0.40f
+    private const val AMBIENT_FILL = 0.80f
 
     /**
      * Irradiance as spherical harmonics: 3 bands, 9 coefficients, RGB each.
@@ -1135,11 +1207,23 @@ object RoomLighting {
      * by [AMBIENT_FILL]: it adds no diffuse fill, it is what a glossy surface looks at, and
      * without it a jewel case mirrors nothing and reads as painted card.
      */
+    /**
+     * How much of the fill arrives from above rather than from everywhere.
+     *
+     * The l=1 band against the constant term. Raised with [AMBIENT_FILL] on 2026-09-13 and for
+     * the same reason it is capped at all: doubling a *uniform* fill is the fastest way to get
+     * the flat room back (the 40k lesson in `ENGINEERING.md`), where doubling a fill that still
+     * arrives from the ceiling lifts the shadows without erasing them. A record's face is
+     * vertical, so the vertical term reaches it obliquely and the boards and the floor take
+     * most of it — which is where the void the owner's friend saw actually was.
+     */
+    private const val AMBIENT_FROM_ABOVE = 0.50f
+
     private fun ambientSphericalHarmonics(scheme: RoomScheme): FloatArray {
         val sh = FloatArray(SH_BANDS * SH_BANDS * 3)
         for (c in 0..2) {
             sh[c] = scheme.ambient[c] * AMBIENT_FILL
-            sh[3 + c] = scheme.ambient[c] * AMBIENT_FILL * 0.35f
+            sh[3 + c] = scheme.ambient[c] * AMBIENT_FILL * AMBIENT_FROM_ABOVE
         }
         return sh
     }
