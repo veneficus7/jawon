@@ -435,10 +435,10 @@ private fun DiagnosticsSection(
 
         Text(
             text = if (snapshot.stepDowns > 0) {
-                "Jawon lowered its own quality ${snapshot.stepDowns} " +
+                "Jawon eased off the detail ${snapshot.stepDowns} " +
                     "time${if (snapshot.stepDowns == 1) "" else "s"} because frames were " +
-                    "arriving late. That is the room protecting itself, and it is worth " +
-                    "knowing about."
+                    "arriving late. That is the room keeping itself smooth, and it is " +
+                    "worth knowing about."
             } else {
                 "The room has held the quality it started at."
             },
@@ -532,9 +532,9 @@ private fun CrashReportSection(
         }
 
         Text(
-            text = "Jawon recorded something that went wrong. Sending this helps it get " +
-                "fixed — it holds the fault, the version and the phone model, and nothing " +
-                "about you or your library.",
+            text = "Something went wrong, and Jawon wrote it down. Sending it is what " +
+                "gets it fixed: it holds the fault, the app version and the phone model, " +
+                "and nothing about you or your music.",
             style = JawonTextStyle.mono.copy(color = LampAmber, fontSize = 10.sp),
             lineHeight = 16.sp
         )
@@ -616,13 +616,15 @@ private fun ReplayGainSection(
             letterSpacing = 2.sp,
             color = LabelCream
         )
-        Text(
-            text = "Uses the ReplayGain tags already in your files, if they have them, so a " +
-                "quiet old master and a loud remaster sit at the same level. By album keeps " +
-                "the loud and quiet moments the record was sequenced with; by track flattens " +
-                "them so every song is equally loud.",
-            style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = 10.sp),
-            lineHeight = 16.sp
+        MoreText(
+            // "ReplayGain" is the name of the tag, not a thing anyone needs to know to
+            // decide this. What they need to know is that old records are quieter.
+            summary = "Stop older records playing quieter than new ones.",
+            detail = "Older albums were mastered quieter than modern ones, so a shelf of " +
+                "both keeps changing volume on you. This evens them out using loudness " +
+                "figures your files already carry, and re-encodes nothing.\n\n" +
+                "BY ALBUM keeps a record's own quiet and loud moments, the way it was " +
+                "sequenced. BY TRACK makes every song equally loud."
         )
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             ReplayGain.Mode.entries.forEach { option ->
@@ -684,14 +686,15 @@ private fun BackupSection(
             color = LabelCream
         )
         MoreText(
-            summary = "Your shelves, artwork and listening history — not the audio files.",
-            detail = "Saves which records are on which shelf, what the shelves are called and " +
-                "how they glow, the titles and artwork you fixed, and every hour of " +
-                "listening the case wear is drawn from. Your audio files are not copied — " +
-                "they are already on your phone and Jawon never touches them.\n\n" +
-                "Restoring onto the same phone brings everything back. Onto a different " +
-                "one, the shelves and artwork come back but the tracks may need importing " +
-                "again — Android ties a file's address to the device that issued it."
+            summary = "Your shelves and your listening — not the music itself.",
+            detail = "Saves which records sit on which shelf, what you named the shelves " +
+                "and how they glow, the covers and titles you fixed, and all the " +
+                "listening the wear on the cases is drawn from. Your music files are not " +
+                "copied: they are already on this phone, and Jawon never moves them.\n\n" +
+                "Restore onto the same phone and everything comes back. Onto a new " +
+                "phone, the shelves and covers come back but you may have to import your " +
+                "music again, because Android does not let one phone's file addresses " +
+                "work on another."
         )
 
         Row(
@@ -793,16 +796,19 @@ private fun MusicServerSection(
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             MoreText(
-                summary = "Point Jawon at your own Subsonic server and its albums appear on the " +
-                    "wall without taking up room here.",
-                detail = "Navidrome, Airsonic, Gonic and Ampache all speak it. Only the " +
-                    "catalogue is stored on this phone: titles, tracklists and one cover each. " +
-                    "The music itself is streamed when you play it, and kept afterwards so the " +
-                    "disc still scrubs instantly.\n\n" +
-                    "This is still your library. Jawon has no catalogue of its own to offer " +
-                    "you, and streaming services cannot be used here — every one of them " +
-                    "forbids an app from touching the audio, which is the whole of what the " +
-                    "disc does."
+                // "Point Jawon at your own Subsonic server" assumed the reader knew what a
+                // Subsonic server is. What they know is that their music does not fit.
+                summary = "Keep your music on a computer at home and play it here, without " +
+                    "filling up your phone.",
+                detail = "You run the server yourself. Navidrome, Airsonic, Gonic and " +
+                    "Ampache are the usual ones and Jawon speaks to all of them. Only the " +
+                    "list of albums lives on this phone: titles, tracks and one cover " +
+                    "each. The music arrives as you play it, and is kept afterwards so " +
+                    "the disc still scrubs the instant you touch it.\n\n" +
+                    "This is still your own library. Jawon has none of its own to sell " +
+                    "you, and the streaming services cannot be added: every one of them " +
+                    "forbids an app from touching the sound, and touching the sound is " +
+                    "the whole of what the disc does."
             )
 
             if (server.isConfigured) {
@@ -901,14 +907,14 @@ private fun ServerInUse(
             BackupButton(text = "FORGET", enabled = true, onClick = onForget)
         }
         MoreText(
-            summary = "A link carries the address and the sign-in, so whoever you send it to " +
-                "pastes one thing and is listening.",
-            detail = "Treat it as the password it contains: anyone holding it can reach the " +
-                "server, and the only way to take it back is to change the password there and " +
-                "send a new one.\n\n" +
-                "FORGET clears the sign-in and leaves the albums on the wall, where they stop " +
-                "being playable rather than disappearing. Removing them is a separate, " +
-                "deliberate act."
+            summary = "One link carries the address and the sign-in, so whoever you " +
+                "send it to pastes one thing and is listening.",
+            detail = "Treat the link as the password inside it: anyone holding it can " +
+                "reach your server, and the only way to take that back is to change the " +
+                "password there and send a new link.\n\n" +
+                "FORGET clears the sign-in and leaves the albums on the wall, where they " +
+                "stop playing rather than disappearing. Removing them is a separate and " +
+                "deliberate step."
         )
 
         Disclosure(
@@ -1215,18 +1221,20 @@ private fun SpotifySection(
         MoreText(
             // The summary leads with the two things that stop it working, because those are what
             // someone needs before they start rather than after.
-            summary = "Your saved albums on the wall. Needs Premium, and the disc does nothing " +
-                "to a Spotify track.",
-            detail = "Put the albums you have saved in Spotify onto the wall. Jawon shows the " +
-                "room and sends the play commands; Spotify plays the sound itself.\n\n" +
-                "It needs Spotify PREMIUM — the playback API refuses a free account outright. " +
-                "The Spotify app has to be open on some device, because Jawon is asking it to " +
-                "play rather than playing itself. And the disc, the equaliser and the whole " +
-                "rack do nothing to a Spotify album: the audio never passes through this app, " +
-                "so there is nothing here to scratch.\n\n" +
-                "You need your own Spotify app. Make one at developer.spotify.com, add " +
-                "${SpotifyAuth.REDIRECT_URI} as a Redirect URI, and paste the Client ID here. " +
-                "Spotify caps a new app at five users, so one shared ID would not go far."
+            summary = "Your saved Spotify albums, on the wall. Needs Premium, and the " +
+                "disc does nothing to them.",
+            detail = "Puts the albums you have saved in Spotify onto the wall. Jawon " +
+                "shows the room and presses play; Spotify makes the sound.\n\n" +
+                "Three things to know. It needs Spotify PREMIUM — Spotify turns a free " +
+                "account away. The Spotify app has to be running somewhere, because " +
+                "Jawon is asking it to play rather than playing itself. And the disc, " +
+                "the equaliser and the rack do nothing to a Spotify album: the sound " +
+                "never passes through Jawon, so there is nothing here to scratch.\n\n" +
+                "Setting it up is a job on Spotify's own site, done once. Sign in at " +
+                "developer.spotify.com, create an app, put " +
+                "${SpotifyAuth.REDIRECT_URI} where it asks for a Redirect URI, and copy " +
+                "the Client ID it gives you into the box below. It has to be your own: " +
+                "Spotify caps each app at five people."
         )
 
         ServerField(
@@ -1660,12 +1668,11 @@ fun SettingsScreen(
                         style = JawonTextStyle.mono.copy(fontSize = 10.sp)
                     )
                 }
-                Text(
-                    text = "Shelved cases rotate slowly to show their covers, then their " +
-                        "spines. Full speed is what the room was tuned at; nothing stops " +
-                        "them holding square on. They float either way.",
-                    style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = 10.sp),
-                    lineHeight = 16.sp
+                MoreText(
+                    summary = "How much the records turn on the shelf.",
+                    detail = "Cases turn slowly to show you their cover, then their spine. " +
+                        "FULL is the speed the room was built around; turn it right down " +
+                        "and they hold still, facing you. They float either way."
                 )
                 Slider(
                     value = caseSpin,
@@ -1705,13 +1712,12 @@ fun SettingsScreen(
                         style = JawonTextStyle.mono.copy(fontSize = 10.sp)
                     )
                 }
-                Text(
+                MoreText(
                     // Says what it does to an album, because that is the part worth knowing.
-                    text = "Overlaps the end of one track with the start of the next. Off by " +
-                        "default: plenty of records run straight from one track into the " +
-                        "next on purpose, and a crossfade undoes that.",
-                    style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = 10.sp),
-                    lineHeight = 16.sp
+                    summary = "Fade the end of one song into the next.",
+                    detail = "Off to begin with, and that is deliberate: plenty of records " +
+                        "run straight from one track into the next on purpose, and a " +
+                        "crossfade spoils it."
                 )
                 Slider(
                     value = crossfadeMs.toFloat(),
@@ -1738,26 +1744,27 @@ fun SettingsScreen(
                 title = "LOOK UP COVER ART",
                 // The summary names the service and what is sent, because those are the two
                 // facts a decision actually turns on. Everything else is a tap away.
-                summary = "Sends title and artist to MusicBrainz, for albums with no artwork.",
+                summary = "Find covers for albums that arrived without one.",
                 // States exactly what leaves the device. A privacy switch that says
                 // "improve your experience" is not a switch anyone can make a decision with.
-                detail = "When an album's own files carry no artwork, send its title and " +
-                    "artist to MusicBrainz to find a cover. Nothing else is sent — no " +
-                    "account, no device id, no list of what you own. This is the only " +
-                    "thing Jawon sends anywhere.",
+                detail = "When an album's own files carry no picture, Jawon asks " +
+                    "MusicBrainz — a free, public music database — for one, sending the " +
+                    "album title and the artist and nothing else. No account, no phone " +
+                    "id, no list of what you own. Turn it off and albums without a " +
+                    "picture simply stay blank.",
                 checked = fetchCoverArt,
                 onCheckedChange = viewModel::onFetchCoverArtChanged
             )
 
             SettingRow(
                 title = "LOOK UP LYRICS",
-                summary = "Sends track, artist, album and length to LRCLIB, when a file has none.",
+                summary = "Find the words for songs that carry none.",
                 // Same rule as above: name the service, name exactly what is sent, and say
                 // when. "Enhanced metadata" is not something anyone can decide about.
-                detail = "When a track carries no lyrics of its own, send its title, artist, " +
-                    "album and length to LRCLIB to look them up. Asked only when you open " +
-                    "the lyrics page, and only for tracks that have none — the answer is " +
-                    "kept so the same track is never looked up twice. Nothing else is sent.",
+                detail = "When a song has no words saved in it, Jawon asks LRCLIB — a " +
+                    "free lyrics database — sending the title, artist, album and length. " +
+                    "Only when you open the lyrics page, only for songs that have none, " +
+                    "and the answer is kept so nothing is asked for twice.",
                 checked = fetchLyrics,
                 onCheckedChange = viewModel::onFetchLyricsChanged
             )
@@ -1765,15 +1772,16 @@ fun SettingsScreen(
             // Moved below the switch it depends on. It was above it, which read as the more
             // important of the two and made "needs the switch above" point at nothing.
             SettingRow(
-                title = "PREFER ONLINE LYRICS",
-                summary = "Use LRCLIB even when the file has its own words.",
+                title = "ALWAYS LOOK UP LYRICS",
+                summary = "Even for songs that already have words of their own.",
                 // Says what it costs as well as what it does. The default is off because the
                 // file's own words are instant, offline and private; this is for libraries
                 // whose tags are untimed or simply wrong.
-                detail = "Take the words from LRCLIB even when the file has its own. Jawon " +
-                    "already prefers a timed answer over an untimed one — turn this on if you " +
-                    "want the online copy regardless. Costs a lookup per track, and only does " +
-                    "anything while the switch above is on.",
+                detail = "Jawon already prefers words that scroll in time with the music " +
+                    "over words that just sit there. Turn this on to take the online copy " +
+                    "anyway — worth it if the words saved in your files are wrong or badly " +
+                    "timed. One lookup per song, and it does nothing unless the switch " +
+                    "above is on.",
                 checked = preferOnlineLyrics,
                 onCheckedChange = viewModel::onPreferOnlineLyricsChanged,
                 enabled = fetchLyrics

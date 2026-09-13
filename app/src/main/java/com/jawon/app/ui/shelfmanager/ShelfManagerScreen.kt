@@ -315,9 +315,10 @@ private fun FilingRow(current: WallSort, onPick: (WallSort) -> Unit) {
 
         Text(
             text = if (current.isAlphabetical) {
-                "The letters on the wall's thumb rail are a real A–Z index in this order."
+                "The letters down the side of the wall jump you to that letter."
             } else {
-                "File by album or artist and the wall's thumb rail becomes an A–Z index."
+                "Sort by album or artist and the letters down the side of the " +
+                    "wall start working."
             },
             style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = 9.5.sp),
             lineHeight = 15.sp,
