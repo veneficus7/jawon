@@ -449,8 +449,16 @@ object RoomLighting {
      * Doubled with [UNDER_FORWARD]: from 95mm out instead of 52mm, the middle of a sleeve is
      * about half as brightly lit per candela (further away, though more squarely faced), so this
      * keeps the artwork where it was tuned while taking the hotspot off its foot.
+     *
+     * **And then cut to a fifth, because it is not the working light any more.** The owner:
+     * "the underlights for CD cases are washing the CD cover arts". They were — a light strong
+     * enough to reveal a sleeve from 95mm away bleaches it, and no amount of moving it fixes
+     * that while it is the only fixture pointed at the artwork. [RAIL_CANDELA] took that job, so
+     * this went back to what it is for: the album's own colour pooling under the record it
+     * belongs to, the reason a case reads as levitating. Bright enough to see; nowhere near
+     * bright enough to matter to the artwork above it.
      */
-    const val UNDER_CANDELA = 1_500f
+    const val UNDER_CANDELA = 280f
 
     /**
      * Short reach. The pool belongs to one record; a long falloff turns a hundred of these into
@@ -670,6 +678,80 @@ object RoomLighting {
 
     /** Reach: past the bottom of a tall rack, so no row sits beyond the cutoff (trap 6). */
     const val CEILING_SPOT_FALLOFF = 2.5f
+
+    // ---- The shelf-edge rail: the fixture that actually shows the records ----------------
+    //
+    // **This is how a record shop lights a rack, and the underlight was never it.** The owner:
+    // "the underlights for CD cases are washing the CD cover arts … maybe get some idea from in
+    // real life record shop lighting designs." A shop does not light a sleeve from below. It runs
+    // a slim strip under the front lip of every shelf, aimed down at the records standing on the
+    // shelf beneath — the same fixture supermarkets and galleries use, for the same reasons: a
+    // line source spreads its light evenly down a 142mm sleeve where a point source 95mm away
+    // cannot, it sits far enough forward that its reflection lands below the eye rather than in
+    // the artwork, and it lights every record in the bay identically.
+    //
+    // So the rail lights the artwork, and [UNDER_CANDELA] goes back to being an accent.
+    //
+    // Its diodes hang from the same carriers the back ribbon does, so they are snapped to the
+    // rack's grid and switched off for rows that do not exist along with it (trap 5, trap 24).
+
+    /** Diodes live at once, and their spacing: half the ribbon's density, twice its reach each. */
+    const val RAIL_COLUMNS = 15
+    const val RAIL_COLUMN_SPACING = 0.038f
+
+    /**
+     * Where the rail sits, front to back: tucked under the front lip of the board above, inset
+     * far enough that the lip hides the diodes themselves from anyone looking up at the shelf.
+     */
+    const val RAIL_Z = WallDimens.BOARD_D / 2f - 0.014f
+
+    /**
+     * Aimed down and 23° back — straight at the faces of the records below, which stand about
+     * 121mm below the rail and 53mm behind it.
+     */
+    val RAIL_DIRECTION: FloatArray = floatArrayOf(0f, -0.917f, -0.399f)
+
+    /**
+     * Wide enough that a whole sleeve is inside the beam's **full-strength core**, not its edge:
+     * the top of a sleeve is 20.1° off the axis and its foot 9.4°, so the inner angle has to
+     * clear 20.1° or the top of every cover sits in the penumbra and reads dim. That is the same
+     * mistake the ribbon made against the panel, which cost a round of tuning (see
+     * [WASH_CONE_INNER]); 24° inner leaves margin for a rack whose rows are not exactly here.
+     */
+    const val RAIL_CONE_INNER = 0.42f
+    const val RAIL_CONE_OUTER = 0.70f
+
+    /**
+     * Per diode, in candela. As a line at [RAIL_COLUMN_SPACING] this puts roughly two thirds of
+     * what the old underlight put on a sleeve — the artwork is lit, and lit *evenly*, without the
+     * bleaching a 1500cd point at 95mm was doing to it.
+     */
+    const val RAIL_CANDELA = 320f
+
+    /** Past the foot of the records it lights, so no sleeve ends at a cutoff (trap 6). */
+    const val RAIL_FALLOFF = 0.40f
+
+    /**
+     * How much of the room's lamp colour the rail carries: **a hint of it, and no more.**
+     *
+     * It was the room's [RoomScheme.key] outright, and in Officina — whose lamp is phosphor —
+     * that made the fixture that shows the artwork green. Measured on the owner's phone, In the
+     * Court of the Crimson King, a red sleeve, came back rgb(82, 99, 71): green was its
+     * strongest channel. Shop display lighting is white for exactly this reason; the room's
+     * colour belongs to the tube behind the records, the neon and the spots, not to the light
+     * a sleeve is read by.
+     */
+    const val RAIL_ROOM_TINT = 0.30f
+
+    /** The rail's colour: white, pulled [RAIL_ROOM_TINT] of the way toward the room's lamp. */
+    fun railColour(key: FloatArray): FloatArray =
+        FloatArray(3) { 1f - RAIL_ROOM_TINT * (1f - key[it]) }
+
+    /** The rail's own tube: thinner than the back one, and a third of its glow. It is a working
+     * light in a shop, not the neon the bay is styled around. */
+    const val RAIL_H = 0.0018f
+    const val RAIL_D = 0.010f
+    const val RAIL_GLOW = 1.15f
 
     /**
      * Each spot's shadow map, in texels per side: 1024, not the old key light's 2048.

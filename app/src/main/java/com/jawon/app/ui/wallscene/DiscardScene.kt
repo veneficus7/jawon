@@ -327,5 +327,7 @@ fun driveDiscard(
     active.root?.scale = Scale(1f)
     active.hinge?.rotation = Rotation(0f, 0f, 0f)
     active.disc?.isVisible = false
+    // Hidden is not off for a light (trap 24): the held case's underlights go dark with it.
+    active.setLightsOn(case = false, disc = false)
     return true
 }

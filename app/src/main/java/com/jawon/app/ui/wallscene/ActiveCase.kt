@@ -130,6 +130,23 @@ class ActiveCaseNodes {
     }
 
     private var appliedUnderHue = Float.NaN
+
+    /**
+     * Switches the held case's two underlights on or off — **by intensity, because hiding them
+     * does nothing** (trap 24, "hiding a node does not switch off a light in it"). The case group
+     * and the disc are hidden whenever no record is out, and until this existed both lights went
+     * on shining from wherever the group was parked, onto whatever art plates were near it.
+     */
+    fun setLightsOn(case: Boolean, disc: Boolean) {
+        val caseLight = underBulb
+            ?: underCarrier?.childNodes?.firstNotNullOfOrNull { it as? LightNode }
+                ?.also { underBulb = it }
+        val discLight = discUnderBulb
+            ?: discUnderCarrier?.childNodes?.firstNotNullOfOrNull { it as? LightNode }
+                ?.also { discUnderBulb = it }
+        caseLight?.setIntensityCandela(if (case) RoomLighting.HELD_UNDER_CANDELA else 0f)
+        discLight?.setIntensityCandela(if (disc) RoomLighting.HELD_UNDER_CANDELA else 0f)
+    }
 }
 
 /**

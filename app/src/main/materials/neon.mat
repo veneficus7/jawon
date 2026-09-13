@@ -1,0 +1,59 @@
+// The neon JAWON sign on the wall above the rack (NeonSign.kt).
+//
+// The owner chose it from four kinds of wall decor, and a friend's note is why it says what it
+// says: "i cant see the Jawon". It is decor and a light source at once — a real point light in
+// front of it washes the brick in its colour — and this is the tube itself.
+//
+// Drawn from a two-channel mask (NeonSign.mask): red is the tube's core, a thin line where the
+// gas is hottest, rendered near white with the sign's colour in it; green is the glow in the
+// glass around it, soft and fully coloured. Both are pushed well past bloom's threshold, so the
+// bloom, the halo and the lens dirt pick the sign up the way they pick up the strips — it glows
+// in the air instead of sitting on the wall as a coloured drawing.
+//
+// Additive: a neon sign only ever adds light, and blending it over the brick this way means the
+// mask needs no alpha at all.
+//
+// Compiled by hand with a version-matched matc. See docs/materials.md.
+
+material {
+    name : Neon,
+    requires : [
+        uv0
+    ],
+    shadingModel : unlit,
+    blending : add,
+    depthWrite : false,
+    parameters : [
+        {
+            type : sampler2d,
+            name : mask
+        },
+        {
+            // The sign's colour, linear.
+            type : float3,
+            name : color
+        },
+        {
+            // How hot the core burns and how bright the glow is around it.
+            type : float2,
+            name : coreGlow
+        },
+        {
+            // 0..1: the tube's current brightness — for the ignition and the odd flicker.
+            type : float,
+            name : power
+        }
+    ]
+}
+
+fragment {
+    void material(inout MaterialInputs material) {
+        prepareMaterial(material);
+        vec4 m = texture(materialParams_mask, getUV0());
+        vec3 c = materialParams.color;
+        // The core is where the gas is hottest: most of the way to white, still tinted.
+        vec3 core = mix(c, vec3(1.0), 0.55) * m.r * materialParams.coreGlow.x;
+        vec3 glow = c * m.g * materialParams.coreGlow.y;
+        material.baseColor = vec4((core + glow) * materialParams.power, 1.0);
+    }
+}

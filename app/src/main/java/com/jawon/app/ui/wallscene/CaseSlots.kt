@@ -337,6 +337,11 @@ class CaseSlot {
     fun setBeamVisible(visible: Boolean) {
         beam?.isVisible = visible
         underCarrier?.isVisible = visible
+        // **Hiding the carrier does not switch the light off** — trap 24, "hiding a node does
+        // not switch off a light in it": SceneView's visibility reaches renderables and never a
+        // light. So an empty slot's bulb kept shining wherever the slot was parked, on the
+        // covers around it. Dark by intensity, and back to full when the slot has an album.
+        bulb()?.setIntensityCandela(if (visible) RoomLighting.UNDER_CANDELA else 0f)
     }
 
     fun setBeamGlow(amount: Float) {

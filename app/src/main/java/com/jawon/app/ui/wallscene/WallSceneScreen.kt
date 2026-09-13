@@ -631,6 +631,12 @@ private class RoomNodes {
     val ribbonRows = arrayOfNulls<SceneNode>(RoomLighting.SHELF_LIGHT_COUNT)
 
     /**
+     * The shelf-edge rail's per-row carriers, beside [ribbonRows] and switched with them — the
+     * fixture that lights the records themselves. See RoomLighting.RAIL_CANDELA.
+     */
+    val railRows = arrayOfNulls<SceneNode>(RoomLighting.SHELF_LIGHT_COUNT)
+
+    /**
      * The ceiling spots' carrier. Only its X is written here; its height and depth come from the
      * layout, on a node beneath it, so composition and the frame driver never write the same
      * field. Rebuilt with the rack, which is why [placeSpots] compares identity as well as X.
@@ -656,10 +662,9 @@ private class RoomNodes {
         }
     }
 
+    private var placedCarrier: SceneNode? = null
     private var placedX = Float.NaN
     private var placedY = Float.NaN
-    private var placedPair = Int.MIN_VALUE
-    private var placedRowCount = -1
 
     /**
      * Parks the ribbon on the rack, never on the camera.
@@ -687,18 +692,39 @@ private class RoomNodes {
             .coerceIn(-1, (rowCount - 1).coerceAtLeast(0))
         val y = top - (pair + 0.5f) * ROW_PITCH
 
-        if (x != placedX || y != placedY) {
+        if (carrier !== placedCarrier || x != placedX || y != placedY) {
             carrier.position = Position(x, y, 0f)
+            placedCarrier = carrier
             placedX = x
             placedY = y
         }
-        if (pair != placedPair || rowCount != placedRowCount) {
-            // Ribbon row i hangs (1.5 - i) pitches above the carrier: rack row pair - 1 + i.
-            ribbonRows.forEachIndexed { i, node ->
-                node?.isVisible = (pair - 1 + i) in 0 until rowCount
-            }
-            placedPair = pair
-            placedRowCount = rowCount
+        // Ribbon row i hangs (1.5 - i) pitches above the carrier: rack row pair - 1 + i.
+        //
+        // **Switched off by intensity, because hiding never switched a light off** — trap 24,
+        // "hiding a node does not switch off a light in it". This wrote `isVisible` and nothing
+        // else from the day it was written; SceneView's visibility reaches renderables only, so
+        // the ribbon for a row that does not exist kept shining all along. Nobody could tell
+        // until the room had a brick wall above the rack for it to land on: a bare line of light
+        // one shelf above the cap, a strip's gradient under it, and no strip.
+        //
+        // Checked every frame against the light's actual intensity rather than a cache of what
+        // was last written, because a room change rebuilds these nodes and their lights come
+        // back at full. One JNI read per row a frame; the writes only when a row is wrong.
+        for (i in 0 until RoomLighting.SHELF_LIGHT_COUNT) {
+            val wanted = (pair - 1 + i) in 0 until rowCount
+            switchRow(ribbonRows[i], wanted, RoomLighting.WASH_CANDELA)
+            switchRow(railRows[i], wanted, RoomLighting.RAIL_CANDELA)
+        }
+    }
+
+    /** One row of one fixture, on or off — see the note in [placeRibbon] about trap 24. */
+    private fun switchRow(node: SceneNode?, wanted: Boolean, candela: Float) {
+        node ?: return
+        if (node.isVisible != wanted) node.isVisible = wanted
+        val probe = node.childNodes.firstOrNull { it is LightNode } as? LightNode ?: return
+        if ((probe.intensity > 0f) != wanted) {
+            val on = if (wanted) candela else 0f
+            node.childNodes.forEach { (it as? LightNode)?.setIntensityCandela(on) }
         }
     }
 
@@ -774,6 +800,22 @@ private const val DUST_MATERIAL_ASSET = "materials/dust.filamat"
 
 /** The volumetric fog. Hand-compiled like dust.filamat; see fog.mat and docs/materials.md. */
 private const val FOG_MATERIAL_ASSET = "materials/fog.filamat"
+
+/** The neon sign's tubes. Hand-compiled; see neon.mat and NeonSign. */
+private const val NEON_MATERIAL_ASSET = "materials/neon.filamat"
+
+/**
+ * The sign's mask, filtered and clamped. Lazy for trap 23, like every sampler in this file.
+ * Plain LINEAR, no mip filter: the mask is never minified on screen (1024 texels across 24cm,
+ * shown at about that), and a mip filter on a texture without mips samples black on some GPUs.
+ */
+private val NEON_SAMPLER by lazy {
+    TextureSampler(
+        TextureSampler.MinFilter.LINEAR,
+        TextureSampler.MagFilter.LINEAR,
+        TextureSampler.WrapMode.CLAMP_TO_EDGE
+    )
+}
 
 /**
  * The fog samples its noise with wrapping on, so it can scroll forever. Lazy for trap 23 —
@@ -1408,6 +1450,21 @@ fun WallSceneScreen(
         }
 
         val fonts = remember(context) { CaseArt.Fonts(context) }
+
+        // **The neon JAWON sign** — see NeonSign. Its material is loaded once; its mask is drawn
+        // off the main thread from the app's own display face and uploaded when it is ready,
+        // and the sign simply is not there until then.
+        val neonMaterial = remember(materialLoader) {
+            materialLoader.createMaterial(NEON_MATERIAL_ASSET)
+        }
+        var neonMask by remember { mutableStateOf<Texture?>(null) }
+        LaunchedEffect(engine, fonts) {
+            val face = fonts.display ?: return@LaunchedEffect
+            val mask = withContext(Dispatchers.Default) { NeonSign.mask(face) }
+            neonMask = ImageTexture.Builder()
+                .bitmap(mask, TextureType.DATA)
+                .build(engine)
+        }
         val artCache = remember(fonts) {
             CaseArtCache(fonts, backInlay = { viewModel.backInlay(it) })
         }
@@ -1443,6 +1500,8 @@ fun WallSceneScreen(
             // set in its place from the moment the lid opens, so an intact disc here would
             // sit inside the broken one.
             actNodes.disc?.isVisible = selectedAlbumId != null
+            // And their lights with them — visibility alone never reached a light (trap 24).
+            actNodes.setLightsOn(case = visible, disc = selectedAlbumId != null)
             // Hidden is not the same as unpickable. The disc is mounted for the life of
             // the scene, so when it is hidden it stays parked in front of whichever case
             // was last open — and SceneView still hit-tests it. Left touchable it both
@@ -2614,6 +2673,57 @@ fun WallSceneScreen(
                 // (1.5 - index) row pitches above the carrier, which the frame driver parks on
                 // the midpoint between the two rows either side of the view; that lands the
                 // four ribbon rows exactly on four real shelves' tubes.
+                // **The shelf-edge rail**, on its own carrier beside the ribbon's and at the
+                // same height: under the front lip of the same board. This is the fixture that
+                // lights the records — see RoomLighting.RAIL_CANDELA for why a shop puts it here
+                // and not under the sleeves. On the album channel only, so it shows the artwork
+                // and leaves the panel's gradient, the timber and the room's shadows alone.
+                Node(
+                    position = Position(
+                        0f,
+                        (1.5f - index) * ROW_PITCH +
+                            WallDimens.CASE_H / 2f + RoomLighting.SHELF_LIGHT_LIFT -
+                            RoomLighting.WASH_DROP,
+                        0f
+                    ),
+                    apply = { roomNodes.railRows[index] = this }
+                ) {
+                    repeat(RoomLighting.RAIL_COLUMNS) { column ->
+                        LightNode(
+                            type = LightManager.Type.FOCUSED_SPOT,
+                            position = Position(
+                                (column - RoomLighting.RAIL_COLUMNS / 2) *
+                                    RoomLighting.RAIL_COLUMN_SPACING,
+                                0f,
+                                RoomLighting.RAIL_Z
+                            ),
+                            direction = normalize(
+                                Direction(
+                                    RoomLighting.RAIL_DIRECTION[0],
+                                    RoomLighting.RAIL_DIRECTION[1],
+                                    RoomLighting.RAIL_DIRECTION[2]
+                                )
+                            ),
+                            apply = {
+                                // Near white, with a hint of the room in it — see
+                                // RoomLighting.railColour. The room's own colour here turned
+                                // every sleeve the colour of the room.
+                                val tint = RoomLighting.railColour(roomScheme.key)
+                                color(tint[0], tint[1], tint[2])
+                                intensityCandela(RoomLighting.RAIL_CANDELA)
+                                spotLightCone(
+                                    RoomLighting.RAIL_CONE_INNER,
+                                    RoomLighting.RAIL_CONE_OUTER
+                                )
+                                falloff(RoomLighting.RAIL_FALLOFF)
+                                castShadows(false)
+                                lightChannel(RoomLighting.ROOM_LIGHT_CHANNEL, false)
+                                lightChannel(RoomLighting.UNDER_LIGHT_CHANNEL, true)
+                            }
+                        )
+                    }
+                }
+
                 Node(
                     position = Position(
                         0f,
@@ -3091,6 +3201,48 @@ fun WallSceneScreen(
                         }
                     }
 
+                    // **The neon JAWON sign**, on the brick just above the rack's cap, centred on
+                    // the rack — the shop's name over its records. See NeonSign. Its instance is
+                    // made here, in the rack's own scope, because a PlaneNode destroys the one it
+                    // is handed; the room's accent colours it, and a point light just in front
+                    // of it lends that colour to the brick around it.
+                    val mask = neonMask
+                    if (mask != null) {
+                        val neonColour = NeonSign.linear(roomScheme.accent)
+                        val neon = remember(roomScheme, mask) {
+                            materialLoader.createInstance(neonMaterial).apply {
+                                setParameter("mask", mask, NEON_SAMPLER)
+                                setParameter("color", neonColour[0], neonColour[1], neonColour[2])
+                                setParameter("coreGlow", NeonSign.CORE, NeonSign.GLOW)
+                                setParameter("power", 1f)
+                            }
+                        }
+                        val signY = rackTopY + BOARD_H / 2f + NeonSign.GAP_ABOVE_CAP_M +
+                            NeonSign.HEIGHT_M / 2f
+                        val signZ = ROOM_WALL_Z + ROOM_WALL_T / 2f + NeonSign.STANDOFF_M
+                        PlaneNode(
+                            size = Size(NeonSign.WIDTH_M, NeonSign.HEIGHT_M, 0f),
+                            normal = Direction(z = 1f),
+                            materialInstance = neon,
+                            position = Position(0f, signY, signZ),
+                            apply = {
+                                isTouchable = false
+                                isShadowCaster = false
+                                isShadowReceiver = false
+                            }
+                        )
+                        LightNode(
+                            type = LightManager.Type.POINT,
+                            position = Position(0f, signY, signZ + NeonSign.LIGHT_Z_M),
+                            apply = {
+                                color(neonColour[0], neonColour[1], neonColour[2])
+                                intensityCandela(NeonSign.LIGHT_CANDELA)
+                                falloff(NeonSign.LIGHT_FALLOFF)
+                                castShadows(false)
+                            }
+                        )
+                    }
+
                     // **A floor, which this room has never had.**
                     //
                     // RoomAtmosphere's own fog comment said so outright: "Height fog would need a
@@ -3254,6 +3406,41 @@ fun WallSceneScreen(
                             isTouchable = false
                             // Neither: it is a light fitting. Casting would lay a bar of shadow
                             // across the panel it is there to light.
+                            isShadowCaster = false
+                            isShadowReceiver = false
+                        }
+                    )
+
+                    // **The shelf-edge rail's own tube**, under the front lip of the board
+                    // above — the fixture whose light shows the records (RoomLighting.RAIL_*).
+                    // Thinner and a third as bright as the back tube: a shop's working light,
+                    // not the neon the bay is styled around. In the room's lamp colour, so what
+                    // it shows of a sleeve is the sleeve's own colour.
+                    val rail = remember(rowIndex, roomScheme) {
+                        val tint = RoomLighting.railColour(roomScheme.key)
+                        materialLoader.createUnlitColorInstance(
+                            dev.romainguy.kotlin.math.Float4(
+                                tint[0] * RoomLighting.RAIL_GLOW,
+                                tint[1] * RoomLighting.RAIL_GLOW,
+                                tint[2] * RoomLighting.RAIL_GLOW,
+                                1f
+                            )
+                        )
+                    }
+                    CubeNode(
+                        size = Size(
+                            layout.wallWidth,
+                            RoomLighting.RAIL_H,
+                            RoomLighting.RAIL_D
+                        ),
+                        position = Position(
+                            0f,
+                            row.centerY + WallDimens.CASE_H / 2f + RoomLighting.SHELF_LIGHT_LIFT,
+                            RoomLighting.RAIL_Z
+                        ),
+                        materialInstance = rail,
+                        apply = {
+                            isTouchable = false
                             isShadowCaster = false
                             isShadowReceiver = false
                         }
