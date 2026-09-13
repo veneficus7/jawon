@@ -144,9 +144,9 @@ class SpotifyClient @Inject constructor() {
             val body = connection.inputStream.bufferedReader().use { it.readText() }
             SpotifyResult.Ok(parse(body))
         } catch (e: Exception) {
-            SpotifyResult.Failed(SpotifyFailure.Other(e.message ?: e.javaClass.simpleName))
-        } finally {
+            // Only here — see the keep-alive note below for why success must not.
             connection.disconnect()
+            SpotifyResult.Failed(SpotifyFailure.Other(e.message ?: e.javaClass.simpleName))
         }
     }
 
@@ -170,14 +170,43 @@ class SpotifyClient @Inject constructor() {
                 connection.outputStream.use { }
             }
             val code = connection.responseCode
-            if (code in 200..299) SpotifyResult.Ok(Unit)
-            else SpotifyResult.Failed(failureFor(connection))
+            if (code in 200..299) {
+                // Drain it. A response body nobody reads is a socket that cannot go back to
+                // the pool; see the keep-alive note below. Spotify's transport calls
+                // answer 204 with nothing in them, so this is usually zero bytes.
+                runCatching { connection.inputStream.use { it.readBytes() } }
+                SpotifyResult.Ok(Unit)
+            } else {
+                SpotifyResult.Failed(failureFor(connection))
+            }
         } catch (e: Exception) {
-            SpotifyResult.Failed(SpotifyFailure.Other(e.message ?: e.javaClass.simpleName))
-        } finally {
             connection.disconnect()
+            SpotifyResult.Failed(SpotifyFailure.Other(e.message ?: e.javaClass.simpleName))
         }
     }
+
+    // ---- keep-alive ------------------------------------------------------------------
+    /*
+     * **Why nothing here calls `disconnect()` when a request succeeds.**
+     *
+     * `HttpURLConnection.disconnect()` reads like `close()` and is not: Android's own
+     * documentation says it "may close the underlying socket if a persistent connection is
+     * otherwise idle", which is precisely what it did. Every call in this file went through a
+     * `finally { connection.disconnect() }`, so the connection pool was emptied after each one
+     * and the next request paid a fresh DNS lookup, TCP handshake and **TLS handshake** to the
+     * same host.
+     *
+     * That is expensive anywhere and it is not survivable *here*, because `PlaybackRepository`
+     * asks Spotify what it is doing once a second for as long as a Spotify record is open. One
+     * full TLS handshake per second, forever, while the room is rendering — which is what the
+     * owner was seeing as "when im playing albums from spotify, the spinning disc is lagging a
+     * little bit". It also put an avoidable ~100ms of latency on the answer, and that latency
+     * lands directly on the lyric highlight and the playhead.
+     *
+     * The rule that replaces it: read the response body to the end (which `use` does, and which
+     * is what actually returns a socket to the pool), and call `disconnect()` only when the
+     * exchange has already failed and the socket is not worth keeping.
+     */
 
     private fun open(url: String, method: String, token: String) =
         (URL(url).openConnection() as HttpURLConnection).apply {

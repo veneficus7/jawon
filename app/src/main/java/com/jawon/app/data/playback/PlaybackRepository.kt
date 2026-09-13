@@ -2,6 +2,7 @@ package com.jawon.app.data.playback
 
 import android.content.ComponentName
 import android.content.Context
+import android.os.SystemClock
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackParameters
 import com.jawon.app.playback.SleepTimer
@@ -43,6 +44,7 @@ import javax.inject.Inject
 import javax.inject.Singleton
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
+import kotlin.math.abs
 
 /**
  * The app-facing playback "repository" (see ENGINEERING.md's threading/architecture
@@ -81,6 +83,24 @@ class PlaybackRepository @Inject constructor(
 
     /** Polls Spotify for what it is doing, only while a Spotify album is open. */
     private var spotifyJob: Job? = null
+
+    // ---- the Spotify clock ------------------------------------------------------------
+    //
+    // See [startSpotifyPolling]. Between them these four say where the playhead is without
+    // asking the network, which is the difference between a position that steps once a second
+    // and one that moves.
+
+    /** Where Spotify was at [spotifyAnchorAt], corrected for the round trip. */
+    private var spotifyAnchorMs = 0L
+
+    /** `elapsedRealtime` at which [spotifyAnchorMs] was true. Monotonic, unlike wall time. */
+    private var spotifyAnchorAt = 0L
+
+    /** When this app last told Spotify to move. See the grace window in [startSpotifyPolling]. */
+    private var spotifyCommandAt = 0L
+
+    /** Consecutive polls that came back "nothing is playing". */
+    private var spotifyIdleReports = 0
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
@@ -411,6 +431,37 @@ class PlaybackRepository @Inject constructor(
     }
 
     /**
+     * Where the Spotify clock says the playhead is, right now.
+     *
+     * The anchor plus however long it has been running, clamped to the track. This is what
+     * every reader of [positionMs] gets while a Spotify record is open — the poll's job is to
+     * correct it, not to be it.
+     */
+    private fun spotifyPositionNow(now: Long = SystemClock.elapsedRealtime()): Long {
+        val running = if (_playback.value.isPlaying) now - spotifyAnchorAt else 0L
+        val duration = _playback.value.durationMs
+        val position = (spotifyAnchorMs + running).coerceAtLeast(0L)
+        return if (duration > 0L) position.coerceAtMost(duration) else position
+    }
+
+    /**
+     * Re-anchors the clock, which is how a local command takes effect at once instead of a
+     * second later.
+     *
+     * [ownCommand] marks it as *ours* and starts the grace window. Everything Spotify says for
+     * the next [SPOTIFY_COMMAND_GRACE_MS] is then known to be stale — its answer was sampled
+     * before it had processed the seek — and a poll that overwrote the clock with it is
+     * exactly why a scrub sprang back to where it started.
+     */
+    private fun anchorSpotify(positionMs: Long, ownCommand: Boolean) {
+        val now = SystemClock.elapsedRealtime()
+        spotifyAnchorMs = positionMs.coerceAtLeast(0L)
+        spotifyAnchorAt = now
+        if (ownCommand) spotifyCommandAt = now
+        _positionMs.value = spotifyAnchorMs
+    }
+
+    /**
      * Starts a Spotify album, and begins mirroring what Spotify reports into [playback].
      *
      * The local player is paused first. Two things playing at once is the obvious failure here,
@@ -430,40 +481,99 @@ class PlaybackRepository @Inject constructor(
         queuedTracks = tracks
         activeSpotifyAlbum = albumUri
 
+        anchorSpotify(startPositionMs, ownCommand = true)
         spotifyPlayer.playAlbum(albumUri, startIndex.coerceAtLeast(0), startPositionMs.coerceAtLeast(0L))
         startSpotifyPolling()
     }
 
     /**
-     * Asks Spotify what it is doing, once a second, and publishes it as ordinary playback state.
+     * Runs the Spotify clock, and asks Spotify once a second whether the clock is right.
      *
      * **This is the price of not having the audio.** The local player reports its own position
      * for free; Spotify has to be asked over the network, and a poll per second is a real share
      * of a rate limit computed over a rolling thirty seconds. It therefore runs only while a
      * Spotify album is actually open, and stops the moment one is not.
      *
-     * The index is resolved by matching Spotify's track id against the queue rather than trusting
-     * a counter, because the user can change tracks from Spotify itself — on another device, or
-     * from the notification — and a counter would drift out of step with no way back.
+     * ## The clock, and why there is one
+     *
+     * This used to publish `state.positionMs` straight into [positionMs] as each poll landed,
+     * which meant the playhead moved **once a second, in one-second jumps**, and was already
+     * a round trip out of date when it did. Everything downstream inherited that: the deck's
+     * progress bar stepped, the lyric highlight sat behind the singer, and — worst — a scrub
+     * or a skip was overwritten by the next poll, because Spotify's answer had been sampled
+     * before it processed the command. From the outside that is a disc you cannot scratch and
+     * a track you cannot skip: "i cant scratch disk and skip forward".
+     *
+     * So the position is a *clock* now — an anchor plus elapsed monotonic time, ticking at
+     * [SPOTIFY_TICK_MS] — and the poll's job is to correct that clock:
+     *
+     * - **Round trip.** `progress_ms` was true when Spotify sampled it, somewhere in the middle
+     *   of the call, not when the answer arrived. Half the measured round trip goes back on.
+     * - **Grace.** Nothing Spotify says within [SPOTIFY_COMMAND_GRACE_MS] of one of our own
+     *   commands may move the clock. Our value is the correct one until Spotify has caught up.
+     * - **Resync or ease.** A track change, a play/pause from elsewhere, or a disagreement over
+     *   [SPOTIFY_RESYNC_MS] is a real move and snaps. Anything smaller is drift, and a quarter
+     *   of the error per poll takes it out without a visible jump.
+     * - **Two idle reports, not one.** A single 204 or a momentary "nothing playing" used to
+     *   set `isPlaying = false` for a second, and the room stops the disc dead when that is
+     *   false. That flicker is the other half of what the owner saw as the disc lagging.
+     *
+     * The index is resolved by matching Spotify's track id against the queue rather than
+     * trusting a counter, because the user can change tracks from Spotify itself — on another
+     * device, or from the notification — and a counter would drift out of step with no way back.
      */
     private fun startSpotifyPolling() {
         spotifyJob?.cancel()
+        spotifyIdleReports = 0
         spotifyJob = scope.launch {
+            // The clock. Cheap: it reads two longs and writes one StateFlow, and it only runs
+            // while a Spotify record is open.
+            launch {
+                while (true) {
+                    if (_playback.value.isPlaying) _positionMs.value = spotifyPositionNow()
+                    delay(SPOTIFY_TICK_MS)
+                }
+            }
             while (true) {
+                val sentAt = SystemClock.elapsedRealtime()
                 val result = spotifyPlayer.playback()
+                val now = SystemClock.elapsedRealtime()
                 if (result is SpotifyResult.Ok) {
                     val state = result.value
                     if (state != null) {
-                        _positionMs.value = state.positionMs
+                        spotifyIdleReports = 0
+                        // Read the clock BEFORE the state is updated: `spotifyPositionNow`
+                        // depends on `isPlaying`, and comparing against the new one would be
+                        // comparing Spotify's answer with itself.
+                        val local = spotifyPositionNow(now)
+                        val wasPlaying = _playback.value.isPlaying
                         val index = queuedTracks.indexOfFirst { it.remoteId == state.trackId }
+                        val changedTrack = index >= 0 && index != _playback.value.currentIndex
                         _playback.value = _playback.value.copy(
                             isPlaying = state.isPlaying,
                             currentIndex = if (index >= 0) index else _playback.value.currentIndex,
                             durationMs = state.durationMs
                         )
-                    } else {
+
+                        val lag = if (state.isPlaying) (now - sentAt) / 2 else 0L
+                        val reported = state.positionMs + lag
+                        val ours = now - spotifyCommandAt < SPOTIFY_COMMAND_GRACE_MS
+                        when {
+                            // A record we did not start, a transport we did not press, or a
+                            // disagreement too large to be drift. Snap, and take Spotify's word.
+                            changedTrack || wasPlaying != state.isPlaying ->
+                                anchorSpotify(reported, ownCommand = false)
+                            ours -> Unit
+                            abs(reported - local) > SPOTIFY_RESYNC_MS ->
+                                anchorSpotify(reported, ownCommand = false)
+                            // Drift. Shift the whole line by a quarter of the error rather
+                            // than jumping to it: converges in a couple of polls, invisibly.
+                            else -> spotifyAnchorMs += (reported - local) / 4
+                        }
+                    } else if (++spotifyIdleReports >= SPOTIFY_IDLE_REPORTS_TO_STOP) {
                         // 204: Spotify is idle. Not an error, and not a reason to stop asking —
-                        // the user may press play on another device at any moment.
+                        // the user may press play on another device at any moment. Two in a row
+                        // before believing it, because one is usually a device handover.
                         _playback.value = _playback.value.copy(isPlaying = false)
                     }
                 }
@@ -474,7 +584,12 @@ class PlaybackRepository @Inject constructor(
 
     suspend fun playPause() {
         activeSpotifyAlbum?.let {
-            if (_playback.value.isPlaying) spotifyPlayer.pause() else spotifyPlayer.resume()
+            val playing = _playback.value.isPlaying
+            // Stop or start the clock here, not a second later when Spotify is next asked.
+            // Order matters: the position is read while `isPlaying` still says what it was.
+            anchorSpotify(spotifyPositionNow(), ownCommand = true)
+            _playback.value = _playback.value.copy(isPlaying = !playing)
+            if (playing) spotifyPlayer.pause() else spotifyPlayer.resume()
             return
         }
         val controller = ensureController()
@@ -515,13 +630,38 @@ class PlaybackRepository @Inject constructor(
     }
 
     suspend fun seekToNext() {
-        activeSpotifyAlbum?.let { spotifyPlayer.next(); return }
+        activeSpotifyAlbum?.let {
+            stepSpotifyTrack(+1)
+            spotifyPlayer.next()
+            return
+        }
         ensureController().seekToNextMediaItem()
     }
 
     suspend fun seekToPrevious() {
-        activeSpotifyAlbum?.let { spotifyPlayer.previous(); return }
+        activeSpotifyAlbum?.let {
+            stepSpotifyTrack(-1)
+            spotifyPlayer.previous()
+            return
+        }
         ensureController().seekToPreviousMediaItem()
+    }
+
+    /**
+     * Moves the deck to the next or previous track *before* Spotify confirms it.
+     *
+     * A skip that shows nothing for a second reads as a button that does not work, which is
+     * how the owner read it. The poll corrects this within a second if Spotify did something
+     * else — ran off the end of the record, or was already on another track — and a track
+     * change always snaps rather than eases, so a wrong guess here costs one poll and never
+     * sticks.
+     */
+    private fun stepSpotifyTrack(by: Int) {
+        val next = _playback.value.currentIndex + by
+        anchorSpotify(0L, ownCommand = true)
+        if (next in queuedTracks.indices) {
+            _playback.value = _playback.value.copy(currentIndex = next, isPlaying = true)
+        }
     }
 
     /**
@@ -535,7 +675,9 @@ class PlaybackRepository @Inject constructor(
      */
     suspend fun seekTo(positionMs: Long) {
         activeSpotifyAlbum?.let {
-            _positionMs.value = positionMs.coerceAtLeast(0L)
+            // The clock takes the new place immediately and owns it for the grace window, so
+            // the poll that lands mid-seek cannot drag the playhead back to where it was.
+            anchorSpotify(positionMs, ownCommand = true)
             spotifyPlayer.seek(positionMs)
             return
         }
@@ -555,6 +697,10 @@ class PlaybackRepository @Inject constructor(
      * track and then press play.
      */
     suspend fun seekToTrack(index: Int) {
+        activeSpotifyAlbum?.let { album ->
+            playSpotifyFrom(album, index, 0L)
+            return
+        }
         val controller = ensureController()
         controller.seekTo(index, 0L)
         controller.play()
@@ -565,12 +711,79 @@ class PlaybackRepository @Inject constructor(
      * turning the platter far enough runs off the end of one track and into the next.
      *
      * Deliberately does not pause: seeking while playing is what makes a scrub audible.
+     *
+     * **This had no Spotify branch, and that was the whole of "i cant scratch disk".** The
+     * scratch does not call the one-argument [seekTo] — it calls this one, because turning the
+     * platter far enough crosses a track boundary and the gesture has to be able to say which
+     * track it landed in. Without a branch here every scratch on a Spotify record went to the
+     * local ExoPlayer, which on a Spotify album holds nothing at all: the call succeeded, moved
+     * an empty queue, and the music carried on exactly as before. From the outside, a disc that
+     * turns under the finger and does nothing.
+     *
+     * What it can do is still limited by Spotify never handing over the audio (see
+     * `SpotifyPlayer`): the position follows the finger and the sound jumps to where it stops,
+     * rather than being resampled as it moves. That is a seek, not a scratch, and it is the most
+     * this gesture can mean on a record this app is only allowed to remote-control.
      */
-    suspend fun seekTo(index: Int, positionMs: Long) = ensureController().seekTo(index, positionMs)
+    suspend fun seekTo(index: Int, positionMs: Long) {
+        activeSpotifyAlbum?.let { album ->
+            if (index == _playback.value.currentIndex) {
+                seekTo(positionMs)
+            } else {
+                playSpotifyFrom(album, index, positionMs)
+            }
+            return
+        }
+        ensureController().seekTo(index, positionMs)
+    }
+
+    /**
+     * Puts Spotify on a given track at a given offset, and moves the deck there at once.
+     *
+     * The Web API has no "change track within what is already playing": starting the album
+     * again at an offset is how it is done, and it is why this is one call rather than a seek
+     * after a skip. The deck is updated before the request so a tap on the tracklist responds
+     * now instead of at the next poll — the poll corrects it within a second if Spotify did
+     * something else.
+     */
+    private suspend fun playSpotifyFrom(album: String, index: Int, positionMs: Long) {
+        anchorSpotify(positionMs, ownCommand = true)
+        if (index in queuedTracks.indices) {
+            _playback.value = _playback.value.copy(currentIndex = index, isPlaying = true)
+        }
+        spotifyPlayer.playAlbum(album, index.coerceAtLeast(0), positionMs.coerceAtLeast(0L))
+    }
 
     private companion object {
         /** Ten × the 500ms poll: the resume point is never more than five seconds stale. */
         const val POSITION_SAVE_EVERY_TICKS = 10
+
+        /**
+         * How often the Spotify clock publishes a position.
+         *
+         * Four times a second — twice the local player's rate, and deliberately not once per
+         * frame. Nothing that reads [positionMs] needs more: the progress bar is a few hundred
+         * pixels wide, a lyric line lasts seconds, and the disc's spin is driven by the frame
+         * clock rather than by the playhead. Publishing at 60Hz would recompose the deck sixty
+         * times a second to move a bar by a pixel, which is trap 14's mistake with a different
+         * cause.
+         */
+        const val SPOTIFY_TICK_MS = 250L
+
+        /** A disagreement bigger than this is a real move, not drift. */
+        const val SPOTIFY_RESYNC_MS = 750L
+
+        /**
+         * How long one of our own commands owns the clock.
+         *
+         * Two seconds: long enough for Spotify to process a seek and for the *next* poll after
+         * that to carry the new position, short enough that a command which silently failed is
+         * corrected almost at once.
+         */
+        const val SPOTIFY_COMMAND_GRACE_MS = 2_000L
+
+        /** Idle reports in a row before the disc is allowed to stop. */
+        const val SPOTIFY_IDLE_REPORTS_TO_STOP = 2
     }
 }
 
