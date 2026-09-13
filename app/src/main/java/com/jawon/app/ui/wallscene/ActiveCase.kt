@@ -500,9 +500,9 @@ fun SceneScope.ActiveCaseNodes(
  * to each file and the two are free to diverge: the held case is seen from 200mm away, the
  * shelf's from a metre.
  */
-private const val ACT_PAPER_ROUGHNESS = 0.72f
+private const val ACT_PAPER_ROUGHNESS = 0.34f
 private const val ACT_PAPER_REFLECTANCE = 0.5f
-private const val ACT_COVER_ROUGHNESS = 0.60f
+private const val ACT_COVER_ROUGHNESS = 0.16f
 
 /**
  * How far behind the front inlay the lid's inside plate sits: 0.3mm, the thickness of a card.

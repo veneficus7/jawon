@@ -431,21 +431,41 @@ private const val BEAM_VALUE = 1.75f
 
 /** Coloured, not gelled. See [beamRgb]. */
 /**
- * The printed card an album's art actually sits on: matt, and an ordinary dielectric.
+ * The printed card an album's art sits on — except that on a real CD none of these three
+ * plates is bare card: every one of them is read *through* polystyrene.
  *
  * **`reflectance` is a 0..1 remap, not a percentage** — `F0 = 0.16 * reflectance²`, so 0.5 is
  * the ~4% a dielectric really returns, and is also SceneView's own default. Trap 3, which has
  * already turned this room's wall black once.
+ *
+ * **Smoothed from 0.72 on 2026-09-13**, with [COVER_ROUGHNESS]. Spines and inlays stop well
+ * short of the cover: a spine is read edge-on down a shelf, where a near-mirror strobes as
+ * the wall pans.
  */
-private const val PAPER_ROUGHNESS = 0.72f
+private const val PAPER_ROUGHNESS = 0.34f
 private const val PAPER_REFLECTANCE = 0.5f
 
 /**
- * The cover is the one plate seen through the case's clear shell, so it is a touch smoother
- * than the spine and the inlay — but only a touch. Making the paper itself glossy would stack
- * two speculars on one surface and read as laminate rather than print.
+ * The cover is the front of a jewel case, and the front of a jewel case is polished plastic.
+ *
+ * It was 0.60 — "a touch smoother than the spine, but only a touch", on the reasoning that a
+ * glossy plate under a glossy shell stacks two speculars and reads as laminate. **That
+ * reasoning expired when the shell was cleared to 8% opacity** so the art could be seen
+ * through it (`WallSceneScreen.SHELL_TINT`): a specular multiplied by 0.08 is not a second
+ * specular, and the owner's verdict on the result was that the cases had "lost their
+ * shininess". Nothing was reflecting the room any more, so the plate has to be the plastic.
+ *
+ * **What actually shines here is the reflection cubemap, not a lamp.** A case front is flat
+ * and faces the camera, so the half-vector to any fixture in this room sits ~33° off its
+ * normal — outside a tight GGX lobe, which is why no amount of candela ever put a highlight
+ * on a sleeve. The environment is a different matter: the mirror direction points back past
+ * the camera into `RoomLighting.buildRoomCubemap`, which has the tube's strips written across
+ * it at eleven times the void. At 0.60 those strips are mush; here they resolve into bands
+ * that slide as the wall pans, and tilt a case and they sweep. See the note in
+ * `RoomLighting.ambientSphericalHarmonics`: without those reflections "a jewel case mirrors
+ * nothing and reads as painted card".
  */
-private const val COVER_ROUGHNESS = 0.60f
+private const val COVER_ROUGHNESS = 0.16f
 
 /** Mixes a normalised channel toward the warm lamp by [RoomLighting.UNDER_TINT]. */
 internal fun mixToward(hue: Float, white: Float): Float =
