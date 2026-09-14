@@ -695,22 +695,23 @@ def build_beam():
 
 def build_turntable():
     """
-    A belt-drive deck for the top of the rack: plinth, platter, spindle, arm.
+    A portable deck: plinth, platter, slipmat, arm. **One object per material.**
 
-    Modelled sitting on its feet at the origin, so the app drops it on the cap
-    with no transform. The arm is a straight tube with a counterweight rather
-    than an S-shape: at this size, from a metre away and in a dim room, an
-    S-arm is four more curves nobody can resolve and a silhouette that reads
-    the same. What has to be right is the proportion between the platter and
-    the plinth, because that is what the eye reads as "turntable".
+    It was a single mesh wearing one dark plastic, so the platter, the arm and the feet were
+    all the same non-colour and the thing read as a moulded toy. A turntable is the opposite
+    of one material — a plastic box, a spun aluminium platter, a felt mat and a chromed arm,
+    which is four different ways of catching the same light and is most of why a real one looks
+    like machinery.
+
+    Split rather than face-assigned because the exporter and `finish()` both work per object,
+    and because `build_disc_shards` already establishes the pattern in this file: hand `export`
+    a list and it writes them into one glb.
     """
-    obj = new_mesh_object("turntable")
+    plinth = new_mesh_object("deck_plinth")
     bm = bmesh.new()
 
     plinth_w, plinth_h, plinth_d = 0.235, 0.042, 0.185
     foot_h = 0.010
-
-    # Feet first, so the plinth's underside sits above the shelf.
     for sx in (-1, 1):
         for sz in (-1, 1):
             cylinder(
@@ -718,16 +719,52 @@ def build_turntable():
                 sx * (plinth_w / 2 - 0.020), az(sz * (plinth_d / 2 - 0.020)),
                 foot_h / 2, 0.009, foot_h, segments=12, axis="Z",
             )
-
     box(bm, 0.0, az(0.0), foot_h + plinth_h / 2, plinth_w, plinth_d, plinth_h)
+    bm.normal_update()
+    bm.to_mesh(plinth.data)
+    bm.free()
+    # Moulded plastic with a polished skin: the coat is the separate specular lobe that skin
+    # actually is, and it is what stops a black box reading as a black hole.
+    plinth.data.materials.append(principled(
+        "DeckPlinth", base_color=(0.032, 0.030, 0.029), metallic=0.0,
+        roughness=0.40, coat=0.45, coat_roughness=0.08,
+    ))
+    finish(plinth, bevel=True, bevel_width=0.0012)
 
-    # The platter. A portable deck's is well under a 12" record, and looks it.
     platter_y = foot_h + plinth_h
-    cylinder(bm, -0.030, az(0.011), platter_y + 0.007, 0.086, 0.014, segments=48, axis="Z")
-    # The spindle.
-    cylinder(bm, -0.030, az(0.011), platter_y + 0.019, 0.0022, 0.022, segments=10, axis="Z")
 
-    # The arm: base, tube, counterweight. Swung off the rest, as a deck at rest is.
+    # The platter: spun aluminium, and anisotropic because a spun disc's highlight stretches
+    # around it rather than sitting still. The disc model already uses this for the same
+    # reason, and it is the one thing that says "turned on a lathe" at this size.
+    platter = new_mesh_object("deck_platter")
+    bm = bmesh.new()
+    cylinder(bm, -0.030, az(0.011), platter_y + 0.007, 0.086, 0.014, segments=48, axis="Z")
+    cylinder(bm, -0.030, az(0.011), platter_y + 0.019, 0.0022, 0.022, segments=10, axis="Z")
+    bm.normal_update()
+    bm.to_mesh(platter.data)
+    bm.free()
+    platter.data.materials.append(principled(
+        "DeckPlatter", base_color=(0.58, 0.585, 0.60), metallic=1.0,
+        roughness=0.30, anisotropic=0.5,
+    ))
+    finish(platter, bevel=True, bevel_width=0.0008)
+
+    # The slipmat. Felt: the one genuinely matt thing on the whole prop, which is what gives
+    # the platter's metal something to be shiny against.
+    mat = new_mesh_object("deck_mat")
+    bm = bmesh.new()
+    cylinder(bm, -0.030, az(0.011), platter_y + 0.0155, 0.080, 0.0016, segments=48, axis="Z")
+    bm.normal_update()
+    bm.to_mesh(mat.data)
+    bm.free()
+    mat.data.materials.append(principled(
+        "DeckMat", base_color=(0.022, 0.021, 0.020), metallic=0.0, roughness=0.96,
+    ))
+    finish(mat, bevel=False)
+
+    # The arm: base, tube, counterweight, in chrome.
+    arm = new_mesh_object("deck_arm")
+    bm = bmesh.new()
     arm_x, arm_z = 0.086, -0.062
     cylinder(bm, arm_x, az(arm_z), platter_y + 0.010, 0.015, 0.020, segments=16, axis="Z")
     tube = bmesh.new()
@@ -748,48 +785,50 @@ def build_turntable():
         tube, verts=tube.verts,
         vec=(arm_x - 0.042, az(arm_z + 0.031), platter_y + 0.026),
     )
-    tube.to_mesh(obj.data)
-    tube.free()
-    # Merge the tube's mesh into the main bmesh.
-    bm.from_mesh(obj.data)
+    mesh_add(bm, tube)
     cylinder(
         bm, arm_x + 0.029, az(arm_z - 0.021), platter_y + 0.026,
         0.010, 0.017, segments=14, axis="Z",
     )
-
     bm.normal_update()
-    bm.to_mesh(obj.data)
+    bm.to_mesh(arm.data)
     bm.free()
+    arm.data.materials.append(principled(
+        "DeckArm", base_color=(0.72, 0.73, 0.75), metallic=1.0, roughness=0.16,
+    ))
+    finish(arm, bevel=True, bevel_width=0.0006)
 
-    deck = principled(
-        "DeckPlinth", base_color=(0.045, 0.043, 0.041), metallic=0.0,
-        roughness=0.42, coat=0.35,
-    )
-    obj.data.materials.append(deck)
-    finish(obj, bevel=True, bevel_width=0.0015)
-    return obj
+    return [plinth, platter, mat, arm]
 
 
 def build_clock():
     """
-    A shop clock for the brick, modelled facing the room (+Z).
+    A shop clock for the brick, modelled facing the room (+Z), case and face separate.
 
-    Hands at ten past ten, which is where every clock in every photograph of a
-    clock is: it frames the face, it is unmistakably A CLOCK at a glance, and it
-    cannot be read as an accidental time. This room is a midnight shop and the
-    hands are decor rather than a readout — nothing in the app tells it what
-    time it is, and a prop that quietly showed the wrong time forever would be
-    worse than one that shows a time nobody expects to be right.
+    Hands at ten past ten, which is where every clock in every photograph of a clock is: it
+    frames the face, it is unmistakably A CLOCK at a glance, and it cannot be read as an
+    accidental time. Nothing in this app tells the prop what time it is, and one quietly
+    showing the wrong time forever would be worse than one showing a time nobody expects to
+    be right.
     """
-    obj = new_mesh_object("clock")
+    case = new_mesh_object("clock_case")
     bm = bmesh.new()
-
     radius = 0.088
-    # The case, then the face inset into it, so the rim reads as a rim.
     cylinder(bm, 0.0, az(0.0), 0.0, radius, 0.024, segments=48, axis="Y")
-    cylinder(bm, 0.0, az(0.013), 0.0, radius - 0.008, 0.004, segments=48, axis="Y")
+    bm.normal_update()
+    bm.to_mesh(case.data)
+    bm.free()
+    case.data.materials.append(principled(
+        "ClockCase", base_color=(0.045, 0.042, 0.039), metallic=0.0,
+        roughness=0.45, coat=0.30,
+    ))
+    finish(case, bevel=True, bevel_width=0.0010)
 
-    # Hands: ten past ten, and a hub over their pivot.
+    # The face, and the hands on it. Off-white enamel: the one pale thing in the room's upper
+    # half, which is what lets a small prop read from across the rack.
+    face = new_mesh_object("clock_face")
+    bm = bmesh.new()
+    cylinder(bm, 0.0, az(0.013), 0.0, radius - 0.008, 0.004, segments=48, axis="Y")
     for length, width, degrees in ((0.054, 0.006, -60.0), (0.068, 0.004, 60.0)):
         hand = bmesh.new()
         bmesh.ops.create_cube(hand, size=1.0, matrix=(
@@ -803,41 +842,47 @@ def build_clock():
         bmesh.ops.translate(hand, verts=hand.verts, vec=(0.0, az(0.016), 0.0))
         mesh_add(bm, hand)
     cylinder(bm, 0.0, az(0.018), 0.0, 0.006, 0.005, segments=16, axis="Y")
-
     bm.normal_update()
-    bm.to_mesh(obj.data)
+    bm.to_mesh(face.data)
     bm.free()
-
-    obj.data.materials.append(principled(
-        "ClockCase", base_color=(0.055, 0.052, 0.048), metallic=0.0, roughness=0.55,
+    face.data.materials.append(principled(
+        "ClockFace", base_color=(0.78, 0.74, 0.66), metallic=0.0, roughness=0.55,
     ))
-    finish(obj, bevel=True, bevel_width=0.0012)
-    return obj
+    finish(face, bevel=False)
+
+    return [case, face]
 
 
 def build_plant():
     """
-    A snake plant in a pot, for the floor beside the rack.
+    A snake plant in a terracotta pot. **Two objects, because a plant is not one colour.**
 
-    Sansevieria on purpose, and not because it is the shop-plant cliché — though
-    it is. It is the one houseplant whose real shape is a handful of flat,
-    tapered, upright blades, which is a shape primitives can actually make. A
-    fern or a monstera modelled this way is a green blob, and a green blob in
-    the corner of a photographic room is worse than an empty corner.
+    It was one mesh with one material, so the blades came out the same brown as the pot — a
+    brown plant, which is a dead one. Sansevieria on purpose: it is the one houseplant whose
+    real shape is a handful of flat tapered upright blades, a shape primitives can make. A
+    fern modelled this way is a green blob, and a green blob in the corner of a photographic
+    room is worse than an empty corner.
     """
-    obj = new_mesh_object("plant")
+    pot = new_mesh_object("plant_pot")
     bm = bmesh.new()
-
-    # The pot: a tapered tube, wider at the lip, with a rim.
     bmesh.ops.create_cone(
         bm, cap_ends=True, cap_tris=False, segments=28,
         radius1=0.040, radius2=0.053, depth=0.105,
         matrix=Matrix.Translation((0.0, 0.0, 0.0525)) @ Matrix.Identity(4),
     )
     cylinder(bm, 0.0, az(0.0), 0.104, 0.055, 0.008, segments=28, axis="Z")
+    bm.normal_update()
+    bm.to_mesh(pot.data)
+    bm.free()
+    # Unglazed terracotta: warm, matt, and slightly porous. The only genuinely red thing in
+    # the room, which is why it reads as an object rather than as more furniture.
+    pot.data.materials.append(principled(
+        "PlantPot", base_color=(0.30, 0.125, 0.072), metallic=0.0, roughness=0.88,
+    ))
+    finish(pot, bevel=True, bevel_width=0.0012)
 
-    # The blades. Odd count, alternating lean, so the plant has no axis of
-    # symmetry to give it away as geometry.
+    leaves = new_mesh_object("plant_leaves")
+    bm = bmesh.new()
     blades = (
         (0.20, 0.0, 7.0), (0.17, 62.0, -9.0), (0.23, 128.0, 5.0),
         (0.14, 196.0, -12.0), (0.19, 250.0, 10.0), (0.115, 305.0, -6.0),
@@ -850,7 +895,6 @@ def build_plant():
             radius1=0.016, radius2=0.0025, depth=length,
             matrix=Matrix.Translation((0.0, 0.0, length / 2)),
         )
-        # Flattened into a blade rather than a spike.
         bmesh.ops.scale(blade, verts=blade.verts, vec=(0.22, 1.0, 1.0))
         bmesh.ops.rotate(
             blade, verts=blade.verts, cent=(0, 0, 0),
@@ -862,16 +906,18 @@ def build_plant():
         )
         bmesh.ops.translate(blade, verts=blade.verts, vec=(0.0, 0.0, 0.098))
         mesh_add(bm, blade)
-
     bm.normal_update()
-    bm.to_mesh(obj.data)
+    bm.to_mesh(leaves.data)
     bm.free()
-
-    obj.data.materials.append(principled(
-        "PlantPot", base_color=(0.085, 0.070, 0.058), metallic=0.0, roughness=0.78,
+    # A leaf is not a painted surface: it has a waxy skin over a dull body, which is what the
+    # coat is for. Dark enough to sit in a dim room without glowing, green enough to be a plant.
+    leaves.data.materials.append(principled(
+        "PlantLeaf", base_color=(0.085, 0.175, 0.075), metallic=0.0,
+        roughness=0.62, coat=0.25, coat_roughness=0.22,
     ))
-    finish(obj, bevel=True, bevel_width=0.0012)
-    return obj
+    finish(leaves, bevel=False)
+
+    return [pot, leaves]
 
 
 def mesh_add(target, source):
@@ -1199,11 +1245,11 @@ def main():
     # The props. One file each: they are placed independently and a shop that
     # gains a fourth object should not mean re-exporting the other three.
     clear_scene()
-    paths.append(export([build_turntable()], "turntable.glb"))
+    paths.append(export(build_turntable(), "turntable.glb"))
     clear_scene()
-    paths.append(export([build_clock()], "clock.glb"))
+    paths.append(export(build_clock(), "clock.glb"))
     clear_scene()
-    paths.append(export([build_plant()], "plant.glb"))
+    paths.append(export(build_plant(), "plant.glb"))
 
     # Exported together, unlike the case parts: these eight are one object that
     # has come apart, the app wants them all or none, and it addresses them by

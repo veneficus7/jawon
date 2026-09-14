@@ -552,11 +552,38 @@ object RoomLighting {
     const val HELD_UNDER_CANDELA = 520f
     const val HELD_UNDER_FALLOFF = 0.60f
 
-    /** How far below the disc's rim its underlight sits. */
-    const val DISC_UNDER_DROP = 0.030f
+    /**
+     * How far below the disc's centre its own light sits: **nothing, deliberately.**
+     *
+     * It was `DISC_RADIUS + 0.030` below the centre and 55mm in front, and the owner's
+     * reading of the result was that "when disc is rotating tooo much light is spotted on it,
+     * it looks washed". Both halves of that are one fault and it is not specular — the
+     * label is already authored matt at `DISC_LABEL_ROUGHNESS` 0.78 with reflectance 0.22.
+     * It is diffuse, and it is inverse square: a point 70mm from the near edge of a 120mm
+     * disc puts on the order of a hundred thousand lux there and a fraction of it on the far
+     * side, which is a hotspot on a flat plate.
+     *
+     * **A disc is a plane seen face-on, so the light belongs on its axis.** Straight in front,
+     * `N·L` is 1 at the centre and 0.94 at the rim, and the face is lit evenly by
+     * construction. The old comment's reasoning — that a light in the disc's own plane
+     * contributes nothing — is right and is satisfied by being in FRONT; the drop was never
+     * what satisfied it, and the drop is what made the hotspot.
+     */
+    const val DISC_UNDER_DROP = 0f
+
+    /**
+     * The disc's own light, separated from [HELD_UNDER_CANDELA].
+     *
+     * The two used to share a figure, which stopped being reasonable once they stopped
+     * sharing a geometry: the case's light still rakes up a sleeve from below and this one
+     * faces a disc down its axis from 160mm. Dimmer and further away, which between them take
+     * the centre from about 100,000 lux to 16,000 and the centre-to-rim ratio from wild to
+     * 1.2:1.
+     */
+    const val DISC_UNDER_CANDELA = 400f
 
     /** And how far in front of the platter, so the label is lit rather than the edge. */
-    const val DISC_UNDER_FORWARD = 0.055f
+    const val DISC_UNDER_FORWARD = 0.160f
 
     /**
      * The lamp the tint is mixed away toward.

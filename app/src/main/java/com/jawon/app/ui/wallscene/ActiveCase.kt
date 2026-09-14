@@ -145,7 +145,7 @@ class ActiveCaseNodes {
             ?: discUnderCarrier?.childNodes?.firstNotNullOfOrNull { it as? LightNode }
                 ?.also { discUnderBulb = it }
         caseLight?.setIntensityCandela(if (case) RoomLighting.HELD_UNDER_CANDELA else 0f)
-        discLight?.setIntensityCandela(if (disc) RoomLighting.HELD_UNDER_CANDELA else 0f)
+        discLight?.setIntensityCandela(if (disc) RoomLighting.DISC_UNDER_CANDELA else 0f)
     }
 }
 
@@ -435,11 +435,11 @@ fun SceneScope.ActiveCaseNodes(
                 type = LightManager.Type.POINT,
                 position = Position(
                     0f,
-                    -WallDimens.DISC_RADIUS - RoomLighting.DISC_UNDER_DROP,
+                    -RoomLighting.DISC_UNDER_DROP,
                     RoomLighting.DISC_UNDER_FORWARD
                 ),
                 apply = {
-                    intensityCandela(RoomLighting.HELD_UNDER_CANDELA)
+                    intensityCandela(RoomLighting.DISC_UNDER_CANDELA)
                     falloff(RoomLighting.HELD_UNDER_FALLOFF)
                     castShadows(false)
                     // The album's own channel, the same as on the shelf — see

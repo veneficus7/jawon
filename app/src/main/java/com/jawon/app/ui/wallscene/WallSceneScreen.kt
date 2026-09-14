@@ -24,6 +24,7 @@ import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.input.pointer.pointerInput
@@ -950,6 +951,20 @@ private const val BEAM_MODEL_ASSET = "models/beam.glb"
 private const val NOTICE_DWELL_MS = 6_000L
 
 /**
+ * How long the crate rail stays up after the wall stops moving.
+ *
+ * **It used to be up permanently**, down the right edge, over whatever artwork happened to be
+ * behind it. The owner asked for it to appear on touch instead: "instead being there on the
+ * screen all time it appears when u touch the screen slide right or left". Long enough that a
+ * pause mid-flip does not blink it away, short enough that it is gone by the time anyone is
+ * looking at a record rather than looking *for* one.
+ */
+private const val RAIL_DWELL_MS = 1_400L
+
+/** How often the rail's own fade clock ticks while it is up. Four a second is plenty. */
+private const val RAIL_TICK_MS = 250L
+
+/**
  * Master dust brightness. Tuning knob — dust should suggest air, not snow. At 0.55 the
  * motes read as distinct white specks; this is deliberately below the point where you
  * notice them individually.
@@ -1270,6 +1285,12 @@ fun WallSceneScreen(
         val caseDrag = remember { CaseDrag() }
         val scratch = remember { ScratchDriver() }
         val settle = remember { WallSettle() }
+        // One tick per album the wall moves past. See PanDetents.
+        val panDetents = remember { PanDetents() }
+        // `elapsedRealtime` until which the crate rail stays on screen. The owner asked for it
+        // to stop living over the artwork: "instead being there on the screen all time it
+        // appears when u touch the screen slide right or left".
+        var railVisibleUntil by remember { mutableLongStateOf(0L) }
         val discardNodes = remember { DiscardNodes() }
         /** Compose-visible mirror of `discardNodes.albumId`, so artwork effects can key on it. */
         var discardingAlbumId by remember { mutableStateOf<String?>(null) }
@@ -1857,6 +1878,9 @@ fun WallSceneScreen(
             onDown = { e, node ->
                 scope.launch { panX.stop() }
                 scope.launch { panY.stop() }
+                // A new touch starts the detents over, so the first sample of a drag
+                // establishes where the wall is rather than ticking. See PanDetents.crossed.
+                panDetents.reset()
                 // Each new touch starts as "not a browse" until onScroll says otherwise.
                 settle.panned = false
 
@@ -1925,9 +1949,24 @@ fun WallSceneScreen(
                     val scale = metresPerPx()
                     val dx = distance.x * scale
                     val dy = distance.y * scale
+                    val nextX = panX.value + dx
+                    val nextY = panY.value - dy
+                    // **One tick per album the wall moves past, in either axis.** The owner:
+                    // "one haptic = one album shift ... it makes navigating through library
+                    // more satisfying." A crate has detents in it and flipping one is a
+                    // sequence of small events, not a slide. See PanDetents for why the unit
+                    // is a cell rather than a sample — per sample is 120 a second, which is a
+                    // buzz, and CrateFlip already paid for learning that once.
+                    if (panDetents.crossed(nextX, nextY)) {
+                        haptics.tick()
+                        // The rail shows itself while the wall is moving and fades out after,
+                        // so the letters are there when they are useful and gone when they are
+                        // over the artwork. See railVisibleUntil.
+                        railVisibleUntil = SystemClock.elapsedRealtime() + RAIL_DWELL_MS
+                    }
                     scope.launch {
-                        panX.snapTo(panX.value + dx)
-                        panY.snapTo(panY.value - dy)
+                        panX.snapTo(nextX)
+                        panY.snapTo(nextY)
                     }
                 }
             },
@@ -3889,6 +3928,19 @@ fun WallSceneScreen(
         // starting one cancels whatever settle was in flight rather than fighting it, so the
         // two can never both be driving the wall (ENGINEERING.md trap 10).
         if (selectedAlbumId == null) {
+            // Recomposed by the clock only while it matters: `railVisibleUntil` moves on
+            // the pan, and this reads it against a tick that stops as soon as the rail is
+            // down. Nothing here runs while the wall is still.
+            var railNow by remember { mutableLongStateOf(0L) }
+            LaunchedEffect(railVisibleUntil) {
+                while (SystemClock.elapsedRealtime() < railVisibleUntil) {
+                    railNow = SystemClock.elapsedRealtime()
+                    delay(RAIL_TICK_MS)
+                }
+                railNow = SystemClock.elapsedRealtime()
+            }
+            val visibleRail = railNow < railVisibleUntil
+
             CrateFlip(
                 layout = layout,
                 // Two coroutines, not three. This used to launch an outer one that launched
@@ -3906,6 +3958,11 @@ fun WallSceneScreen(
                     scope.launch { panX.animateTo(target.x, animationSpec = SETTLE_SPRING) }
                     scope.launch { panY.animateTo(target.y, animationSpec = SETTLE_SPRING) }
                 },
+                // Shown while the wall is moving and for a moment after, rather than
+                // always. `railVisibleUntil` is stamped by the pan's own detents, so the rail
+                // appears for exactly the gesture the owner described — touch and slide —
+                // and for its own drag, which keeps it usable as a control in its own right.
+                visible = visibleRail,
                 modifier = Modifier
                     .align(Alignment.CenterEnd)
                     .padding(end = 4.dp, top = 96.dp, bottom = 128.dp)
@@ -4311,9 +4368,12 @@ private fun CrateFlip(
     onScrub: (CaseLayout) -> Unit,
     /** Where the wall comes to rest when the thumb lifts. See onDragEnd. */
     onSettle: (CaseLayout) -> Unit,
+    /** Whether the wall is moving, or was a moment ago. See RAIL_DWELL_MS. */
+    visible: Boolean,
     modifier: Modifier = Modifier
 ) {
     val ordered = layout.casesInWallOrder
+
     // Pointless on a library you can already cross in a couple of swipes, and it would sit
     // over the room for no reason.
     if (ordered.size < FLIP_MIN_ALBUMS) return
@@ -4324,6 +4384,15 @@ private fun CrateFlip(
     var railHeight by remember { mutableFloatStateOf(1f) }
     var lastLanded by remember { mutableStateOf<String?>(null) }
     var lastLetter by remember { mutableStateOf(' ') }
+
+    // Faded rather than removed: the rail keeps its own pointerInput either way, so it can
+    // still be grabbed the instant it appears instead of needing a second touch to wake it.
+    // Composed out entirely and a flip would always cost one wasted gesture.
+    val railAlpha by animateFloatAsState(
+        targetValue = if (visible || dragging) 1f else 0f,
+        animationSpec = tween(durationMillis = if (visible || dragging) 110 else 420),
+        label = "railAlpha"
+    )
 
     fun scrubTo(y: Float) {
         fraction = (y / railHeight).coerceIn(0f, 1f)
@@ -4353,7 +4422,13 @@ private fun CrateFlip(
         // far apart they stopped reading as a rail and became loose letters scattered down
         // the room, straight across the artwork — and the thumb travel to cross the library
         // was the whole screen.
-        modifier = modifier.fillMaxHeight(0.66f),
+        // `graphicsLayer` rather than `alpha`, and rather than composing it out: the layer is
+        // narrow (trap 14 is about screen-wide washes, not a rail), the rail keeps its own
+        // pointerInput at every alpha so it can be grabbed the moment it appears, and nothing
+        // recomposes when the value changes.
+        modifier = modifier
+            .fillMaxHeight(0.66f)
+            .graphicsLayer { alpha = railAlpha },
         verticalAlignment = Alignment.CenterVertically
     ) {
         // The letter you are on, held out where a thumb is not covering it.
