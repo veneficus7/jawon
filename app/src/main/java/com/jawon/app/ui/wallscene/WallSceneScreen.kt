@@ -1348,6 +1348,11 @@ fun WallSceneScreen(
         val trayModel = rememberModelInstance(modelLoader, TRAY_MODEL_ASSET)
         val lidModel = rememberModelInstance(modelLoader, LID_MODEL_ASSET)
         val discModel = rememberModelInstance(modelLoader, DISC_MODEL_ASSET)
+        // The props. One instance each: three objects that never move, so nothing here needs
+        // the pooling the wall's cases do. See RoomProps.
+        val turntableModel = rememberModelInstance(modelLoader, RoomProps.TURNTABLE_ASSET)
+        val clockModel = rememberModelInstance(modelLoader, RoomProps.CLOCK_ASSET)
+        val plantModel = rememberModelInstance(modelLoader, RoomProps.PLANT_ASSET)
         val shardsModel = rememberModelInstance(modelLoader, DISC_SHARDS_MODEL_ASSET)
 
         // Every jewel case's shell made clear — the shelf's and the held lid's. See SHELL_TINT.
@@ -3338,6 +3343,18 @@ fun WallSceneScreen(
                         materialLoader = materialLoader,
                         positions = WallDecor.slots(roomLeft, roomRight),
                         bandY = rackTopY + RoomLighting.WASHER_AIM_ABOVE_CAP,
+                        wallZ = ROOM_WALL_Z + ROOM_WALL_T / 2f
+                    )
+
+                    // The shop's own things: a deck and a plant on the floor out past the
+                    // rack, a clock high on the brick. See RoomProps for why none of them is
+                    // on top of the rack.
+                    RoomPropNodes(
+                        turntable = turntableModel,
+                        clock = clockModel,
+                        plant = plantModel,
+                        floorY = layout.floorY,
+                        rackTopY = rackTopY,
                         wallZ = ROOM_WALL_Z + ROOM_WALL_T / 2f
                     )
 

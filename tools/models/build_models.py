@@ -671,6 +671,212 @@ def build_beam():
 
 
 # ---------------------------------------------------------------------------
+# The props: the things a shop has that are not records.
+# ---------------------------------------------------------------------------
+#
+# The last of the four kinds of decor the owner picked. Everything else in this
+# room is a record, a fixture, or a surface; these are the objects that make it
+# read as a place somebody works rather than a rack in a void.
+#
+# **All three are modelled at real size**, which matters more here than
+# anywhere else in this file. A CD case is 142mm tall and a turntable is 420mm
+# wide, so the turntable is nearly three cases across — and that ratio is the
+# whole reason a prop reads as an object rather than as a toy standing next to
+# the records. Scaling them down to "fit" beside a case is the one thing that
+# would make the room smaller instead of bigger.
+
+
+def build_turntable():
+    """
+    A belt-drive deck for the top of the rack: plinth, platter, spindle, arm.
+
+    Modelled sitting on its feet at the origin, so the app drops it on the cap
+    with no transform. The arm is a straight tube with a counterweight rather
+    than an S-shape: at this size, from a metre away and in a dim room, an
+    S-arm is four more curves nobody can resolve and a silhouette that reads
+    the same. What has to be right is the proportion between the platter and
+    the plinth, because that is what the eye reads as "turntable".
+    """
+    obj = new_mesh_object("turntable")
+    bm = bmesh.new()
+
+    plinth_w, plinth_h, plinth_d = 0.42, 0.075, 0.34
+    foot_h = 0.018
+
+    # Feet first, so the plinth's underside sits above the shelf.
+    for sx in (-1, 1):
+        for sz in (-1, 1):
+            cylinder(
+                bm,
+                sx * (plinth_w / 2 - 0.035), az(sz * (plinth_d / 2 - 0.035)),
+                foot_h / 2, 0.016, foot_h, segments=12, axis="Z",
+            )
+
+    box(bm, 0.0, az(0.0), foot_h + plinth_h / 2, plinth_w, plinth_d, plinth_h)
+
+    # The platter: a 12" record sits ON this, so it is a shade wider than one.
+    platter_y = foot_h + plinth_h
+    cylinder(bm, -0.055, az(0.02), platter_y + 0.011, 0.158, 0.022, segments=48, axis="Z")
+    # The spindle.
+    cylinder(bm, -0.055, az(0.02), platter_y + 0.03, 0.0035, 0.038, segments=10, axis="Z")
+
+    # The arm: base, tube, counterweight. Swung off the rest, as a deck at rest is.
+    arm_x, arm_z = 0.155, -0.115
+    cylinder(bm, arm_x, az(arm_z), platter_y + 0.018, 0.026, 0.036, segments=16, axis="Z")
+    tube = bmesh.new()
+    bmesh.ops.create_cone(
+        tube, cap_ends=True, cap_tris=False, segments=10,
+        radius1=0.006, radius2=0.006, depth=0.20,
+        matrix=Matrix.Translation((0.0, 0.0, 0.0)),
+    )
+    bmesh.ops.rotate(
+        tube, verts=tube.verts, cent=(0, 0, 0),
+        matrix=Matrix.Rotation(math.radians(90.0), 3, "X"),
+    )
+    bmesh.ops.rotate(
+        tube, verts=tube.verts, cent=(0, 0, 0),
+        matrix=Matrix.Rotation(math.radians(34.0), 3, "Z"),
+    )
+    bmesh.ops.translate(
+        tube, verts=tube.verts,
+        vec=(arm_x - 0.075, az(arm_z + 0.055), platter_y + 0.046),
+    )
+    tube.to_mesh(obj.data)
+    tube.free()
+    # Merge the tube's mesh into the main bmesh.
+    bm.from_mesh(obj.data)
+    cylinder(
+        bm, arm_x + 0.052, az(arm_z - 0.038), platter_y + 0.046,
+        0.017, 0.030, segments=14, axis="Z",
+    )
+
+    bm.normal_update()
+    bm.to_mesh(obj.data)
+    bm.free()
+
+    deck = principled(
+        "DeckPlinth", base_color=(0.045, 0.043, 0.041), metallic=0.0,
+        roughness=0.42, coat=0.35,
+    )
+    obj.data.materials.append(deck)
+    finish(obj, bevel=True, bevel_width=0.0015)
+    return obj
+
+
+def build_clock():
+    """
+    A shop clock for the brick, modelled facing the room (+Z).
+
+    Hands at ten past ten, which is where every clock in every photograph of a
+    clock is: it frames the face, it is unmistakably A CLOCK at a glance, and it
+    cannot be read as an accidental time. This room is a midnight shop and the
+    hands are decor rather than a readout — nothing in the app tells it what
+    time it is, and a prop that quietly showed the wrong time forever would be
+    worse than one that shows a time nobody expects to be right.
+    """
+    obj = new_mesh_object("clock")
+    bm = bmesh.new()
+
+    radius = 0.145
+    # The case, then the face inset into it, so the rim reads as a rim.
+    cylinder(bm, 0.0, az(0.0), 0.0, radius, 0.040, segments=48, axis="Y")
+    cylinder(bm, 0.0, az(0.021), 0.0, radius - 0.012, 0.006, segments=48, axis="Y")
+
+    # Hands: ten past ten, and a hub over their pivot.
+    for length, width, degrees in ((0.092, 0.009, -60.0), (0.115, 0.006, 60.0)):
+        hand = bmesh.new()
+        bmesh.ops.create_cube(hand, size=1.0, matrix=(
+            Matrix.Diagonal((width, 0.004, length, 1.0))
+        ))
+        bmesh.ops.translate(hand, verts=hand.verts, vec=(0.0, 0.0, length / 2 - 0.008))
+        bmesh.ops.rotate(
+            hand, verts=hand.verts, cent=(0, 0, 0),
+            matrix=Matrix.Rotation(math.radians(degrees), 3, "Y"),
+        )
+        bmesh.ops.translate(hand, verts=hand.verts, vec=(0.0, az(0.026), 0.0))
+        mesh_add(bm, hand)
+    cylinder(bm, 0.0, az(0.028), 0.0, 0.010, 0.008, segments=16, axis="Y")
+
+    bm.normal_update()
+    bm.to_mesh(obj.data)
+    bm.free()
+
+    obj.data.materials.append(principled(
+        "ClockCase", base_color=(0.055, 0.052, 0.048), metallic=0.0, roughness=0.55,
+    ))
+    finish(obj, bevel=True, bevel_width=0.0012)
+    return obj
+
+
+def build_plant():
+    """
+    A snake plant in a pot, for the floor beside the rack.
+
+    Sansevieria on purpose, and not because it is the shop-plant cliché — though
+    it is. It is the one houseplant whose real shape is a handful of flat,
+    tapered, upright blades, which is a shape primitives can actually make. A
+    fern or a monstera modelled this way is a green blob, and a green blob in
+    the corner of a photographic room is worse than an empty corner.
+    """
+    obj = new_mesh_object("plant")
+    bm = bmesh.new()
+
+    # The pot: a tapered tube, wider at the lip, with a rim.
+    bmesh.ops.create_cone(
+        bm, cap_ends=True, cap_tris=False, segments=28,
+        radius1=0.072, radius2=0.095, depth=0.20,
+        matrix=Matrix.Translation((0.0, 0.0, 0.10)) @ Matrix.Identity(4),
+    )
+    cylinder(bm, 0.0, az(0.0), 0.198, 0.099, 0.014, segments=28, axis="Z")
+
+    # The blades. Odd count, alternating lean, so the plant has no axis of
+    # symmetry to give it away as geometry.
+    blades = (
+        (0.52, 0.0, 7.0), (0.44, 62.0, -9.0), (0.58, 128.0, 5.0),
+        (0.37, 196.0, -12.0), (0.48, 250.0, 10.0), (0.30, 305.0, -6.0),
+        (0.41, 340.0, 8.0),
+    )
+    for length, around, lean in blades:
+        blade = bmesh.new()
+        bmesh.ops.create_cone(
+            blade, cap_ends=True, cap_tris=False, segments=4,
+            radius1=0.030, radius2=0.004, depth=length,
+            matrix=Matrix.Translation((0.0, 0.0, length / 2)),
+        )
+        # Flattened into a blade rather than a spike.
+        bmesh.ops.scale(blade, verts=blade.verts, vec=(0.22, 1.0, 1.0))
+        bmesh.ops.rotate(
+            blade, verts=blade.verts, cent=(0, 0, 0),
+            matrix=Matrix.Rotation(math.radians(lean), 3, "Y"),
+        )
+        bmesh.ops.rotate(
+            blade, verts=blade.verts, cent=(0, 0, 0),
+            matrix=Matrix.Rotation(math.radians(around), 3, "Z"),
+        )
+        bmesh.ops.translate(blade, verts=blade.verts, vec=(0.0, 0.0, 0.185))
+        mesh_add(bm, blade)
+
+    bm.normal_update()
+    bm.to_mesh(obj.data)
+    bm.free()
+
+    obj.data.materials.append(principled(
+        "PlantPot", base_color=(0.085, 0.070, 0.058), metallic=0.0, roughness=0.78,
+    ))
+    finish(obj, bevel=True, bevel_width=0.0012)
+    return obj
+
+
+def mesh_add(target, source):
+    """Fold `source` into `target` and free it. bmesh has no union operator."""
+    tmp = bpy.data.meshes.new("tmp")
+    source.to_mesh(tmp)
+    source.free()
+    target.from_mesh(tmp)
+    bpy.data.meshes.remove(tmp)
+
+
+# ---------------------------------------------------------------------------
 # The disc.
 # ---------------------------------------------------------------------------
 
@@ -978,10 +1184,19 @@ def main():
     paths.append(export([build_closed_case()], "case_closed.glb"))
 
     clear_scene()
+    paths.append(export([build_beam()], "beam.glb"))
 
     clear_scene()
-    paths.append(export([build_beam()], "beam.glb"))
     paths.append(export([build_disc()], "disc.glb"))
+
+    # The props. One file each: they are placed independently and a shop that
+    # gains a fourth object should not mean re-exporting the other three.
+    clear_scene()
+    paths.append(export([build_turntable()], "turntable.glb"))
+    clear_scene()
+    paths.append(export([build_clock()], "clock.glb"))
+    clear_scene()
+    paths.append(export([build_plant()], "plant.glb"))
 
     # Exported together, unlike the case parts: these eight are one object that
     # has come apart, the app wants them all or none, and it addresses them by
