@@ -755,8 +755,11 @@ class WallSceneViewModel @Inject constructor(
     val spotifyOfflineNotice: StateFlow<String?> = deck
         .map { state ->
             if (state.tracks.any { it.isRemoteControlled }) {
-                "Spotify plays its own sound, so Jawon has nothing to keep. " +
-                    "Download it in Spotify instead."
+                // **One line, and that is the whole of the fix.** It was three, and a
+                // LazyColumn item three lines tall at the top of the tracklist pushed every
+                // track below the fold: opening a Spotify record showed a paragraph about an
+                // absent feature and none of the record. A footnote had taken the headline.
+                "To keep this offline, download it in Spotify."
             } else {
                 null
             }
