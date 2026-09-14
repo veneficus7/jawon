@@ -293,6 +293,15 @@ private val LOOK_STRAIGHT_AHEAD = Rotation(0f, 0f, 0f)
  *
  * The three that matter, in order of how much they were costing:
  *
+ * - **[DISC_LABEL_REFLECTANCE]**, now 0.06, is the one that was missed twice. The second
+ *   time was worse, because the geometry had just changed underneath it: moving the disc's
+ *   light onto its axis cured an orbiting hotspot and created a stationary one, since a
+ *   source on the axis of a face you view head-on puts its specular reflection exactly in
+ *   the middle of that face — and at roughness 0.78 the lobe is broad, so what landed was
+ *   a soft white blob over a quarter of the label. Measured: 26.7% of the disc at or above
+ *   235 of 255, on artwork nobody could read through it. The diffuse ratio across the face
+ *   is 1.22:1, so the blob was never the lighting; it was the sheen. A printed paper label
+ *   under lacquer returns very little, and 0.06 is that. The original note follows.
  * - **[DISC_LABEL_REFLECTANCE]** is the one that was missed. On a non-metal, Filament takes
  *   specular from `reflectance`, not from `metallicFactor` � so zeroing metallic left the
  *   surface still throwing back the default 4% of a lamp burned into the IBL at intensity
@@ -439,7 +448,18 @@ internal const val FLOOR_REFLECTANCE = 0.55f
 internal const val DISC_LABEL_METALLIC = 0f
 internal const val DISC_LABEL_ROUGHNESS = 0.78f
 internal const val DISC_LABEL_CLEARCOAT = 0f
-internal const val DISC_LABEL_REFLECTANCE = 0.22f
+internal const val DISC_LABEL_REFLECTANCE = 0.06f
+
+/**
+ * How much of the disc's printed artwork survives to the screen.
+ *
+ * Not a lighting value — a multiplier on the texture itself. The disc measured a mean of 139
+ * against a cover on the wall at 98, and the record being played has no business being half as
+ * bright again as the records around it. The whites in a sleeve are what bloom feeds on, so
+ * this also takes the glow out of the middle of the label, which two goes at the lighting
+ * could not.
+ */
+internal const val DISC_LABEL_PRINT = 0.62f
 
 
 /** Progress at which the deck fades in — as the disc squares up, not before. */
@@ -1678,6 +1698,25 @@ fun WallSceneScreen(
                     // not from metallicFactor at all.
                     if (material.hasParameter("reflectance")) {
                         instance.setParameter("reflectance", DISC_LABEL_REFLECTANCE)
+                    }
+                    // **The print is ink on plastic, not a lightbox.**
+                    //
+                    // The owner, twice: the spinning disc looks washed. Two guesses at the
+                    // lighting were both wrong and both measured wrong — cutting its light by
+                    // a third and stripping the label's sheen moved the disc's mean from 139
+                    // to 134, which is nothing. What is actually bright is the ARTWORK: a
+                    // sleeve printed on a disc keeps its whites, a quarter of this one sits
+                    // above 235 of 255, and bloom spreads out of those whites across the
+                    // detail beside them. No lighting change can fix a texture that is
+                    // already near white, which is why neither did.
+                    //
+                    // So the label is multiplied down. A CD label is ink on a silvered disc
+                    // and is never brighter than the paper sleeve in the rack beside it.
+                    if (material.hasParameter("baseColorFactor")) {
+                        instance.setParameter(
+                            "baseColorFactor",
+                            DISC_LABEL_PRINT, DISC_LABEL_PRINT, DISC_LABEL_PRINT, 1f
+                        )
                     }
                 }
             }

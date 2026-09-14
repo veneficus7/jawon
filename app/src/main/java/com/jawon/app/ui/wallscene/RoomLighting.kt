@@ -582,11 +582,14 @@ object RoomLighting {
      * centre as well as the hotspot — the old one sat 105mm away and threw 24,600 lux at the
      * middle of the face, and 400cd from 160mm gives 15,600 — so the label came back evenly
      * lit and too dark to read, which the owner reported as the disc having "no cover at all".
-     * 900 puts the centre at about 35,000 with the rim at 0.94 of it: brighter than the disc
-     * has ever been AND flat across, which is the combination the old geometry could not
-     * reach at any intensity.
+     * 900 put the centre at about 35,000 with the rim at 0.94 of it — flat across, which the
+     * old geometry could not manage at any intensity, and too bright: the disc measured a
+     * mean of 139 against a cover on the wall at 98, so the record being played was twice the
+     * brightness of the records around it. 620 brings it back beside them. The blob that
+     * survived both figures was never this number at all; it was the label's own sheen, and
+     * it is `DISC_LABEL_REFLECTANCE` that fixed it.
      */
-    const val DISC_UNDER_CANDELA = 900f
+    const val DISC_UNDER_CANDELA = 620f
 
     /** And how far in front of the platter, so the label is lit rather than the edge. */
     const val DISC_UNDER_FORWARD = 0.160f
