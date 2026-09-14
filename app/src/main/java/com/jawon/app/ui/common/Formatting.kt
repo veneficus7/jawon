@@ -3,6 +3,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 
 import com.jawon.app.data.local.Track
+import com.jawon.app.data.local.isRemoteControlled
 import java.util.Locale
 
 fun formatDuration(ms: Long): String {
@@ -61,6 +62,18 @@ fun qualityReadoutSource(track: Track): String {
  * would notice. The output leg is only shown when it genuinely differs.
  */
 fun qualityReadoutOutput(track: Track, routeLabel: String, outputSampleRateHz: Int): String {
+    // **A record this app does not decode cannot be measured by it.** On a Spotify album every
+    // audio field is empty — `SpotifyLibrarySync` says so in as many words, "everything
+    // Spotify declines to say about the audio" — and an empty mimeType is not in the lossless
+    // set, so this printed LOSSY. The owner: "the audio quality is lossy, but i have lossless
+    // in spotify itself." He is right and the readout was wrong: the sound never passes through
+    // Jawon, so whatever Spotify is set to is what he is hearing, and this line had no business
+    // claiming otherwise. Nor is the output leg ours to report, because the stream feeding it
+    // is not ours.
+    if (track.isRemoteControlled) {
+        val route = if (routeLabel.isBlank()) "" else " · $routeLabel"
+        return "SPOTIFY SETS THE QUALITY$route"
+    }
     val losslessTag = if (track.mimeType in LOSSLESS_MIME_TYPES) "LOSSLESS" else "LOSSY"
     // Zero means the rate could not be established — over Bluetooth it genuinely cannot be,
     // since A2DP re-encodes to the codec's own rate. Printing nothing beats printing a guess.

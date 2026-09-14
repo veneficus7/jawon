@@ -917,7 +917,6 @@ private const val CLOSED_CASE_MODEL_ASSET = "models/case_closed.glb"
  * The underlight cone each album levitates in. Geometry rather than a real spot light �
  * Filament will not give every bay its own light, and this is one draw. See build_beam().
  */
-private const val BEAM_MODEL_ASSET = "models/beam.glb"
 
 /**
  * How many case instances the wall allocates, once, at startup.
@@ -940,6 +939,9 @@ private const val BEAM_MODEL_ASSET = "models/beam.glb"
  * than the difference.
  */
 private const val MAX_CASE_SLOTS = 512
+
+/** The glow every album floats over. Emissive geometry, not a light: see `CaseSlot.beam`. */
+private const val BEAM_MODEL_ASSET = "models/beam.glb"
 
 /**
  * How long the room's notice stays up. Long enough to read a sentence twice; short enough
@@ -1336,11 +1338,11 @@ fun WallSceneScreen(
         // and re-keying anything on its size would drop every slot composable out of
         // composition and destroy its ImageNodes � the process abort this file exists to
         // prevent. So the count is fixed up front and the pool is clamped to it.
-        val caseInstances = remember(modelLoader) {
-            modelLoader.createInstancedModel(CLOSED_CASE_MODEL_ASSET, MAX_CASE_SLOTS)
-        }
         val beamInstances = remember(modelLoader) {
             modelLoader.createInstancedModel(BEAM_MODEL_ASSET, MAX_CASE_SLOTS)
+        }
+        val caseInstances = remember(modelLoader) {
+            modelLoader.createInstancedModel(CLOSED_CASE_MODEL_ASSET, MAX_CASE_SLOTS)
         }
 
         val trayModel = rememberModelInstance(modelLoader, TRAY_MODEL_ASSET)
@@ -2420,8 +2422,8 @@ fun WallSceneScreen(
                 // would leave every case stacked at the wall's origin.
                 run {
                     val t = if (reduceMotion) 0f else sequence.clock
-                    // How lit the underlight of an album being removed still is. Computed once
-                    // here because this pass runs before the removal is driven.
+                    // How lit the pool of an album being removed still is. Computed once here
+                    // because this pass runs before the removal is driven.
                     val discardBeamGlow = discardNodes.clock
                         ?.let { CaseDiscard.beamGlowAt(it / CaseDiscard.DURATION_S) }
                         ?: 0f
@@ -2443,12 +2445,10 @@ fun WallSceneScreen(
                             cadence.moving = true
                         }
                         slot.settleTowardTarget(dt)
-                        // The beam stands on the board and never turns, so it only needs
-                        // placing � at the foot of the bay, under wherever the case is
+                        // The pool lies on the board and never turns, so it only needs
+                        // placing — at the foot of the bay, under wherever the case is
                         // hanging. CASE_H/2 down from the album's centre is the board top.
-                        //
-                        // And placing it is nearly always a no-op, which is why it goes through
-                        // the slot rather than being written here: see CaseSlot.placeBeam.
+                        // Nearly always a no-op; see CaseSlot.placeBeam.
                         slot.placeBeam(slot.baseX, slot.baseY - CASE_H / 2f, slot.baseZ)
 
                         if (slot.discardClock != null) {
@@ -2457,8 +2457,8 @@ fun WallSceneScreen(
                             // same handover opening does � so this branch only keeps the slot
                             // parked and lets DiscardScene drive everything visible.
                             root.isVisible = false
-                            // The underlight stays lit and fades out over the sequence rather
-                            // than being cut on the first frame � see CaseDiscard.beamGlow.
+                            // The pool stays lit and fades over the sequence rather than
+                            // being cut on the first frame — see CaseDiscard.beamGlowAt.
                             slot.setBeamGlow(discardBeamGlow)
                             slot.setBeamVisible(discardBeamGlow > 0.01f)
                             return@forEach
@@ -3605,12 +3605,7 @@ fun WallSceneScreen(
                 materialLoader = materialLoader,
                 size = casePoolSize,
                 caseInstances = caseInstances,
-                beamInstances = beamInstances,
-                // The tier the room STARTED at, deliberately, not the one it may have
-                // stepped down to. A light count is structural: these nodes are built once
-                // and rebuilding the whole pool mid-session to drop two lights a bay would
-                // destroy every ImageNode in it, which is trap 1 and aborts the process.
-                segments = initialTier.vitrineSegments
+                beamInstances = beamInstances
             )
             // The disc that breaks when an album is removed. Mounted always, hidden until
             // it is needed � see DiscardScene.
@@ -3933,6 +3928,8 @@ fun WallSceneScreen(
                 onSeek = viewModel::onSeek,
                 onSelectTrack = viewModel::onSelectTrack,
                 offline = viewModel.offline.collectAsStateWithLifecycle(),
+                spotifyOfflineNotice =
+                    viewModel.spotifyOfflineNotice.collectAsStateWithLifecycle(),
                 downloading = viewModel.downloading.collectAsStateWithLifecycle(),
                 offlineMessage = viewModel.offlineMessage.collectAsStateWithLifecycle(),
                 onKeepOffline = viewModel::onKeepOffline,

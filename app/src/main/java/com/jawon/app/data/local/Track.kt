@@ -82,3 +82,23 @@ data class Track(
     val bitDepth: Int?,
     val bitrateBps: Int
 )
+
+/**
+ * True for a record Jawon shows but does not play: Spotify's own, decoded in Spotify's process.
+ *
+ * **Two things in this app were deciding that by looking at fields Spotify never fills**, and
+ * both got it wrong in the owner's hands. The offline control appeared because a Spotify track
+ * carries a `remoteId` like a music server's does, and then tried to download it through a
+ * Subsonic stream URL. The quality readout printed LOSSY because `mimeType` is empty and empty
+ * is not in the lossless set — an assertion about audio this app has never seen, made to
+ * someone who pays Spotify for lossless.
+ *
+ * The id is what settles it, because it is minted by the sync that owns the record
+ * (`SpotifyLibrarySync.trackIdFor`) and cannot drift from the source the way a nullable column
+ * can.
+ */
+val Track.isRemoteControlled: Boolean
+    get() = id.startsWith(REMOTE_CONTROLLED_PREFIX)
+
+/** `SpotifyLibrarySync.SOURCE_ID` and its separator, without the dependency. */
+private const val REMOTE_CONTROLLED_PREFIX = "spotify:"

@@ -61,7 +61,30 @@ class RoomRailTest {
     }
 
     @Test
-    fun `the rail lights a sleeve from above and the vitrine from the sides`() {
+    fun `the rail is the only thing lighting a record now`() {
+        // **This assertion has been made, deleted, restored and now outlived its subject.**
+        //
+        // It began as "the rail must outshine the underlight", because the underlight only
+        // stopped washing the artwork when the rail took the job off it. On 2026-09-14 the
+        // vitrine was promoted over the rail and this was rewritten to allow that; hours
+        // later the owner reported the covers washing out again, and it was restored. Hours
+        // after THAT he removed the per-album fixtures altogether: "you know what just remove
+        // all the side bar lights and underlights, just nothing."
+        //
+        // Three arrangements, one fault, and it is worth stating plainly because the idea
+        // will come back: **a light bright enough to read a photograph by is bright enough to
+        // desaturate it**, and moving it only chooses which part of the sleeve pays. The rail
+        // is what is left, it is near-white, and it rakes down from the shelf edge above a
+        // record the way shop light actually does.
+        assertTrue("a record needs something to light it", RoomLighting.RAIL_CANDELA > 300f)
+        assertEquals(
+            "the plates' channel is what keeps the rail off the panel",
+            1, RoomLighting.UNDER_LIGHT_CHANNEL
+        )
+    }
+
+    @Test
+    fun `the rail lights a sleeve from above, and nothing lights it from anywhere else`() {
         // This used to assert that the rail outshone the underlight, on the reasoning that the
         // underlight only stopped washing the artwork because the rail took the job off it.
         // **That inverted deliberately on 2026-09-13** and the reasoning went with it: there is
@@ -76,7 +99,6 @@ class RoomRailTest {
         // modelling at all, and one lit only from above is the shop-shelf look this room
         // already had.
         assertTrue("the rail should still be a real light", RoomLighting.RAIL_CANDELA > 100f)
-        assertTrue("the vitrine should be the key light", RoomLighting.UNDER_CANDELA > 200f)
 
         // Both on the plates' channel, and neither on the room's: nothing about this pair may
         // reach the back panel, whose gradient belongs to the tube alone.

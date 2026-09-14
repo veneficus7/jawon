@@ -111,9 +111,9 @@ object RoomLighting {
     // sleeves were lit by a lamp two feet away and nothing else, which is why they read at
     // the same brightness as the wall behind them.
     //
-    // These are real Filament lights, one per visible row. The comment on `beam.glb` is
-    // still true — Filament will not give every *album* a spot — but a row is not an album.
-    // Three or four rows are on screen at once, which is an ordinary number of lights.
+    // These are real Filament lights, one per visible row, and a row is not an album: three or
+    // four are on screen at once, which is an ordinary number of lights. Every attempt at one
+    // per *album* has now been removed (see `CaseSlotNodes`), and not because of the count.
 
     /**
      * How far above a row's cases the strip hangs.
@@ -481,101 +481,7 @@ object RoomLighting {
     const val UNDER_SIDE = 0.0695f
 
     /**
-     * How tall the tube each side of a bay is, in metres — the run its points are spread
-     * along, and the height of the rod that stands for it in `build_beam`.
-     *
-     * A record is [WallDimens.CASE_H] 142mm tall and this is 125mm, so the tube stops just
-     * inside the artwork at both ends. Running it the full height would put its ends level
-     * with the sleeve's corners, which is where a real fixture is always *shorter* than what
-     * it lights: the last thing a shop wants is the tube reading as taller than the record.
-     */
-    const val VITRINE_SPAN = 0.125f
-
-    /**
-     * The points a tube is made of, per side, before [QualityTier.vitrineSegments] tiers it.
-     *
-     * **Filament has no line lights and no area lights.** A tube is a row of points, exactly
-     * as [RAIL_COLUMNS] already does it horizontally under each shelf; this is the same trick
-     * turned on its side. Each point carries [UNDER_CANDELA] divided by however many there
-     * are, so changing the count changes the *shape* of the light and not its strength.
-     *
-     * What it buys is the falloff along the record's height. One point level with the middle
-     * of a sleeve is 71mm from its top edge and 95mm from its top corner, so the corners are
-     * roughly half as brightly lit as the centre before anything else is accounted for. A tube
-     * running the sleeve's own height has a point near every part of it, and the evenness this
-     * file quotes — see `VitrineGeometry.evenness` — is what that is worth.
-     */
-    const val VITRINE_SEGMENTS = 5
-
-    /**
-     * Where the [i]th of [count] points sits on a tube, relative to the middle of the record.
-     *
-     * Evenly spaced across [VITRINE_SPAN] and centred, so the outermost points land half a
-     * spacing inside each end rather than exactly on it — the same convention the shelf-edge
-     * rail's columns use, and for the same reason: points sitting exactly on the ends make the
-     * tube read as two bright dots with a dim middle, which is the opposite of the problem it
-     * was built to solve.
-     *
-     * A single point returns 0, which is the middle of the record: at `count` 1 this is exactly
-     * the fixture it replaced, which is what makes [QualityTier.vitrineSegments] safe to turn
-     * down to 1 on LOW.
-     */
-    fun vitrineSegmentY(i: Int, count: Int): Float {
-        if (count <= 1) return 0f
-        val spacing = VITRINE_SPAN / count
-        return (i - (count - 1) / 2f) * spacing
-    }
-
-    /**
-     * Bright, because this is a key light now rather than a decoration.
-     *
-     * It is the only thing lighting an album's cover, so what used to be a coloured accent has
-     * to carry the artwork on its own.
-     *
-     * Doubled with [UNDER_FORWARD]: from 95mm out instead of 52mm, the middle of a sleeve is
-     * about half as brightly lit per candela (further away, though more squarely faced), so this
-     * keeps the artwork where it was tuned while taking the hotspot off its foot.
-     *
-     * **And then cut to a fifth, because it is not the working light any more.** The owner:
-     * "the underlights for CD cases are washing the CD cover arts". They were — a light strong
-     * enough to reveal a sleeve from 95mm away bleaches it, and no amount of moving it fixes
-     * that while it is the only fixture pointed at the artwork. [RAIL_CANDELA] took that job, so
-     * this went back to what it is for: the album's own colour pooling under the record it
-     * belongs to, the reason a case reads as levitating. Bright enough to see; nowhere near
-     * bright enough to matter to the artwork above it.
-     */
-    const val UNDER_CANDELA = 300f
-
-    // **300 on 2026-09-14, and the first guess at this was backwards.** The owner said the
-    // covers "look washed or dull" and the obvious reading was too much light, so this went to
-    // 220. The screenshot said otherwise: the artwork measured a mean of 50 while the emissive
-    // strips beside it measured 198 and the tube band above it 184. Nothing was washing the
-    // covers — they were being **out-shone by their own fixtures**, which is what makes a
-    // record look dull whatever it is lit with, and dimming the record would have made it
-    // worse. So the light on the artwork stays near where it was, the fixtures came down hard
-    // (`build_beam`, emission 2.4 -> 1.2 and a seventeenth of the emitting area), and the
-    // balance shifted toward [RAIL_CANDELA] so a sleeve is raked from above rather than only
-    // filled in from its sides.
-    //
-    // **The lesson worth keeping: in a shop the records are the brightest thing in the frame
-    // and the fixtures are concealed.** Any time a fixture measures brighter than the artwork,
-    // that is the fault, whatever it looks like it is.
-
-    /**
-     * Short reach. The light belongs to one bay; a long falloff turns two hundred of these into
-     * ambient light by another name, which is exactly what the owner asked to remove.
-     *
-     * 0.26 with the pair 115mm out and 69.5mm to the side: the far corner of a strip's *own*
-     * sleeve is 0.20m away, so the whole cover is inside the reach with a margin — `falloff` is
-     * a hard cutoff (trap 6) and a corner past it would go black. The near edge of the next
-     * record along sits at 0.21m and only just inside, which is the right place to stop: a
-     * little of a record's colour reaching its neighbour is what a rack of lit bays looks like,
-     * and a lot of it is every cover wearing everybody else's.
-     */
-    const val UNDER_FALLOFF = 0.26f
-
-    /**
-     * The light channel the album underlights live on — and the end of a day spent fighting
+     * The light channel a record's own printed plates live on — and the end of a day spent fighting
      * this light with cone angles.
      *
      * The underlight has one job, lighting the artwork, and kept doing three others. As a point
@@ -839,7 +745,7 @@ object RoomLighting {
      * As a line at [RAIL_COLUMN_SPACING] it still stops well short of the bleaching a 1500cd
      * point at 95mm was doing to the artwork, which is what started all of this.
      */
-    const val RAIL_CANDELA = 420f
+    const val RAIL_CANDELA = 520f
 
     /** Past the foot of the records it lights, so no sleeve ends at a cutoff (trap 6). */
     const val RAIL_FALLOFF = 0.40f
@@ -854,7 +760,15 @@ object RoomLighting {
      * colour belongs to the tube behind the records, the neon and the spots, not to the light
      * a sleeve is read by.
      */
-    const val RAIL_ROOM_TINT = 0.30f
+    const val RAIL_ROOM_TINT = 0.06f
+
+    // **Cut from 0.30 to 0.06 on 2026-09-14, and the paragraph above predicted it.** It already
+    // said shop display lighting is white "for exactly this reason" and that the room's colour
+    // belongs to the tube, the neon and the spots rather than to the light a sleeve is read by
+    // — and then kept 30% of it anyway, which was survivable only while this was one of two
+    // lights on a record. It is the ONLY one now, so 30% of the room's key is 30% of the room's
+    // key on every cover: in Officina, whose lamp is phosphor, the owner's whole wall came out
+    // green. A hint is all a hint was ever meant to be.
 
     /** The rail's colour: white, pulled [RAIL_ROOM_TINT] of the way toward the room's lamp. */
     fun railColour(key: FloatArray): FloatArray =
@@ -1227,7 +1141,7 @@ object RoomLighting {
      * source is a dim reflection, and this one has to survive the prefilter blurring it down
      * the mip chain before anything rough enough to matter ever samples it.
      */
-    private const val STRIP_BAND_LEVEL = 11f
+    private const val STRIP_BAND_LEVEL = 5f
 
     /**
      * Irradiance as spherical harmonics: 3 bands, 9 coefficients, RGB each.

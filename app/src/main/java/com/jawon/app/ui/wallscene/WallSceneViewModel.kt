@@ -8,6 +8,7 @@ import com.jawon.app.data.local.PlayEventDao
 import com.jawon.app.data.local.ShelfDao
 import com.jawon.app.data.local.ShelfWithAlbums
 import com.jawon.app.data.local.Track
+import com.jawon.app.data.local.isRemoteControlled
 import com.jawon.app.data.local.TrackBadge
 import com.jawon.app.data.local.TrackPlayStats
 import com.jawon.app.data.local.TrackDao
@@ -725,9 +726,43 @@ class WallSceneViewModel @Inject constructor(
         }
     }
 
-    /** Null for a local album — that is what makes the control disappear rather than mislead. */
-    private fun offlineStateOf(tracks: List<Track>): OfflineState? =
-        if (tracks.none { it.remoteId != null }) null else downloader.stateOf(tracks)
+    /**
+     * Null for an album that cannot be kept — which is what makes the control disappear rather
+     * than mislead, and which used to be decided wrongly.
+     *
+     * A local album is already on the phone and downloading it would be copying a file onto
+     * itself. **A Spotify album has no audio here to keep at all**, and the old test — "does any
+     * track carry a remoteId" — was true for it, because a Spotify track carries Spotify's id in
+     * exactly the column a music server's track carries the server's. So the control appeared,
+     * and pressing it asked a Subsonic downloader for a URL that does not exist. The owner:
+     * "keep offline function is not working with spotify". It could not have.
+     *
+     * Hidden is not enough on its own, because he went looking for it: [spotifyOfflineNotice]
+     * says why, where he was looking.
+     */
+    private fun offlineStateOf(tracks: List<Track>): OfflineState? = when {
+        tracks.none { it.remoteId != null } -> null
+        tracks.any { it.isRemoteControlled } -> null
+        else -> downloader.stateOf(tracks)
+    }
+
+    /**
+     * Why there is no KEEP OFFLINE on this record, when the answer is Spotify.
+     *
+     * Spotify's own app can download it; Jawon cannot, and saying so where the control would
+     * have been is the difference between a missing feature and a broken one.
+     */
+    val spotifyOfflineNotice: StateFlow<String?> = deck
+        .map { state ->
+            if (state.tracks.any { it.isRemoteControlled }) {
+                "Spotify plays its own sound, so Jawon has nothing to keep. " +
+                    "Download it in Spotify instead."
+            } else {
+                null
+            }
+        }
+        .distinctUntilChanged()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
     /**
      * Pulls the open album down in full.

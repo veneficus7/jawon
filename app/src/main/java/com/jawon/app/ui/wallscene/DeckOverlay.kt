@@ -176,6 +176,8 @@ fun DeckOverlay(
      * instead of the whole deck — the same reasoning as [scrubReadout] below.
      */
     offline: State<OfflineState?>,
+    /** Why there is no offline row on a Spotify record. See `WallSceneViewModel`. */
+    spotifyOfflineNotice: State<String?>,
     downloading: State<Boolean>,
     offlineMessage: State<String?>,
     onKeepOffline: () -> Unit,
@@ -520,6 +522,23 @@ fun DeckOverlay(
                             onKeep = onKeepOffline,
                             onCancel = onCancelKeepOffline,
                             onDrop = onDropOffline
+                        )
+                    }
+                }
+                // And where the row WOULD be on a Spotify record, why it is not. Hiding it
+                // silently is what sent the owner looking for a feature that had been there
+                // and appeared to break; a missing control with a reason is a different thing
+                // from a broken one.
+                spotifyOfflineNotice.value?.let { words ->
+                    item {
+                        Text(
+                            text = words,
+                            style = JawonTextStyle.mono.copy(
+                                color = finish.plateDim,
+                                fontSize = 10.sp
+                            ),
+                            lineHeight = 15.sp,
+                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 10.dp)
                         )
                     }
                 }

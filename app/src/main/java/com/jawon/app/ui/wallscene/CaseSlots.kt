@@ -68,14 +68,21 @@ class CaseSlot {
     var backArt: ImageNode? = null
 
     /**
-     * The underlight this album levitates in. A SIBLING of [root], never a child: the case
-     * turns and the beam must not turn with it, or the shaft of light swings around the bay
-     * like a searchlight.
+     * The pool of light this album levitates over. A SIBLING of [root], never a child: the
+     * case turns, and a pool that turned with it would swing around the bay like a searchlight.
+     *
+     * **Emissive geometry, and not a light** — which is the whole reason it is back. It glows
+     * and it blooms; it illuminates nothing at all. Every fixture that *did* illuminate a
+     * record was removed on 2026-09-14 after three attempts at one, because a light bright
+     * enough to read a photograph by is bright enough to desaturate it. This has never had
+     * that problem and never can: the room lights the artwork, and this is the glow the record
+     * appears to float on. The owner, pointing at a screenshot of it: "everything is obvious,
+     * can u add just that light to the current stripped version?"
      */
     var beam: Node? = null
 
     /**
-     * The beam's own material instances, so its colour can be set per album.
+     * The pool's own material instances, so its colour can be set per album.
      *
      * Held here rather than reached for through [beam] because gltfio hands them out per
      * `FilamentInstance`: instancing shares the geometry and the textures, but each instance
@@ -83,31 +90,6 @@ class CaseSlot {
      * affordable at several hundred cases.
      */
     var beamMaterials: Array<MaterialInstance>? = null
-
-    /**
-     * The carrier this bay's vitrine strips hang from, and the pair of lights under it.
-     *
-     * Separate nodes rather than one for the reason `RoomNodes` records: a `LightNode`'s
-     * `apply` block runs against a `LightManager.Builder`, not against the node, so the node
-     * cannot be captured where it is declared — and the carrier is a plain `Node`, so casting
-     * *it* to `LightNode` yields null. The carrier is what moves; the bulbs take a colour.
-     *
-     * **Two tubes since 2026-09-14**, one per side of the bay, each of them a row of
-     * `QualityTier.vitrineSegments` points standing in for a line light Filament will not
-     * give us. See `RoomLighting.UNDER_SIDE` for why they are out in the channel between
-     * records: past the cover's own edge is where a light cannot reflect in the artwork.
-     */
-    var underCarrier: Node? = null
-    private var underBulbs: List<LightNode>? = null
-
-    private fun bulbs(): List<LightNode> =
-        underBulbs ?: underCarrier?.childNodes.orEmpty()
-            // Grandchildren, not children: each bulb hangs from a little node of its own that
-            // carries its side offset, because a LightNode's `apply` builds a light rather
-            // than a node and cannot be given a position.
-            .flatMap { it.childNodes + it }
-            .filterIsInstance<LightNode>()
-            .also { if (it.isNotEmpty()) underBulbs = it }
 
     /**
      * Last hue written to [beamMaterials], so binding does not re-push the same colour into
@@ -173,63 +155,89 @@ class CaseSlot {
     }
 
     /**
-     * Put the underlight at the foot of this case's bay, if it is not already there.
+     * Put the pool at the foot of this case's bay, if it is not already there.
      *
-     * **The beam does not move.** It stands on the board and never turns — the case above it
-     * hovers and leans, the shaft of light does not — so its position changes only when a shelf
-     * repacks around a deletion or the slot is handed to a different album. The frame driver was
-     * nevertheless writing it every frame, and a position write is not free: SceneView composes
-     * a transform matrix and pushes it across to Filament's transform manager, which for a wall
-     * of visible bays came to something over a thousand pointless native writes a second.
+     * **The pool does not move.** It lies on the board and never turns — the case above it
+     * hovers and leans, the glow on the timber does not — so its position changes only when a
+     * shelf repacks around a deletion or the slot is handed to a different album. The frame
+     * driver was nevertheless writing it every frame, and a position write is not free:
+     * SceneView composes a transform matrix and pushes it to Filament's transform manager,
+     * which for a wall of visible bays came to a thousand pointless native writes a second.
      *
-     * Guarded here rather than at the call site so the last-written place travels with the slot,
-     * which is what makes it correct across pooling: a slot handed to a new album has a new
-     * [baseX], so the comparison fails and the beam is placed. Trap 9 in ENGINEERING.md is the same
-     * hazard from the other direction — this is the frame driver writing *less*, not `bind`
-     * restoring less.
+     * Guarded here rather than at the call site so the last-written place travels with the
+     * slot, which is what makes it correct across pooling: a slot handed to a new album has a
+     * new [baseX], so the comparison fails and the pool is placed.
      */
     fun placeBeam(x: Float, y: Float, z: Float) {
         if (x == beamAtX && y == beamAtY && z == beamAtZ) return
         beam?.position = Position(x, y, z)
-        // The real light rides with the emissive cone, lifted off the board and pushed
-        // forward — see RoomLighting.UNDER_FORWARD for why forward is not optional.
-        underCarrier?.position = Position(
-            x,
-            y + RoomLighting.UNDER_LIFT,
-            z + RoomLighting.UNDER_FORWARD
-        )
         beamAtX = x
         beamAtY = y
         beamAtZ = z
     }
 
-    /**
-     * Where [placeBeam] last put the beam. NaN so the first call always writes: NaN compares
-     * false against everything, including itself.
-     */
+    /** Where [placeBeam] last put the pool. NaN so the first call always writes. */
     private var beamAtX = Float.NaN
     private var beamAtY = Float.NaN
     private var beamAtZ = Float.NaN
 
     /**
-     * Where this slot's underlight stands, and what colour it is, for the one real light the
-     * room spends on it.
+     * This album's colour, written into the pool's emissive.
      *
-     * The emissive geometry above is what every bay gets — one draw for the whole wall, which
-     * is the only reason a wall of two hundred albums can each have their own glow. But
-     * emissive geometry lights nothing: it blooms and it is not in the shading, so the colour
-     * DESIGN.md calls "where the app's colour lives" never actually landed on the board or on
-     * the case standing in it. A Filament spot per bay is not available at this count, so the
-     * room spends exactly one, on whichever record is being looked at, and the frame driver
-     * moves it. See `RoomLighting.SPILL_CANDELA`.
-     *
-     * NaN until [placeBeam] and [setBeamHue] have run, which is how the driver knows there is
-     * nothing to point at yet.
+     * Only the geometry takes it. There is no bulb to tint any more, which is why this is four
+     * lines rather than twenty: `DESIGN.md` calls the album's hue "where the app's colour
+     * lives", and it lives on the board now rather than in the air around the record.
      */
-    val beamX: Float get() = beamAtX
-    val beamY: Float get() = beamAtY
-    val beamZ: Float get() = beamAtZ
-    val beamHue: Float get() = appliedBeamHue
+    fun setBeamHue(hue: Float) {
+        if (hue == appliedBeamHue) return
+        val materials = beamMaterials ?: return
+        appliedBeamHue = hue
+
+        val rgb = beamRgb(hue)
+        materials.forEach { instance ->
+            val material = instance.material
+            if (material.hasParameter(EMISSIVE_PARAM)) {
+                instance.setParameter(EMISSIVE_PARAM, rgb[0], rgb[1], rgb[2])
+            }
+            if (material.hasParameter(BASE_COLOR_PARAM)) {
+                instance.setParameter(BASE_COLOR_PARAM, rgb[0], rgb[1], rgb[2], 1f)
+            }
+        }
+    }
+
+    /**
+     * Show or hide the pool.
+     *
+     * One call rather than a write at four sites: the bug where a pooled slot keeps a stale
+     * piece of the last album is the single most common failure in this file. Trap 24 does not
+     * apply here — there is no light in this node to stay lit behind a hidden renderable.
+     */
+    fun setBeamVisible(visible: Boolean) {
+        beam?.isVisible = visible
+    }
+
+    /**
+     * Dims this album's pool to [amount] of its normal brightness.
+     *
+     * Used while the album is being removed, so its glow leaves with it instead of being cut
+     * on the first frame — a light that vanishes the instant a case moves reads as a fault in
+     * the shelf rather than as the record going.
+     *
+     * Deliberately re-derives the colour rather than scaling whatever is there, so repeated
+     * calls cannot compound into black. [appliedBeamHue] is left alone, which means the next
+     * `bind` of this slot restores full brightness on its own.
+     */
+    fun setBeamGlow(amount: Float) {
+        val materials = beamMaterials ?: return
+        if (appliedBeamHue.isNaN()) return
+        val rgb = beamRgb(appliedBeamHue)
+        val k = amount.coerceIn(0f, 1f)
+        materials.forEach { instance ->
+            if (instance.material.hasParameter(EMISSIVE_PARAM)) {
+                instance.setParameter(EMISSIVE_PARAM, rgb[0] * k, rgb[1] * k, rgb[2] * k)
+            }
+        }
+    }
 
     /** Put this case where it belongs immediately, with no travel. */
     fun snapToTarget() {
@@ -297,78 +305,6 @@ class CaseSlot {
      * explain why — so the name is checked rather than assumed, and both spellings gltfio
      * might have produced are tried.
      */
-    fun setBeamHue(hue: Float) {
-        if (hue == appliedBeamHue) return
-        val materials = beamMaterials ?: return
-        appliedBeamHue = hue
-
-        val rgb = beamRgb(hue)
-        // The bulb takes a muted version of the same hue. A light's colour is a normalised
-        // tint — brightness is intensityCandela — so beamRgb, which is authored at BEAM_VALUE
-        // for an emissive material, has to come back to a peak of 1 first.
-        val peak = maxOf(rgb[0], rgb[1], rgb[2]).coerceAtLeast(1e-4f)
-        val tint = Float4(
-            mixToward(rgb[0] / peak, RoomLighting.UNDER_WHITE[0]),
-            mixToward(rgb[1] / peak, RoomLighting.UNDER_WHITE[1]),
-            mixToward(rgb[2] / peak, RoomLighting.UNDER_WHITE[2]),
-            1f
-        )
-        bulbs().forEach { it.color = tint }
-        materials.forEach { instance ->
-            val material = instance.material
-            if (material.hasParameter(EMISSIVE_PARAM)) {
-                instance.setParameter(EMISSIVE_PARAM, rgb[0], rgb[1], rgb[2])
-            }
-            if (material.hasParameter(BASE_COLOR_PARAM)) {
-                instance.setParameter(BASE_COLOR_PARAM, rgb[0], rgb[1], rgb[2], 1f)
-            }
-        }
-    }
-
-    /**
-     * Show or hide the whole vitrine — both strips, and both lights behind them.
-     *
-     * One call rather than two writes at four call sites: they are the same fixture, and the
-     * bug where a pooled slot keeps a stale piece of the last album is the single most common
-     * failure in this file.
-     */
-    fun setBeamVisible(visible: Boolean) {
-        beam?.isVisible = visible
-        underCarrier?.isVisible = visible
-        // **Hiding the carrier does not switch the light off** — trap 24, "hiding a node does
-        // not switch off a light in it": SceneView's visibility reaches renderables and never a
-        // light. So an empty slot's bulb kept shining wherever the slot was parked, on the
-        // covers around it. Dark by intensity, and back to full when the slot has an album.
-        val candela = if (visible) RoomLighting.UNDER_CANDELA else 0f
-        bulbs().forEach { it.setIntensityCandela(candela) }
-    }
-
-    /**
-     * Dims this album's vitrine to [amount] of its normal brightness.
-     *
-     * Used while the album is being removed, so its light leaves with it instead of being cut
-     * on the first frame — a bay that goes dark the instant a case moves reads as a fault
-     * in the shelf rather than as the record going.
-     *
-     * Deliberately re-derives the colour rather than scaling whatever is there, so repeated
-     * calls cannot compound into black. [appliedBeamHue] is left alone, which means the next
-     * `bind` of this slot restores full brightness on its own.
-     *
-     * (This KDoc spent some weeks stacked above `setBeamVisible`, describing a function two
-     * along from it. Two doc comments in a row is legal Kotlin and the compiler says nothing.)
-     */
-    fun setBeamGlow(amount: Float) {
-        val materials = beamMaterials ?: return
-        if (appliedBeamHue.isNaN()) return
-        val rgb = beamRgb(appliedBeamHue)
-        val k = amount.coerceIn(0f, 1f)
-        materials.forEach { instance ->
-            if (instance.material.hasParameter(EMISSIVE_PARAM)) {
-                instance.setParameter(EMISSIVE_PARAM, rgb[0] * k, rgb[1] * k, rgb[2] * k)
-            }
-        }
-    }
-
     private companion object {
         const val EMISSIVE_PARAM = "emissiveFactor"
         const val BASE_COLOR_PARAM = "baseColorFactor"
@@ -477,8 +413,18 @@ private const val PAPER_REFLECTANCE = 0.5f
  * that slide as the wall pans, and tilt a case and they sweep. See the note in
  * `RoomLighting.ambientSphericalHarmonics`: without those reflections "a jewel case mirrors
  * nothing and reads as painted card".
+ *
+ * **Up from 0.16 on 2026-09-14, and the reason is a bug rather than taste.** The owner, in
+ * landscape: "the albums near edges of the screen having reflection on the middle." That is
+ * this number and the cubemap together. A plate at 0.16 is a near-mirror, and a cover at the
+ * edge of a wide frame is seen obliquely, so its mirror direction swings far enough off-axis
+ * to land on one of the strip bands written across `RoomLighting.buildRoomCubemap` — which
+ * were authored at eleven times the void level. The result is a bright bar lying across
+ * somebody's artwork at an angle that corresponds to nothing in the room. The bands came down
+ * to five and this came up to 0.26: still plainly glass, no longer a mirror sharp enough to
+ * draw a legible band on a photograph.
  */
-private const val COVER_ROUGHNESS = 0.16f
+private const val COVER_ROUGHNESS = 0.26f
 
 /** Mixes a normalised channel toward the warm lamp by [RoomLighting.UNDER_TINT]. */
 internal fun mixToward(hue: Float, white: Float): Float =
@@ -684,8 +630,9 @@ fun CaseSlots.bind(
         // artwork but never scale. Since the pool is index-keyed and deliberately never
         // destroyed, one deletion left that slot at zero size permanently, and every album
         // that later landed on the same index rendered invisible. What gave it away was a
-        // shelf of glowing underlights with no cases above them: the beam is a sibling of
-        // the case root, so it was never scaled.
+        // shelf of glowing underlights with no cases above them — the beam was a sibling of
+        // the case root, so it was never scaled. (Those lights are gone now; the bug this
+        // guards against is not.)
         //
         // Skipped while a discard is actually running, because the frame driver owns the
         // scale then — the album stays in the database for the length of the animation, so
@@ -747,13 +694,7 @@ fun SceneScope.CaseSlotNodes(
     size: Int,
     materialLoader: MaterialLoader,
     caseInstances: List<FilamentInstance>,
-    beamInstances: List<FilamentInstance>,
-    /**
-     * Points per vitrine tube — see [QualityTier.vitrineSegments]. Passed in rather than
-     * read here because the tier is the scene's state and this file is the scene's pool;
-     * it is also the one number in here that multiplies the room's light count.
-     */
-    segments: Int
+    beamInstances: List<FilamentInstance>
 ) {
     slots.ensure(size)
 
@@ -775,7 +716,8 @@ fun SceneScope.CaseSlotNodes(
                 // MaterialInstance back while a texture is still bound to it aborts the
                 // process on the next commit, and these stay bound to the plates' textures for
                 // as long as the scene lives.
-                it.underCarrier = null
+                it.beam = null
+                it.beamMaterials = null
                 it.coverMaterial = null
                 it.spineMaterial = null
                 it.backMaterial = null
@@ -788,15 +730,13 @@ fun SceneScope.CaseSlotNodes(
         // as the wall scrolls; keying by album is what destroyed them.
         key(index) {
             val slot = slots.slots[index]
-            // The underlight, mounted alongside the case rather than inside it so the shaft
-            // stays put while the album turns. Emissive geometry, not a light: Filament will
-            // not hand out one spot per album, and this costs a single draw.
+            // The pool this album floats over. Emissive geometry, not a light: one draw for
+            // the whole wall, which is the only reason every bay can have its own glow.
             ModelNode(
                 beamInstances[index],
                 apply = {
                     slot.beam = this
-                    // Per-instance, so each album's beam can take its own colour. See
-                    // CaseSlot.setBeamHue.
+                    // Per-instance, so each album's pool takes its own colour. See setBeamHue.
                     slot.beamMaterials = beamInstances[index].materialInstances
                     isVisible = false
                     isTouchable = false
@@ -805,61 +745,23 @@ fun SceneScope.CaseSlotNodes(
                     isShadowReceiver = false
                 }
             )
-            // The real light this album is lit by. A sibling of the case for the same reason
-            // the emissive cone is one: the case turns, and a light that turned with it would
-            // swing its pool around the bay.
+            // **No real light is mounted here.**
             //
-            // A POINT, and on its own light channel — see RoomLighting.UNDER_LIGHT_CHANNEL.
-            // Only the case's printed plates share that channel, so the point can light the
-            // artwork whichever way the case has turned without reaching the back panel behind
-            // it or reflecting in the glass in front of it. Hidden until `bind` gives this slot
-            // an album.
-            Node(apply = {
-                slot.underCarrier = this
-                isVisible = false
-            }) {
-                // **A tube each side, not a bulb each side.** The owner: "make those side
-                // bar lights also light like a tube light. not one spotlight, but led tube
-                // light." Filament has no line lights, so a tube is a row of points along
-                // its length — the same trick the shelf-edge rail already uses horizontally,
-                // turned on its side. See RoomLighting.VITRINE_SEGMENTS.
-                //
-                // The SIDE offset is the other half of the design, and the older half: a
-                // light out in the channel between two records is past the cover's own edge,
-                // where it cannot put a reflection on the artwork. See UNDER_SIDE.
-                for (side in intArrayOf(-1, 1)) {
-                    repeat(segments) { i ->
-                        Node(
-                            position = Position(
-                                side * RoomLighting.UNDER_SIDE,
-                                RoomLighting.vitrineSegmentY(i, segments),
-                                0f
-                            )
-                        ) {
-                            LightNode(
-                                type = LightManager.Type.POINT,
-                                apply = {
-                                    // Each point carries its share, so the count changes the
-                                    // SHAPE of the light and never its strength.
-                                    intensityCandela(RoomLighting.UNDER_CANDELA / segments)
-                                    falloff(RoomLighting.UNDER_FALLOFF)
-                                    // Off the room's default channel and onto its own. A
-                                    // light that stayed on channel 0 as well would still
-                                    // reach everything.
-                                    lightChannel(0, false)
-                                    lightChannel(RoomLighting.UNDER_LIGHT_CHANNEL, true)
-                                    // Ten per bay at HIGH, and Filament frustum-culls them
-                                    // down to the bays actually on screen before it
-                                    // froxelises. Clustered forward rendering is built for
-                                    // exactly this, provided none of them casts a shadow,
-                                    // and there is no shadow map budget remotely near it.
-                                    castShadows(false)
-                                }
-                            )
-                        }
-                    }
-                }
-            }
+            // A bay used to carry its own fixture: first an emissive pool on the board with a
+            // real light in front of it, then two side tubes with ten lights between them. Both
+            // are gone, on the owner's call after a day of trying to make one of them look
+            // right: "you know what just remove all the side bar lights and underlights, just
+            // nothing."
+            //
+            // It is worth recording WHY neither ever settled, because the same idea will come
+            // back. A per-album fixture has to be bright enough to light a sleeve, and a light
+            // bright enough to read a photograph by is bright enough to desaturate it — so
+            // the artwork's own colour was always the thing being spent. Moving the fixture
+            // around only chose which part of the sleeve paid: underneath bleached its foot,
+            // in front wrote a reflection across its middle, the sides washed the lot. The
+            // record is lit by the room now — `RoomLighting.RAIL_CANDELA` from the shelf edge
+            // above it, the way a shop does it — and the album's colour lives on the case
+            // rather than in the air around it.
 
             // Mounted HIDDEN, like the active case group and for the same reason. `bind`
             // decides which slots show an album and where they sit, and it runs from a
