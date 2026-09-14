@@ -325,18 +325,7 @@ class CaseSlot {
     }
 
     /**
-     * Dims this album's underlight to [amount] of its normal brightness.
-     *
-     * Used while the album is being removed, so its light leaves with it instead of being cut
-     * on the first frame — a shelf light that vanishes the instant a case moves reads as a
-     * fault in the shelf rather than as the record going.
-     *
-     * Deliberately re-derives the colour rather than scaling whatever is there, so repeated
-     * calls cannot compound into black. [appliedBeamHue] is left alone, which means the next
-     * `bind` of this slot restores full brightness on its own.
-     */
-    /**
-     * Show or hide the whole underlight — the emissive cone and the light it now stands for.
+     * Show or hide the whole vitrine — both strips, and both lights behind them.
      *
      * One call rather than two writes at four call sites: they are the same fixture, and the
      * bug where a pooled slot keeps a stale piece of the last album is the single most common
@@ -353,6 +342,20 @@ class CaseSlot {
         bulbs().forEach { it.setIntensityCandela(candela) }
     }
 
+    /**
+     * Dims this album's vitrine to [amount] of its normal brightness.
+     *
+     * Used while the album is being removed, so its light leaves with it instead of being cut
+     * on the first frame — a bay that goes dark the instant a case moves reads as a fault
+     * in the shelf rather than as the record going.
+     *
+     * Deliberately re-derives the colour rather than scaling whatever is there, so repeated
+     * calls cannot compound into black. [appliedBeamHue] is left alone, which means the next
+     * `bind` of this slot restores full brightness on its own.
+     *
+     * (This KDoc spent some weeks stacked above `setBeamVisible`, describing a function two
+     * along from it. Two doc comments in a row is legal Kotlin and the compiler says nothing.)
+     */
     fun setBeamGlow(amount: Float) {
         val materials = beamMaterials ?: return
         if (appliedBeamHue.isNaN()) return

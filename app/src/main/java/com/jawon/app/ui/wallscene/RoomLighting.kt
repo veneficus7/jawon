@@ -10,7 +10,6 @@ import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import kotlin.math.abs
 import kotlin.math.asin
-import kotlin.math.pow
 import kotlin.math.round
 
 /**
@@ -1265,20 +1264,14 @@ object RoomLighting {
                     val u = (x + 0.5f) / size * 2f - 1f
                     val v = (y + 0.5f) / size * 2f - 1f
                     faceDirection(face, u, v, dir)
-                    val up = dir[1] / length(dir)
 
-                    // Everything above the horizon warms toward the lamp; everything below
-                    // falls into the void. Raised to a power so the lamp stays a pool of
-                    // light rather than washing the whole upper hemisphere.
-                    val t = ((up + 1f) * 0.5f).coerceIn(0f, 1f).pow(2.2f)
-
-                    // Both sources, as smooth-edged discs in the reflected room. Feathered
-                    // rather than hard-cut: a stepped edge here shows up as a jagged rim on
-                    // every reflective surface once the prefilter blurs it into the mips.
-                    val invLen = 1f / length(dir)
-                    val nx = dir[0] * invLen
-                    val ny = dir[1] * invLen
-                    val nz = dir[2] * invLen
+                    // Only the vertical component is wanted: this room reflects as bands of
+                    // strip at fixed elevations, and nothing in it varies with compass
+                    // direction. There used to be an upper-hemisphere warm gradient and two
+                    // hot discs here as well, computed from all three axes — see the note in
+                    // the write below for why they went, and note that the gradient's own
+                    // `t` outlived it by some weeks as a value nothing read.
+                    val ny = dir[1] / length(dir)
 
                     // The reflected strips: horizontal lines in the tube's own colour,
                     // repeating up and down the wall. Elevation angle rather than `ny` directly, so the spacing stays
