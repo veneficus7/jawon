@@ -84,6 +84,9 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.Color as ComposeColor
+import androidx.compose.foundation.Canvas
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalConfiguration
@@ -4449,22 +4452,14 @@ private fun CrateFlip(
                     .padding(start = 14.dp, end = 16.dp, top = 9.dp, bottom = 9.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    text = landed?.title?.let { WallLayout.initialOf(it).toString() } ?: "",
-                    fontFamily = ArchivoFamily,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 34.sp,
-                    color = LampAmber
-                )
-                // The title as well as the letter.
+                // The record under the thumb, and nothing else.
                 //
-                // On a small library the letter was enough. On a real one each mark on the
-                // rail covers a dozen or more records, so a letter says almost nothing about
-                // where you have landed — it tells you the drawer, not the record. The title
-                // is what makes coarse navigation usable: the rail gets you to the right part
-                // of the wall and this tells you exactly where that is.
+                // The 34pt initial that used to lead this went with the rail's letters, for
+                // the same reason: it named a drawer, not a record. The title is what makes
+                // coarse navigation usable — the rail gets you to the right part of the wall
+                // and this says exactly where that is.
                 landed?.let {
-                    Column(Modifier.padding(start = 12.dp).width(150.dp)) {
+                    Column(Modifier.width(170.dp)) {
                         Text(
                             text = it.title,
                             fontFamily = JetBrainsMonoFamily,
@@ -4538,26 +4533,47 @@ private fun CrateFlip(
                         scrubTo(change.position.y)
                     }
                 },
-            verticalArrangement = Arrangement.SpaceEvenly,
+            verticalArrangement = Arrangement.Center,
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            // Evenly sampled positions along the wall, labelled with what is there. A repeat
-            // of the letter above becomes a dot, so a run of one artist reads as a run rather
-            // than as a stutter of identical letters.
-            val marks = FLIP_MARKS.coerceAtMost(ordered.size)
-            var previous = ' '
-            for (i in 0 until marks) {
-                val at = if (marks == 1) 0f else i / (marks - 1f)
-                val letter = layout.caseAtFraction(at)?.title
-                    ?.let { WallLayout.initialOf(it) } ?: '#'
-                val repeated = letter == previous
-                previous = letter
-                Text(
-                    text = if (repeated) "·" else letter.toString(),
-                    fontFamily = JetBrainsMonoFamily,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = if (repeated) 9.sp else 10.sp,
-                    color = if (dragging) LabelCream else LabelDim.copy(alpha = 0.62f)
+            // **A track and a thumb, and no letters at all.**
+            //
+            // It was fifteen sampled initials down the rail, on the reasoning that a crate's
+            // dividers tell you where you are. The owner's verdict: "no a-z rail, just a rail
+            // to navigate, to make it more convenient to navigate through the shelve." He is
+            // right about this wall in particular, and the file's own comment says why
+            // without noticing it: on a real library "each mark on the rail covers a dozen or
+            // more records, so a letter says almost nothing about where you have landed."
+            // A letter that describes a twelfth of the collection is decoration.
+            //
+            // What a navigation rail has to show is POSITION, which is one thing and needs no
+            // alphabet: how far through the wall you are, and where your thumb would put you.
+            // Read outside the DrawScope: these are composable-backed theme values and a
+            // draw lambda is not a composable.
+            val trackColour = LabelDim
+            val thumbIdle = LabelCream
+            val thumbHeld = LampAmber
+            Canvas(Modifier.fillMaxHeight().width(RAIL_TRACK_W)) {
+                val cx = size.width / 2f
+                val travel = size.height
+                // The track: the whole wall, as one dim line.
+                drawLine(
+                    color = trackColour.copy(alpha = if (dragging) 0.5f else 0.28f),
+                    start = Offset(cx, 0f),
+                    end = Offset(cx, travel),
+                    strokeWidth = RAIL_LINE_PX,
+                    cap = StrokeCap.Round
+                )
+                // The thumb: where the wall is now. Long enough to be a handle rather than a
+                // dot, and it grows while dragging because that is when it is being held.
+                val thumb = travel * RAIL_THUMB_FRACTION
+                val centre = (travel - thumb) * fraction.coerceIn(0f, 1f) + thumb / 2f
+                drawLine(
+                    color = if (dragging) thumbHeld else thumbIdle.copy(alpha = 0.8f),
+                    start = Offset(cx, centre - thumb / 2f),
+                    end = Offset(cx, centre + thumb / 2f),
+                    strokeWidth = if (dragging) RAIL_LINE_PX * 2.4f else RAIL_LINE_PX * 1.7f,
+                    cap = StrokeCap.Round
                 )
             }
         }
@@ -4574,8 +4590,19 @@ private fun CrateFlip(
  */
 private const val FLIP_MIN_ALBUMS = 8
 
-/** Letters down the rail. Enough to read as a crate divider set, few enough to stay legible. */
-private const val FLIP_MARKS = 15
+/** How wide the drawn track is. The touch target around it is 48dp — see the rail's Column. */
+private val RAIL_TRACK_W = 18.dp
+
+/** The track's stroke, in pixels. Hairline: it is a guide, not a scrollbar. */
+private const val RAIL_LINE_PX = 3.5f
+
+/**
+ * How much of the track the thumb covers.
+ *
+ * A twelfth, so it reads as a handle you could grab rather than a dot marking a spot, and so
+ * it stays visible on a library long enough that a proportional thumb would vanish.
+ */
+private const val RAIL_THUMB_FRACTION = 0.085f
 
 @Composable
 private fun ChromeAction(
