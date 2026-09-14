@@ -305,6 +305,36 @@ trap 11 and trap 15 in three different files, each correct in the era it was wri
     folds the top of the range toward white, so an over-exposed surface loses its colour
     before it loses its brightness, and the complaint arrives as "washed", not "too bright".
 
+28. **The room is not janky; it is hot, and those need different measurements.** "The app runs
+    heavy" was investigated on 2026-09-14 and the room turned out to draw **81fps while being
+    panned continuously, with 0.8% slow frames** — smooth by any standard. What is true is that
+    it holds the GPU at **~100% busy forever**, including with nobody touching it, which on the
+    owner's S25 Ultra means a thermally capped 832MHz of 1200 and a phone at 41°C. Heat and
+    battery, not stutter. Do not go looking for dropped frames.
+
+29. **`gpu_busy_percentage` saturates, and so does the render scale — neither can A/B anything.**
+    `/sys/class/kgsl/kgsl-3d0/gpubusy` read 99.9% with shadows on, with shadows off, with the
+    frame rate halved, and with the fog off: once the GPU is the bottleneck it reads 100% no
+    matter what you change. `ROOM SCALE` is worse than useless — Filament's dynamic resolution
+    **always sits at exactly `minRenderScale`**, so it reported 60% in every configuration and
+    80% the moment the floor was raised to 0.80. It is reporting the floor, not the load.
+    **The harness that does work**: Settings -> HOW IT IS RUNNING -> MEASURE AGAIN to reset,
+    then pan continuously for ~20s, then read **DRAWN**. That is throughput under a controlled
+    load and it moves with real cost. Everything below was measured that way, back to back.
+
+30. **The fog is the dominant per-pixel cost, and per-*pixel* is the operative word.** Measured:
+    fog off **96fps** drawn / 0.3% slow / worst 33.3ms, fog on **81fps** / 0.8% / worst 41.7ms.
+    It is 14 raymarch steps on a quad that covers the frame, and `RoomQuality.fogSteps` says so
+    in its own first line. **It was switched on after the tier was validated** — `FOG_ENABLED`
+    was false when HIGH was signed off, the owner asked for "a little fog back" on 2026-09-13,
+    and nothing re-checked HIGH afterwards; the render scale went from the 81% recorded in
+    `RoomAtmosphere` to its 60% floor. Two things were falsified while finding this. **Shadows
+    are not the cost** — all four casting lights off changed nothing measurable, so the four
+    shadow passes are cheap. **And MSAA is genuinely near-free while resolution is not**: trading
+    4x MSAA at a 0.60 scale for no MSAA at 0.80 is 2.25x fewer *samples* and measured **slower**
+    (81 -> 75fps), because the cost scales with shaded pixels and each pixel pays the fog march.
+    So the samples-vs-resolution trade runs the opposite way to the intuition.
+
 ---
 
 ## Locked decisions — do not relitigate
