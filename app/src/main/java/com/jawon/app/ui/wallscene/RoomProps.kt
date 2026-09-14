@@ -7,6 +7,7 @@ import io.github.sceneview.math.Position
 import io.github.sceneview.math.Rotation
 import com.google.android.filament.gltfio.FilamentInstance
 import io.github.sceneview.node.ModelNode
+import io.github.sceneview.node.Node
 
 /**
  * The things in this shop that are not records: a deck, a clock, a plant.
@@ -36,23 +37,26 @@ object RoomProps {
     /**
      * How far out from the wall a floor prop stands, to the centre of its footprint.
      *
-     * Far enough that the rack is not standing in it: the shelving's own boards reach
-     * `BOARD_D / 2` forward of the wall plane, and a deck is 340mm deep, so anything less than
-     * about a quarter of a metre puts the two objects through each other.
+     * Far enough that the rack is not standing in it — the shelving's boards reach
+     * `BOARD_D / 2` forward of the wall plane — and no further, because forward is toward the
+     * camera. At 300mm the first attempt put these a third of the way from the wall to the
+     * lens, which magnifies an object by half again before its own size is counted. Both
+     * mistakes compounded: a big prop, brought close.
      */
-    const val FLOOR_PROP_Z = 0.30f
+    const val FLOOR_PROP_Z = 0.105f
 
     /**
-     * Where each floor prop stands along the wall.
+     * How far inside each end wall a floor prop stands.
      *
-     * Well out past the rack's usual framing rather than beside the records: a prop that sits
-     * inside the browsing frame is in the way of the only thing the room is for. These are
-     * found by panning, the way the posters and the sign are.
+     * **Measured from the room's ends rather than fixed, which is the fix for the real
+     * fault.** These were at -1.32 and +1.44, absolute, which is somewhere in the middle of a
+     * wide library's wall: panning along the records ran straight into a turntable. A prop
+     * belongs at the end of the room, where a shop keeps its things, and the end of the room
+     * moves with the size of the library.
      */
-    const val TURNTABLE_X = -1.32f
-    const val PLANT_X = 1.44f
+    const val END_INSET = 0.34f
 
-    /** The clock hangs on the brick, over on the other side of the sign from the first poster. */
+    /** The clock hangs on the brick, on the other side of the sign from the first poster. */
     const val CLOCK_X = -0.94f
 
     /**
@@ -90,48 +94,49 @@ fun SceneScope.RoomPropNodes(
     plant: FilamentInstance?,
     floorY: Float,
     rackTopY: Float,
-    wallZ: Float
+    wallZ: Float,
+    roomLeft: Float,
+    roomRight: Float
 ) {
-    turntable?.let { instance ->
-        key("prop-turntable") {
+    // **The transform goes on a carrier Node, not on the ModelNode.**
+    //
+    // Setting `position` inside a ModelNode's own `apply` does not stick: all three props
+    // rendered at the world origin, stacked on top of each other in the middle of the rack and
+    // in front of the records, which is what the owner was looking at when he asked what was
+    // happening. Every other model in this scene is placed by a parent — the cases, the beam,
+    // the shards — and this is why.
+    prop(
+        turntable,
+        Position(roomLeft + RoomProps.END_INSET, floorY, RoomProps.FLOOR_PROP_Z),
+        RoomProps.TURNTABLE_TURN_DEG, "turntable"
+    )
+    prop(
+        plant,
+        Position(roomRight - RoomProps.END_INSET, floorY, RoomProps.FLOOR_PROP_Z),
+        RoomProps.PLANT_TURN_DEG, "plant"
+    )
+    prop(clock, Position(RoomProps.CLOCK_X, rackTopY + RoomProps.CLOCK_ABOVE_CAP, wallZ), 0f, "clock")
+}
+
+@Composable
+private fun SceneScope.prop(
+    instance: FilamentInstance?,
+    at: Position,
+    turnDeg: Float,
+    name: String
+) {
+    instance ?: return
+    key("prop", name) {
+        Node(
+            position = at,
+            rotation = Rotation(0f, turnDeg, 0f)
+        ) {
             ModelNode(
                 instance,
                 apply = {
-                    position = Position(RoomProps.TURNTABLE_X, floorY, RoomProps.FLOOR_PROP_Z)
-                    rotation = Rotation(0f, RoomProps.TURNTABLE_TURN_DEG, 0f)
                     isTouchable = false
-                    isShadowCaster = true
-                    isShadowReceiver = true
-                }
-            )
-        }
-    }
-    plant?.let { instance ->
-        key("prop-plant") {
-            ModelNode(
-                instance,
-                apply = {
-                    position = Position(RoomProps.PLANT_X, floorY, RoomProps.FLOOR_PROP_Z)
-                    rotation = Rotation(0f, RoomProps.PLANT_TURN_DEG, 0f)
-                    isTouchable = false
-                    isShadowCaster = true
-                    isShadowReceiver = true
-                }
-            )
-        }
-    }
-    clock?.let { instance ->
-        key("prop-clock") {
-            ModelNode(
-                instance,
-                apply = {
-                    position = Position(
-                        RoomProps.CLOCK_X,
-                        rackTopY + RoomProps.CLOCK_ABOVE_CAP,
-                        wallZ
-                    )
-                    isTouchable = false
-                    // A clock on a wall casts onto that wall, and the washers are right there.
+                    // These are objects, not fixtures. An object in a lit room that casts no
+                    // shadow is the thing that gives a render away.
                     isShadowCaster = true
                     isShadowReceiver = true
                 }

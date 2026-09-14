@@ -678,12 +678,19 @@ def build_beam():
 # room is a record, a fixture, or a surface; these are the objects that make it
 # read as a place somebody works rather than a rack in a void.
 #
-# **All three are modelled at real size**, which matters more here than
-# anywhere else in this file. A CD case is 142mm tall and a turntable is 420mm
-# wide, so the turntable is nearly three cases across — and that ratio is the
-# whole reason a prop reads as an object rather than as a toy standing next to
-# the records. Scaling them down to "fit" beside a case is the one thing that
-# would make the room smaller instead of bigger.
+# **These are SMALL objects, and the first attempt at them was not.**
+#
+# They were built at furniture size first — a 420mm deck, a 580mm plant — on the
+# argument that a turntable being nearly three CD cases wide is what makes the
+# rack read as furniture rather than as a texture. That argument is true about
+# the objects and false about the room, and the owner's screenshot settled it in
+# one look: this camera frames about half a metre of wall, so a real plant
+# standing 300mm in front of the records fills the entire frame and the rack
+# disappears behind it. His own words for what he picked were "small objects",
+# which is what these are now — a portable deck, a desk plant, a small clock.
+#
+# The lesson generalises past the props: **the yardstick in this room is not the
+# real world, it is the frame.** Half a metre of it, at CD scale.
 
 
 def build_turntable():
@@ -700,33 +707,33 @@ def build_turntable():
     obj = new_mesh_object("turntable")
     bm = bmesh.new()
 
-    plinth_w, plinth_h, plinth_d = 0.42, 0.075, 0.34
-    foot_h = 0.018
+    plinth_w, plinth_h, plinth_d = 0.235, 0.042, 0.185
+    foot_h = 0.010
 
     # Feet first, so the plinth's underside sits above the shelf.
     for sx in (-1, 1):
         for sz in (-1, 1):
             cylinder(
                 bm,
-                sx * (plinth_w / 2 - 0.035), az(sz * (plinth_d / 2 - 0.035)),
-                foot_h / 2, 0.016, foot_h, segments=12, axis="Z",
+                sx * (plinth_w / 2 - 0.020), az(sz * (plinth_d / 2 - 0.020)),
+                foot_h / 2, 0.009, foot_h, segments=12, axis="Z",
             )
 
     box(bm, 0.0, az(0.0), foot_h + plinth_h / 2, plinth_w, plinth_d, plinth_h)
 
-    # The platter: a 12" record sits ON this, so it is a shade wider than one.
+    # The platter. A portable deck's is well under a 12" record, and looks it.
     platter_y = foot_h + plinth_h
-    cylinder(bm, -0.055, az(0.02), platter_y + 0.011, 0.158, 0.022, segments=48, axis="Z")
+    cylinder(bm, -0.030, az(0.011), platter_y + 0.007, 0.086, 0.014, segments=48, axis="Z")
     # The spindle.
-    cylinder(bm, -0.055, az(0.02), platter_y + 0.03, 0.0035, 0.038, segments=10, axis="Z")
+    cylinder(bm, -0.030, az(0.011), platter_y + 0.019, 0.0022, 0.022, segments=10, axis="Z")
 
     # The arm: base, tube, counterweight. Swung off the rest, as a deck at rest is.
-    arm_x, arm_z = 0.155, -0.115
-    cylinder(bm, arm_x, az(arm_z), platter_y + 0.018, 0.026, 0.036, segments=16, axis="Z")
+    arm_x, arm_z = 0.086, -0.062
+    cylinder(bm, arm_x, az(arm_z), platter_y + 0.010, 0.015, 0.020, segments=16, axis="Z")
     tube = bmesh.new()
     bmesh.ops.create_cone(
         tube, cap_ends=True, cap_tris=False, segments=10,
-        radius1=0.006, radius2=0.006, depth=0.20,
+        radius1=0.0035, radius2=0.0035, depth=0.112,
         matrix=Matrix.Translation((0.0, 0.0, 0.0)),
     )
     bmesh.ops.rotate(
@@ -739,15 +746,15 @@ def build_turntable():
     )
     bmesh.ops.translate(
         tube, verts=tube.verts,
-        vec=(arm_x - 0.075, az(arm_z + 0.055), platter_y + 0.046),
+        vec=(arm_x - 0.042, az(arm_z + 0.031), platter_y + 0.026),
     )
     tube.to_mesh(obj.data)
     tube.free()
     # Merge the tube's mesh into the main bmesh.
     bm.from_mesh(obj.data)
     cylinder(
-        bm, arm_x + 0.052, az(arm_z - 0.038), platter_y + 0.046,
-        0.017, 0.030, segments=14, axis="Z",
+        bm, arm_x + 0.029, az(arm_z - 0.021), platter_y + 0.026,
+        0.010, 0.017, segments=14, axis="Z",
     )
 
     bm.normal_update()
@@ -777,25 +784,25 @@ def build_clock():
     obj = new_mesh_object("clock")
     bm = bmesh.new()
 
-    radius = 0.145
+    radius = 0.088
     # The case, then the face inset into it, so the rim reads as a rim.
-    cylinder(bm, 0.0, az(0.0), 0.0, radius, 0.040, segments=48, axis="Y")
-    cylinder(bm, 0.0, az(0.021), 0.0, radius - 0.012, 0.006, segments=48, axis="Y")
+    cylinder(bm, 0.0, az(0.0), 0.0, radius, 0.024, segments=48, axis="Y")
+    cylinder(bm, 0.0, az(0.013), 0.0, radius - 0.008, 0.004, segments=48, axis="Y")
 
     # Hands: ten past ten, and a hub over their pivot.
-    for length, width, degrees in ((0.092, 0.009, -60.0), (0.115, 0.006, 60.0)):
+    for length, width, degrees in ((0.054, 0.006, -60.0), (0.068, 0.004, 60.0)):
         hand = bmesh.new()
         bmesh.ops.create_cube(hand, size=1.0, matrix=(
-            Matrix.Diagonal((width, 0.004, length, 1.0))
+            Matrix.Diagonal((width, 0.003, length, 1.0))
         ))
-        bmesh.ops.translate(hand, verts=hand.verts, vec=(0.0, 0.0, length / 2 - 0.008))
+        bmesh.ops.translate(hand, verts=hand.verts, vec=(0.0, 0.0, length / 2 - 0.005))
         bmesh.ops.rotate(
             hand, verts=hand.verts, cent=(0, 0, 0),
             matrix=Matrix.Rotation(math.radians(degrees), 3, "Y"),
         )
-        bmesh.ops.translate(hand, verts=hand.verts, vec=(0.0, az(0.026), 0.0))
+        bmesh.ops.translate(hand, verts=hand.verts, vec=(0.0, az(0.016), 0.0))
         mesh_add(bm, hand)
-    cylinder(bm, 0.0, az(0.028), 0.0, 0.010, 0.008, segments=16, axis="Y")
+    cylinder(bm, 0.0, az(0.018), 0.0, 0.006, 0.005, segments=16, axis="Y")
 
     bm.normal_update()
     bm.to_mesh(obj.data)
@@ -824,23 +831,23 @@ def build_plant():
     # The pot: a tapered tube, wider at the lip, with a rim.
     bmesh.ops.create_cone(
         bm, cap_ends=True, cap_tris=False, segments=28,
-        radius1=0.072, radius2=0.095, depth=0.20,
-        matrix=Matrix.Translation((0.0, 0.0, 0.10)) @ Matrix.Identity(4),
+        radius1=0.040, radius2=0.053, depth=0.105,
+        matrix=Matrix.Translation((0.0, 0.0, 0.0525)) @ Matrix.Identity(4),
     )
-    cylinder(bm, 0.0, az(0.0), 0.198, 0.099, 0.014, segments=28, axis="Z")
+    cylinder(bm, 0.0, az(0.0), 0.104, 0.055, 0.008, segments=28, axis="Z")
 
     # The blades. Odd count, alternating lean, so the plant has no axis of
     # symmetry to give it away as geometry.
     blades = (
-        (0.52, 0.0, 7.0), (0.44, 62.0, -9.0), (0.58, 128.0, 5.0),
-        (0.37, 196.0, -12.0), (0.48, 250.0, 10.0), (0.30, 305.0, -6.0),
-        (0.41, 340.0, 8.0),
+        (0.20, 0.0, 7.0), (0.17, 62.0, -9.0), (0.23, 128.0, 5.0),
+        (0.14, 196.0, -12.0), (0.19, 250.0, 10.0), (0.115, 305.0, -6.0),
+        (0.16, 340.0, 8.0),
     )
     for length, around, lean in blades:
         blade = bmesh.new()
         bmesh.ops.create_cone(
             blade, cap_ends=True, cap_tris=False, segments=4,
-            radius1=0.030, radius2=0.004, depth=length,
+            radius1=0.016, radius2=0.0025, depth=length,
             matrix=Matrix.Translation((0.0, 0.0, length / 2)),
         )
         # Flattened into a blade rather than a spike.
@@ -853,7 +860,7 @@ def build_plant():
             blade, verts=blade.verts, cent=(0, 0, 0),
             matrix=Matrix.Rotation(math.radians(around), 3, "Z"),
         )
-        bmesh.ops.translate(blade, verts=blade.verts, vec=(0.0, 0.0, 0.185))
+        bmesh.ops.translate(blade, verts=blade.verts, vec=(0.0, 0.0, 0.098))
         mesh_add(bm, blade)
 
     bm.normal_update()

@@ -3355,7 +3355,9 @@ fun WallSceneScreen(
                         plant = plantModel,
                         floorY = layout.floorY,
                         rackTopY = rackTopY,
-                        wallZ = ROOM_WALL_Z + ROOM_WALL_T / 2f
+                        wallZ = ROOM_WALL_Z + ROOM_WALL_T / 2f,
+                        roomLeft = roomLeft,
+                        roomRight = roomRight
                     )
 
                     // The posters hang on the frames' own grid, offset half a pitch, so the
