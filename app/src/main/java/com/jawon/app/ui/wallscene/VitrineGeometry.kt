@@ -45,10 +45,27 @@ object VitrineGeometry {
         return lightZ / (sqrt(d2) * d2)
     }
 
-    /** Illuminance from this bay's own pair, at a point measured from the cover's centre. */
-    fun pairIlluminance(x: Float, y: Float): Float =
-        illuminance(x, y, -RoomLighting.UNDER_SIDE, 0f, RoomLighting.UNDER_FORWARD) +
-            illuminance(x, y, RoomLighting.UNDER_SIDE, 0f, RoomLighting.UNDER_FORWARD)
+    /**
+     * Illuminance from one tube, summed over the points it is made of.
+     *
+     * [segments] 1 is the single bulb the vitrine started with; [RoomLighting.VITRINE_SEGMENTS]
+     * is the tube that replaced it. The difference between those two is the whole of what
+     * "not one spotlight, but led tube light" buys, and [evenness] is where it shows.
+     */
+    fun tubeIlluminance(x: Float, y: Float, tubeX: Float, segments: Int): Float {
+        var sum = 0f
+        for (i in 0 until segments) {
+            sum += illuminance(
+                x, y, tubeX, RoomLighting.vitrineSegmentY(i, segments), RoomLighting.UNDER_FORWARD
+            ) / segments
+        }
+        return sum
+    }
+
+    /** Illuminance from this bay's own pair of tubes, at a point measured from the cover's centre. */
+    fun pairIlluminance(x: Float, y: Float, segments: Int = RoomLighting.VITRINE_SEGMENTS): Float =
+        tubeIlluminance(x, y, -RoomLighting.UNDER_SIDE, segments) +
+            tubeIlluminance(x, y, RoomLighting.UNDER_SIDE, segments)
 
     /**
      * What a record in the middle of a full row actually receives: its own pair, plus the
@@ -62,32 +79,32 @@ object VitrineGeometry {
      * short of it. The colours stay separable because a bulb only takes
      * [RoomLighting.UNDER_TINT] of its album's hue.
      */
-    fun bayIlluminance(x: Float, y: Float): Float =
-        pairIlluminance(x, y) +
-            illuminance(
-                x, y, -(WallDimens.SLOT_PITCH - RoomLighting.UNDER_SIDE), 0f,
-                RoomLighting.UNDER_FORWARD
-            ) +
-            illuminance(
-                x, y, WallDimens.SLOT_PITCH - RoomLighting.UNDER_SIDE, 0f,
-                RoomLighting.UNDER_FORWARD
-            )
+    fun bayIlluminance(x: Float, y: Float, segments: Int = RoomLighting.VITRINE_SEGMENTS): Float =
+        pairIlluminance(x, y, segments) +
+            tubeIlluminance(x, y, -(WallDimens.SLOT_PITCH - RoomLighting.UNDER_SIDE), segments) +
+            tubeIlluminance(x, y, WallDimens.SLOT_PITCH - RoomLighting.UNDER_SIDE, segments)
 
     /**
      * Brightest point on the cover over dimmest, sampled on a grid.
      *
      * The number the design is judged by. One light below the sleeve gave **5.1**; the pair
-     * gives **1.54**, and with the neighbours' strips filling in the edges, **1.52**. That
-     * collapse is the whole reason the covers stopped washing at the foot.
+     * gave **1.54** as two bulbs and gives **1.37** as two tubes, **1.36** once the
+     * neighbouring bays fill in the edges. That collapse is the whole reason the covers
+     * stopped washing at the foot, and [segments] is what the last of it cost.
      */
-    fun evenness(steps: Int = 9, withNeighbours: Boolean = false): Float {
+    fun evenness(
+        steps: Int = 9,
+        withNeighbours: Boolean = false,
+        segments: Int = RoomLighting.VITRINE_SEGMENTS
+    ): Float {
         var low = Float.MAX_VALUE
         var high = 0f
         for (i in 0 until steps) {
             for (j in 0 until steps) {
                 val x = COVER_HALF_W * (2f * i / (steps - 1) - 1f)
                 val y = COVER_HALF_H * (2f * j / (steps - 1) - 1f)
-                val e = if (withNeighbours) bayIlluminance(x, y) else pairIlluminance(x, y)
+                val e = if (withNeighbours) bayIlluminance(x, y, segments)
+                else pairIlluminance(x, y, segments)
                 if (e < low) low = e
                 if (e > high) high = e
             }

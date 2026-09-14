@@ -419,9 +419,15 @@ object RoomLighting {
     // records. A light in that channel is **beyond the cover's own edge**, and the mirror image
     // of a light past the edge of a flat glossy plate lands off the plate: these can be as
     // bright as the artwork needs and can never put a hotspot on it. Two of them, one per side,
-    // and the evenness across a sleeve goes from **5.1:1 to 1.54:1** — 1.52 once the
-    // neighbouring bays' strips fill in the edges, since a strip stands in the channel between
-    // two records and lights both. See [VitrineGeometry], which computes all three.
+    // and the evenness across a sleeve goes from **5.1:1 to 1.37:1** — 1.36 once the
+    // neighbouring bays fill in the edges, since a tube stands in the channel between two
+    // records and lights both. See [VitrineGeometry], which computes all of those.
+    //
+    // **Each side is a TUBE, not a bulb, since 2026-09-14** — the owner: "not one spotlight,
+    // but led tube light". Filament has no line lights, so it is a row of points along the
+    // tube's length, the same trick [RAIL_COLUMNS] uses horizontally. That is what took the
+    // evenness from 1.54 to 1.37: a point level with the middle of a sleeve is 71mm from its
+    // top edge and 95mm from its top corner, and a tube has a point near every part of it.
     //
     // Two lights per bay instead of one, so around two hundred exist at this camera — but
     // Filament frustum-culls lights before froxelising and these reach 260mm, so what is
@@ -473,6 +479,52 @@ object RoomLighting {
      * record clears them by 4.8mm at every angle. See `tools/models/build_models.py`.
      */
     const val UNDER_SIDE = 0.0695f
+
+    /**
+     * How tall the tube each side of a bay is, in metres — the run its points are spread
+     * along, and the height of the rod that stands for it in `build_beam`.
+     *
+     * A record is [WallDimens.CASE_H] 142mm tall and this is 125mm, so the tube stops just
+     * inside the artwork at both ends. Running it the full height would put its ends level
+     * with the sleeve's corners, which is where a real fixture is always *shorter* than what
+     * it lights: the last thing a shop wants is the tube reading as taller than the record.
+     */
+    const val VITRINE_SPAN = 0.125f
+
+    /**
+     * The points a tube is made of, per side, before [QualityTier.vitrineSegments] tiers it.
+     *
+     * **Filament has no line lights and no area lights.** A tube is a row of points, exactly
+     * as [RAIL_COLUMNS] already does it horizontally under each shelf; this is the same trick
+     * turned on its side. Each point carries [UNDER_CANDELA] divided by however many there
+     * are, so changing the count changes the *shape* of the light and not its strength.
+     *
+     * What it buys is the falloff along the record's height. One point level with the middle
+     * of a sleeve is 71mm from its top edge and 95mm from its top corner, so the corners are
+     * roughly half as brightly lit as the centre before anything else is accounted for. A tube
+     * running the sleeve's own height has a point near every part of it, and the evenness this
+     * file quotes — see `VitrineGeometry.evenness` — is what that is worth.
+     */
+    const val VITRINE_SEGMENTS = 5
+
+    /**
+     * Where the [i]th of [count] points sits on a tube, relative to the middle of the record.
+     *
+     * Evenly spaced across [VITRINE_SPAN] and centred, so the outermost points land half a
+     * spacing inside each end rather than exactly on it — the same convention the shelf-edge
+     * rail's columns use, and for the same reason: points sitting exactly on the ends make the
+     * tube read as two bright dots with a dim middle, which is the opposite of the problem it
+     * was built to solve.
+     *
+     * A single point returns 0, which is the middle of the record: at `count` 1 this is exactly
+     * the fixture it replaced, which is what makes [QualityTier.vitrineSegments] safe to turn
+     * down to 1 on LOW.
+     */
+    fun vitrineSegmentY(i: Int, count: Int): Float {
+        if (count <= 1) return 0f
+        val spacing = VITRINE_SPAN / count
+        return (i - (count - 1) / 2f) * spacing
+    }
 
     /**
      * Bright, because this is a key light now rather than a decoration.

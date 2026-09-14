@@ -92,9 +92,10 @@ class CaseSlot {
      * cannot be captured where it is declared — and the carrier is a plain `Node`, so casting
      * *it* to `LightNode` yields null. The carrier is what moves; the bulbs take a colour.
      *
-     * **Two of them since 2026-09-13**, one per side of the bay. See
-     * `RoomLighting.UNDER_SIDE`: a light out in the channel between records is past the edge
-     * of the cover, which is what keeps its reflection off the artwork.
+     * **Two tubes since 2026-09-14**, one per side of the bay, each of them a row of
+     * `QualityTier.vitrineSegments` points standing in for a line light Filament will not
+     * give us. See `RoomLighting.UNDER_SIDE` for why they are out in the channel between
+     * records: past the cover's own edge is where a light cannot reflect in the artwork.
      */
     var underCarrier: Node? = null
     private var underBulbs: List<LightNode>? = null
@@ -746,7 +747,13 @@ fun SceneScope.CaseSlotNodes(
     size: Int,
     materialLoader: MaterialLoader,
     caseInstances: List<FilamentInstance>,
-    beamInstances: List<FilamentInstance>
+    beamInstances: List<FilamentInstance>,
+    /**
+     * Points per vitrine tube — see [QualityTier.vitrineSegments]. Passed in rather than
+     * read here because the tier is the scene's state and this file is the scene's pool;
+     * it is also the one number in here that multiplies the room's light count.
+     */
+    segments: Int
 ) {
     slots.ensure(size)
 
@@ -811,28 +818,45 @@ fun SceneScope.CaseSlotNodes(
                 slot.underCarrier = this
                 isVisible = false
             }) {
-                // One per side of the bay, standing where the emissive strips stand. The
-                // offset is the whole design — see RoomLighting.UNDER_SIDE.
+                // **A tube each side, not a bulb each side.** The owner: "make those side
+                // bar lights also light like a tube light. not one spotlight, but led tube
+                // light." Filament has no line lights, so a tube is a row of points along
+                // its length — the same trick the shelf-edge rail already uses horizontally,
+                // turned on its side. See RoomLighting.VITRINE_SEGMENTS.
+                //
+                // The SIDE offset is the other half of the design, and the older half: a
+                // light out in the channel between two records is past the cover's own edge,
+                // where it cannot put a reflection on the artwork. See UNDER_SIDE.
                 for (side in intArrayOf(-1, 1)) {
-                    Node(position = Position(side * RoomLighting.UNDER_SIDE, 0f, 0f)) {
-                        LightNode(
-                            type = LightManager.Type.POINT,
-                            apply = {
-                                intensityCandela(RoomLighting.UNDER_CANDELA)
-                                falloff(RoomLighting.UNDER_FALLOFF)
-                                // Off the room's default channel and onto its own. A light
-                                // that stayed on channel 0 as well would still reach
-                                // everything.
-                                lightChannel(0, false)
-                                lightChannel(RoomLighting.UNDER_LIGHT_CHANNEL, true)
-                                // Two hundred of these exist at this camera and Filament
-                                // frustum-culls them down to the bays on screen. Clustered
-                                // forward rendering is fine with that; two hundred shadow
-                                // casters would not be, and there is no shadow map budget
-                                // remotely near it.
-                                castShadows(false)
-                            }
-                        )
+                    repeat(segments) { i ->
+                        Node(
+                            position = Position(
+                                side * RoomLighting.UNDER_SIDE,
+                                RoomLighting.vitrineSegmentY(i, segments),
+                                0f
+                            )
+                        ) {
+                            LightNode(
+                                type = LightManager.Type.POINT,
+                                apply = {
+                                    // Each point carries its share, so the count changes the
+                                    // SHAPE of the light and never its strength.
+                                    intensityCandela(RoomLighting.UNDER_CANDELA / segments)
+                                    falloff(RoomLighting.UNDER_FALLOFF)
+                                    // Off the room's default channel and onto its own. A
+                                    // light that stayed on channel 0 as well would still
+                                    // reach everything.
+                                    lightChannel(0, false)
+                                    lightChannel(RoomLighting.UNDER_LIGHT_CHANNEL, true)
+                                    // Ten per bay at HIGH, and Filament frustum-culls them
+                                    // down to the bays actually on screen before it
+                                    // froxelises. Clustered forward rendering is built for
+                                    // exactly this, provided none of them casts a shadow,
+                                    // and there is no shadow map budget remotely near it.
+                                    castShadows(false)
+                                }
+                            )
+                        }
                     }
                 }
             }

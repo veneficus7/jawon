@@ -44,7 +44,11 @@ class SpotifySession @Inject constructor(
      */
     suspend fun token(now: Long = System.currentTimeMillis()): String? = refreshLock.withLock {
         val access = preferences.spotifyAccessToken
-        if (access != null && now < preferences.spotifyExpiresAt) return access
+        // **The margin is the point of the sentence above, and it was missing.** Without it a
+        // token with two seconds left passes this test and then expires mid-request, which
+        // surfaces as a 401 on whichever call happened to be in flight — a record that will
+        // not start, roughly once an hour, with nothing wrong anywhere near the record.
+        if (access != null && now < preferences.spotifyExpiresAt - EXPIRY_MARGIN_MS) return access
 
         val refresh = preferences.spotifyRefreshToken ?: return null
         val id = clientId.ifBlank { return null }
@@ -64,4 +68,9 @@ class SpotifySession @Inject constructor(
     }
 
     fun signOut() = preferences.clearSpotifyTokens()
+
+    private companion object {
+        /** Refresh this long before the token actually expires. A minute, as [token] says. */
+        const val EXPIRY_MARGIN_MS = 60_000L
+    }
 }

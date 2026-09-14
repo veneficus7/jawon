@@ -46,7 +46,33 @@ class SpotifyPlayer @Inject constructor(
             is SpotifyResult.Failed -> return d
             is SpotifyResult.Ok -> d.value
         }
-        return client.play(token, albumUri, trackIndex, positionMs, device)
+        val played = client.play(token, albumUri, trackIndex, positionMs, device)
+        // A device that has gone away answers 404, and the id we were holding is the reason.
+        // Drop it and let the next attempt look again rather than failing the same way twice.
+        if (played is SpotifyResult.Failed) forgetDevice()
+        return played
+    }
+
+    /**
+     * The device [ensureDevice] last settled on, and when.
+     *
+     * Resolving a device is one request to list them and sometimes a second to transfer
+     * playback, and it happened on **every** `playAlbum`. That is two thirds of the cost of
+     * starting a record, paid again every time — and once the scratch was routed to Spotify it
+     * was being paid several times a second, which is a rate limit rather than a cost. The
+     * phone's own Spotify does not move between one track and the next, so re-asking is
+     * mostly asking a question whose answer is already known.
+     *
+     * [DEVICE_TTL_MS] rather than forever, because a device genuinely can change — headphones,
+     * a speaker, another phone — and [forgetDevice] on any failed play, because the one thing
+     * worse than re-asking is confidently addressing a device that is no longer there.
+     */
+    private var cachedDeviceId: String? = null
+    private var cachedDeviceAt = 0L
+
+    private fun forgetDevice() {
+        cachedDeviceId = null
+        cachedDeviceAt = 0L
     }
 
     suspend fun pause(): SpotifyResult<Unit> = withToken { client.pause(it) }
@@ -76,6 +102,9 @@ class SpotifyPlayer @Inject constructor(
      * listed, chosen, and then silently does nothing.
      */
     private suspend fun ensureDevice(token: String): SpotifyResult<String?> {
+        val now = android.os.SystemClock.elapsedRealtime()
+        cachedDeviceId?.let { if (now - cachedDeviceAt < DEVICE_TTL_MS) return SpotifyResult.Ok(it) }
+
         val devices = when (val d = client.devices(token)) {
             is SpotifyResult.Failed -> return d
             is SpotifyResult.Ok -> d.value
@@ -83,12 +112,20 @@ class SpotifyPlayer @Inject constructor(
         val usable = devices.filter { !it.isRestricted && it.id != null }
         if (usable.isEmpty()) return SpotifyResult.Failed(SpotifyFailure.NoDevice)
 
-        usable.firstOrNull { it.isActive }?.let { return SpotifyResult.Ok(it.id) }
+        usable.firstOrNull { it.isActive }?.let {
+            cachedDeviceId = it.id
+            cachedDeviceAt = now
+            return SpotifyResult.Ok(it.id)
+        }
 
         val target = usable.first()
         return when (val transfer = client.transferTo(token, target.id!!)) {
             is SpotifyResult.Failed -> transfer
-            is SpotifyResult.Ok -> SpotifyResult.Ok(target.id)
+            is SpotifyResult.Ok -> {
+                cachedDeviceId = target.id
+                cachedDeviceAt = now
+                SpotifyResult.Ok(target.id)
+            }
         }
     }
 
@@ -107,5 +144,8 @@ class SpotifyPlayer @Inject constructor(
          * The local player needs none of this: it reports its own position for nothing.
          */
         const val POLL_INTERVAL_MS = 1_000L
+
+        /** How long a resolved device is trusted before it is looked up again. */
+        const val DEVICE_TTL_MS = 60_000L
     }
 }

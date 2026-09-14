@@ -214,6 +214,30 @@ enum class QualityTier {
         }
 
     /**
+     * How many point lights stand in for each of a bay's two vitrine tubes.
+     *
+     * Filament has no line or area lights, so a tube is faked the way the shelf-edge rail
+     * fakes one — a row of points along its length, each carrying its share of the whole
+     * (see `RoomLighting.VITRINE_SEGMENTS`). One point is a spot: it lights the middle of a
+     * sleeve and lets the corners fall away, which is what the owner was seeing when he asked
+     * for "not one spotlight, but led tube light".
+     *
+     * **This is the room's most light-hungry number, so it is the one that must be tiered.**
+     * Two tubes a bay at five points each is ten lights per album, against two before. What
+     * reaches the GPU is far less than that sounds — Filament frustum-culls lights before
+     * froxelising and these reach `UNDER_FALLOFF`, 260mm, so only the handful of bays actually
+     * on screen are submitted — but the multiplier is real and the floor of the tier system
+     * is the device that cannot afford anything. LOW keeps the single point it always had:
+     * a spot instead of a tube is a look, not a fault.
+     */
+    val vitrineSegments: Int
+        get() = when (this) {
+            HIGH -> 5
+            MEDIUM -> 3
+            LOW -> 1
+        }
+
+    /**
      * Steps per pixel for the volumetric fog (fog.mat), or 0 for no fog at all.
      *
      * **The most expensive thing in the room per pixel, and it is every pixel.** The fog is a

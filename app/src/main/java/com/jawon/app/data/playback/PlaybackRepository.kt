@@ -20,6 +20,7 @@ import com.jawon.app.data.local.Track
 import com.jawon.app.data.prefs.AppPreferences
 import com.jawon.app.data.remote.SubsonicClient
 import com.jawon.app.data.remote.SubsonicServer
+import com.jawon.app.data.spotify.SpotifyFailure
 import com.jawon.app.data.spotify.SpotifyPlayer
 import com.jawon.app.data.spotify.SpotifyResult
 import com.jawon.app.playback.PlaybackService
@@ -101,6 +102,34 @@ class PlaybackRepository @Inject constructor(
 
     /** Consecutive polls that came back "nothing is playing". */
     private var spotifyIdleReports = 0
+
+    /**
+     * `elapsedRealtime` before which nothing may be sent to Spotify, because Spotify said so.
+     *
+     * **Nothing used to read `RateLimited` on this path at all** — the poll tested for
+     * `is SpotifyResult.Ok` and dropped every failure on the floor, so a 429 meant the app
+     * carried on asking once a second for as long as the record was open, which is the one
+     * behaviour guaranteed to keep the ban alive. See [holdOff].
+     */
+    private var spotifyHoldOffUntil = 0L
+
+    /** The transport command waiting to be sent, and the job that will send it. See [sendSoon]. */
+    private var spotifySendJob: Job? = null
+
+    /**
+     * What the room wants the user told, once.
+     *
+     * A Spotify play that fails is otherwise **completely silent**: the case opens, the disc
+     * lifts out and spins, and no sound arrives with no explanation anywhere on screen. That is
+     * most of what "Spotify listening is not working" is from the outside, whatever the actual
+     * fault underneath was, and it is why every failure on this path now ends up here.
+     */
+    private val _notice = MutableStateFlow<String?>(null)
+    val notice: StateFlow<String?> = _notice.asStateFlow()
+
+    fun clearNotice() {
+        _notice.value = null
+    }
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
@@ -431,6 +460,69 @@ class PlaybackRepository @Inject constructor(
     }
 
     /**
+     * Turns a Spotify failure into something worth reading, and honours a 429.
+     *
+     * Returns true if the call succeeded. The wording is deliberately about what to *do*:
+     * "there is nowhere to play" is not a sentence anyone can act on, and the one thing that
+     * fixes it is opening Spotify.
+     */
+    private fun <T> handleSpotify(result: SpotifyResult<T>): Boolean {
+        if (result is SpotifyResult.Ok) return true
+        val failure = (result as SpotifyResult.Failed).failure
+        _notice.value = when (failure) {
+            is SpotifyFailure.NeedsLogin ->
+                "Spotify needs you to sign in again — Settings, then Spotify."
+            is SpotifyFailure.NeedsPremium ->
+                "Spotify only lets Premium accounts play from another app."
+            is SpotifyFailure.NoDevice ->
+                "Open Spotify once so it has somewhere to play, then try again."
+            is SpotifyFailure.RateLimited -> {
+                holdOff(failure.retryAfterSeconds)
+                "Spotify is asking for a pause — back in ${failure.retryAfterSeconds}s."
+            }
+            is SpotifyFailure.Other -> "Spotify said: ${failure.message}"
+        }
+        return false
+    }
+
+    /** Stops everything talking to Spotify for [seconds], and stops the clock pretending. */
+    private fun holdOff(seconds: Int) {
+        spotifyHoldOffUntil = SystemClock.elapsedRealtime() + seconds.coerceIn(1, 60) * 1000L
+    }
+
+    private fun heldOff(): Boolean = SystemClock.elapsedRealtime() < spotifyHoldOffUntil
+
+    /**
+     * Sends ONE transport command after the finger stops moving, replacing any still waiting.
+     *
+     * **This is the fix for a request storm this app created.** The scratch calls
+     * `onScrub` every `Scratch.SEEK_THROTTLE_MS` — 80ms, 12.5 a second — which was free while
+     * those seeks went to the local player, and stopped being free the moment they were
+     * routed to Spotify: a two-second scratch became twenty-five Web API calls, and each one
+     * that crossed a track boundary was a `playAlbum`, which resolves a device first and can
+     * be three calls on its own. Spotify counts requests over a rolling thirty seconds, so a
+     * few seconds of scratching earns a 429 and then *nothing* Spotify works — not playback,
+     * not the poll, not the next album.
+     *
+     * The clock is anchored the instant the finger moves, so the deck, the disc and the
+     * readout are all live throughout; what is debounced is only the one thing that costs a
+     * request. Which is also what the design always said this gesture means on a Spotify
+     * record: the caller sends where the finger *landed*, not where it passed.
+     */
+    private fun sendSoon(block: suspend () -> SpotifyResult<*>) {
+        spotifySendJob?.cancel()
+        spotifySendJob = scope.launch {
+            delay(SPOTIFY_SEND_DEBOUNCE_MS)
+            if (heldOff()) return@launch
+            // Re-stamped here rather than when the command was queued: the grace window
+            // exists to keep the poll from overwriting a command Spotify has not caught up
+            // with yet, and that window starts when the command is actually sent.
+            spotifyCommandAt = SystemClock.elapsedRealtime()
+            handleSpotify(block())
+        }
+    }
+
+    /**
      * Where the Spotify clock says the playhead is, right now.
      *
      * The anchor plus however long it has been running, clamped to the track. This is what
@@ -482,7 +574,17 @@ class PlaybackRepository @Inject constructor(
         activeSpotifyAlbum = albumUri
 
         anchorSpotify(startPositionMs, ownCommand = true)
-        spotifyPlayer.playAlbum(albumUri, startIndex.coerceAtLeast(0), startPositionMs.coerceAtLeast(0L))
+        // Any pending scrub belongs to the record that was open a moment ago.
+        spotifySendJob?.cancel()
+        _notice.value = null
+        // **The result is read now.** It used to be discarded, so "there is nowhere to play"
+        // and "your account cannot" both looked exactly like a record that opened and then
+        // sat there in silence.
+        handleSpotify(
+            spotifyPlayer.playAlbum(
+                albumUri, startIndex.coerceAtLeast(0), startPositionMs.coerceAtLeast(0L)
+            )
+        )
         startSpotifyPolling()
     }
 
@@ -535,9 +637,21 @@ class PlaybackRepository @Inject constructor(
                 }
             }
             while (true) {
+                if (heldOff()) {
+                    // Asking during a 429 is what keeps a 429 alive.
+                    delay(SpotifyPlayer.POLL_INTERVAL_MS)
+                    continue
+                }
                 val sentAt = SystemClock.elapsedRealtime()
                 val result = spotifyPlayer.playback()
                 val now = SystemClock.elapsedRealtime()
+                if (result is SpotifyResult.Failed) {
+                    // A poll is not worth a notice of its own unless it is the rate limiter,
+                    // which needs everything to stop; a one-off network blip should leave the
+                    // clock running rather than put a message on screen.
+                    val failure = result.failure
+                    if (failure is SpotifyFailure.RateLimited) handleSpotify(result)
+                }
                 if (result is SpotifyResult.Ok) {
                     val state = result.value
                     if (state != null) {
@@ -584,6 +698,7 @@ class PlaybackRepository @Inject constructor(
 
     suspend fun playPause() {
         activeSpotifyAlbum?.let {
+            if (heldOff()) return
             val playing = _playback.value.isPlaying
             // Stop or start the clock here, not a second later when Spotify is next asked.
             // Order matters: the position is read while `isPlaying` still says what it was.
@@ -632,7 +747,7 @@ class PlaybackRepository @Inject constructor(
     suspend fun seekToNext() {
         activeSpotifyAlbum?.let {
             stepSpotifyTrack(+1)
-            spotifyPlayer.next()
+            sendSoon { spotifyPlayer.next() }
             return
         }
         ensureController().seekToNextMediaItem()
@@ -641,7 +756,7 @@ class PlaybackRepository @Inject constructor(
     suspend fun seekToPrevious() {
         activeSpotifyAlbum?.let {
             stepSpotifyTrack(-1)
-            spotifyPlayer.previous()
+            sendSoon { spotifyPlayer.previous() }
             return
         }
         ensureController().seekToPreviousMediaItem()
@@ -677,8 +792,9 @@ class PlaybackRepository @Inject constructor(
         activeSpotifyAlbum?.let {
             // The clock takes the new place immediately and owns it for the grace window, so
             // the poll that lands mid-seek cannot drag the playhead back to where it was.
+            // The network call waits for the finger to stop — see sendSoon.
             anchorSpotify(positionMs, ownCommand = true)
-            spotifyPlayer.seek(positionMs)
+            sendSoon { spotifyPlayer.seek(positionMs) }
             return
         }
         ensureController().seekTo(positionMs)
@@ -746,12 +862,16 @@ class PlaybackRepository @Inject constructor(
      * now instead of at the next poll — the poll corrects it within a second if Spotify did
      * something else.
      */
-    private suspend fun playSpotifyFrom(album: String, index: Int, positionMs: Long) {
+    private fun playSpotifyFrom(album: String, index: Int, positionMs: Long) {
         anchorSpotify(positionMs, ownCommand = true)
         if (index in queuedTracks.indices) {
             _playback.value = _playback.value.copy(currentIndex = index, isPlaying = true)
         }
-        spotifyPlayer.playAlbum(album, index.coerceAtLeast(0), positionMs.coerceAtLeast(0L))
+        // Debounced like every other transport command, and for the sharpest version of the
+        // reason: a scratch that crosses track boundaries lands HERE, and this is the call
+        // that resolves a device before it plays. Sent twelve times a second it is the most
+        // expensive thing this app can possibly do to its own rate limit.
+        sendSoon { spotifyPlayer.playAlbum(album, index.coerceAtLeast(0), positionMs.coerceAtLeast(0L)) }
     }
 
     private companion object {
@@ -784,6 +904,16 @@ class PlaybackRepository @Inject constructor(
 
         /** Idle reports in a row before the disc is allowed to stop. */
         const val SPOTIFY_IDLE_REPORTS_TO_STOP = 2
+
+        /**
+         * How long a transport command waits for the finger to stop moving.
+         *
+         * 220ms against the scratch's own 80ms seek tick, so a drag of any length is one
+         * request rather than twelve a second. Short enough that a tap on a track or a skip
+         * still feels immediate — and the deck does not wait for it anyway, because the clock
+         * moved the instant the gesture did.
+         */
+        const val SPOTIFY_SEND_DEBOUNCE_MS = 220L
     }
 }
 

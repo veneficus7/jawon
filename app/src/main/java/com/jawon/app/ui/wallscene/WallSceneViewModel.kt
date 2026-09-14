@@ -361,6 +361,18 @@ class WallSceneViewModel @Inject constructor(
     val positionMs: StateFlow<Long> = playbackRepository.positionMs
 
     /**
+     * Something the room needs to say out loud, or null.
+     *
+     * Only Spotify fills this so far, and only because a Spotify record that will not play is
+     * otherwise indistinguishable from one that is about to: the case opens, the disc lifts
+     * and spins, and the silence has no explanation attached to it. Everything else in the app
+     * fails where the user is already looking.
+     */
+    val notice: StateFlow<String?> = playbackRepository.notice
+
+    fun onNoticeShown() = playbackRepository.clearNotice()
+
+    /**
      * Fires when a record has played all the way through.
      *
      * The room answers it by closing the case — see the collector in `WallSceneScreen`. It is

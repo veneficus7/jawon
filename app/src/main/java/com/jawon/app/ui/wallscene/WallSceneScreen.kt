@@ -153,6 +153,7 @@ import io.github.sceneview.node.LightNode
 import io.github.sceneview.node.Node as SceneNode
 import io.github.sceneview.safeDestroyGeometry
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlin.math.abs
@@ -941,6 +942,12 @@ private const val BEAM_MODEL_ASSET = "models/beam.glb"
 private const val MAX_CASE_SLOTS = 512
 
 /**
+ * How long the room's notice stays up. Long enough to read a sentence twice; short enough
+ * that it is gone by the time the thing it describes has been dealt with.
+ */
+private const val NOTICE_DWELL_MS = 6_000L
+
+/**
  * Master dust brightness. Tuning knob — dust should suggest air, not snow. At 0.55 the
  * motes read as distinct white specks; this is deliberately below the point where you
  * notice them individually.
@@ -1088,6 +1095,7 @@ fun WallSceneScreen(
         // where the per-frame cost actually is.
         val sleepMode by viewModel.sleepMode.collectAsStateWithLifecycle()
         val sleepRemainingMs by viewModel.sleepRemainingMs.collectAsStateWithLifecycle()
+        val roomNotice by viewModel.notice.collectAsStateWithLifecycle()
         val diagnostics = viewModel.diagnostics
         val scratchAudio = viewModel.scratchAudio
         val initialTier = remember(context) { QualityTier.detect(context) }
@@ -3597,7 +3605,12 @@ fun WallSceneScreen(
                 materialLoader = materialLoader,
                 size = casePoolSize,
                 caseInstances = caseInstances,
-                beamInstances = beamInstances
+                beamInstances = beamInstances,
+                // The tier the room STARTED at, deliberately, not the one it may have
+                // stepped down to. A light count is structural: these nodes are built once
+                // and rebuilding the whole pool mid-session to drop two lights a bay would
+                // destroy every ImageNode in it, which is trap 1 and aborts the process.
+                segments = initialTier.vitrineSegments
             )
             // The disc that breaks when an album is removed. Mounted always, hidden until
             // it is needed � see DiscardScene.
@@ -3819,6 +3832,30 @@ fun WallSceneScreen(
                         openCase(playing.albumId)
                     },
                     onPlayPause = viewModel::onPlayPause
+                )
+            }
+            // **What the room says when a record will not play.**
+            //
+            // Above the chrome rather than over the wall: it belongs with the controls,
+            // and a message across the records would be the app shouting at its own library.
+            // It clears itself, because every one of these is a passing condition — open
+            // Spotify, wait out the rate limiter, sign in again — and a message that has to
+            // be dismissed is one more thing to do while the music is not playing.
+            roomNotice?.let { words ->
+                LaunchedEffect(words) {
+                    delay(NOTICE_DWELL_MS)
+                    viewModel.onNoticeShown()
+                }
+                Text(
+                    text = words,
+                    fontFamily = JetBrainsMonoFamily,
+                    fontSize = 10.5.sp,
+                    lineHeight = 15.sp,
+                    letterSpacing = 0.6.sp,
+                    color = LampAmber,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 14.dp, vertical = 8.dp)
                 )
             }
             Row(

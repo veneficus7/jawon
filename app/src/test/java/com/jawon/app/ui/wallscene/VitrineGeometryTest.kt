@@ -16,15 +16,80 @@ import org.junit.Test
 class VitrineGeometryTest {
 
     @Test
-    fun `the pair lights a sleeve three times as evenly as one light below it`() {
+    fun `the pair lights a sleeve nearly four times as evenly as one light below it`() {
         val pair = VitrineGeometry.evenness()
         val under = VitrineGeometry.underlightEvenness()
 
         // The claim in RoomLighting's header, all three numbers of it.
         assertEquals(5.10f, under, 0.05f)
-        assertEquals(1.54f, pair, 0.05f)
-        assertEquals(1.52f, VitrineGeometry.evenness(withNeighbours = true), 0.05f)
+        assertEquals(1.37f, pair, 0.02f)
+        assertEquals(1.36f, VitrineGeometry.evenness(withNeighbours = true), 0.02f)
         assertTrue("the pair should be the more even of the two", pair < under)
+    }
+
+    @Test
+    fun `a tube is more even than the spot it replaced, and three points get most of it`() {
+        // "not one spotlight, but led tube light". A point level with the middle of a sleeve
+        // is 71mm from its top edge and 95mm from its top corner, so the corners come out
+        // roughly half lit; a row of points spread over the sleeve's own height has one near
+        // every part of it. This is the number that claim rests on.
+        val spot = VitrineGeometry.evenness(segments = 1)
+        val tube = VitrineGeometry.evenness(segments = RoomLighting.VITRINE_SEGMENTS)
+        assertEquals(1.54f, spot, 0.02f)
+        assertTrue("a tube at $tube should beat a spot at $spot", tube < spot)
+
+        // And the tiering is honest: MEDIUM's three points are within a hair of HIGH's five,
+        // which is why QualityTier.vitrineSegments can step down without stepping the look
+        // down with it. Past three this stops buying anything at all.
+        val three = VitrineGeometry.evenness(segments = 3)
+        assertTrue("three points should be within 1% of five", three - tube < 0.01f)
+        assertTrue("seven should buy nothing over five",
+            tube - VitrineGeometry.evenness(segments = 7) < 0.005f)
+    }
+
+    @Test
+    fun `a tube moves light from the middle of a sleeve to its ends`() {
+        // The shape of the change, not just its size: a tube is DIMMER in the middle than the
+        // spot was and no dimmer at the corners. That redistribution is the whole of what a
+        // line source does, and it is why the total candela did not have to move.
+        val centreSpot = VitrineGeometry.pairIlluminance(0f, 0f, segments = 1)
+        val centreTube = VitrineGeometry.pairIlluminance(0f, 0f, segments = 5)
+        assertTrue("the tube should be gentler in the middle", centreTube < centreSpot)
+
+        val cornerSpot = VitrineGeometry.pairIlluminance(
+            VitrineGeometry.COVER_HALF_W, VitrineGeometry.COVER_HALF_H, segments = 1
+        )
+        val cornerTube = VitrineGeometry.pairIlluminance(
+            VitrineGeometry.COVER_HALF_W, VitrineGeometry.COVER_HALF_H, segments = 5
+        )
+        assertTrue("the tube must not lose the corners", cornerTube >= cornerSpot)
+    }
+
+    @Test
+    fun `one point is exactly the fixture the tube replaced`() {
+        // What makes QualityTier.vitrineSegments safe to turn down to 1 on LOW: at a count of
+        // one the row collapses to a single point at the middle of the record, which is the
+        // bulb that was there before. A spot instead of a tube is a look, not a fault.
+        assertEquals(0f, RoomLighting.vitrineSegmentY(0, 1), 1e-6f)
+        assertEquals(
+            VitrineGeometry.illuminance(0f, 0f, RoomLighting.UNDER_SIDE, 0f, RoomLighting.UNDER_FORWARD),
+            VitrineGeometry.tubeIlluminance(0f, 0f, RoomLighting.UNDER_SIDE, 1),
+            1e-6f
+        )
+    }
+
+    @Test
+    fun `a tube's points sit inside the record it lights`() {
+        // A fixture taller than the thing it lights reads as scaffolding. Spread over
+        // VITRINE_SPAN and centred, the outermost point lands half a spacing inside each end.
+        val n = RoomLighting.VITRINE_SEGMENTS
+        val top = RoomLighting.vitrineSegmentY(n - 1, n)
+        val bottom = RoomLighting.vitrineSegmentY(0, n)
+        assertEquals("the row should be centred on the record", top, -bottom, 1e-6f)
+        assertTrue(
+            "the tube's top point at $top is outside the sleeve",
+            top < VitrineGeometry.COVER_HALF_H
+        )
     }
 
     @Test
