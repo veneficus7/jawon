@@ -897,7 +897,7 @@ object RoomLighting {
      * Dimmer than a spot: the wall is the backdrop, and the records have to stay the brightest
      * thing in the room. Enough that a framed sleeve reads and the brick's courses show.
      */
-    const val WASHER_CANDELA = 1_400f
+    const val WASHER_CANDELA = 2_300f
 
     /** Past the wall it washes, so no part of the band ends at a cutoff (trap 6). */
     const val WASHER_FALLOFF = 1.6f
@@ -1048,7 +1048,19 @@ object RoomLighting {
      * keeps the case bodies (`#2A2622`) and the wall (`#1A1410`) from going to absolute black,
      * and the reference photographs have shadow detail rather than holes.
      */
-    const val AMBIENT_INTENSITY = 6_500f
+    const val AMBIENT_INTENSITY = 11_000f
+
+    // **Raised from 6500 on 2026-09-14**: "i feel like the wall and the overall room is dark,
+    // can we light it up more?" Measured on his phone first, so the fix had a target rather
+    // than a direction — the lit brick above the rack read 66.6, the back panel 59.6, the
+    // area below the bottom shelf 28.0 and the band above the top row 16.7.
+    //
+    // This rather than [AMBIENT_FILL] because of what each one does. FILL scales only the
+    // diffuse half, and doubling it earlier bought a tenth on the covers, which is what said
+    // ambient was no longer what held them down. This scales the reflections with it, and the
+    // reflections are what large dull surfaces — brick, timber, floor — actually show. It is
+    // also the lever that lifts the room WITHOUT touching a single fixture, so the balance
+    // between the records and everything else stays exactly where it was tuned.
 
     /**
      * Builds the room's image-based lighting — **with no asset files at all.**

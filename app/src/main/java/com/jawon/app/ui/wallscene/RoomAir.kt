@@ -213,7 +213,7 @@ object RoomAir {
      * back before anyone saw the second. Keep it sparse, keep extinction low, and remember it
      * is the most expensive thing in the room per pixel — see [QualityTier.fogSteps].
      */
-    const val FOG_ENABLED = false
+    const val FOG_ENABLED = true
 
     /**
      * The fog volume, front to back: from just behind where the disc settles when a record is
@@ -239,7 +239,14 @@ object RoomAir {
     const val FOG_EXTINCTION = 1.1f
 
     /** Overall density: half, with fog.mat's sparser threshold making the gaps between wisps. */
-    const val FOG_DENSITY = 0.5f
+    const val FOG_DENSITY = 0.20f
+
+    // **Back on at 0.20 of its authored 0.5, 2026-09-14.** The owner parked it a day after
+    // asking for it — "naah man just remove fog for now" — and has now asked for "a little
+    // fog back" to see it against the room's new light. A little is the operative word, and
+    // the reason is arithmetic rather than taste: fog scatters whatever is lit, so it and
+    // [RoomLighting.AMBIENT_INTENSITY] multiply. Both went up in the same build, and at the
+    // authored density the room would go milky rather than atmospheric.
 
     /**
      * How much of the lamp colour fog far from any fitting scatters. Nearly nothing: fog that
