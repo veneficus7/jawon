@@ -268,8 +268,17 @@ private fun IdleContent(
                 color = LabelCream
             )
             Text(
-                text = "Jawon finds the music already here and sorts it into albums itself. " +
-                    "Nothing to point at.",
+                // **A chooser says what each route IS, not how it works.**
+                //
+                // All four of these carried a paragraph, always on screen, one under the
+                // other: the first thing anyone saw when adding music was 172 words of prose.
+                // The owner, having already had the same conversation about Settings: "also
+                // add album page has lots of text."
+                //
+                // What the detail was for is real, and it still gets said — on the screen the
+                // route actually leads to, where it is about the thing in front of you rather
+                // than about a button you have not pressed.
+                text = "Finds the music already on this phone. Nothing to point at.",
                 style = JawonTextStyle.mono.copy(color = LabelDim),
                 lineHeight = 18.sp
             )
@@ -302,8 +311,7 @@ private fun IdleContent(
             Text(
                 // Not a fallback for the stubborn: MediaStore only indexes what the media
                 // scanner has seen, so this is the only route to some music.
-                text = "For music on a memory card or in cloud storage, which a scan " +
-                    "cannot see.",
+                text = "For a memory card or cloud storage, which a scan cannot see.",
                 style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = 10.sp),
                 lineHeight = 16.sp
             )
@@ -327,10 +335,10 @@ private fun IdleContent(
                 color = LabelDim
             )
             Text(
-                text = "Put a disc in a USB drive and read it straight off the silver. The " +
-                    "tracks are written as WAV into a folder you choose, at exactly the " +
-                    "quality they were pressed at, and then imported like any other folder. " +
-                    "Most drives need their own power supply.",
+                // The power supply stays, cut to a clause: it is the one thing here that
+                // is a GOTCHA rather than an explanation, and finding it out by having a
+                // drive fail to enumerate is the worst way to learn it.
+                text = "Read a disc from a USB drive. Most drives need their own power.",
                 style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = 10.sp),
                 lineHeight = 16.sp
             )
@@ -354,10 +362,7 @@ private fun IdleContent(
                 color = LabelDim
             )
             Text(
-                text = "Browse the Internet Archive — a quarter of a million live concerts " +
-                    "from bands who allow taping, and Creative Commons releases. Free, no " +
-                    "account. Take a record home and it is yours, on your wall, with the disc " +
-                    "and everything else that does.",
+                text = "Live concerts and free releases from the Internet Archive.",
                 style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = 10.sp),
                 lineHeight = 16.sp
             )
