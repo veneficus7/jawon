@@ -3290,6 +3290,72 @@ fun WallSceneScreen(
                                     }
                                 )
                             }
+
+                            // **The aisle fittings** — the other half of the same track.
+                            //
+                            // Every light above aims backward, at the rack. These point at the
+                            // floor in front of it, offset half a pitch so the two aims
+                            // alternate down the track the way a shop's do. Without them the
+                            // room has nothing lighting anything that is not a record, which
+                            // is how the props ended up as black silhouettes on a black floor.
+                            // See RoomLighting.AISLE_SPOT_CANDELA.
+                            repeat(RoomLighting.CEILING_SPOT_COUNT) { i ->
+                                LightNode(
+                                    type = LightManager.Type.FOCUSED_SPOT,
+                                    position = Position(
+                                        (i - RoomLighting.CEILING_SPOT_COUNT / 2) *
+                                            RoomLighting.CEILING_SPOT_SPACING +
+                                            RoomLighting.AISLE_SPOT_OFFSET,
+                                        0f,
+                                        0f
+                                    ),
+                                    direction = normalize(
+                                        Direction(
+                                            0f,
+                                            layout.floorY - spotY,
+                                            RoomLighting.AISLE_SPOT_AIM_Z -
+                                                RoomLighting.CEILING_SPOT_Z
+                                        )
+                                    ),
+                                    apply = {
+                                        color(
+                                            roomScheme.key[0],
+                                            roomScheme.key[1],
+                                            roomScheme.key[2]
+                                        )
+                                        intensityCandela(RoomLighting.AISLE_SPOT_CANDELA)
+                                        spotLightCone(
+                                            RoomLighting.AISLE_SPOT_INNER,
+                                            RoomLighting.AISLE_SPOT_OUTER
+                                        )
+                                        falloff(RoomLighting.AISLE_SPOT_FALLOFF)
+                                        // Shadows only on HIGH, and only from the fitting over
+                                        // the view. A shadow map is a whole pass per casting
+                                        // light and the rack fittings have already spent that
+                                        // budget — but a prop standing on a floor with no
+                                        // shadow under it is a prop floating over one, which
+                                        // is the whole reason these exist.
+                                        castShadows(
+                                            initialTier == QualityTier.HIGH &&
+                                                i == RoomLighting.CEILING_SPOT_COUNT / 2
+                                        )
+                                        shadowOptions(
+                                            LightManager.ShadowOptions().apply {
+                                                mapSize = minOf(
+                                                    RoomLighting.CEILING_SPOT_SHADOW_PX,
+                                                    initialTier.shadowMapPx
+                                                )
+                                                shadowBulbRadius = RoomLighting.KEY_BULB_RADIUS
+                                                shadowNearHint = RoomLighting.KEY_SHADOW_NEAR
+                                                shadowFarHint = RoomLighting.AISLE_SPOT_FALLOFF
+                                                constantBias =
+                                                    RoomLighting.KEY_SHADOW_CONSTANT_BIAS
+                                                normalBias = RoomLighting.KEY_SHADOW_NORMAL_BIAS
+                                            }
+                                        )
+                                    }
+                                )
+                            }
                         }
                     }
 

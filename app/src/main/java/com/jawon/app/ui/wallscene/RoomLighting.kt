@@ -797,6 +797,54 @@ object RoomLighting {
      */
     const val CEILING_SPOT_SHADOW_PX = 1024
 
+    // ---- The aisle: the other half of the same track --------------------------------------
+    //
+    // **The room had no light that was not pointed at the rack.** Every fitting in it — the
+    // tube, the rail, the pools, and the ceiling spots above — aims at records, and the ceiling
+    // spots aim *backward*, down onto the back panel. So the cone covers the shelves and stops
+    // well above the floor, and the moment the owner panned to the end of the room to look at
+    // the props he had just asked for, they were black silhouettes standing on a black floor.
+    //
+    // A real shop's track does both jobs. Some fittings wash the merchandise; others point
+    // straight down and light the aisle you walk along. These are the second kind, hung on the
+    // same track and offset half a pitch so the two alternate down its length, which is what
+    // a track of alternating aims actually looks like from underneath.
+
+    /** How far along the track an aisle fitting sits from the rack fitting beside it. */
+    const val AISLE_SPOT_OFFSET = CEILING_SPOT_SPACING / 2f
+
+    /** How far out from the wall an aisle fitting aims, on the floor. */
+    const val AISLE_SPOT_AIM_Z = 0.22f
+
+    /**
+     * Wider than the rack spots, because a pool on a floor is read as a pool.
+     *
+     * The rack fittings are narrow (15°/26°) so their pools stay on the shelves they are for.
+     * A floor has nothing to spill onto and everything to gain from a soft edge: 23° to 40°
+     * puts a pool about a metre across under a three-metre ceiling, which is a shop's spacing.
+     */
+    const val AISLE_SPOT_INNER = 0.40f
+    const val AISLE_SPOT_OUTER = 0.70f
+
+    /**
+     * Dimmer than the rack fittings, and deliberately.
+     *
+     * The rule this room keeps relearning is that the records are the brightest thing in the
+     * frame. An aisle lit as brightly as the merchandise is a warehouse; lit at a third of it,
+     * it is the floor of a shop whose windows are the records.
+     */
+    const val AISLE_SPOT_CANDELA = 2_600f
+
+    /**
+     * Long, because it has to reach the floor.
+     *
+     * `falloff` is a hard cutoff (trap 6) and the drop from the track to the floor is the
+     * longest throw in this room — the rack's own height plus `FLOOR_DROP` plus the rise above
+     * the cap. Anything short of that puts a black line across the floor where the light
+     * simply stops, which is the same fault the ribbon had against the back panel.
+     */
+    const val AISLE_SPOT_FALLOFF = 4.5f
+
     // ---- The wall washers: what lights the decor -----------------------------------------
     //
     // The spots are aimed at the rack, so their pools stop about 6cm above its cap and the brick
