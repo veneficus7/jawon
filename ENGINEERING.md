@@ -283,6 +283,28 @@ trap 11 and trap 15 in three different files, each correct in the era it was wri
     **reading the response body to the end**; `use {}` does that. Keep `disconnect()`
     for the failure path only, where the socket is not worth reusing.
 
+26. **A surface lit by the ambient IBL has exactly one exposure control, and it is
+    albedo.** Light channels (trap 7) gate *lights*; they do not gate `IndirectLight`,
+    which reaches every renderable there is. The open disc turned out to be lit almost
+    entirely by ambient, and three delete tests on a device are what proved it: its own
+    lamp switched fully **off** moved the face 239.7 — 239.9, taking it off the room's
+    light channel moved it 239.9 — 240.5, and only dropping its albedo moved anything
+    (240.5 — 91.4). Five rounds of "the disc looks washed" had been spent re-aiming and
+    re-tuning lamps that were contributing a rounding error.
+
+27. **The tonemapper's shoulder makes a large change measure as nothing, and "washed" is
+    usually the shoulder rather than a highlight.** Probing one surface at both ends fit
+    `out = 336 * albedo^0.336` — so flat at the top that *halving* the albedo is worth
+    about 1%, while an 18x cut is worth a factor of 2.6. Three separate fixes were
+    abandoned as ineffective on moves of 139 — 134 and 243 — 240 that were in fact the
+    curve behaving normally. **So a null result high on the curve proves nothing** —
+    bracket the response with a deliberately extreme probe *first* (drive the value to
+    0.05, or paint the region pure red), fit the two points, and read the value you want
+    off the curve instead of stepping toward it. Stepping costs a build each time and the
+    first three steps are all inside the flat part. This is also what desaturation is: ACES
+    folds the top of the range toward white, so an over-exposed surface loses its colour
+    before it loses its brightness, and the complaint arrives as "washed", not "too bright".
+
 ---
 
 ## Locked decisions — do not relitigate
