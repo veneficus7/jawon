@@ -492,7 +492,22 @@ object RoomLighting {
      * belongs to, the reason a case reads as levitating. Bright enough to see; nowhere near
      * bright enough to matter to the artwork above it.
      */
-    const val UNDER_CANDELA = 340f
+    const val UNDER_CANDELA = 300f
+
+    // **300 on 2026-09-14, and the first guess at this was backwards.** The owner said the
+    // covers "look washed or dull" and the obvious reading was too much light, so this went to
+    // 220. The screenshot said otherwise: the artwork measured a mean of 50 while the emissive
+    // strips beside it measured 198 and the tube band above it 184. Nothing was washing the
+    // covers — they were being **out-shone by their own fixtures**, which is what makes a
+    // record look dull whatever it is lit with, and dimming the record would have made it
+    // worse. So the light on the artwork stays near where it was, the fixtures came down hard
+    // (`build_beam`, emission 2.4 -> 1.2 and a seventeenth of the emitting area), and the
+    // balance shifted toward [RAIL_CANDELA] so a sleeve is raked from above rather than only
+    // filled in from its sides.
+    //
+    // **The lesson worth keeping: in a shop the records are the brightest thing in the frame
+    // and the fixtures are concealed.** Any time a fixture measures brighter than the artwork,
+    // that is the fault, whatever it looks like it is.
 
     /**
      * Short reach. The light belongs to one bay; a long falloff turns two hundred of these into
@@ -759,11 +774,20 @@ object RoomLighting {
     const val RAIL_CONE_OUTER = 0.70f
 
     /**
-     * Per diode, in candela. As a line at [RAIL_COLUMN_SPACING] this puts roughly two thirds of
-     * what the old underlight put on a sleeve — the artwork is lit, and lit *evenly*, without the
-     * bleaching a 1500cd point at 95mm was doing to it.
+     * Per diode, in candela.
+     *
+     * **Raised from 320 on 2026-09-14, as [UNDER_CANDELA] came down.** The owner's reading of
+     * the covers was that they "look washed or dull", and the cause was the balance rather
+     * than the total: the vitrine lights a sleeve from both sides at once, which fills it in
+     * evenly and leaves it with no shape at all. This is the one fixture in the room that
+     * rakes DOWN a record's face from the shelf edge above it, so it is the only one that can
+     * put a gradient there. More of it and less of the vitrine is a sleeve that is modelled
+     * rather than merely lit.
+     *
+     * As a line at [RAIL_COLUMN_SPACING] it still stops well short of the bleaching a 1500cd
+     * point at 95mm was doing to the artwork, which is what started all of this.
      */
-    const val RAIL_CANDELA = 320f
+    const val RAIL_CANDELA = 420f
 
     /** Past the foot of the records it lights, so no sleeve ends at a cutoff (trap 6). */
     const val RAIL_FALLOFF = 0.40f

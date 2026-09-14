@@ -587,38 +587,59 @@ def build_beam():
     torch under the chin makes, it bleaches the bottom of a sleeve, and once the covers were
     given back their gloss it wrote a hard white reflection of itself into the artwork.
 
-    A museum lights an object in a case from the *sides* of the case, and that is what these
-    are. The geometry makes it possible: the bay pitch is `SLOT_PITCH` 150mm and a face-on
-    cover is `CASE_D` 125mm wide, so there is a 25mm channel between neighbouring records
-    with nothing in it. A strip in that channel sits **outside the cover's own edge**, which
-    is the whole trick — the mirror image of a light beyond the edge of a flat glossy plate
-    lands off the plate, so these can be as bright as they like and never put a hotspot on the
-    artwork. Two of them, one per side, and the cover is lit evenly from both.
+    A museum lights an object in a case from the *sides* of the case, and that is what this
+    stands for. The geometry makes it possible: the bay pitch is `SLOT_PITCH` 150mm and a
+    face-on cover is `CASE_D` 125mm wide, so there is a 25mm channel between neighbouring
+    records with nothing in it. The two real lights sit in that channel, **outside the
+    cover's own edge**, which is the whole trick — the mirror image of a light beyond the
+    edge of a flat glossy plate lands off the plate, so they can be as bright as the artwork
+    needs and never put a hotspot on it.
 
-    Clearance: the strips' inner faces are 67.5mm from the bay's axis and a case turning a
-    full circle sweeps `SLOT_SWEEP`/2 = 62.7mm, so a record clears them by ~5mm at any angle.
+    What is modelled here is not those lights but the **one visible rod** that stands for
+    them, at the exact midpoint between this record and the one to its left, so a row of
+    bays carries one evenly spaced line of colour rather than paired ones in clashing
+    colours. See the notes on `x_centre` and `depth` below — both are the owner's "too many
+    glowing bars" made geometric.
+
+    Clearance: the rod's inner face is 73.5mm from the bay's axis and a case turning a full
+    circle sweeps `SLOT_SWEEP`/2 = 62.7mm, so a record clears it by 10.8mm at any angle.
     """
     obj = new_mesh_object("beam")
     bm = bmesh.new()
 
-    # The channel between two records, in app metres. See the clearance note above.
-    x_centre = 0.0695
-    thickness = 0.004
+    # ONE rod, on this bay's left, at the exact midpoint to the neighbouring record.
+    #
+    # It was two per bay, at +-69.5mm, level with the lights. Two things were wrong with
+    # that and the owner saw both: "idk man it doesn't look so aesthetic", then "too many
+    # glowing bars". Twenty bays on screen made forty of them, and because bay N's right rod
+    # sat 11mm from bay N+1's left rod they read as a picket fence of paired lines in
+    # clashing colours rather than as light.
+    #
+    # At SLOT_PITCH/2 there is exactly one rod between any two records, evenly spaced,
+    # which is what a lit display rack actually looks like. The two LIGHTS stay where they
+    # were (RoomLighting.UNDER_SIDE, 69.5mm) because that offset is what keeps them outside
+    # the cover's edge, and a light is invisible anyway - the 5.5mm between a rod and the
+    # light it stands for is not a thing anyone can see.
+    x_centre = 0.075
+    thickness = 0.003
 
-    # Standing from just above the board to a little over the top of a sleeve, so the strip
-    # reads as the height of the compartment rather than as a mark beside the record.
-    height = 0.166
-    y_centre = height / 2.0 + 0.002
+    # Just inside the record's own height, so it accents the bay rather than fencing it.
+    height = 0.125
+    y_centre = height / 2.0 + 0.008
 
-    # Proud of the record's face, which is what lets the light rake ACROSS the artwork
-    # instead of grazing it. A case is only CASE_W (10mm) deep in plan when it is face-on,
-    # and the now-playing one stands PROUD_Z (22mm) forward of that, so 48mm of strip keeps
-    # the record inside its own vitrine even when it is presenting itself.
-    depth = 0.048
-    z_centre = 0.012
+    # **Square section, and this is the fix for "too many glowing bars".** It was 48mm
+    # DEEP: head-on you saw a 4mm edge, but every bay off-centre showed you its side face
+    # instead - 48 x 166mm of emitter, per strip, at forty strips a screen. That is not a
+    # strip of light, it is a lit panel, and it is why the wall read as a rack of glowing
+    # slabs. A 3mm square rod is a hairline from every angle, and the total emitting area
+    # per bay falls about seventeen-fold, which takes the bloom veil down with it.
+    depth = thickness
 
-    for side in (-1.0, 1.0):
-        box(bm, side * x_centre, az(z_centre), y_centre, thickness, depth, height)
+    # Just proud of the record's face. It no longer has to be deep enough to "shield"
+    # anything: the lights sit 115mm forward of this, so the rod never shielded them.
+    z_centre = 0.010
+
+    box(bm, -x_centre, az(z_centre), y_centre, thickness, depth, height)
 
     bm.normal_update()
     bm.to_mesh(obj.data)
@@ -630,12 +651,22 @@ def build_beam():
     # 1.0 bloom at all**. The first beam here emitted at 0.3 and therefore could not glow no
     # matter how it was tuned.
     #
-    # Lower than the 4.5 the old pool ran at, because there is far more of it: two strips are
-    # 0.0013m2 of emitter against the disc's 0.0004m2, so the same figure would put three and
-    # a half times the light into bloom and bring back the milky veil over the lower half of
-    # every sleeve that shrinking the disc was meant to cure.
+    # **1.2, and the number that matters is not bloom, it is CLIPPING.**
     #
-    # Opaque, unlike the disc, which was alpha-blended so it could fade out. A strip is a
+    # `CaseSlots.beamRgb` authors this album's colour at BEAM_VALUE 1.75 with saturation 0.62,
+    # so the dimmest of its three channels is 1.75 x 0.38 = 0.67 of the brightest. Multiply the
+    # whole thing by 2.4, as the first strips did, and even that dimmest channel lands at 1.6 —
+    # over the display's ceiling. Every channel clips, and a colour whose channels all clip is
+    # white. Measured off the owner's phone: the strips read rgb(218,191,210) and rgb(228,201,182),
+    # which is to say no colour at all, while the artwork beside them sat at a mean of 50
+    # against their 198. The fixture was four times brighter than the record it was there to
+    # light, and it had thrown away the one thing it was carrying.
+    #
+    # At 1.2 the peak channel reaches 2.1 — still well over bloom's 1.0 threshold, so the rod
+    # glows — while the dimmest reaches 0.80 and stays under the ceiling. The gap between them
+    # survives to the screen, and the gap between them IS the colour.
+    #
+    # Opaque, unlike the disc, which was alpha-blended so it could fade out. A rod is a
     # physical thing in the gap between two records; there is nothing behind it to show
     # through, and an opaque emitter cannot sort wrongly against its neighbours.
     strip_mat = principled(
@@ -647,7 +678,7 @@ def build_beam():
     pb = strip_mat.node_tree.nodes["Principled BSDF"]
     pb.inputs["Emission Color"].default_value = (1.0, 0.86, 0.70, 1.0)
     # Exported as KHR_materials_emissive_strength. Above the bloom threshold on purpose.
-    pb.inputs["Emission Strength"].default_value = 2.4
+    pb.inputs["Emission Strength"].default_value = 1.2
     obj.data.materials.append(strip_mat)
     return obj
 

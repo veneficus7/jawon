@@ -126,15 +126,15 @@ object VitrineGeometry {
     fun clearOfCoverEdge(): Float = RoomLighting.UNDER_SIDE - COVER_HALF_W
 
     /**
-     * Air between a strip's inner face and the circle a case sweeps as it turns.
+     * Air between the rod's inner face and the circle a case sweeps as it turns.
      *
-     * The strips are [STRIP_THICKNESS] wide and centred on [RoomLighting.UNDER_SIDE]; a case
-     * turning about its own axis sweeps a circle of diameter `hypot(CASE_W, CASE_D)`, which is
+     * The rod is [STRIP_THICKNESS] wide and centred on [STRIP_X]; a case turning about its own
+     * axis sweeps a circle of diameter `hypot(CASE_W, CASE_D)`, which is
      * `WallDimens.SLOT_SWEEP`. Negative means a record drives through its own vitrine at some
      * angle — the failure the bay pitch was widened to prevent in the first place.
      */
     fun clearOfTurningCase(): Float =
-        (RoomLighting.UNDER_SIDE - STRIP_THICKNESS / 2f) -
+        (STRIP_X - STRIP_THICKNESS / 2f) -
             hypot(WallDimens.CASE_W, WallDimens.CASE_D) / 2f
 
     /** The furthest corner of a cover from one of its own lights. */
@@ -156,8 +156,24 @@ object VitrineGeometry {
         return sqrt(dx * dx + squared(RoomLighting.UNDER_FORWARD))
     }
 
-    /** Strip thickness in X, matching `build_beam` in `tools/models/build_models.py`. */
-    const val STRIP_THICKNESS = 0.004f
+    /**
+     * Where the one visible rod stands: the exact midpoint between this record and its left
+     * neighbour, so a row of bays carries one evenly spaced line rather than paired ones.
+     *
+     * **Not the same as [RoomLighting.UNDER_SIDE], deliberately.** The lights sit at 69.5mm
+     * because that is what puts them outside the cover's edge; the rod sits at 75mm because
+     * that is what stops it pairing up with the neighbouring bay's. They are 5.5mm apart and a
+     * light is invisible, so nothing about that gap can be seen — what can be seen is forty
+     * bars becoming twenty, which is what the owner asked for.
+     */
+    const val STRIP_X = WallDimens.SLOT_PITCH / 2f
+
+    /**
+     * Rod section, matching `build_beam` in `tools/models/build_models.py`. Square: it is as
+     * deep as it is wide, which is the whole of the fix for "too many glowing bars" — at 48mm
+     * deep every off-centre bay showed its side face, 48 x 166mm of emitter apiece.
+     */
+    const val STRIP_THICKNESS = 0.003f
 
     private fun squared(v: Float) = v * v
 }
