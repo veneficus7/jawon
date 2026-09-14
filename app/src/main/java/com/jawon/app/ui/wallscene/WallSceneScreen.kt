@@ -4127,6 +4127,7 @@ fun WallSceneScreen(
                 offline = viewModel.offline.collectAsStateWithLifecycle(),
                 spotifyOfflineNotice =
                     viewModel.spotifyOfflineNotice.collectAsStateWithLifecycle(),
+                playbackNotice = viewModel.notice.collectAsStateWithLifecycle(),
                 downloading = viewModel.downloading.collectAsStateWithLifecycle(),
                 offlineMessage = viewModel.offlineMessage.collectAsStateWithLifecycle(),
                 onKeepOffline = viewModel::onKeepOffline,
