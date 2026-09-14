@@ -219,14 +219,39 @@ enum class QualityTier {
      * **The most expensive thing in the room per pixel, and it is every pixel.** The fog is a
      * raymarch — for each pixel the shader walks the view ray through the air in front of the
      * rack, sampling density and the fittings' light at every step — over a quad that fills the
-     * frame. Fourteen steps on HIGH is enough for a spot's cone to read as a smooth volume with
-     * the per-pixel dither dissolving the steps into grain; seven on MEDIUM keeps the beams at
-     * half the cost and a coarser grain. LOW has none: the floor of the tier system is the
-     * device that cannot afford anything, and the room is whole without it.
+     * frame. Seven on MEDIUM keeps the beams at half the cost and a coarser grain. LOW has
+     * none: the floor of the tier system is the device that cannot afford anything, and the
+     * room is whole without it.
+     *
+     * **Nine on HIGH, down from fourteen, and this is what "the app runs heavy" was.** The
+     * owner reported it on 2026-09-14 and the room turned out not to be janky at all — it
+     * draws 81fps while being panned continuously, at 0.8% slow frames. What it does is hold
+     * the GPU at 100% forever, at a thermally capped 832MHz of 1200, with the phone at 41
+     * degrees: heat, not stutter. This constant is why. It is the one cost in the room that is
+     * paid *per pixel and then multiplied*, and fog was switched on (`RoomAir.FOG_ENABLED`,
+     * for "a little fog back") **after** HIGH had been validated without it, which nothing
+     * re-checked — the render scale fell from the 81% recorded in `RoomAtmosphere` to its
+     * 60% floor.
+     *
+     * Measured on the owner's S25 Ultra, same harness each time (reset the readout, pan for
+     * twenty seconds, read DRAWN — see trap 29, because GPU-busy and the render scale both
+     * saturate and can A/B nothing):
+     *
+     * | fog steps | drawn | slow frames |
+     * |---|---|---|
+     * | 14 | 81fps | 0.8% |
+     * | **9** | **96fps** | **0.5%** |
+     * | none at all | 96fps | 0.3% |
+     *
+     * Nine buys back the *entire* cost of the fog — the same throughput as having none — for a
+     * mean image difference of 1.64/255, which is 0.6% and is not visible: the glow over the
+     * shelf, the falloff down the wall and the neon all measure and look the same. Fourteen was
+     * not wrong, it was just past the point where more steps still bought anything, and the
+     * dither was already doing the work the extra five were paying for.
      */
     val fogSteps: Int
         get() = when (this) {
-            HIGH -> 14
+            HIGH -> 9
             MEDIUM -> 7
             LOW -> 0
         }
