@@ -46,15 +46,26 @@ object RoomProps {
     const val FLOOR_PROP_Z = 0.105f
 
     /**
-     * How far inside each end wall a floor prop stands.
+     * Where the floor props stand across the wall, as fractions of the pannable range.
      *
-     * **Measured from the room's ends rather than fixed, which is the fix for the real
-     * fault.** These were at -1.32 and +1.44, absolute, which is somewhere in the middle of a
-     * wide library's wall: panning along the records ran straight into a turntable. A prop
-     * belongs at the end of the room, where a shop keeps its things, and the end of the room
-     * moves with the size of the library.
+     * **Four attempts, and the first three all argued about the wrong axis.** Absolute
+     * positions put a turntable in the middle of a wide library. Measuring from `roomLeft`
+     * put both props outside the frame, because `roomLeft` is the wall, not anywhere the
+     * camera can go. Measuring from `minPanX` looked right on paper and still failed on the
+     * device, and the screenshot is why: **the wall comes to rest centred on the leftmost
+     * ALBUM**, not on `minPanX`, so nothing placed past the last record can ever be centred
+     * — and a 235mm deck does not fit in the one empty slot of margin anyway.
+     *
+     * The answer was that sideways was never the right axis. These stand on the FLOOR, well
+     * below the bottom row, so they are reached by panning *down* — which works from
+     * anywhere along the wall rather than only at one end — and they are clear of every
+     * record by height rather than by distance. Which is also where a shop keeps them.
+     *
+     * Spread across the range rather than placed at a fixed x, so a library of any width has
+     * them somewhere sensible instead of huddled at one end.
      */
-    const val END_INSET = 0.34f
+    const val TURNTABLE_ALONG = 0.28f
+    const val PLANT_ALONG = 0.76f
 
     /** The clock hangs on the brick, on the other side of the sign from the first poster. */
     const val CLOCK_X = -0.94f
@@ -95,8 +106,9 @@ fun SceneScope.RoomPropNodes(
     floorY: Float,
     rackTopY: Float,
     wallZ: Float,
-    roomLeft: Float,
-    roomRight: Float
+    /** The camera's own travel, which is what decides whether a prop can be seen at all. */
+    minPanX: Float,
+    maxPanX: Float
 ) {
     // **The transform goes on a carrier Node, not on the ModelNode.**
     //
@@ -107,12 +119,20 @@ fun SceneScope.RoomPropNodes(
     // the shards — and this is why.
     prop(
         turntable,
-        Position(roomLeft + RoomProps.END_INSET, floorY, RoomProps.FLOOR_PROP_Z),
+        Position(
+            minPanX + (maxPanX - minPanX) * RoomProps.TURNTABLE_ALONG,
+            floorY,
+            RoomProps.FLOOR_PROP_Z
+        ),
         RoomProps.TURNTABLE_TURN_DEG, "turntable"
     )
     prop(
         plant,
-        Position(roomRight - RoomProps.END_INSET, floorY, RoomProps.FLOOR_PROP_Z),
+        Position(
+            minPanX + (maxPanX - minPanX) * RoomProps.PLANT_ALONG,
+            floorY,
+            RoomProps.FLOOR_PROP_Z
+        ),
         RoomProps.PLANT_TURN_DEG, "plant"
     )
     prop(clock, Position(RoomProps.CLOCK_X, rackTopY + RoomProps.CLOCK_ABOVE_CAP, wallZ), 0f, "clock")

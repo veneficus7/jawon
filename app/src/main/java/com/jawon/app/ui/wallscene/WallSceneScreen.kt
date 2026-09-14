@@ -3299,6 +3299,9 @@ fun WallSceneScreen(
                             // room has nothing lighting anything that is not a record, which
                             // is how the props ended up as black silhouettes on a black floor.
                             // See RoomLighting.AISLE_SPOT_CANDELA.
+                            // How far an aisle head has to throw. Everything about these is
+                            // derived from it — see RoomLighting.AISLE_SPOT_LUX.
+                            val aisleDrop = (spotY - layout.floorY).coerceAtLeast(0.5f)
                             repeat(RoomLighting.CEILING_SPOT_COUNT) { i ->
                                 LightNode(
                                     type = LightManager.Type.FOCUSED_SPOT,
@@ -3323,12 +3326,20 @@ fun WallSceneScreen(
                                             roomScheme.key[1],
                                             roomScheme.key[2]
                                         )
-                                        intensityCandela(RoomLighting.AISLE_SPOT_CANDELA)
+                                        // Intensity from the DROP, not a fixed figure: see
+                                        // RoomLighting.AISLE_SPOT_LUX. The distance to the
+                                        // floor is a function of how many records the owner
+                                        // owns, so a constant candela is dark on a tall
+                                        // library and blinding on a short one.
+                                        intensityCandela(
+                                            (RoomLighting.AISLE_SPOT_LUX * aisleDrop * aisleDrop)
+                                                .coerceAtMost(RoomLighting.AISLE_SPOT_MAX_CANDELA)
+                                        )
                                         spotLightCone(
                                             RoomLighting.AISLE_SPOT_INNER,
                                             RoomLighting.AISLE_SPOT_OUTER
                                         )
-                                        falloff(RoomLighting.AISLE_SPOT_FALLOFF)
+                                        falloff(aisleDrop * RoomLighting.AISLE_SPOT_REACH)
                                         // Shadows only on HIGH, and only from the fitting over
                                         // the view. A shadow map is a whole pass per casting
                                         // light and the rack fittings have already spent that
@@ -3347,7 +3358,7 @@ fun WallSceneScreen(
                                                 )
                                                 shadowBulbRadius = RoomLighting.KEY_BULB_RADIUS
                                                 shadowNearHint = RoomLighting.KEY_SHADOW_NEAR
-                                                shadowFarHint = RoomLighting.AISLE_SPOT_FALLOFF
+                                                shadowFarHint = aisleDrop * RoomLighting.AISLE_SPOT_REACH
                                                 constantBias =
                                                     RoomLighting.KEY_SHADOW_CONSTANT_BIAS
                                                 normalBias = RoomLighting.KEY_SHADOW_NORMAL_BIAS
@@ -3422,8 +3433,8 @@ fun WallSceneScreen(
                         floorY = layout.floorY,
                         rackTopY = rackTopY,
                         wallZ = ROOM_WALL_Z + ROOM_WALL_T / 2f,
-                        roomLeft = roomLeft,
-                        roomRight = roomRight
+                        minPanX = layout.minPanX,
+                        maxPanX = layout.maxPanX
                     )
 
                     // The posters hang on the frames' own grid, offset half a pitch, so the

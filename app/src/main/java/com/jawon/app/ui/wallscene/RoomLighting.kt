@@ -823,27 +823,58 @@ object RoomLighting {
      * A floor has nothing to spill onto and everything to gain from a soft edge: 23° to 40°
      * puts a pool about a metre across under a three-metre ceiling, which is a shop's spacing.
      */
-    const val AISLE_SPOT_INNER = 0.40f
-    const val AISLE_SPOT_OUTER = 0.70f
+    const val AISLE_SPOT_INNER = 0.34f
+    const val AISLE_SPOT_OUTER = 0.55f
 
     /**
-     * Dimmer than the rack fittings, and deliberately.
+     * What the floor should RECEIVE, in lux — not what the fitting emits.
      *
-     * The rule this room keeps relearning is that the records are the brightest thing in the
-     * frame. An aisle lit as brightly as the merchandise is a warehouse; lit at a third of it,
-     * it is the floor of a shop whose windows are the records.
+     * **This was a fixed 2600 candela and the floor measured 5.7 out of 255: black.** The
+     * fault was not the aim, it was the drop. An aisle head hangs at `rackTopY + RISE`, and
+     * `rackTopY` is the top of the *whole rack*, so on a library ten rows deep the throw to
+     * the floor is nearly three metres. Inverse square turns 2600cd at 2.7m into about 350
+     * lux, against the ~8000 the rack heads put on a shelf a metre away: a ratio of twenty
+     * to one, which is a floor that renders black next to correctly exposed records.
+     *
+     * A fixed candela cannot be right here, because the drop is a function of how many
+     * records the owner owns. Stating the wanted illuminance and deriving the intensity from
+     * the actual distance is the only version of this that survives a library growing —
+     * `I = E · d²`, computed where the fitting is built.
+     *
+     * **The figure is measured, not derived, and the derivation is worth recording because it
+     * was wrong.** 1800 was chosen as "a quarter of the light on a shelf", reasoning from the
+     * rack heads' ~8000 lux. On the device that lit nothing: the floor measured 3.9 out of
+     * 255, indistinguishable from the 5.7 it read with no aisle light at all. Equal lux is
+     * not equal brightness — a cover is a printed photograph with a high albedo and this
+     * floor is dark timber, so the same light off it returns a fraction as much. Cranking it
+     * to 40,000 as a test took the floor to 14.9 and brought the brick below the rack and the
+     * floor in front of it both plainly into view, which settled that the fittings worked and
+     * only the number was wrong. 32,000 sits just under that.
+     *
+     * The lesson for the next fixture: **in this room, lux is not a shared currency.** What a
+     * surface returns depends on what it is made of, and the only honest way to set one of
+     * these is to put it on a device and read the pixels.
      */
-    const val AISLE_SPOT_CANDELA = 2_600f
+    const val AISLE_SPOT_LUX = 32_000f
 
     /**
-     * Long, because it has to reach the floor.
+     * The most a single aisle head may emit, whatever the arithmetic asks for.
      *
-     * `falloff` is a hard cutoff (trap 6) and the drop from the track to the floor is the
-     * longest throw in this room — the rack's own height plus `FLOOR_DROP` plus the rise above
-     * the cap. Anything short of that puts a black line across the floor where the light
-     * simply stops, which is the same fault the ribbon had against the back panel.
+     * A very tall rack makes `E · d²` large, and a light this bright close to anything is a
+     * blown white blob. The cap is reached only by libraries taller than about four metres,
+     * where the floor is so far from the track that it is honestly dark anyway.
      */
-    const val AISLE_SPOT_FALLOFF = 4.5f
+    const val AISLE_SPOT_MAX_CANDELA = 320_000f
+
+    /**
+     * How much further than the floor an aisle head reaches, as a multiple of its own drop.
+     *
+     * `falloff` is a hard cutoff (trap 6), and the drop from the track to the floor is the
+     * longest throw in this room. Deriving it from the same distance the intensity is derived
+     * from is what stops a tall library putting a black line across its own floor where the
+     * light simply stops — the fault the ribbon had against the back panel, one surface along.
+     */
+    const val AISLE_SPOT_REACH = 1.6f
 
     // ---- The wall washers: what lights the decor -----------------------------------------
     //
