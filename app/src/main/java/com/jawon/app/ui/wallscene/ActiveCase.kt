@@ -479,14 +479,34 @@ fun SceneScope.ActiveCaseNodes(
                 // The disc is lit by its album's underlight, the carrier riding it above — so
                 // its renderables join that light's channel. A glTF model, so this is its
                 // entities rather than a single node's instance.
+                //
+                // **And leave channel 0, which the original never did.** Adding a channel
+                // does not remove the default one, so the disc sat on {0, 1}: its own lamp
+                // *plus* every fixture in the room, including the ceiling aisle spots, which
+                // run to `AISLE_SPOT_MAX_CANDELA` — 320,000 — and which the disc rides up
+                // into when it lifts out of the case. Trap 7 is the rule and channels are how
+                // you say "this light, and no other, may touch this surface"; saying it needs
+                // both halves.
+                //
+                // **Honesty about what this did and did not fix.** It was made while chasing
+                // "the disc looks washed" and it is *not* the answer to it: measured on the
+                // owner's phone, removing channel 0 moved the disc's face by under one count
+                // (239.9 -> 240.5). Neither did its own lamp — switched fully off as a delete
+                // test, the face did not change either (239.7 -> 239.9). Both of those are
+                // recorded here because they are worth more than the fix: they say the disc is
+                // lit by **neither** its lamp nor the room, which leaves the ambient IBL, and
+                // that is not channel-gated in Filament. See `DISC_LABEL_PRINT` for what the
+                // exposure is actually set with, and why it has to be albedo.
                 val rm = engine.renderableManager
                 discModel.entities.forEach { entity ->
                     if (rm.hasComponent(entity)) {
+                        val instance = rm.getInstance(entity)
                         rm.setLightChannel(
-                            rm.getInstance(entity),
+                            instance,
                             RoomLighting.UNDER_LIGHT_CHANNEL,
                             true
                         )
+                        rm.setLightChannel(instance, RoomLighting.ROOM_LIGHT_CHANNEL, false)
                     }
                 }
             }

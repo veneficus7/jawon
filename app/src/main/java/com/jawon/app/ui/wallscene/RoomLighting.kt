@@ -578,18 +578,32 @@ object RoomLighting {
      * sharing a geometry: the case's light still rakes up a sleeve from below and this one
      * faces a disc down its axis from 160mm.
      *
-     * **900, after 400 went too far the other way.** Moving the light onto the axis cost the
-     * centre as well as the hotspot — the old one sat 105mm away and threw 24,600 lux at the
-     * middle of the face, and 400cd from 160mm gives 15,600 — so the label came back evenly
-     * lit and too dark to read, which the owner reported as the disc having "no cover at all".
-     * 900 put the centre at about 35,000 with the rim at 0.94 of it — flat across, which the
-     * old geometry could not manage at any intensity, and too bright: the disc measured a
-     * mean of 139 against a cover on the wall at 98, so the record being played was twice the
-     * brightness of the records around it. 620 brings it back beside them. The blob that
-     * survived both figures was never this number at all; it was the label's own sheen, and
-     * it is `DISC_LABEL_REFLECTANCE` that fixed it.
+     * **350, and this number is the answer to "the disc looks washed" — after four goes at
+     * it that were not.**
+     *
+     * Every figure this constant has held was picked by comparing it to the figure before it,
+     * and the whole run stayed inside a band that is two to three times the brightness of the
+     * room the disc is standing in. 900cd at 160mm is 35,000 lux. 620 is **24,219**.
+     * [AMBIENT_INTENSITY] — the entire room's ambient — is 11,000. The record being played
+     * was lit to twice its own room by a lamp four inches from its face, and at that level a
+     * printed white clips no matter what is printed on it.
+     *
+     * That is also why four material fixes in a row measured as nothing. `metallicFactor`,
+     * `roughnessFactor`, `clearCoatFactor` and `reflectance` are every one of them
+     * **specular** controls, and with metallic at zero this label's response is almost
+     * entirely **diffuse**, which none of them touch. The clearcoat is a real red herring: it
+     * is in the asset (`KHR_materials_clearcoat`, 0.7 / 0.045, a mirror), so it looks like an
+     * excellent suspect right up until you notice `DISC_LABEL_CLEARCOAT` already switches it
+     * off. And 620 "doing nothing" against 900 — a mean of 139 to 134 for a third less light
+     * — was never a sign the light was innocent; it is what clipping looks like from the
+     * outside. A third off a face that has no headroom moves headroom, not pixels.
+     *
+     * So this is derived rather than tuned. A sleeve on the shelf takes [RAIL_CANDELA] from
+     * about 127mm at an incidence of 0.42, which is **13,650 lux**, and it measures 98. The
+     * disc faces its lamp square on, so matching that is simply `13,650 * 0.160^2` = 350cd.
+     * The disc should be lit like the records it came out of, because it is one of them.
      */
-    const val DISC_UNDER_CANDELA = 620f
+    const val DISC_UNDER_CANDELA = 350f
 
     /** And how far in front of the platter, so the label is lit rather than the edge. */
     const val DISC_UNDER_FORWARD = 0.160f

@@ -453,13 +453,30 @@ internal const val DISC_LABEL_REFLECTANCE = 0.06f
 /**
  * How much of the disc's printed artwork survives to the screen.
  *
- * Not a lighting value — a multiplier on the texture itself. The disc measured a mean of 139
- * against a cover on the wall at 98, and the record being played has no business being half as
- * bright again as the records around it. The whites in a sleeve are what bloom feeds on, so
- * this also takes the glow out of the middle of the label, which two goes at the lighting
- * could not.
+ * Not a lighting value — a multiplier on the texture itself, and a **light touch now that it
+ * is no longer doing a lamp's job for it.** It went to 0.72 and then 0.62 on the reasoning
+ * that the disc measured a mean of 139 against a cover at 98 and the whites in a sleeve are
+ * what bloom feeds on. The measurement was right and the conclusion was backwards: the disc
+ * was not brighter because its artwork was brighter, it was brighter because
+ * [RoomLighting.DISC_UNDER_CANDELA] was throwing 24,000 lux at it in an 11,000-lux room.
+ * Dimming the texture to hide that is painting over a window to fix the glare — it costs the
+ * artwork its own contrast, which is the one thing on this surface worth keeping.
+ *
+ * **This is the disc's exposure control, and it turns out to be the only one there is.**
+ * Three separate delete tests on the device say so: its own lamp switched fully off moved the
+ * face by 0.2 of a count, taking the disc off the room's light channel moved it by 0.6, and
+ * dropping this to 0.05 moved it from 240 to 91. The disc is lit by the ambient IBL, which
+ * Filament does not channel-gate, so nothing aimed at a *lamp* can expose it — which is why
+ * five rounds of aiming at lamps measured as nothing.
+ *
+ * 0.48 is read off the curve those probes fit, `out = 194 * factor^0.349` on the printed
+ * band: it puts the artwork near 150, out of the tonemapper's shoulder, where the label keeps
+ * its own contrast and colour instead of being compressed toward white. Which is what
+ * "washed" was the whole time — not a highlight sitting on the disc, but the top third of
+ * the disc's range folded flat. 0.72 and 0.62 were both tried and both rejected by the owner,
+ * and the curve says why: they render 173 and 164, still on the shoulder.
  */
-internal const val DISC_LABEL_PRINT = 0.62f
+internal const val DISC_LABEL_PRINT = 0.48f
 
 
 /** Progress at which the deck fades in — as the disc squares up, not before. */

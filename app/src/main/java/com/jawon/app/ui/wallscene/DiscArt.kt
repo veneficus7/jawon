@@ -57,7 +57,40 @@ object DiscArt {
 
     private val PLASTIC = Color.rgb(0xC2, 0xC8, 0xCE)
     private val PLASTIC_DIM = Color.rgb(0x8A, 0x92, 0x9A)
-    private val CLAMP_RING = Color.rgb(0xD6, 0xDB, 0xE0)
+
+    /**
+     * **The clamping ring, and the reason the disc looked washed for five rounds.**
+     *
+     * It was `0xD6DBE0` — luminance 218, painted solid across the whole hub band and
+     * therefore *brighter than the white stripes of the artwork beside it*. Lit and bloomed,
+     * that band measured 243 at r0.18-0.26 and then fell away monotonically to 127 at the rim:
+     * a glow centred on the spindle, spreading over the print. The owner's own description was
+     * the diagnosis and it took far too long to hear it — the bright patch stayed dead centre
+     * while the artwork rotated under it, which is not something artwork or a light can do,
+     * but is exactly what a **rotationally symmetric ring** does. It cannot appear to turn.
+     *
+     * Four fixes went past it because they all assumed the disc was being over-lit: the light
+     * came down twice, the sheen came off, the print was multiplied down. Every one of them
+     * dimmed the ring and the artwork together, so the ring stayed the brightest thing on the
+     * face and kept feeding bloom, and the disc stayed washed at every exposure.
+     *
+     * A real CD is *clear* here. The clamping ring is frosted polycarbonate and the band
+     * inside it is transparent, with the dark of the room behind it — so this is the
+     * dimmest part of the face, not the brightest, and the shine it does have belongs to the
+     * specular sweep above rather than to a near-white albedo.
+     *
+     * **The value is measured, not chosen, and the first attempt at it was far too timid.**
+     * Dropping 218 to 130 moved the rendered face from 243 to 240, because at this exposure
+     * the disc sits deep in the tonemapper's shoulder and a 40% cut in albedo is worth about
+     * 1%. Two probes on the device bracketed the curve instead: `baseColorFactor` at 0.90
+     * renders this band at 240, at 0.05 it renders 91, which fits `out = 336 * albedo^0.336`.
+     * Landing the hub beside the print rather than above it wants an albedo near 0.09, and
+     * that is this value against [DISC_LABEL_PRINT]. Anything lighter is back on the shoulder.
+     */
+    private val CLAMP_RING = Color.rgb(0x18, 0x1A, 0x1E)
+
+    /** The transparent band between the clamping ring and the spindle hole. See [CLAMP_RING]. */
+    private val CLEAR_HUB = Color.rgb(0x10, 0x12, 0x15)
 
     /**
      * @param face the user's uploaded disc-face image, already decoded
@@ -102,7 +135,7 @@ object DiscArt {
         // so the face reads as a CD even when the user's art is a full-bleed square.
         paint.color = CLAMP_RING
         canvas.drawCircle(c, c, c * R_LABEL_INNER, paint)
-        paint.color = PLASTIC_DIM
+        paint.color = CLEAR_HUB
         canvas.drawCircle(c, c, c * R_CLAMP_INNER, paint)
 
         return bitmap
