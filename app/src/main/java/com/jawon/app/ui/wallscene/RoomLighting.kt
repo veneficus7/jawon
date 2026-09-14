@@ -576,11 +576,17 @@ object RoomLighting {
      *
      * The two used to share a figure, which stopped being reasonable once they stopped
      * sharing a geometry: the case's light still rakes up a sleeve from below and this one
-     * faces a disc down its axis from 160mm. Dimmer and further away, which between them take
-     * the centre from about 100,000 lux to 16,000 and the centre-to-rim ratio from wild to
-     * 1.2:1.
+     * faces a disc down its axis from 160mm.
+     *
+     * **900, after 400 went too far the other way.** Moving the light onto the axis cost the
+     * centre as well as the hotspot — the old one sat 105mm away and threw 24,600 lux at the
+     * middle of the face, and 400cd from 160mm gives 15,600 — so the label came back evenly
+     * lit and too dark to read, which the owner reported as the disc having "no cover at all".
+     * 900 puts the centre at about 35,000 with the rim at 0.94 of it: brighter than the disc
+     * has ever been AND flat across, which is the combination the old geometry could not
+     * reach at any intensity.
      */
-    const val DISC_UNDER_CANDELA = 400f
+    const val DISC_UNDER_CANDELA = 900f
 
     /** And how far in front of the platter, so the label is lit rather than the edge. */
     const val DISC_UNDER_FORWARD = 0.160f

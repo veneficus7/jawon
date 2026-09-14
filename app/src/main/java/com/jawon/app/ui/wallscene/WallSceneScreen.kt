@@ -1878,9 +1878,6 @@ fun WallSceneScreen(
             onDown = { e, node ->
                 scope.launch { panX.stop() }
                 scope.launch { panY.stop() }
-                // A new touch starts the detents over, so the first sample of a drag
-                // establishes where the wall is rather than ticking. See PanDetents.crossed.
-                panDetents.reset()
                 // Each new touch starts as "not a browse" until onScroll says otherwise.
                 settle.panned = false
 
@@ -1949,24 +1946,9 @@ fun WallSceneScreen(
                     val scale = metresPerPx()
                     val dx = distance.x * scale
                     val dy = distance.y * scale
-                    val nextX = panX.value + dx
-                    val nextY = panY.value - dy
-                    // **One tick per album the wall moves past, in either axis.** The owner:
-                    // "one haptic = one album shift ... it makes navigating through library
-                    // more satisfying." A crate has detents in it and flipping one is a
-                    // sequence of small events, not a slide. See PanDetents for why the unit
-                    // is a cell rather than a sample — per sample is 120 a second, which is a
-                    // buzz, and CrateFlip already paid for learning that once.
-                    if (panDetents.crossed(nextX, nextY)) {
-                        haptics.tick()
-                        // The rail shows itself while the wall is moving and fades out after,
-                        // so the letters are there when they are useful and gone when they are
-                        // over the artwork. See railVisibleUntil.
-                        railVisibleUntil = SystemClock.elapsedRealtime() + RAIL_DWELL_MS
-                    }
                     scope.launch {
-                        panX.snapTo(nextX)
-                        panY.snapTo(nextY)
+                        panX.snapTo(panX.value + dx)
+                        panY.snapTo(panY.value - dy)
                     }
                 }
             },
@@ -2625,6 +2607,28 @@ fun WallSceneScreen(
 
                 val selected = frame.selected
                 if (selected == null) {
+                    // **One tick per album the wall passes, driven from the frame rather than
+                    // from the finger.**
+                    //
+                    // The owner: "one haptic = one album shift, both horizontally and
+                    // vertically. it makes navigating through library more satisfying." It
+                    // was hooked to `onScroll` first, and he felt nothing — because
+                    // `onScroll` only fires while a finger is DOWN, and browsing this wall is
+                    // mostly the part after you let go. A swipe covers about one album and
+                    // then flings past several more, so the whole riffle — the part that
+                    // feels like a crate — happened in silence.
+                    //
+                    // Here it covers the drag, the fling and the magnet settling, because all
+                    // three are just the camera moving. Once per frame rather than once per
+                    // touch sample is also 120Hz down to 60 or 90, and the cell arithmetic in
+                    // PanDetents caps it far below either.
+                    if (panDetents.crossed(panX.value, panY.value)) {
+                        haptics.tick()
+                        // The rail shows itself while the wall moves and fades after, so the
+                        // letters are there when they are useful and gone when they would sit
+                        // over the artwork. See railVisibleUntil.
+                        railVisibleUntil = SystemClock.elapsedRealtime() + RAIL_DWELL_MS
+                    }
                     cameraNode.position = Position(panX.value, panY.value, zoom.current)
                     cameraNode.rotation = LOOK_STRAIGHT_AHEAD
                 } else {
