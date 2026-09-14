@@ -1484,6 +1484,33 @@ fun WallSceneScreen(
             }
         }
 
+        // **The paper taped to the brick beside them.** Deliberately a different set of
+        // albums from the framed ones — a shop's wall is not six copies of the same six
+        // records — so this takes the next lot down the same wear ordering. Baked off the main
+        // thread: a decode, a duotone pass over 180k pixels and a few thousand grain specks is
+        // not work for the frame this is composed on (architecture rule 9). See GigPoster.
+        val posterChoice = remember(layout.cases) { WallDecor.choosePosters(layout.cases) }
+        var posters by remember { mutableStateOf<List<Poster>>(emptyList()) }
+        LaunchedEffect(engine, posterChoice, fonts) {
+            posters = posterChoice.map { case ->
+                val sheet = withContext(Dispatchers.IO) {
+                    val cover = CaseArt.loadCoverSquare(case.coverPath)
+                    GigPoster.bake(
+                        artist = case.artist,
+                        title = case.title,
+                        hue = case.storedHue.takeIf { it > 0f } ?: case.fallbackHue,
+                        cover = cover,
+                        display = fonts.display,
+                        mono = fonts.mono
+                    )
+                }
+                Poster(
+                    case.albumId,
+                    ImageTexture.Builder().bitmap(sheet, TextureType.COLOR).build(engine)
+                )
+            }
+        }
+
         var neonMask by remember { mutableStateOf<Texture?>(null) }
         LaunchedEffect(engine, fonts) {
             val face = fonts.display ?: return@LaunchedEffect
@@ -3310,6 +3337,16 @@ fun WallSceneScreen(
                         timber = rackTimber,
                         materialLoader = materialLoader,
                         positions = WallDecor.slots(roomLeft, roomRight),
+                        bandY = rackTopY + RoomLighting.WASHER_AIM_ABOVE_CAP,
+                        wallZ = ROOM_WALL_Z + ROOM_WALL_T / 2f
+                    )
+
+                    // The posters hang on the frames' own grid, offset half a pitch, so the
+                    // wall alternates paper and glass rather than presenting a row of either.
+                    GigPosters(
+                        posters = posters,
+                        materialLoader = materialLoader,
+                        positions = GigPoster.slots(roomLeft, roomRight),
                         bandY = rackTopY + RoomLighting.WASHER_AIM_ABOVE_CAP,
                         wallZ = ROOM_WALL_Z + ROOM_WALL_T / 2f
                     )

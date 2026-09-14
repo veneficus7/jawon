@@ -71,6 +71,28 @@ object WallDecor {
             .toList()
 
     /**
+     * Which albums get a poster: **the next ones down, not the framed ones again.**
+     *
+     * A shop's wall is not six copies of the same six records. These are taken from below the
+     * framed set in the same wear ordering, so the two kinds of decor never show the same
+     * album, and a small library that runs out simply gets fewer posters rather than repeats
+     * of what is already framed beside them.
+     */
+    fun choosePosters(cases: List<CaseLayout>, limit: Int = MAX_PRINTS): List<CaseLayout> =
+        cases.asSequence()
+            .filter { !it.coverPath.isNullOrBlank() }
+            .distinctBy { it.albumId }
+            .sortedWith(compareByDescending<CaseLayout> { it.wear }.thenBy { it.albumId })
+            .drop(MAX_PRINTS)
+            .take(limit)
+            .toList()
+            // A library smaller than twelve records runs out here, and a bare wall is worse
+            // than a repeat: the frames and the posters print the same albums differently
+            // enough — glass against paper, photograph against duotone — that nobody reads
+            // them as duplicates at opposite ends of a wall.
+            .ifEmpty { chooseAlbums(cases, limit) }
+
+    /**
      * Where frames hang between [left] and [right]: on a [PITCH_M] grid centred on the rack,
      * skipping the middle where the sign is, and only where a whole frame fits inside the wall.
      */
