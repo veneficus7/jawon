@@ -480,7 +480,42 @@ internal const val DISC_LABEL_PRINT = 0.48f
 
 
 /** Progress at which the deck fades in — as the disc squares up, not before. */
-private const val DECK_REVEAL_AT = 0.75f
+/**
+ * Where in the open sequence the deck starts to arrive.
+ *
+ * **0.995, so it arrives *after* the record does rather than on top of it.** It was 0.75, and
+ * a per-frame timing probe through the sequence is what found the cost. The open is a 120Hz
+ * animation for three quarters of its length and then falls apart:
+ *
+ * | beat | mean frame | with the deck moved |
+ * |---|---|---|
+ * | pull | 8.6ms | 8.5ms |
+ * | turn | 8.3ms | 8.3ms |
+ * | open | 8.3ms | 8.3ms |
+ * | lift | 10.7ms | 8.3ms |
+ * | **spin** | **18.3ms** | **8.3ms** |
+ *
+ * Whole sequence: 103fps with 7.1% of frames missing a vsync and a 41.7ms worst frame,
+ * against **119.6fps, 0.9% and 16.7ms** once the deck is out of the way. That second column is
+ * identical to deleting the deck outright, so the deck's entrance accounted for all of it.
+ *
+ * The cause is trap 14, "an animation that recomposes nothing can still be the most expensive
+ * thing on screen": the deck rises on a single `graphicsLayer` with an animated `alpha`, and a
+ * large translucent layer over the Filament surface has to be re-blended by the compositor on
+ * every frame its alpha changes. Starting that at 0.75 ran it across 1425-1865ms of a 1900ms
+ * sequence — which is precisely the disc lifting out and spinning up, the part of this app
+ * anyone actually watches.
+ *
+ * Nothing about the entrance itself changed: same 440ms, same rise, same easing. It is only
+ * sequenced after the record settles instead of over it, which is also the better staging —
+ * the record comes out, and *then* the controls arrive. The cost is that the deck is fully
+ * present about 475ms later than it was.
+ *
+ * **The close is not measured.** `deckRevealed` goes false as soon as progress leaves 1.0, so
+ * the 440ms fade-out now runs over the first part of the close, which is the same overlap
+ * mirrored. The probe only dumped on open, so that is an open question rather than a claim.
+ */
+private const val DECK_REVEAL_AT = 0.995f
 
 /**
  * How long the deck takes to arrive, in milliseconds, and how far it rises doing it.
