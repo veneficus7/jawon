@@ -7,7 +7,6 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
 import androidx.compose.runtime.Composable
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
@@ -61,6 +60,16 @@ private const val PANEL_OUT_MS = 200
  */
 private const val PANEL_TRAVEL = 10
 
+/**
+ * How long the room takes to fade back up, and how long the panel covers for first.
+ *
+ * Measured from a 30fps capture of a real back press: black until ~230ms, blank covers until
+ * ~430ms, artwork at ~630ms. These are set to cover that — hold the panel briefly, then bring
+ * the room up across the window where it is still assembling itself.
+ */
+private const val ROOM_RETURN_MS = 420
+private const val ROOM_RETURN_DELAY_MS = 140
+
 @Composable
 fun JawonNavHost(navController: NavHostController = rememberNavController()) {
     NavHost(
@@ -84,13 +93,31 @@ fun JawonNavHost(navController: NavHostController = rememberNavController()) {
             ) + fadeIn(tween(PANEL_IN_MS, easing = FastOutSlowInEasing))
         },
         exitTransition = { ExitTransition.None },
-        popEnterTransition = { EnterTransition.None },
-        popExitTransition = {
-            slideOutVertically(
-                targetOffsetY = { it / PANEL_TRAVEL },
-                animationSpec = tween(PANEL_OUT_MS, easing = FastOutSlowInEasing)
-            ) + fadeOut(tween(PANEL_OUT_MS, easing = FastOutSlowInEasing))
-        }
+        // **Coming back is a cross-fade, and that is deliberate — it is hiding a rebuild.**
+        //
+        // The first version slid the panel back down over a room that held still, which is the
+        // symmetric gesture and was wrong for a reason only a device could show. Recorded at
+        // 30fps and stepped through: the panel vanished in a single frame, then the room area
+        // was **pure black for ~230ms** with only its 2D chrome on top, then the shelf appeared
+        // with every cover a blank grey plate for ~200ms more, and the artwork did not land
+        // until ~630ms after the back press.
+        //
+        // Navigating away disposes this destination, which destroys the SceneView and every
+        // Filament resource in it, and `CaseArtCache` is a `remember` inside the composable so
+        // the covers are re-decoded and re-baked too. Returning is not a transition, it is a
+        // reconstruction. And the room is drawn *above* the outgoing panel and paints itself
+        // opaque black before Filament has anything to show — which is why sliding the panel
+        // out underneath it was invisible, and why fading the panel out cannot help either.
+        //
+        // So the room fades up *over* the panel instead. Settings stays put and fully opaque
+        // underneath, and by the time the room is opaque it has geometry and artwork in it.
+        // The black flash and the blank plates both happen behind a screen that is still there.
+        //
+        // This is a mask, not a fix. The fix is for the room not to be destroyed at all.
+        popEnterTransition = {
+            fadeIn(tween(ROOM_RETURN_MS, delayMillis = ROOM_RETURN_DELAY_MS, easing = FastOutSlowInEasing))
+        },
+        popExitTransition = { ExitTransition.None }
     ) {
         composable(JawonDestination.Wall.route) {
             WallSceneScreen(
