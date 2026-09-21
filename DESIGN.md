@@ -16,6 +16,11 @@ excellently.
 > lit four ways. §1 below describes Midnight Shop, which is the default and the
 > one the rest of this document is written against.
 
+> **Since 2026-09-21, one room per format.** The owner gave each format — CD,
+> pocket player, vinyl, cassette — a room of its own (`docs/formats.md`). This
+> document is the CD room's. The new rooms will need design sections of their own,
+> and the four modes do not reach them: each is lit its own way.
+
 ---
 
 ## 1. The room: Midnight Shop

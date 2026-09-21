@@ -27,7 +27,9 @@ and Settings are still Compose and still current.
 
 Phase 1 (a complete 2D music player) and Phase 2 (the room: M5–M9) are done.
 **M11 · Realism** is where the work has been since: making the room look and feel
-real rather than merely rendered.
+real rather than merely rendered. **On 2026-09-21 the owner called the CD room
+finished**, and the next work is the other formats — vinyl, cassette and a pocket
+player — planned in `docs/formats.md` and not yet started.
 
 ### Working, and checked on a device
 
@@ -77,7 +79,7 @@ the fling ticks too. **The older record of the room's earlier passes:** a rack o
 | **Crash log — verified on a device, by accident** | On 2026-09-12 a launch crash (trap 23, "never construct a Filament object at file or object level") hit the owner's S25 Ultra twice. The handler fired both times, Settings → PROBLEMS held both reports with the right version, device and full stack, and SEND produced a readable file the owner shared back — the whole chain, end to end, on real hardware. **Still unverified: the `onPlayerError` path**, which can be provoked by pointing an album at a deleted file. |
 | **Lyrics — built, all three tiers** | Shipped as the third deck page, `TRACKS · SOUND · LYRICS`. **1.** Embedded `USLT`, parsed by hand — `MediaMetadataRetriever` does not expose lyrics and Media3 hands the frame back as raw bytes anyway. **2.** A `.lrc` sidecar, which needs *two* lookups because a library arrives two ways: a sibling document in a granted SAF tree, or the indexed path of a MediaStore-scanned file read off disk. The document route alone found nothing on a real library — everything here came from the scan. **3.** LRCLIB, behind a Settings switch, asked only when the page is opened for a track the device could not answer, cached in `Track.fetchedLyrics` (schema 4) with an empty string meaning "asked, none" so nothing is looked up twice. Verified live: synced lyrics, correct line highlighted. The original decision is below. |
 | **Lyrics — the original decision** | Three tiers, in this order. **1.** Embedded `USLT` out of the file's own ID3 tag: offline, free, and the import already opens every file to read its other tags. **2.** A `.lrc` sidecar beside the audio — the embedded *synced* tag (`SYLT`) exists but almost nothing writes or reads it, while `.lrc` is what every tool actually produces. **3.** **LRCLIB** (`lrclib.net`) when neither exists: no API key, no registration, no rate limit, MIT, and built explicitly for open-source players. Not Musixmatch or Genius — this is a licensing question before a technical one, and LyricFind quotes $10k. **The wrinkle:** every file here is a content URI, never a path, so "the `.lrc` next to it" is a `DocumentFile` traversal of a granted SAF tree, and for MediaStore-scanned files there may be no reachable sibling at all. Tier 2 will work for some libraries and not others; design for that rather than discover it. Lyrics are a *view*, not a control, so they belong as a third page — `TRACKS · SOUND · LYRICS` — not as another thing crammed into the deck. |
-| **Needs a decision first** | Vinyl/cassette/iPod modes — three more rooms before one is finished. |
+| **Formats — next, and planned but not started** | A pocket (iPod-style) player, vinyl and cassette. These sat here under *needs a decision first* for one reason — "three more rooms before one is finished" — and **on 2026-09-21 the owner called the CD room finished**, which removes it. He decided four things the same day, recorded in `docs/formats.md` §2: **the pocket player first**; **one switch for the whole library**; vinyl browsed by **crate-digging**; and **a room of its own per format**, which reverses the locked one-room decision below. Call them *formats*, not *modes* — a mode is the light (`RoomScheme`). The CD room is not made generic: a new room is a sibling of `WallSceneScreen`, sharing the view model, playback and the `Room*` rendering files. Step 1 is the format switch with only the CD behind it; step 2 is a spike measuring a *moving* `ViewNode` screen, the pocket player's one real technical risk. |
 
 ---
 
@@ -335,8 +337,6 @@ trap 11 and trap 15 in three different files, each correct in the era it was wri
     (81 -> 75fps), because the cost scales with shaded pixels and each pixel pays the fog march.
     So the samples-vs-resolution trade runs the opposite way to the intuition.
 
----
-
 ### The owner's library
 
 31. **Count what a change will take from the owner's library before it reaches his phone — from
@@ -351,15 +351,17 @@ trap 11 and trap 15 in three different files, each correct in the era it was wri
     backup first (Settings → Your library — the one backup a release build allows), and have the
     change say what it would take before it takes it, or ask him to look.
 
+---
+
 ## Locked decisions — do not relitigate
 
 | Decision | Value |
 |---|---|
 | minSdk | **28** (Android 9), since 0.2 beta. It was 29, on the reasoning that this is "where scoped storage settles into one code path" and that going lower means a second legacy storage branch. That turned out not to apply to this app: every file it touches arrives through SAF or MediaStore as a content URI, never as a filesystem path, so there was no legacy branch to write. Lowering it was one line. (The device scan added later needs one `Build.VERSION` check to pick between `READ_MEDIA_AUDIO` and `READ_EXTERNAL_STORAGE` — a permission name, not a second code path.) A tester's Note 9 could not install the app; now it can. **Unverified below a Galaxy S23** — it installs and it builds, but nobody has run the room on Android 9 hardware. |
-| 3D renderer | Filament via **SceneView** (`io.github.sceneview:sceneview`) |
+| 3D renderer | Filament via **SceneView** (`io.github.sceneview:sceneview`) — **for the CD room.** For the new format rooms the owner opened this on 2026-09-21: "we can switch renderer and tools if current doesn't achieve what we want and more", with the bar "hyper realism and beauty … the highest quality of 3d graphics and animation". Because every format has a separate room, a different renderer could serve the new rooms alone. The evaluation and its outcome belong in `docs/formats.md`. |
 | Geometry | **Imported glTF**, generated by the committed Blender script `tools/models/build_models.py`. The wall must use instancing so the index-keyed pool keeps its never-destroy guarantee. |
 | Album ↔ shelf | **One shelf per album.** A CD is physical; it cannot be in two places. |
-| Room style | **One room, four modes.** The geometry, the lamp position, the shelving, the dust and the open sequence are identical in all of them — the locked decision rules out building *more rooms*, not lighting the one room differently. A mode is a whole design, not a bulb: it owns the room's light, the 2D palette every flat screen reads (`Palette` in `ui/theme/Color.kt`), the deck's material and the glass in its window. **Midnight Shop · Cold Storage · After Hours · Workshop.** See `DESIGN.md`. |
+| Room style | **A room per format, and four modes in the CD room.** Reversed from "one room" on 2026-09-21, on the owner's call: each *format* — CD, pocket player, vinyl, cassette — gets a room of its own (`docs/formats.md`). Inside the CD room nothing changed: the geometry, the lamp position, the shelving, the dust and the open sequence are identical in all four modes, and a mode is a whole design, not a bulb — it owns the room's light, the 2D palette every flat screen reads (`Palette` in `ui/theme/Color.kt`), the deck's material and the glass in its window. **Midnight Shop · Cold Storage · After Hours · Workshop** (on screen, Vesper · Glacies · Vigilia · Officina). **The modes are the CD room's alone** — the owner, same day: "other rooms are seperate" — so each new room is lit its own way. See `DESIGN.md`. |
 | Disc surface | **No rainbow.** Iridescence was built and removed on the owner's call. This rules out *iridescence* (diffraction) and **not** *anisotropy* (the colourless directional sweep a real CD makes), which is wanted. Only the label side is ever seen. |
 | Playback | Media3 / ExoPlayer + `MediaSessionService` |
 | Network | **Cover art, and now metadata enrichment.** `INTERNET` was added in 0.2 beta for `CoverArtFetcher`: an album title and artist go to MusicBrainz for records whose own files carry no artwork, and an image comes back from the Cover Art Archive. **The owner has since decided to widen this** (see the row below) to award and credit lookups. What has not changed is the shape of it: only a title and an artist ever leave the device — no id, no account, no library listing — every lookup happens at import rather than at play time, results are cached to the database so nothing repeats, the import screen says so before it happens, and Settings has a switch. **This changes the Play data-safety form and the privacy policy**, and that is now a debt to pay before any listing, not a hypothetical. |
@@ -386,7 +388,12 @@ trap 11 and trap 15 in three different files, each correct in the era it was wri
    directly.
 4. **No new 3D or animation dependencies.** SceneView and Filament cover bloom,
    DOF, AO, fog, vignette, grading, shadows and custom materials. Raise it first if
-   something seems to need another library.
+   something seems to need another library. **For the new format rooms this is loosened
+   (2026-09-21)**: the owner said to use whatever tool reaches hyper-realism, renderer
+   included. Offline tools — Blender and Cycles bakes, CC0 asset libraries, new
+   hand-written materials — are cleared. A new *runtime* library or renderer is still
+   raised with its measured cost first, because it is also an APK-size, R8 and thermal
+   decision, not only a look.
 9. **No file I/O, metadata parsing or image decoding on the main thread.** Ever.
 6. Use SceneView's **Composable-as-texture** for in-world UI (shelf label plates)
    rather than baking text into bitmaps by hand.
@@ -422,6 +429,7 @@ trap 11 and trap 15 in three different files, each correct in the era it was wri
 | **Running a server, letting others in, or getting albums onto it** | `docs/server.md` — and read its first section before pointing anyone at a library, because what may be served is a legal question and nothing in the code enforces it |
 | **Adding anything that touches the network, storage or a permission** | `docs/privacy.md` — it is a published promise, not a description. If a change would make a sentence in it untrue, the policy changes *with* that change, in the same commit, or it should not ship. |
 | Questions about the product's intent | `PLAN.md` |
+| **Anything about vinyl, cassette or the pocket player** | `docs/formats.md` — what the CD is made of in code, the seam that has to come first, and the decisions still open |
 | Questions about how the room should look | `DESIGN.md` |
 | **Looking at the room without the phone** | `tools/emulator/README.md` — an AVD that reaches the same quality tier the phone does (`HIGH` needs >7GB RAM *and* API 33+, so the two low-spec AVDs land on `LOW`), a library with real cover art in it, and the screenshot-plus-luminance method that settles look arguments the eye gets wrong |
 | **Working on the room's look, or reaching for a Filament feature** | `docs/room-design.md` — the research behind treating the room as its own project. Read §1 before proposing any View option: it records which fields the JNI binding actually forwards, and found that `BloomOptions.quality` is **not** one of them, which makes a measurement in `RoomAtmosphere` wrong. |

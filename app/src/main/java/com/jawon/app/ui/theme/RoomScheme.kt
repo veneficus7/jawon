@@ -5,13 +5,12 @@ import androidx.compose.ui.graphics.Color
 /**
  * What colour the room is lit and built in.
  *
- * **This is a recolour, not a second room.** `ENGINEERING.md` locks the room style to Midnight
- * Shop — "one room, done excellently" — and that stands: the geometry, the lamp's position,
- * the shelving, the dust and the whole open sequence are identical in every scheme. What
- * changes is the bulb and the finish on the wood, the way the same shop looks under a
- * different light. The locked decision rules out building *more rooms* (the vinyl and
- * cassette modes are three more rooms before one is finished); it does not require the one
- * room to be exactly one colour forever.
+ * **This is a recolour, not a second room.** The geometry, the lamp's position, the shelving,
+ * the dust and the whole open sequence are identical in every scheme. What changes is the bulb
+ * and the finish on the wood, the way the same shop looks under a different light. Rooms are a
+ * different axis: on 2026-09-21 the owner gave each *format* — CD, pocket player, vinyl,
+ * cassette — a room of its own (`docs/formats.md`), and **these schemes are the CD room's
+ * alone**: "other rooms are seperate", so each of those is lit its own way.
  *
  * Four, and each one is a whole look rather than a palette: the room, the light in it, and the
  * machine you play the record on, chosen together. They were briefly two settings and the
