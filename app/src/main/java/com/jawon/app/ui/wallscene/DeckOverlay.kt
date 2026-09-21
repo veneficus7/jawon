@@ -176,19 +176,6 @@ fun DeckOverlay(
      * instead of the whole deck — the same reasoning as [scrubReadout] below.
      */
     offline: State<OfflineState?>,
-    /** Why there is no offline row on a Spotify record. See `WallSceneViewModel`. */
-    spotifyOfflineNotice: State<String?>,
-    /**
-     * Why the record in front of you is not playing.
-     *
-     * **The same string the room shows, shown here as well, and the duplication is the fix.**
-     * It was rendered only in the room's chrome, which is drawn `if (selectedAlbumId == null)`
-     * — so the one moment it matters, with a record open and silent, is exactly the moment
-     * it is not on screen. Smoke-testing the release build is what caught it: a Spotify album
-     * opened, the disc lifted, the deck sat at 0:00, and the sentence explaining why was
-     * behind the deck.
-     */
-    playbackNotice: State<String?>,
     downloading: State<Boolean>,
     offlineMessage: State<String?>,
     onKeepOffline: () -> Unit,
@@ -533,38 +520,6 @@ fun DeckOverlay(
                             onKeep = onKeepOffline,
                             onCancel = onCancelKeepOffline,
                             onDrop = onDropOffline
-                        )
-                    }
-                }
-                // And where the row WOULD be on a Spotify record, why it is not. Hiding it
-                // silently is what sent the owner looking for a feature that had been there
-                // and appeared to break; a missing control with a reason is a different thing
-                // from a broken one.
-                // Why this record is not playing, if it is not. Above the tracklist, where
-                // the eye goes when the time will not move.
-                playbackNotice.value?.let { words ->
-                    item {
-                        Text(
-                            text = words,
-                            style = JawonTextStyle.mono.copy(
-                                color = finish.accent,
-                                fontSize = 10.5.sp
-                            ),
-                            lineHeight = 16.sp,
-                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 10.dp)
-                        )
-                    }
-                }
-                spotifyOfflineNotice.value?.let { words ->
-                    item {
-                        Text(
-                            text = words,
-                            style = JawonTextStyle.mono.copy(
-                                color = finish.plateDim,
-                                fontSize = 10.sp
-                            ),
-                            lineHeight = 15.sp,
-                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 10.dp)
                         )
                     }
                 }

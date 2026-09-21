@@ -64,9 +64,6 @@ import com.jawon.app.R
 import com.jawon.app.data.remote.ServerProbe
 import com.jawon.app.data.remote.SubsonicServer
 import com.jawon.app.data.remote.SyncState
-import com.jawon.app.data.spotify.SpotifyAuth
-import com.jawon.app.data.spotify.SpotifyLoginState
-import com.jawon.app.data.spotify.SpotifySyncState
 import com.jawon.app.data.update.AvailableUpdate
 import com.jawon.app.data.update.UpdateState
 import com.jawon.app.playback.Crossfade
@@ -755,8 +752,8 @@ private fun BackupButton(text: String, enabled: Boolean, onClick: () -> Unit) {
  *
  * It is a [Disclosure], so the page carries one line about it until someone wants it, and that
  * line is the *state* — how many albums, from where — which is the only thing a person coming
- * back here wants to know. The three paragraphs of why-this-and-not-Spotify are still here,
- * still worth having, behind a `+`.
+ * back here wants to know. The three paragraphs on why a server and not a streaming service
+ * are still here, still worth having, behind a `+`.
  *
  * And it stops showing setup to people who are set up. Filling in an address is a thing you do
  * once; syncing and sharing are things you do repeatedly. So a configured server leads with what
@@ -1186,114 +1183,6 @@ private fun ServerField(
 }
 
 /**
- * Playing from a Spotify account.
- *
- * The copy here does more work than usual because three things will otherwise be discovered the
- * hard way: Premium is required for any playback at all, the Spotify app has to be open for
- * there to be somewhere to play, and none of the room's audio controls apply to a Spotify album.
- * That last one is the surprising one — the disc still turns, and turning it does nothing.
- */
-@Composable
-private fun SpotifySection(
-    clientId: String,
-    connected: Boolean,
-    loginState: SpotifyLoginState,
-    syncState: SpotifySyncState,
-    onClientIdChanged: (String) -> Unit,
-    onConnect: () -> Unit,
-    onDisconnect: () -> Unit,
-    onSync: () -> Unit
-) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(top = 26.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp)
-    ) {
-        Text(
-            text = "SPOTIFY",
-            fontFamily = JetBrainsMonoFamily,
-            fontWeight = FontWeight.Bold,
-            fontSize = 11.sp,
-            letterSpacing = 2.sp,
-            color = LabelCream
-        )
-        MoreText(
-            // The summary leads with the two things that stop it working, because those are what
-            // someone needs before they start rather than after.
-            summary = "Your saved Spotify albums, on the wall. Needs Premium, and the " +
-                "disc does nothing to them.",
-            detail = "Puts the albums you have saved in Spotify onto the wall. Jawon " +
-                "shows the room and presses play; Spotify makes the sound.\n\n" +
-                "Three things to know. It needs Spotify PREMIUM — Spotify turns a free " +
-                "account away. The Spotify app has to be running somewhere, because " +
-                "Jawon is asking it to play rather than playing itself. And the disc, " +
-                "the equaliser and the rack do nothing to a Spotify album: the sound " +
-                "never passes through Jawon, so there is nothing here to scratch.\n\n" +
-                "Setting it up is a job on Spotify's own site, done once. Sign in at " +
-                "developer.spotify.com, create an app, put " +
-                "${SpotifyAuth.REDIRECT_URI} where it asks for a Redirect URI, and copy " +
-                "the Client ID it gives you into the box below. It has to be your own: " +
-                "Spotify caps each app at five people."
-        )
-
-        ServerField(
-            label = "CLIENT ID",
-            value = clientId,
-            placeholder = "from developer.spotify.com",
-            onValueChange = onClientIdChanged
-        )
-
-        Row(
-            modifier = Modifier.padding(top = 4.dp),
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            BackupButton(
-                text = if (connected) "RECONNECT" else "CONNECT",
-                enabled = clientId.isNotBlank(),
-                onClick = onConnect
-            )
-            BackupButton(
-                text = "SYNC ALBUMS",
-                enabled = connected && syncState !is SpotifySyncState.Running,
-                onClick = onSync
-            )
-            BackupButton(text = "SIGN OUT", enabled = connected, onClick = onDisconnect)
-        }
-
-        when (loginState) {
-            SpotifyLoginState.WaitingForBrowser ->
-                StatusLine("Finish signing in, then come back.", LabelCream)
-            is SpotifyLoginState.Connected -> StatusLine(
-                if (loginState.isPremium) {
-                    "Signed in as ${loginState.displayName}"
-                } else {
-                    "Signed in as ${loginState.displayName} — but this account is not " +
-                        "Premium, so Spotify will refuse to play."
-                },
-                if (loginState.isPremium) LampAmber else LabelCream
-            )
-            is SpotifyLoginState.Failed -> StatusLine(loginState.reason, LabelCream)
-            SpotifyLoginState.Idle -> Unit
-        }
-
-        when (syncState) {
-            is SpotifySyncState.Running -> StatusLine(
-                "Reading ${syncState.done + 1} of ${syncState.total} — ${syncState.album}",
-                LabelCream
-            )
-            is SpotifySyncState.Done -> StatusLine(
-                "${syncState.added} new, ${syncState.updated} updated, " +
-                    "${syncState.removed} no longer saved",
-                LampAmber
-            )
-            is SpotifySyncState.Failed -> StatusLine(syncState.reason, LabelCream)
-            SpotifySyncState.Idle -> Unit
-        }
-    }
-}
-
-/**
  * One switchable setting: what it is, one line on what it does, and the switch.
  *
  * ## Why the long version is hidden rather than shortened
@@ -1391,9 +1280,9 @@ private fun SettingRow(
  * A short line, and the long version on a tap.
  *
  * The same idea as [SettingRow]'s disclosure, for the blocks of prose that are not attached to a
- * switch — what a backup contains, what Spotify will and will not do. Those paragraphs are worth
- * having and worth keeping exactly as written; they are simply not worth reading every time
- * somebody comes here to change the crossfade.
+ * switch — what a backup contains, why a server and not a streaming service. Those paragraphs
+ * are worth having and worth keeping exactly as written; they are simply not worth reading every
+ * time somebody comes here to change the crossfade.
  */
 @Composable
 private fun MoreText(summary: String, detail: String) {
@@ -1504,10 +1393,6 @@ fun SettingsScreen(
     val serverAlbumCount by viewModel.serverAlbumCount.collectAsStateWithLifecycle()
     val repairBusy by viewModel.repairBusy.collectAsStateWithLifecycle()
     val repairMessage by viewModel.repairMessage.collectAsStateWithLifecycle()
-    val spotifyClientId by viewModel.spotifyClientId.collectAsStateWithLifecycle()
-    val spotifyConnected by viewModel.spotifyConnected.collectAsStateWithLifecycle()
-    val spotifyLoginState by viewModel.spotifyLoginState.collectAsStateWithLifecycle()
-    val spotifySyncState by viewModel.spotifySyncState.collectAsStateWithLifecycle()
 
     // SAF both ways, for the same reason the folder import uses it: the file belongs to the
     // user, in a place they chose and can find again, not in this app's private storage where
@@ -1787,17 +1672,6 @@ fun SettingsScreen(
                 enabled = fetchLyrics
             )
 
-            if (Features.SPOTIFY) SpotifySection(
-                clientId = spotifyClientId,
-                connected = spotifyConnected,
-                loginState = spotifyLoginState,
-                syncState = spotifySyncState,
-                onClientIdChanged = viewModel::onSpotifyClientIdChanged,
-                onConnect = viewModel::onConnectSpotify,
-                onDisconnect = viewModel::onDisconnectSpotify,
-                onSync = viewModel::onSyncSpotify
-            )
-
             if (Features.MUSIC_SERVER) MusicServerSection(
                 server = musicServer,
                 probe = probe,
@@ -1876,8 +1750,8 @@ fun SettingsScreen(
 
             Text(
                 // Was "Everything Jawon knows lives on this phone", which stopped being true the
-                // moment a music server or a Spotify account could be attached. It is still true
-                // of everything the *app* keeps, and that is what it now says.
+                // moment a music server could be attached. It is still true of everything the
+                // *app* keeps, and that is what it now says.
                 text = "Jawon keeps nothing about you, anywhere but this phone.",
                 style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = 10.sp),
                 modifier = Modifier.padding(top = 48.dp, bottom = 48.dp)

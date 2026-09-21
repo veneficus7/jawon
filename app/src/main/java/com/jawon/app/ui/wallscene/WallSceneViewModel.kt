@@ -8,7 +8,6 @@ import com.jawon.app.data.local.PlayEventDao
 import com.jawon.app.data.local.ShelfDao
 import com.jawon.app.data.local.ShelfWithAlbums
 import com.jawon.app.data.local.Track
-import com.jawon.app.data.local.isRemoteControlled
 import com.jawon.app.data.local.TrackBadge
 import com.jawon.app.data.local.TrackPlayStats
 import com.jawon.app.data.local.TrackDao
@@ -18,7 +17,6 @@ import com.jawon.app.data.playback.EqualizerController
 import com.jawon.app.data.playback.PlaybackRepository
 import com.jawon.app.data.lyrics.Lyrics
 import com.jawon.app.data.prefs.AppPreferences
-import com.jawon.app.data.spotify.SpotifyLibrarySync
 import com.jawon.app.playback.AlbumDownloader
 import com.jawon.app.playback.OfflineState
 import com.jawon.app.playback.RackChannel
@@ -362,18 +360,6 @@ class WallSceneViewModel @Inject constructor(
     val positionMs: StateFlow<Long> = playbackRepository.positionMs
 
     /**
-     * Something the room needs to say out loud, or null.
-     *
-     * Only Spotify fills this so far, and only because a Spotify record that will not play is
-     * otherwise indistinguishable from one that is about to: the case opens, the disc lifts
-     * and spins, and the silence has no explanation attached to it. Everything else in the app
-     * fails where the user is already looking.
-     */
-    val notice: StateFlow<String?> = playbackRepository.notice
-
-    fun onNoticeShown() = playbackRepository.clearNotice()
-
-    /**
      * Fires when a record has played all the way through.
      *
      * The room answers it by closing the case — see the collector in `WallSceneScreen`. It is
@@ -573,26 +559,14 @@ class WallSceneViewModel @Inject constructor(
                 position > 0L &&
                 position >= tracks[index].durationMs - FINISHED_TAIL_MS
 
-            // A Spotify record is played by Spotify, not by this app — the repository needs the
-            // album URI to know that, because a track alone cannot say whose remote it is.
-            val spotifyUri = album
-                ?.takeIf { it.sourceId == SpotifyLibrarySync.SOURCE_ID }
-                ?.remoteId
-                ?.let { "spotify:album:$it" }
-
             if (finished) {
-                playbackRepository.playAlbum(
-                    tracks,
-                    albumArtist = album?.artist,
-                    spotifyAlbumUri = spotifyUri
-                )
+                playbackRepository.playAlbum(tracks, albumArtist = album?.artist)
             } else {
                 playbackRepository.playAlbum(
                     tracks,
                     startIndex = index,
                     startPositionMs = position,
-                    albumArtist = album?.artist,
-                    spotifyAlbumUri = spotifyUri
+                    albumArtist = album?.artist
                 )
             }
         }
@@ -727,45 +701,11 @@ class WallSceneViewModel @Inject constructor(
     }
 
     /**
-     * Null for an album that cannot be kept — which is what makes the control disappear rather
-     * than mislead, and which used to be decided wrongly.
-     *
-     * A local album is already on the phone and downloading it would be copying a file onto
-     * itself. **A Spotify album has no audio here to keep at all**, and the old test — "does any
-     * track carry a remoteId" — was true for it, because a Spotify track carries Spotify's id in
-     * exactly the column a music server's track carries the server's. So the control appeared,
-     * and pressing it asked a Subsonic downloader for a URL that does not exist. The owner:
-     * "keep offline function is not working with spotify". It could not have.
-     *
-     * Hidden is not enough on its own, because he went looking for it: [spotifyOfflineNotice]
-     * says why, where he was looking.
+     * Null for a local album — that is what makes the control disappear rather than mislead.
+     * A local album is already on the phone, and keeping it would be copying a file onto itself.
      */
-    private fun offlineStateOf(tracks: List<Track>): OfflineState? = when {
-        tracks.none { it.remoteId != null } -> null
-        tracks.any { it.isRemoteControlled } -> null
-        else -> downloader.stateOf(tracks)
-    }
-
-    /**
-     * Why there is no KEEP OFFLINE on this record, when the answer is Spotify.
-     *
-     * Spotify's own app can download it; Jawon cannot, and saying so where the control would
-     * have been is the difference between a missing feature and a broken one.
-     */
-    val spotifyOfflineNotice: StateFlow<String?> = deck
-        .map { state ->
-            if (state.tracks.any { it.isRemoteControlled }) {
-                // **One line, and that is the whole of the fix.** It was three, and a
-                // LazyColumn item three lines tall at the top of the tracklist pushed every
-                // track below the fold: opening a Spotify record showed a paragraph about an
-                // absent feature and none of the record. A footnote had taken the headline.
-                "To keep this offline, download it in Spotify."
-            } else {
-                null
-            }
-        }
-        .distinctUntilChanged()
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+    private fun offlineStateOf(tracks: List<Track>): OfflineState? =
+        if (tracks.none { it.remoteId != null }) null else downloader.stateOf(tracks)
 
     /**
      * Pulls the open album down in full.

@@ -1,9 +1,9 @@
 # The code, and where things live
 
-A map, so a reader can find the right file without reading the tree. 99 Kotlin
-files in `main`, about 26,000 lines. The 3D room is 13,561 of them — more than half
-— and the audio pipeline in `playback/` is another 2,737. "Everything else is
-small" was true when this file was written and is not any more.
+A map, so a reader can find the right file without reading the tree. 140 Kotlin
+files in `main`, about 40,700 lines (counted 2026-09-21). The 3D room is 20,119 of
+them — about half — and the audio pipeline in `playback/` is another 3,676.
+"Everything else is small" was true when this file was written and is not any more.
 
 `ENGINEERING.md` holds the traps and the locked decisions. This is only *where things
 are*.
@@ -86,7 +86,7 @@ move that into this list first.
 | `local/Migrations.kt` | `MIGRATION_1_2` (resume position, and the `PlayEvent` table), `MIGRATION_2_3` (`Track.artist`, for compilations), `MIGRATION_3_4` (`Track.fetchedLyrics`), `MIGRATION_4_5` (`Track.discNumber`), `MIGRATION_5_6` (`Album.sourceId`, `Album.remoteId`, `Track.remoteId` — where a record lives). Read its KDoc before adding a sixth: there is deliberately no destructive fallback. |
 | `remote/SubsonicClient.kt` | Four endpoints against a Subsonic-compatible server: `ping`, `getAlbumList2`, `getAlbum`, and the cover and stream URLs. Every `parse*` is pure and static, which is what makes the JSON shapes testable without a server. **A refusal arrives as HTTP 200** with a nested error — see its KDoc. |
 | `remote/SubsonicServer.kt` | The address and credentials, and the salted-token authentication. The password never crosses the wire; the salt is fresh per request, which is why the stream URL changes every time and the cache cannot key on it. |
-| `spotify/` | Playing from a Spotify account, over the **Web API** rather than Spotify's SDK — see `SpotifyClient` for why. `SpotifyAuth` is PKCE (no client secret can ship in an APK), `SpotifyLogin` survives the browser round trip, `SpotifyPlayer` is a remote control. **Spotify never hands over audio**, so the rack and the scratch do not apply to a Spotify album, and its development mode is capped at five Premium users. |
+| `local/SpotifyCleanup.kt` | All that is left of the Spotify route, **removed on 2026-09-21** because Spotify never hands over audio and so the disc, the rack and the scratch had nothing to act on. At launch and after a restore it takes Spotify albums, their emptied shelf and the sign-in tokens off the phone. Deliberately every launch rather than once, because an old backup can bring the albums back. |
 | `archive/` | The record shop. `ArchiveClient` searches and reads Internet Archive items; `ArchiveRepository` takes one home. **Archive URLs are permanent and unauthenticated**, which is why this needed no playback changes at all — the URL goes straight into `Track.fileUri`. |
 | `cd/` | Reading an audio CD from a USB drive. An audio CD has **no filesystem**, so this is SCSI MMC over USB Bulk-Only Transport: `ScsiCommands` builds the bytes, `CdToc` parses the table of contents and computes the MusicBrainz disc id, `WavWriter` wraps raw sectors, and `CdDrive` is the one untestable part. **Unverified — no drive has been attached yet.** |
 | `remote/ServerInvite.kt` | One pasteable string carrying a whole server, so nobody types three fields — and the `-Pjawon.serverInvite` build flag that ships a build already pointed at one. **Obfuscation, not security**: anyone with the link or the APK can read the credentials back out, which is why the account behind it must be read-only and disposable. Read its KDoc before using it for anything. |

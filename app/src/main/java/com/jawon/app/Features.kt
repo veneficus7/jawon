@@ -8,6 +8,11 @@ package com.jawon.app
  * it back it is cheaper to rewrite than to revive. A flag keeps the whole thing built, tested
  * and honest on every commit, and turning it back on is one line rather than an archaeology
  * exercise.
+ *
+ * **Spotify is the one route that was deleted rather than switched off**, on 2026-09-21, and the
+ * rule above is why the difference matters. A flag is for something that may come back. Spotify
+ * never hands its audio to Jawon, so on a Spotify album the disc, the rack and the scratch had
+ * nothing to act on — there was no version of it worth returning to.
  */
 object Features {
 
@@ -37,13 +42,4 @@ object Features {
      * See `docs/server.md`.
      */
     const val MUSIC_SERVER = true
-
-    /**
-     * Playing from a Spotify account.
-     *
-     * On, and the current focus. Unlike the server route this cannot be the whole app: Spotify
-     * never hands over the audio, so the equaliser, the rack and the scratch do not apply to a
-     * Spotify album. See `data/spotify/SpotifyClient` for what that costs and why.
-     */
-    const val SPOTIFY = true
 }

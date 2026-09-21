@@ -6,6 +6,7 @@ import android.content.Context
 import android.net.Uri
 import com.jawon.app.data.backup.LibraryBackup
 import com.jawon.app.data.diagnostics.CrashLog
+import com.jawon.app.data.local.SpotifyCleanup
 import com.jawon.app.data.prefs.AppPreferences
 import com.jawon.app.data.remote.RemoteLibrarySync
 import com.jawon.app.data.remote.ServerInvite
@@ -13,10 +14,6 @@ import com.jawon.app.data.remote.ServerProbe
 import com.jawon.app.data.remote.SubsonicClient
 import com.jawon.app.data.remote.SubsonicServer
 import com.jawon.app.data.remote.SyncState
-import com.jawon.app.data.spotify.SpotifyLibrarySync
-import com.jawon.app.data.spotify.SpotifyLogin
-import com.jawon.app.data.spotify.SpotifyLoginState
-import com.jawon.app.data.spotify.SpotifySyncState
 import com.jawon.app.playback.StreamCache
 import com.jawon.app.data.update.AvailableUpdate
 import com.jawon.app.data.update.UpdateChecker
@@ -53,8 +50,7 @@ class SettingsViewModel @Inject constructor(
     private val subsonic: SubsonicClient,
     private val librarySync: RemoteLibrarySync,
     private val streamCache: StreamCache,
-    private val spotifyLogin: SpotifyLogin,
-    private val spotifyLibrarySync: SpotifyLibrarySync
+    private val spotifyCleanup: SpotifyCleanup
 ) : ViewModel() {
 
     // ---- the music server ------------------------------------------------------------------
@@ -93,26 +89,6 @@ class SettingsViewModel @Inject constructor(
         // freshly-typed address was verified when nothing has asked it anything.
         _probe.value = null
     }
-
-    // ---- Spotify ---------------------------------------------------------------------------
-
-    val spotifyClientId: StateFlow<String> = preferences.spotifyClientId
-
-    val spotifyConnected: StateFlow<Boolean> = preferences.spotifyConnected
-
-    val spotifyLoginState: StateFlow<SpotifyLoginState> = spotifyLogin.state
-
-    val spotifySyncState: StateFlow<SpotifySyncState> = spotifyLibrarySync.state
-
-    fun onSpotifyClientIdChanged(id: String) = preferences.setSpotifyClientId(id)
-
-    fun onConnectSpotify() {
-        spotifyLogin.begin(preferences.spotifyClientId.value)
-    }
-
-    fun onDisconnectSpotify() = spotifyLogin.signOut()
-
-    fun onSyncSpotify() = viewModelScope.launch { spotifyLibrarySync.sync() }
 
     private val _inviteMessage = MutableStateFlow<String?>(null)
 
@@ -317,13 +293,24 @@ class SettingsViewModel @Inject constructor(
 
     fun onReadBackup(context: Context, source: Uri) = viewModelScope.launch {
         _backupBusy.value = true
-        _backupMessage.value = runCatching { backup.readFrom(context, source) }.fold(
-            onSuccess = { r ->
+        _backupMessage.value = runCatching {
+            // A backup written while the Spotify route existed can carry its albums, which this
+            // build cannot play. Taken straight back out rather than left for the next launch to
+            // find, so the wall never shows records that do nothing when opened.
+            backup.readFrom(context, source) to spotifyCleanup.run()
+        }.fold(
+            onSuccess = { (r, spotify) ->
                 "Restored ${r.albums} ${plural(r.albums, "album")} on " +
                     "${r.shelves} ${plural(r.shelves, "shelf", "shelves")}, " +
                     "${r.tracks} ${plural(r.tracks, "track")}, " +
                     "${r.covers} ${plural(r.covers, "image")} and " +
-                    "${r.plays} ${plural(r.plays, "play")} of history."
+                    "${r.plays} ${plural(r.plays, "play")} of history." +
+                    if (spotify > 0) {
+                        " $spotify of those albums came from Spotify and were taken back " +
+                            "out — this version cannot play them."
+                    } else {
+                        ""
+                    }
             },
             onFailure = { "Could not restore: ${it.message ?: "unknown error"}" }
         )

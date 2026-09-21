@@ -1020,12 +1020,6 @@ private const val MAX_CASE_SLOTS = 512
 private const val BEAM_MODEL_ASSET = "models/beam.glb"
 
 /**
- * How long the room's notice stays up. Long enough to read a sentence twice; short enough
- * that it is gone by the time the thing it describes has been dealt with.
- */
-private const val NOTICE_DWELL_MS = 6_000L
-
-/**
  * How long the crate rail stays up after the wall stops moving.
  *
  * **It used to be up permanently**, down the right edge, over whatever artwork happened to be
@@ -1187,7 +1181,6 @@ fun WallSceneScreen(
         // where the per-frame cost actually is.
         val sleepMode by viewModel.sleepMode.collectAsStateWithLifecycle()
         val sleepRemainingMs by viewModel.sleepRemainingMs.collectAsStateWithLifecycle()
-        val roomNotice by viewModel.notice.collectAsStateWithLifecycle()
         val diagnostics = viewModel.diagnostics
         val scratchAudio = viewModel.scratchAudio
         val initialTier = remember(context) { QualityTier.detect(context) }
@@ -4117,30 +4110,6 @@ fun WallSceneScreen(
                     onPlayPause = viewModel::onPlayPause
                 )
             }
-            // **What the room says when a record will not play.**
-            //
-            // Above the chrome rather than over the wall: it belongs with the controls,
-            // and a message across the records would be the app shouting at its own library.
-            // It clears itself, because every one of these is a passing condition — open
-            // Spotify, wait out the rate limiter, sign in again — and a message that has to
-            // be dismissed is one more thing to do while the music is not playing.
-            roomNotice?.let { words ->
-                LaunchedEffect(words) {
-                    delay(NOTICE_DWELL_MS)
-                    viewModel.onNoticeShown()
-                }
-                Text(
-                    text = words,
-                    fontFamily = JetBrainsMonoFamily,
-                    fontSize = 10.5.sp,
-                    lineHeight = 15.sp,
-                    letterSpacing = 0.6.sp,
-                    color = LampAmber,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 14.dp, vertical = 8.dp)
-                )
-            }
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.Bottom
@@ -4216,9 +4185,6 @@ fun WallSceneScreen(
                 onSeek = viewModel::onSeek,
                 onSelectTrack = viewModel::onSelectTrack,
                 offline = viewModel.offline.collectAsStateWithLifecycle(),
-                spotifyOfflineNotice =
-                    viewModel.spotifyOfflineNotice.collectAsStateWithLifecycle(),
-                playbackNotice = viewModel.notice.collectAsStateWithLifecycle(),
                 downloading = viewModel.downloading.collectAsStateWithLifecycle(),
                 offlineMessage = viewModel.offlineMessage.collectAsStateWithLifecycle(),
                 onKeepOffline = viewModel::onKeepOffline,

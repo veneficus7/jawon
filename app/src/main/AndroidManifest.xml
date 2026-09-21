@@ -97,34 +97,11 @@
             android:name=".MainActivity"
             android:exported="true"
             android:theme="@style/Theme.Jawon"
-            android:windowSoftInputMode="adjustResize"
-            android:launchMode="singleTop">
+            android:windowSoftInputMode="adjustResize">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
 
                 <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
-
-            <!--
-                Where Spotify sends the user back after they sign in.
-
-                Sign-in happens in the browser rather than in a WebView, which is not a style
-                choice: a WebView is readable by the app hosting it, so a password typed into
-                one has been handed over. The browser also already holds any Spotify session,
-                which usually turns this into a single tap.
-
-                This URI must match the redirect registered in the Spotify dashboard character
-                for character. A trailing slash difference is reported as "INVALID_CLIENT:
-                Invalid redirect URI", which does not hint that the two strings merely differ.
-                See data/spotify/SpotifyAuth.REDIRECT_URI.
-            -->
-            <intent-filter>
-                <action android:name="android.intent.action.VIEW" />
-
-                <category android:name="android.intent.category.DEFAULT" />
-                <category android:name="android.intent.category.BROWSABLE" />
-
-                <data android:scheme="jawon" android:host="spotify" />
             </intent-filter>
         </activity>
 

@@ -3,6 +3,7 @@ package com.jawon.app
 import android.app.Application
 import com.jawon.app.data.diagnostics.CrashLog
 import com.jawon.app.data.importer.TrackArtistBackfill
+import com.jawon.app.data.local.SpotifyCleanup
 import dagger.hilt.android.HiltAndroidApp
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -30,6 +31,10 @@ class JawonApplication : Application() {
     @Inject
     lateinit var crashLog: CrashLog
 
+    /** Takes the removed Spotify route's albums and sign-in off the phone. See its KDoc. */
+    @Inject
+    lateinit var spotifyCleanup: SpotifyCleanup
+
     /** Lives as long as the process, which is the honest lifetime for a one-shot at launch. */
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
@@ -44,5 +49,9 @@ class JawonApplication : Application() {
         // Off the main thread and unawaited: this opens every file in the library, and
         // ENGINEERING.md rule 5 has no exception for "only on the first launch after an update".
         scope.launch { trackArtistBackfill.runOnce() }
+
+        // Every launch rather than once, unlike the backfill: a backup restored later can bring
+        // Spotify albums back. Finds nothing, cheaply, on a phone that never had them.
+        scope.launch { spotifyCleanup.run() }
     }
 }
