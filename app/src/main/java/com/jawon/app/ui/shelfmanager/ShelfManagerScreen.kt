@@ -45,15 +45,12 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Slider
-import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -61,7 +58,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.focus.onFocusChanged
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.platform.LocalFocusManager
@@ -90,15 +86,19 @@ import java.util.Locale
  * The room's index — every shelf on the wall, in the order they hang.
  *
  * **This screen is a picture of the wall, not a settings form.** Each shelf is drawn as the
- * board you actually see in the room: the cream tape label stuck across the middle of it, its
- * underlight glowing along the front edge in the shelf's own accent hue. Reading down the list
- * is reading down the wall, so a shelf moved up here is a shelf that visibly moves up there.
+ * board you actually see in the room, with the cream tape label stuck across the middle of it.
+ * Reading down the list is reading down the wall, so a shelf moved up here is a shelf that
+ * visibly moves up there.
  *
  * It replaced a screen that laid every control for every shelf out at once — a bare text field,
  * a hue slider, Up and Down buttons and a Move button per album, all of it visible for all of
  * them, plus a "Back" button parked at the bottom of a scrolling list where it drifted off
  * screen. Nothing there told you which shelf you were looking at at a glance. Now a shelf shows
- * its name, its colour and how full it is; the controls arrive when you open one.
+ * its name and how full it is; the controls arrive when you open one.
+ *
+ * **There is no shelf colour any more** (2026-09-21, the owner: "what are they for? just remove
+ * it"). It coloured each shelf's underlight, and the underlights left the room on 2026-09-13;
+ * after that it tinted a small label card and a line on this screen, and nothing else.
  */
 @Composable
 fun ShelfManagerScreen(
@@ -185,7 +185,6 @@ fun ShelfManagerScreen(
                             else entry.shelf.id
                         },
                         onRename = viewModel::onRename,
-                        onRecolour = viewModel::onRecolour,
                         onMoveUp = viewModel::onMoveUp,
                         onMoveDown = viewModel::onMoveDown,
                         onEditAlbum = onEditAlbum,
@@ -358,7 +357,6 @@ private fun ShelfBoard(
     expanded: Boolean,
     onToggle: () -> Unit,
     onRename: (String, String) -> Unit,
-    onRecolour: (String, Float) -> Unit,
     onMoveUp: (String) -> Unit,
     onMoveDown: (String) -> Unit,
     onEditAlbum: (String) -> Unit,
@@ -368,7 +366,6 @@ private fun ShelfBoard(
     onDelete: (String) -> Unit
 ) {
     val shelf = entry.shelf
-    var hue by remember(shelf.id) { mutableFloatStateOf(shelf.accentHue) }
     var confirmingDelete by remember(shelf.id) { mutableStateOf(false) }
 
     if (confirmingDelete) {
@@ -382,7 +379,6 @@ private fun ShelfBoard(
             onDismiss = { confirmingDelete = false }
         )
     }
-    val accent = Color.hsv(hue * 360f, 0.62f, 0.85f)
     val chevron by animateFloatAsState(
         targetValue = if (expanded) 180f else 0f,
         animationSpec = tween(220, easing = FastOutSlowInEasing),
@@ -392,7 +388,7 @@ private fun ShelfBoard(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .border(1.dp, if (expanded) accent.copy(alpha = 0.45f) else CrateEdge)
+            .border(1.dp, if (expanded) LampAmber.copy(alpha = 0.45f) else CrateEdge)
             .background(CrateRaised)
     ) {
         // ---- The board face -------------------------------------------------------
@@ -436,23 +432,6 @@ private fun ShelfBoard(
             )
         }
 
-        // ---- The underlight -------------------------------------------------------
-        // The one thing that makes a shelf recognisably itself from across the room, so it
-        // is the one thing shown without opening anything. Brightest at the centre, under
-        // the tape, and falling off toward the ends — the same pool of light the beam casts.
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(2.dp)
-                .background(
-                    Brush.horizontalGradient(
-                        0f to Color.Transparent,
-                        0.5f to accent,
-                        1f to Color.Transparent
-                    )
-                )
-        )
-
         AnimatedVisibility(
             visible = expanded,
             enter = fadeIn(tween(180)) + expandVertically(tween(220, easing = FastOutSlowInEasing)),
@@ -467,33 +446,6 @@ private fun ShelfBoard(
                     shelfId = shelf.id,
                     onCommit = onRename
                 )
-
-                FieldLabel("UNDERLIGHT")
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    Slider(
-                        value = hue,
-                        onValueChange = { hue = it },
-                        onValueChangeFinished = { onRecolour(shelf.id, hue) },
-                        valueRange = 0f..1f,
-                        colors = SliderDefaults.colors(
-                            thumbColor = accent,
-                            activeTrackColor = accent.copy(alpha = 0.7f),
-                            inactiveTrackColor = CrateEdge
-                        ),
-                        modifier = Modifier.weight(1f)
-                    )
-                    // Solid, not a tinted wash. At 22% over the board colour this read as an
-                    // empty outlined box — the one control whose entire job is to show you a
-                    // colour was the one place the colour did not appear.
-                    Box(
-                        Modifier
-                            .size(28.dp)
-                            .background(accent)
-                    )
-                }
 
                 FieldLabel("POSITION ON THE WALL")
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {

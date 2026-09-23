@@ -116,11 +116,6 @@ class ShelfManagerViewModel @Inject constructor(
         viewModelScope.launch { shelfDao.insert(shelf.copy(name = name)) }
     }
 
-    fun onRecolour(shelfId: String, hue: Float) {
-        val shelf = shelves.value.find { it.shelf.id == shelfId }?.shelf ?: return
-        viewModelScope.launch { shelfDao.insert(shelf.copy(accentHue = hue)) }
-    }
-
     /**
      * Removes a shelf. The albums on it are **kept**, and land on another shelf.
      *

@@ -532,6 +532,17 @@ private const val PLATE_PX_H = 76
 private const val PLATE_PX_PER_UNIT = PLATE_PX_W / PLATE_W
 
 /**
+ * The label plate's card, the same on every shelf.
+ *
+ * It was tinted by the shelf's own hue until the owner had that choice removed (2026-09-21) —
+ * the underlights it was chosen for had gone a week earlier, so it had become a colour picker
+ * for a small card and nothing else. This is exactly the colour a shelf that was never
+ * recoloured already showed (hue 0), so a wall of default shelves does not change at all.
+ * A Compose colour, not a Filament object, so a top-level val is safe here (trap 23).
+ */
+private val PLATE_CARD = ComposeColor.hsl(0f, 0.22f, 0.13f)
+
+/**
  * Mutable state the per-frame driver owns. Deliberately not Compose state: the open
  * sequence advances every frame and must not recompose anything (ENGINEERING.md rule 3).
  */
@@ -3851,7 +3862,7 @@ fun WallSceneScreen(
                             isTouchable = false
                         }
                     ) {
-                        ShelfPlate(name = row.name, accentHue = row.accentHue)
+                        ShelfPlate(name = row.name)
                     }
                 }
             }
@@ -4683,7 +4694,7 @@ private fun ChromeAction(
  * would make the same shelf label physically bigger on one device than another.
  */
 @Composable
-private fun ShelfPlate(name: String, accentHue: Float) {
+private fun ShelfPlate(name: String) {
     val density = LocalDensity.current
     val widthDp = with(density) { PLATE_PX_W.toDp() }
     val heightDp = with(density) { PLATE_PX_H.toDp() }
@@ -4696,7 +4707,7 @@ private fun ShelfPlate(name: String, accentHue: Float) {
             // pastel only read when the key light was washing the front of every board; lit by
             // nothing in the two-light room, it came out a grey smudge. The node is unlit now
             // (see where it is mounted), so these are the colours that reach the screen.
-            .background(ComposeColor.hsl(accentHue * 360f, 0.22f, 0.13f)),
+            .background(PLATE_CARD),
         contentAlignment = Alignment.Center
     ) {
         Text(

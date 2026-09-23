@@ -171,7 +171,6 @@ data class CaseLayout(
 data class RowLayout(
     val shelfId: String,
     val name: String,
-    val accentHue: Float,
     val row: Int,
     val centerY: Float,
     val boardY: Float,
@@ -326,7 +325,6 @@ data class WallLayout(
         private fun waitingRow() = RowLayout(
             shelfId = "waiting",
             name = "Your first shelf",
-            accentHue = 0.09f,
             row = 0,
             centerY = 0f,
             boardY = -WallDimens.CASE_H / 2f - WallDimens.BOARD_H / 2f,
@@ -388,7 +386,6 @@ data class WallLayout(
                 RowLayout(
                     shelfId = shelf.shelf.id,
                     name = shelf.shelf.name,
-                    accentHue = shelf.shelf.accentHue,
                     row = row,
                     centerY = rowCenterY(row),
                     boardY = rowCenterY(row) - WallDimens.CASE_H / 2f - WallDimens.BOARD_H / 2f,
