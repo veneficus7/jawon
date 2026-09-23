@@ -940,23 +940,28 @@ def build_plant():
 #
 # Real dimensions, because this is shown at LIFE SIZE filling a phone screen — at
 # that distance every tolerance is visible, and a millimetre of error reads as a toy.
-POCKET_W = 0.056        # across
-POCKET_H = 0.096        # tall
-POCKET_T = 0.0086       # thick
-POCKET_R = 0.006        # corner radius
+# **The classic's envelope, on the owner's call** ("closer to the original
+# proportions"). It was 56 x 96 x 8.6 — its own size — and that read as a smaller,
+# thinner object than the thing being simulated. Dimensions are not what makes a
+# product's appearance its own; the marks and the face are, and this still carries
+# none of them.
+POCKET_W = 0.0618       # across
+POCKET_H = 0.1035       # tall
+POCKET_T = 0.0105       # thick
+POCKET_R = 0.0065       # corner radius
 POCKET_FRONT_T = 0.0011  # the anodised front plate
 
-POCKET_SCREEN_W = 0.0440
-POCKET_SCREEN_H = 0.0330
-POCKET_SCREEN_Y = 0.0225     # centre of the window, above the device's middle
-POCKET_SCREEN_R = 0.0015
+POCKET_SCREEN_W = 0.0455
+POCKET_SCREEN_H = 0.0341
+POCKET_SCREEN_Y = 0.0255     # centre of the window, above the device's middle
+POCKET_SCREEN_R = 0.0016
 POCKET_SCREEN_SINK = 0.0016  # how far the panel sits behind the front surface
 
-POCKET_WHEEL_Y = -0.0245
-POCKET_WHEEL_R = 0.0180
+POCKET_WHEEL_Y = -0.0225
+POCKET_WHEEL_R = 0.0195      # 39mm across, which is a thumb's reach
 POCKET_WHEEL_GAP = 0.0004    # the hairline the wheel turns in
 POCKET_WHEEL_SINK = 0.0006   # recessed, so a thumb finds it without looking
-POCKET_BUTTON_R = 0.0082
+POCKET_BUTTON_R = 0.00825
 POCKET_BUTTON_GAP = 0.0003
 
 
@@ -1150,8 +1155,13 @@ def build_pocket():
     wheel.data.materials.append(principled(
         # Matt polycarbonate with a polished skin — the one surface here that is
         # not metal, so it is what the metal is shiny *against*.
-        "PocketWheel", base_color=(0.145, 0.143, 0.140), metallic=0.0,
-        roughness=0.52, coat=0.25, coat_roughness=0.30,
+        #
+        # **Dark, close to the body** (owner, 2026-09-22). At 0.145 it read as a
+        # white wheel on a graphite device; a moulding a shade under the anodising
+        # is what a black one actually is, and it lets the hairline gap and the
+        # button's step do the work instead of a colour change.
+        "PocketWheel", base_color=(0.072, 0.071, 0.070), metallic=0.0,
+        roughness=0.54, coat=0.28, coat_roughness=0.30,
     ))
     finish(wheel, bevel_width=0.00010, harden=True)
     objects.append(wheel)
@@ -1165,8 +1175,10 @@ def build_pocket():
     bm.to_mesh(button.data)
     bm.free()
     button.data.materials.append(principled(
-        "PocketButton", base_color=(0.130, 0.128, 0.126), metallic=0.0,
-        roughness=0.46, coat=0.30, coat_roughness=0.26,
+        # A shade under the wheel and a touch glossier: a separate moulding, which
+        # is what the eye reads even before it finds the 0.3mm gap.
+        "PocketButton", base_color=(0.062, 0.061, 0.060), metallic=0.0,
+        roughness=0.47, coat=0.32, coat_roughness=0.26,
     ))
     finish(button, bevel_width=0.00012, harden=True)
     objects.append(button)
@@ -1178,9 +1190,11 @@ def build_pocket():
     # Hold switch, recessed into the top edge — inset, not sitting on it.
     box(bm, -0.0125, az(0.0), top_z - 0.0013, 0.0085, 0.0026, 0.0022)
     # Headphone jack, sunk into the same edge.
-    cylinder(bm, 0.0135, az(0.0), top_z - 0.0018, 0.0031, 0.0030, segments=32, axis="Z")
-    # The connector, on the bottom edge where a dock puts it.
-    box(bm, 0.0, az(0.0), -POCKET_H / 2.0 + 0.0007, 0.0230, 0.0026, 0.0018)
+    cylinder(bm, 0.0155, az(0.0), top_z - 0.0018, 0.0032, 0.0030, segments=32, axis="Z")
+    # The connector, on the bottom edge where a dock puts it — sunk into the edge,
+    # not hanging below it. The exported bounds are the check: app Y must not go
+    # past the body's own -POCKET_H/2.
+    box(bm, 0.0, az(0.0), -POCKET_H / 2.0 + 0.0011, 0.0262, 0.0026, 0.0018)
     bm.to_mesh(details.data)
     bm.free()
     details.data.materials.append(principled(

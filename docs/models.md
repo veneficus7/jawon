@@ -12,7 +12,7 @@ modelled by hand and not downloaded.
 | `case_lid` | the held case | 708 | origin on the hinge axis |
 | `case_closed` | the wall | 768 | shelved frame, opaque |
 | `disc` | the held case | 4608 | 1.2mm thick, radial UVs |
-| `pocket` | the iPod mode's device | 6958 | seven objects, one per material; life size |
+| `pocket` | the iPod mode's device | 6958 | seven objects, one per material; life size, 61.8 × 103.5 × 10.5mm |
 
 **Why the shelf gets its own case.** A shut jewel case shows none of the tray's
 interior, and the wall draws up to ~470 at once — carrying that interior would
@@ -156,7 +156,7 @@ they are in final glTF/app coordinates:
 | `case_lid.glb` | **X 0 … +0.125** (hinge origin), Y ±0.071, Z −0.0022 … +0.0040 |
 | `case_closed.glb` | **X ±0.005** (thickness), Y ±0.071, **Z ±0.0625** (depth) |
 | `disc.glb` | X/Y ±0.060, Z ±0.0006 (1.2mm thick) |
-| `pocket.glb` | X ±0.028, Y ±0.048, **Z −0.0043 … +0.0043** (8.6mm), and per part: the wheel's front face at **+0.0037** (0.6mm inside the plate's +0.0043) and the button's at **+0.00375** |
+| `pocket.glb` | X ±0.0309, Y ±0.0518, **Z −0.00525 … +0.00525** (10.5mm), and per part: the wheel's front face at **+0.00465** (0.6mm inside the plate's +0.00525) and the button's at **+0.0047**. Nothing in `pocket_details` may pass ±0.0518 in Y — the jack, the hold switch and the connector are sunk into those edges, not stuck on them. |
 
 Note `case_closed`'s axes are the odd ones out, and deliberately: it is the only
 model in the shelved frame, so its X is the 10mm edge rather than the 125mm
