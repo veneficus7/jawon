@@ -37,7 +37,7 @@ cassette. A **mode** stays the light.
 | Its controls? | **The iPod's, as closely as a touchscreen allows** | He has never used one; the point is the experience people remember as satisfying. §4 sets out what that experience was. |
 | Its name? | **Later** | Not "iPod" either way (§4). |
 | The visual bar? | **"Dont hold back at all … hyper realism and beauty … the highest quality of 3d graphics and animation"** | For every new room, and for animation as much as for stills. §4 sets out what that means for this one. |
-| May the renderer change? | **Yes** — "we can switch renderer and tools if current doesn't achieve what we want and more" | Filament stays for the CD room. For the new rooms the renderer is **open**, and chosen on evidence — §8. |
+| May the renderer change? | **Yes** — "we can switch renderer and tools if current doesn't achieve what we want and more" | Filament stays for the CD room. For the new rooms the renderer was **opened and then evaluated on evidence**: keep Filament here, upgrade it before considering an engine change. The audit is `docs/realism.md`. |
 
 The last one is the biggest, and it makes the work *safer* rather than harder: nothing
 about the CD room has to be made generic.
@@ -215,16 +215,23 @@ One thing at a time, checked on the owner's phone between each (the working agre
 2. **Spike: a live screen on a 3D object.** A bare plane carrying a `ViewNode` with a list
    scrolling at full frame rate, measured per thread against the room at rest, on the S25
    Ultra and on the lowest device to hand. Decides whether the screen is in-world or drawn
-   over the glass (§4).
-3. **The device model** — body, wheel, centre button, glass and bezel, at real size — in
+   over the glass (§4). **Smaller than it looked**: `ViewNode` already renders Compose through
+   a `SurfaceTexture` → `Stream` → `Texture`, the path video takes, so what is being measured
+   is the cost of the Compose redraw, not of getting pixels into the scene
+   (`docs/realism.md` §1.4).
+3. **The bake pipeline** — Cycles AO, normal and curvature bakes added to the committed model
+   script. Proven headless on this machine at 2.7s for a 1024² AO map, so it is a day's work,
+   not a project, and every later model benefits (`docs/realism.md` §1.5).
+4. **The device model** — body, wheel, centre button, glass and bezel, at real size — in
    `build_models.py`, with bounds checks added to `docs/models.md` the way the case's are.
-4. **Its room**, once the owner has chosen it.
-5. **Browsing on its screen** — albums, shelves as playlists, tracks.
-6. **The wheel** — scroll, select, transport, scrub or volume, detents, the click.
-7. **Now Playing, and a way to the rack and the lyrics.**
-8. **Vinyl** (§5), then **cassette** (§6), each its own room and built the same way.
+5. **Its room** — the train window (§4), lit by the lights going past
+   (`docs/realism.md` §3).
+6. **Browsing on its screen** — albums, shelves as playlists, tracks.
+7. **The wheel** — scroll, select, transport, volume and the scrubber, detents, the click.
+8. **Now Playing, and a way to the rack and the lyrics.**
+9. **Vinyl** (§5), then **cassette** (§6), each its own room and built the same way.
 
-Each of 3–7 is about a session's work. **Measure every tier as it lands** (traps 28–30).
+Each of 3–8 is about a session's work. **Measure every tier as it lands** (traps 28–30).
 The lowest tier has never been the one anybody needed, but every new room is a new scene to
 pay for.
 
