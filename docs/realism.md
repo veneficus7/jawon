@@ -104,10 +104,26 @@ baked normal/AO/curvature maps without new tooling.
 
 ## 2. What Filament 1.72.1 cannot do
 
-1. **No global illumination and no reflection probes.** One IBL, everywhere.
-2. **No area lights.** Softness must come from shadow options and from faking.
+**First, the distinction that matters: most of §1.1's gaps are the *binding*, not the
+engine.** `libfilament-jni.so` contains both `gtao` and `ssct`, and the Java options class
+carries every `gtao*` and `ssct*` field — they exist, and the JNI setter simply does not
+pass them. Filament is **Apache License 2.0**, its Java and JNI layers are in its own
+repository, and the missing lines are a handful per option. So "Filament cannot" is, for
+GTAO, cone-traced shadows and the thirteen dropped TAA fields, really "this prebuilt AAR
+will not" — fixable by upgrading, by rebuilding the AAR from source, or by a small JNI
+shim of our own against the native `View` pointer. The list below is what is missing from
+the *engine*.
+
+1. **No *real-time* global illumination and no reflection probes.** One IBL, everywhere —
+   but indirect light can be baked: a material with `requires : [ uv0, uv1 ]` sampling a
+   Cycles-baked lightmap on the second UV set **compiles** (tested, 612 KB), so a static
+   interior can carry path-traced bounce, and with it the soft shape of light that
+   real-time GI would have computed.
+2. **No area lights** *at runtime*. Bake them (they are ordinary lights to Cycles) and let
+   shadow options do the rest for anything that moves.
 3. **No motion blur.**
-4. **TAA in name only** (§1.1), and **no GTAO or SSCT** from Java.
+4. **TAA in name only** (§1.1), and **no GTAO or SSCT** from Java — see the note above:
+   engine yes, binding no.
 5. **SSR reflects only what is on screen** — a reflection of something off-frame, or of
    the viewer, is not available. It also measured **7× cost** with a case open in the CD
    room, which is a CD-room number and not a verdict for a one-object room.
@@ -181,6 +197,37 @@ things that actually decide realism** — baked lighting, real materials with im
 maps, moving lights, a video plate, a physically based camera, and animation that is not
 periodic. Then, if something specific is still missing, **upgrade Filament** before
 considering an engine change.
+
+### 4.1 Keeping Filament is not accepting its defaults
+
+Three levers raise the ceiling a long way without an engine change, in the order they are
+worth doing:
+
+1. **Bake the light.** Cycles is a path tracer: unlimited bounces, area lights, caustics,
+   and it already runs headless here in seconds (§1.5). Baked into a lightmap on UV1
+   (verified to compile) plus AO, curvature and normal maps, the static half of a room gets
+   *offline* lighting quality that no mobile real-time renderer computes.
+2. **Photograph the parts that never move.** The window's exterior can be a path-traced
+   Cycles loop or real footage, carried as an external stream texture and *also sampled by
+   the device's own material* (verified, §1.3), so the polish reflects the actual passing
+   lights. This is the one place where offline rendering can be put on screen directly.
+3. **Unbind the binding.** Upgrade to 1.76/1.77 (multiple directional lights, a second
+   specular lobe for hazy metal), or rebuild the Apache-2.0 bindings to forward GTAO, SSCT
+   and the full TAA set (§2). Each is hours-to-days, not a rewrite.
+
+### 4.2 The one genuinely different approach, if that is ever not enough
+
+**Pre-render the room and composite the live parts into it.** With the camera fixed — which
+a device held at life size arguably wants — the whole scene can be path-traced offline at
+film quality and played back as a loop, with only the screen, the wheel's response and the
+transport rendered live on top. That is strictly better-looking than any real-time renderer
+on any phone, because it *is* offline rendering.
+
+What it costs: the camera stops being free (or moves only on rails), every visual variation
+has to be rendered in advance, and the assets get large. It also breaks the thing the CD
+room is proud of — that the room is real geometry you move through. Worth raising for the
+pocket player specifically, where the camera has a reason to be still; wrong for vinyl,
+where crate-digging is movement.
 
 **What would reopen this:** vinyl's crate, which draws hundreds of sleeves rather than one
 device; or a decision that the rooms need real global illumination that cannot be baked
