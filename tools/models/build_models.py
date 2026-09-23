@@ -151,8 +151,17 @@ def cylinder(bm, cx, cy, cz, radius, depth, segments=32, axis="Y"):
     )
 
 
-def finish(obj, bevel=True, bevel_width=None):
-    """Bevel, smooth-by-angle, and hand back a ready object."""
+def finish(obj, bevel=True, bevel_width=None, harden=False):
+    """
+    Bevel, smooth-by-angle, and hand back a ready object.
+
+    [harden] keeps the flat faces flat. **Reach for it on any large flat panel with a
+    small bevel.** Without it the bevel's 45° faces are averaged into the vertex
+    normals all along the panel's boundary, and because a filled face can be one
+    enormous triangle fan, that tilt is then interpolated across the *entire* panel:
+    the pocket player's 1.1mm front plate rendered as a deep sloping tray, which
+    reads as a modelling mistake and is a shading one.
+    """
     if bevel:
         mod = obj.modifiers.new(name="Bevel", type="BEVEL")
         mod.width = bevel_width if bevel_width is not None else BEVEL_W
@@ -162,7 +171,7 @@ def finish(obj, bevel=True, bevel_width=None):
         # Clamp stops the bevel eating thin features whole — the tray walls are
         # 1.3mm and a 0.35mm bevel on both sides of them is already close.
         mod.use_clamp_overlap = True
-        mod.harden_normals = False
+        mod.harden_normals = harden
 
     # After the bevel, never before. The exporter derives tangents from the mesh
     # and silently gives up on n-gons — "Could not calculate tangents" — which
@@ -920,6 +929,270 @@ def build_plant():
     return [pot, leaves]
 
 
+# ---------------------------------------------------------------------------
+# The pocket player — the iPod-mode device.
+# ---------------------------------------------------------------------------
+
+# Its own design, deliberately. The interaction is the iPod's, faithfully (see
+# docs/formats.md §4); the object is not. Different proportions, no wordmark, no
+# Apple marks, and a face of its own — because copying the product's appearance is
+# a legal question, and copying its *feel* is not.
+#
+# Real dimensions, because this is shown at LIFE SIZE filling a phone screen — at
+# that distance every tolerance is visible, and a millimetre of error reads as a toy.
+POCKET_W = 0.056        # across
+POCKET_H = 0.096        # tall
+POCKET_T = 0.0086       # thick
+POCKET_R = 0.006        # corner radius
+POCKET_FRONT_T = 0.0011  # the anodised front plate
+
+POCKET_SCREEN_W = 0.0440
+POCKET_SCREEN_H = 0.0330
+POCKET_SCREEN_Y = 0.0225     # centre of the window, above the device's middle
+POCKET_SCREEN_R = 0.0015
+POCKET_SCREEN_SINK = 0.0016  # how far the panel sits behind the front surface
+
+POCKET_WHEEL_Y = -0.0245
+POCKET_WHEEL_R = 0.0180
+POCKET_WHEEL_GAP = 0.0004    # the hairline the wheel turns in
+POCKET_WHEEL_SINK = 0.0006   # recessed, so a thumb finds it without looking
+POCKET_BUTTON_R = 0.0082
+POCKET_BUTTON_GAP = 0.0003
+
+
+def rounded_rect(bm, w, h, r, y, cz=0.0, arc=8):
+    """
+    A closed rounded-rectangle edge loop in the XZ plane at Blender `y`.
+
+    Returns its verts in order. Used instead of a box wherever an edge is one a
+    thumb would feel: a 6mm corner radius is the difference between a moulded
+    object and a cuboid, and the bevel modifier cannot make one that large
+    without eating the faces either side of it.
+    """
+    hw, hh = w / 2.0 - r, h / 2.0 - r
+    pts = []
+    for cx, cy, a0 in (
+        (hw, hh, 0.0), (-hw, hh, 90.0), (-hw, -hh, 180.0), (hw, -hh, 270.0),
+    ):
+        for i in range(arc + 1):
+            a = math.radians(a0 + 90.0 * i / arc)
+            pts.append((cx + r * math.cos(a), cz + cy + r * math.sin(a)))
+    # The arcs share their end points with the next arc's start; drop the repeats.
+    verts = []
+    for x, z in pts:
+        if verts:
+            px, pz = verts[-1].co.x, verts[-1].co.z
+            if abs(px - x) < 1e-9 and abs(pz - z) < 1e-9:
+                continue
+        verts.append(bm.verts.new((x, y, z)))
+    edges = [bm.edges.new((verts[i], verts[(i + 1) % len(verts)]))
+             for i in range(len(verts))]
+    return verts, edges
+
+
+def circle_loop(bm, radius, y, cz, segments=96):
+    """A closed circular edge loop in the XZ plane — the wheel's hole and its rim."""
+    verts = [bm.verts.new((radius * math.cos(2.0 * math.pi * i / segments), y,
+                           cz + radius * math.sin(2.0 * math.pi * i / segments)))
+             for i in range(segments)]
+    edges = [bm.edges.new((verts[i], verts[(i + 1) % segments]))
+             for i in range(segments)]
+    return verts, edges
+
+
+def build_pocket():
+    """
+    Seven objects, one per material: front plate, back shell, screen panel, its
+    glass, the wheel, its centre button, and the dark details on the edges.
+
+    **The front plate is a face with two holes, filled and then extruded** — not a
+    slab with holes cut out of it. `docs/models.md` records what booleans do to
+    millimetre features here, and the plate is 1.1mm thick. Filling a planar
+    outline that already has its holes in it cannot leave a sliver behind.
+
+    Everything a thumb touches is recessed or proud by a real amount: the wheel
+    sits 0.6mm down with a 0.4mm hairline around it, the button 0.3mm inside the
+    wheel, the glass flush with the plate. Those numbers are what the eye reads as
+    "assembled" rather than "modelled".
+    """
+    front_z = POCKET_T / 2.0
+    objects = []
+
+    # ---- the front plate ---------------------------------------------------
+    front = new_mesh_object("pocket_front")
+    bm = bmesh.new()
+    _, outer_e = rounded_rect(bm, POCKET_W, POCKET_H, POCKET_R, az(front_z))
+    _, screen_e = rounded_rect(bm, POCKET_SCREEN_W, POCKET_SCREEN_H,
+                               POCKET_SCREEN_R, az(front_z), cz=POCKET_SCREEN_Y)
+    _, wheel_e = circle_loop(bm, POCKET_WHEEL_R + POCKET_WHEEL_GAP,
+                             az(front_z), POCKET_WHEEL_Y)
+    bmesh.ops.triangle_fill(bm, use_beauty=True, use_dissolve=False,
+                            edges=outer_e + screen_e + wheel_e)
+    faces = [f for f in bm.faces]
+    # Extrude the whole plate backwards in one go: the hole rims come with it and
+    # become the window's and the wheel recess's walls, which is where a real
+    # plate's thickness shows.
+    ex = bmesh.ops.extrude_face_region(bm, geom=faces)
+    moved = [v for v in ex["geom"] if isinstance(v, bmesh.types.BMVert)]
+    bmesh.ops.translate(bm, verts=moved, vec=(0.0, -az(POCKET_FRONT_T), 0.0))
+    bm.to_mesh(front.data)
+    bm.free()
+    front.data.materials.append(principled(
+        # Bead-blasted anodised aluminium: a metal wearing an oxide skin, which is
+        # why it has a coat as well as a middling roughness. Not paint.
+        "PocketFront", base_color=(0.205, 0.200, 0.196), metallic=1.0,
+        roughness=0.34, coat=0.12, coat_roughness=0.26, anisotropic=0.15,
+    ))
+    finish(front, bevel_width=0.00018, harden=True)
+    objects.append(front)
+
+    # ---- the back shell, domed ---------------------------------------------
+    back = new_mesh_object("pocket_back")
+    bm = bmesh.new()
+    back_inner_z = front_z - POCKET_FRONT_T
+    top_v, top_e = rounded_rect(bm, POCKET_W, POCKET_H, POCKET_R, az(back_inner_z))
+    bmesh.ops.contextual_create(bm, geom=top_e)
+    ex = bmesh.ops.extrude_face_region(bm, geom=[f for f in bm.faces])
+    moved = [v for v in ex["geom"] if isinstance(v, bmesh.types.BMVert)]
+    depth = back_inner_z + POCKET_T / 2.0
+    bmesh.ops.translate(bm, verts=moved, vec=(0.0, -az(depth), 0.0))
+    # The dome. A polished back that is dead flat reads as sheet metal; 0.5mm of
+    # crown across 56mm is what makes the highlight travel when the device moves.
+    back_y = az(-POCKET_T / 2.0)
+    for v in bm.verts:
+        if abs(v.co.y - back_y) < 1e-6:
+            u = min(1.0, math.hypot(v.co.x / (POCKET_W / 2.0),
+                                    v.co.z / (POCKET_H / 2.0)))
+            v.co.y -= az(0.0005 * math.cos(u * math.pi / 2.0))
+    bm.to_mesh(back.data)
+    bm.free()
+    back.data.materials.append(principled(
+        # Mirror-polished stainless. The most demanding surface in the room: it is
+        # almost entirely a reflection of whatever is around it, which is why the
+        # room's moving lights matter more here than any map.
+        "PocketBack", base_color=(0.560, 0.570, 0.580), metallic=1.0,
+        roughness=0.055, anisotropic=0.08,
+    ))
+    finish(back, bevel_width=0.00025, harden=True)
+    objects.append(back)
+
+    # ---- the screen: panel, then glass over it -----------------------------
+    panel = new_mesh_object("pocket_screen")
+    bm = bmesh.new()
+    _, e = rounded_rect(bm, POCKET_SCREEN_W - 0.0012, POCKET_SCREEN_H - 0.0012,
+                        POCKET_SCREEN_R, az(front_z - POCKET_SCREEN_SINK),
+                        cz=POCKET_SCREEN_Y)
+    bmesh.ops.contextual_create(bm, geom=e)
+    bm.to_mesh(panel.data)
+    bm.free()
+    # Planar UVs over the window, so the app's screen texture lands square on it.
+    mesh = panel.data
+    if not mesh.uv_layers:
+        mesh.uv_layers.new(name="UVMap")
+    uv = mesh.uv_layers.active.data
+    for poly in mesh.polygons:
+        for li in poly.loop_indices:
+            v = mesh.vertices[mesh.loops[li].vertex_index].co
+            uv[li].uv = (v.x / POCKET_SCREEN_W + 0.5,
+                         (v.z - POCKET_SCREEN_Y) / POCKET_SCREEN_H + 0.5)
+    mesh.materials.append(attach_placeholder_basecolor(principled(
+        # The LCD itself. Near-black and matt, because it is a diffuser: the app
+        # binds the live screen to this material's baseColorMap, exactly the way
+        # the disc's artwork is bound (see attach_placeholder_basecolor).
+        "PocketScreen", base_color=(0.020, 0.021, 0.023), metallic=0.0,
+        roughness=0.50,
+    ), "pocket_screen_placeholder"))
+    finish(panel, bevel=False)
+    objects.append(panel)
+
+    glass = new_mesh_object("pocket_glass")
+    bm = bmesh.new()
+    _, e = rounded_rect(bm, POCKET_SCREEN_W, POCKET_SCREEN_H, POCKET_SCREEN_R,
+                        az(front_z - 0.00005), cz=POCKET_SCREEN_Y)
+    bmesh.ops.contextual_create(bm, geom=e)
+    ex = bmesh.ops.extrude_face_region(bm, geom=[f for f in bm.faces])
+    moved = [v for v in ex["geom"] if isinstance(v, bmesh.types.BMVert)]
+    bmesh.ops.translate(bm, verts=moved, vec=(0.0, -az(0.0004), 0.0))
+    bm.to_mesh(glass.data)
+    bm.free()
+    glass.data.materials.append(principled(
+        # Flush with the plate, 0.4mm thick, and the only transmissive thing on the
+        # device. It is what puts the room on top of the picture.
+        "PocketGlass", base_color=(0.92, 0.93, 0.95), metallic=0.0,
+        roughness=0.02, coat=1.0, coat_roughness=0.01,
+        transmission=0.90, ior=1.52, blend=True,
+    ))
+    finish(glass, bevel_width=0.00008, harden=True)
+    objects.append(glass)
+
+    # ---- the wheel and its button ------------------------------------------
+    wheel = new_mesh_object("pocket_wheel")
+    bm = bmesh.new()
+    wheel_z = front_z - POCKET_WHEEL_SINK
+    outer = bmesh.ops.create_circle(
+        bm, cap_ends=False, segments=96, radius=POCKET_WHEEL_R,
+        matrix=(Matrix.Translation((0.0, az(wheel_z), POCKET_WHEEL_Y))
+                @ Matrix.Rotation(math.radians(90.0), 4, "X")))
+    inner = bmesh.ops.create_circle(
+        bm, cap_ends=False, segments=96, radius=POCKET_BUTTON_R + POCKET_BUTTON_GAP,
+        matrix=(Matrix.Translation((0.0, az(wheel_z), POCKET_WHEEL_Y))
+                @ Matrix.Rotation(math.radians(90.0), 4, "X")))
+    bmesh.ops.bridge_loops(bm, edges=[e for e in bm.edges])
+    bm.to_mesh(wheel.data)
+    bm.free()
+    solid = wheel.modifiers.new(name="Thickness", type="SOLIDIFY")
+    solid.thickness = 0.0013
+    # **Backwards, into the recess.** offset = +1 thickened it toward the camera and
+    # stood the wheel 0.7mm *proud* of a plate it is supposed to sit 0.6mm inside —
+    # which the exported bounds caught (app Z 3.70..5.00 against the plate's 4.30)
+    # long before a render would have.
+    solid.offset = -1.0
+    wheel.data.materials.append(principled(
+        # Matt polycarbonate with a polished skin — the one surface here that is
+        # not metal, so it is what the metal is shiny *against*.
+        "PocketWheel", base_color=(0.145, 0.143, 0.140), metallic=0.0,
+        roughness=0.52, coat=0.25, coat_roughness=0.30,
+    ))
+    finish(wheel, bevel_width=0.00010, harden=True)
+    objects.append(wheel)
+
+    button = new_mesh_object("pocket_button")
+    bm = bmesh.new()
+    # 0.05mm proud of the wheel it sits in: enough for a thumb to find the edge of
+    # it without looking, which is the whole point of the control.
+    cylinder(bm, 0.0, az(wheel_z - 0.0007), POCKET_WHEEL_Y,
+             POCKET_BUTTON_R, 0.0015, segments=96, axis="Y")
+    bm.to_mesh(button.data)
+    bm.free()
+    button.data.materials.append(principled(
+        "PocketButton", base_color=(0.130, 0.128, 0.126), metallic=0.0,
+        roughness=0.46, coat=0.30, coat_roughness=0.26,
+    ))
+    finish(button, bevel_width=0.00012, harden=True)
+    objects.append(button)
+
+    # ---- the edges: hold switch, headphone jack, connector -----------------
+    details = new_mesh_object("pocket_details")
+    bm = bmesh.new()
+    top_z = POCKET_H / 2.0
+    # Hold switch, recessed into the top edge — inset, not sitting on it.
+    box(bm, -0.0125, az(0.0), top_z - 0.0013, 0.0085, 0.0026, 0.0022)
+    # Headphone jack, sunk into the same edge.
+    cylinder(bm, 0.0135, az(0.0), top_z - 0.0018, 0.0031, 0.0030, segments=32, axis="Z")
+    # The connector, on the bottom edge where a dock puts it.
+    box(bm, 0.0, az(0.0), -POCKET_H / 2.0 + 0.0007, 0.0230, 0.0026, 0.0018)
+    bm.to_mesh(details.data)
+    bm.free()
+    details.data.materials.append(principled(
+        "PocketDetail", base_color=(0.035, 0.035, 0.037), metallic=0.0,
+        roughness=0.44,
+    ))
+    finish(details, bevel_width=0.00010)
+    objects.append(details)
+
+    return objects
+
+
 def mesh_add(target, source):
     """Fold `source` into `target` and free it. bmesh has no union operator."""
     tmp = bpy.data.meshes.new("tmp")
@@ -1225,37 +1498,66 @@ def main():
     from under its own asset root, which is more code to express the same tree
     and one more thing to get wrong.
     """
+    # Optional filter: `blender --background --factory-startup --python
+    # tools/models/build_models.py -- pocket` builds only the models whose file
+    # name contains "pocket". Without it every model is rebuilt, and disc.glb is
+    # not byte-reproducible (see docs/models.md), so a one-model change would
+    # otherwise dirty 188KB of unrelated binary on every run.
+    argv = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
+    wanted = [a.lower() for a in argv]
+
+    def skip(filename):
+        if not wanted:
+            return False
+        return not any(w in filename.lower() for w in wanted)
+
     paths = []
 
-    clear_scene()
-    paths.append(export([build_tray()], "case_tray.glb"))
+    if not skip("case_tray.glb"):
+        clear_scene()
+        paths.append(export([build_tray()], "case_tray.glb"))
 
-    clear_scene()
-    paths.append(export([build_lid()], "case_lid.glb"))
+    if not skip("case_lid.glb"):
+        clear_scene()
+        paths.append(export([build_lid()], "case_lid.glb"))
 
-    clear_scene()
-    paths.append(export([build_closed_case()], "case_closed.glb"))
+    if not skip("case_closed.glb"):
+        clear_scene()
+        paths.append(export([build_closed_case()], "case_closed.glb"))
 
-    clear_scene()
-    paths.append(export([build_beam()], "beam.glb"))
+    if not skip("beam.glb"):
+        clear_scene()
+        paths.append(export([build_beam()], "beam.glb"))
 
-    clear_scene()
-    paths.append(export([build_disc()], "disc.glb"))
+    if not skip("disc.glb"):
+        clear_scene()
+        paths.append(export([build_disc()], "disc.glb"))
 
     # The props. One file each: they are placed independently and a shop that
     # gains a fourth object should not mean re-exporting the other three.
-    clear_scene()
-    paths.append(export(build_turntable(), "turntable.glb"))
-    clear_scene()
-    paths.append(export(build_clock(), "clock.glb"))
-    clear_scene()
-    paths.append(export(build_plant(), "plant.glb"))
+    if not skip("turntable.glb"):
+        clear_scene()
+        paths.append(export(build_turntable(), "turntable.glb"))
+    if not skip("clock.glb"):
+        clear_scene()
+        paths.append(export(build_clock(), "clock.glb"))
+    if not skip("plant.glb"):
+        clear_scene()
+        paths.append(export(build_plant(), "plant.glb"))
+
+    # The pocket player — the iPod mode's device. Seven objects in one file,
+    # because they are one object in the hand and the app addresses its parts by
+    # the names they carry here.
+    if not skip("pocket.glb"):
+        clear_scene()
+        paths.append(export(build_pocket(), "pocket.glb"))
 
     # Exported together, unlike the case parts: these eight are one object that
     # has come apart, the app wants them all or none, and it addresses them by
     # the names they carry here.
-    clear_scene()
-    paths.append(export(build_disc_shards(), "disc_shards.glb"))
+    if not skip("disc_shards.glb"):
+        clear_scene()
+        paths.append(export(build_disc_shards(), "disc_shards.glb"))
 
     for path in paths:
         size = os.path.getsize(path)
