@@ -26,6 +26,8 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
@@ -86,6 +88,9 @@ private val KEY_POSITION = floatArrayOf(-0.12f, 0.50f, 0.42f)
 private const val KEY_CANDELA = 1_300f
 private const val KEY_CONE_INNER_RAD = 0.35f
 private const val KEY_CONE_OUTER_RAD = 0.80f
+
+/** How often the main menu's slideshow moves on. */
+private const val SLIDE_TICK_MS = 50L
 
 /** Covers drawn either side of the middle one in Cover Flow, and how many are kept decoded. */
 private const val COVER_WINDOW = 4
@@ -266,6 +271,49 @@ fun PocketRoomScreen(
             coverArt.keys.filter { it !in keep }.take(coverArt.size - COVER_CACHE_MAX).forEach { coverArt.remove(it) }
         }
     }
+    // ---- the main menu's slideshow: the library's covers, in an order of its own ------------
+    val onMain = currentKey == MenuKey.Main
+    val slideOrder = remember(albumsInOrder) {
+        albumsInOrder.filter { it.coverPath != null }.shuffled(kotlin.random.Random(albumsInOrder.size))
+    }
+    val slideIndex = remember { mutableIntStateOf(0) }
+    val slideClock = remember { mutableFloatStateOf(SLIDE_FADE_S) }
+    val showingSlides = onMain && slideOrder.isNotEmpty() && device.awake.value && device.backlight.value
+    LaunchedEffect(showingSlides) {
+        if (!showingSlides) return@LaunchedEffect
+        // Twenty steps a second: each is a redraw of the whole screen in software (trap 33), and
+        // a drift this slow is smooth at twenty with sub-pixel drawing.
+        while (true) {
+            kotlinx.coroutines.delay(SLIDE_TICK_MS)
+            var t = slideClock.floatValue + SLIDE_TICK_MS / 1000f
+            if (t >= SLIDE_HOLD_S + SLIDE_FADE_S) {
+                t -= SLIDE_HOLD_S
+                slideIndex.intValue += 1
+            }
+            slideClock.floatValue = t
+        }
+    }
+    LaunchedEffect(onMain, slideIndex.intValue, slideOrder) {
+        if (!onMain || slideOrder.isEmpty()) return@LaunchedEffect
+        for (k in 0..2) {
+            val album = slideOrder[(slideIndex.intValue + k) % slideOrder.size]
+            if (album.id in coverArt) continue
+            coverArt[album.id] = withContext(Dispatchers.IO) {
+                album.coverPath?.let { CaseArt.loadCover(it, maxPx = 256)?.asImageBitmap() }
+            }
+        }
+    }
+    val slides = if (onMain && slideOrder.isNotEmpty()) {
+        val i = slideIndex.intValue
+        LcdScreen.ArtSlides(
+            current = coverArt[slideOrder[i % slideOrder.size].id],
+            next = coverArt[slideOrder[(i + 1) % slideOrder.size].id],
+            seed = i
+        )
+    } else {
+        null
+    }
+
     val flowAnim = remember { Animatable(0f) }
     val flipAnim = remember { Animatable(0f) }
     val wasInFlow = remember { mutableStateOf(false) }
@@ -314,6 +362,7 @@ fun PocketRoomScreen(
         nav = nav,
         library = library,
         settings = device.settings,
+        slides = slides,
         albumsInOrder = albumsInOrder,
         coverArt = coverArt,
         trackTitles = trackTitles,
@@ -511,7 +560,8 @@ fun PocketRoomScreen(
                             unlit = unlit,
                             // Read here for the same reason as the backlight: trap 33.
                             flow = flowAnim.value,
-                            flip = flipAnim.value
+                            flip = flipAnim.value,
+                            slide = slideClock.floatValue
                         )
                         // **A ViewNode draws its texture once unless told otherwise** — trap 33.
                         // It copies its children into the texture only from its own container's
@@ -576,6 +626,7 @@ private fun lcdScreenFor(
     nav: PocketNav,
     library: PocketLibrary,
     settings: PocketSettings,
+    slides: LcdScreen.ArtSlides?,
     albumsInOrder: List<PocketLibrary.Album>,
     coverArt: Map<String, ImageBitmap?>,
     trackTitles: Map<String, List<String>>,
@@ -651,6 +702,7 @@ private fun lcdScreenFor(
         selected = level.selected - level.top,
         top = level.top,
         total = rows.size,
+        art = if (key == MenuKey.Main) slides else null,
         emptyText = when (key) {
             MenuKey.Albums, MenuKey.Artists -> "No albums yet"
             MenuKey.Shelves -> "No shelves yet"

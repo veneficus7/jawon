@@ -244,7 +244,9 @@ One thing at a time, checked on the owner's phone between each (the working agre
    covers in perspective on a glossy black floor, eased to the wheel, a cover turned over by
    the centre to list its tracks on the back — then Albums (filed as iTunes filed them, "The"
    and "A" set aside), Shelves as playlists in their wall order, Artists, an album's tracks,
-   and Now Playing. `PocketMenu.kt`, `CoverFlowLcd.kt`. **Cost unmeasured**: the flow redraws
+   and Now Playing. `PocketMenu.kt`, `CoverFlowLcd.kt`. The main menu is the classic's split
+   screen — the list on the left, covers from the library pushed in, drifted and dissolved on
+   the right — on a clock that ticks at 20fps only while that menu is up and lit. **Cost unmeasured**: the flow redraws
    the screen in software every frame it moves (trap 33's copy), which the phone has to answer.
 7. **The wheel — done (2026-09-26), bar the feel.** Turning, with acceleration on long lists;
    the centre; MENU (held: the main menu); Play/Pause (held: off, the screen dark until any

@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
@@ -27,7 +28,10 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
+import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
@@ -104,8 +108,21 @@ sealed interface LcdScreen {
         val top: Int,
         val total: Int,
         /** Shown when the list is empty, so an empty library says so rather than looking broken. */
-        val emptyText: String = ""
+        val emptyText: String = "",
+        /** The main menu's right half: the library's covers drifting past. Null elsewhere. */
+        val art: ArtSlides? = null
     ) : LcdScreen
+
+    /**
+     * The split screen's slideshow: the cover on show, the one fading in after it, and a number
+     * that decides which way each drifts. Where in its life a slide is comes in separately, as
+     * the room's clock — trap 33.
+     */
+    data class ArtSlides(
+        val current: ImageBitmap?,
+        val next: ImageBitmap?,
+        val seed: Int
+    )
 
     data class NowPlaying(
         val trackTitle: String,
@@ -183,7 +200,9 @@ fun PocketLcd(
     unlit: Float = 0f,
     /** Cover Flow's position, as a fractional index, and how far a cover is turned over. */
     flow: Float = 0f,
-    flip: Float = 0f
+    flip: Float = 0f,
+    /** Seconds into the main menu's current slide — see [ArtPanel]. */
+    slide: Float = SLIDE_FADE_S
 ) {
     val density = LocalDensity.current
     fun px(v: Int): Dp = with(density) { v.toDp() }
@@ -201,7 +220,7 @@ fun PocketLcd(
             Column(modifier = Modifier.fillMaxSize()) {
                 TitleBar(screen.title, playing)
                 when (screen) {
-                    is LcdScreen.Menu -> MenuBody(screen)
+                    is LcdScreen.Menu -> MenuBody(screen, slide)
                     is LcdScreen.NowPlaying -> NowPlayingBody(screen)
                     is LcdScreen.CoverFlow -> Unit
                 }
@@ -254,10 +273,11 @@ private fun TitleBar(title: String, playing: Boolean) {
 }
 
 @Composable
-private fun MenuBody(menu: LcdScreen.Menu) {
+private fun MenuBody(menu: LcdScreen.Menu, slide: Float) {
     val density = LocalDensity.current
     fun px(v: Int): Dp = with(density) { v.toDp() }
     val scrolls = menu.total > PocketMenus.VISIBLE_ROWS
+    val art = menu.art
 
     if (menu.rows.isEmpty()) {
         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -273,7 +293,9 @@ private fun MenuBody(menu: LcdScreen.Menu) {
     }
 
     Row(modifier = Modifier.fillMaxSize()) {
-        Column(modifier = Modifier.weight(1f)) {
+        Column(
+            modifier = if (art != null) Modifier.width(px(SPLIT_MENU_PX)) else Modifier.weight(1f)
+        ) {
             menu.rows.forEachIndexed { index, row ->
                 val isSelected = index == menu.selected
                 Row(
@@ -317,6 +339,83 @@ private fun MenuBody(menu: LcdScreen.Menu) {
             }
         }
         if (scrolls) Scrollbar(menu.top, menu.total)
+        if (art != null) ArtPanel(art, slide, Modifier.weight(1f).fillMaxHeight())
+    }
+}
+
+/** How much of the main menu's width the list keeps; the rest is the slideshow. */
+private const val SPLIT_MENU_PX = 356
+
+/** A slide's time fully on screen, and the cross-fade into the next. */
+const val SLIDE_HOLD_S = 6.5f
+const val SLIDE_FADE_S = 1.4f
+
+/**
+ * The classic's split screen: covers from the library, each slowly pushed in and drifted across
+ * — a Ken Burns — then dissolved into the next.
+ *
+ * [slide] runs from the moment the current cover began to fade in, so its drift is continuous
+ * across the hand-off: the room wraps it by [SLIDE_HOLD_S] exactly when the next cover takes
+ * over, and the next cover's own clock at that moment is where it already was.
+ *
+ * Drawn with a `Matrix` on the native canvas rather than `drawImage`'s whole-pixel offsets: a
+ * drift of a few pixels a second at twenty frames a second would otherwise move in visible
+ * one-pixel steps.
+ */
+@Composable
+private fun ArtPanel(art: LcdScreen.ArtSlides, slide: Float, modifier: Modifier) {
+    val tools = remember { KenBurns() }
+    // Clipped: a pushed-in cover is larger than the panel by design, and drawing on the native
+    // canvas is not bounded by the composable — unclipped, it spilled over the title bar and
+    // into the list the moment it drifted.
+    Canvas(modifier = modifier.clipToBounds()) {
+        drawRect(Color(0xFF0B0C0D))
+        val life = SLIDE_HOLD_S + SLIDE_FADE_S
+        drawIntoCanvas { canvas ->
+            val native = canvas.nativeCanvas
+            art.current?.let { tools.draw(native, it, size.width, size.height, slide / life, art.seed, 1f) }
+            val fade = ((slide - SLIDE_HOLD_S) / SLIDE_FADE_S).coerceIn(0f, 1f)
+            if (fade > 0f) {
+                art.next?.let {
+                    tools.draw(native, it, size.width, size.height, (slide - SLIDE_HOLD_S) / life, art.seed + 1, fade)
+                }
+            }
+        }
+        // The seam between the list and the pictures: a shade, as the classic's had.
+        drawRect(
+            brush = Brush.horizontalGradient(listOf(Color(0x66000000), Color.Transparent), endX = size.width * 0.08f),
+            size = Size(size.width * 0.08f, size.height)
+        )
+    }
+}
+
+private class KenBurns {
+    private val matrix = android.graphics.Matrix()
+    private val paint = android.graphics.Paint(android.graphics.Paint.FILTER_BITMAP_FLAG)
+
+    fun draw(
+        canvas: android.graphics.Canvas,
+        image: ImageBitmap,
+        width: Float,
+        height: Float,
+        t: Float,
+        seed: Int,
+        alpha: Float
+    ) {
+        val bmp = image.asAndroidBitmap()
+        val cover = maxOf(width / bmp.width, height / bmp.height)
+        // Pushing in on even slides, pulling out on odd ones, so the show does not only zoom.
+        val zoom = if (seed % 2 == 0) 1.0f + 0.16f * t else 1.16f - 0.16f * t
+        val scale = cover * zoom
+        val spareX = bmp.width * scale - width
+        val spareY = bmp.height * scale - height
+        val across = if ((seed / 2) % 2 == 0) t else 1f - t
+        val down = 0.35f + 0.3f * (((seed * 7) % 5) / 4f)
+        matrix.reset()
+        matrix.setScale(scale, scale)
+        matrix.postTranslate(-spareX * across, -spareY * down)
+        paint.alpha = (alpha * 255f).toInt()
+        canvas.drawBitmap(bmp, matrix, paint)
     }
 }
 
