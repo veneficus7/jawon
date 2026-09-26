@@ -113,10 +113,25 @@ sealed interface LcdScreen {
         /** 0..1, for [Bar.VOLUME]. */
         val volume: Float,
         /** Where the scrubber's playhead is, for [Bar.SCRUB]. */
-        val scrubMs: Long
+        val scrubMs: Long,
+        /** The words, when the lyrics page is up — in place of the cover and the names. */
+        val lyrics: LyricsView? = null
     ) : LcdScreen {
         override val title: String get() = "Now Playing"
     }
+
+    /**
+     * The lyrics page: the lines on screen, which one is being sung (−1 for none, or for words
+     * with no timing), and a note in place of the words while they are looked for or when
+     * there are none.
+     */
+    data class LyricsView(
+        val lines: List<String>,
+        val current: Int,
+        val note: String?,
+        /** Where [lines] starts in the whole song — so a turn scrolls from what is on screen. */
+        val top: Int = 0
+    )
 
     /**
      * Cover Flow: the covers near the selection, the middle one's name, and — when a cover has
@@ -317,6 +332,73 @@ private fun NowPlayingBody(np: LcdScreen.NowPlaying) {
     val art = 206
 
     Box(modifier = Modifier.fillMaxSize()) {
+        val words = np.lyrics
+        if (words != null) {
+            LyricsPage(words, Modifier.align(Alignment.TopCenter))
+        } else {
+            CoverAndNames(np, art)
+        }
+
+        // ---- the strip along the bottom -------------------------------------------------
+        Box(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .height(px(92))
+                .padding(horizontal = px(28))
+        ) {
+            when (np.bar) {
+                LcdScreen.Bar.PROGRESS -> TimeBar(np.positionMs, np.durationMs, diamond = false)
+                LcdScreen.Bar.SCRUB -> TimeBar(np.scrubMs, np.durationMs, diamond = true)
+                LcdScreen.Bar.VOLUME -> VolumeBar(np.volume)
+            }
+        }
+    }
+}
+
+/** The words, a few lines at a time: the one being sung bold and in the selection's colour. */
+@Composable
+private fun LyricsPage(words: LcdScreen.LyricsView, modifier: Modifier) {
+    val density = LocalDensity.current
+    fun px(v: Int): Dp = with(density) { v.toDp() }
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(start = px(30), end = px(30), top = px(22))
+    ) {
+        if (words.note != null) {
+            Text(
+                text = words.note,
+                fontFamily = InterFamily,
+                fontWeight = FontWeight.Medium,
+                fontSize = lcdSp(23),
+                color = LcdDim,
+                modifier = Modifier.padding(top = px(90))
+            )
+            return@Column
+        }
+        words.lines.forEachIndexed { i, line ->
+            val sung = i == words.current
+            Text(
+                text = line.ifBlank { "·" },
+                fontFamily = InterFamily,
+                fontWeight = if (sung) FontWeight.Bold else FontWeight.Medium,
+                fontSize = lcdSp(if (sung) 25 else 23),
+                lineHeight = lcdSp(29),
+                color = if (sung) SelectBottom else LcdInk.copy(alpha = 0.62f),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(vertical = px(3))
+            )
+        }
+    }
+}
+
+@Composable
+private fun CoverAndNames(np: LcdScreen.NowPlaying, art: Int) {
+    val density = LocalDensity.current
+    fun px(v: Int): Dp = with(density) { v.toDp() }
+    Box(modifier = Modifier.fillMaxSize()) {
         // ---- the cover, and its reflection in the screen's own floor ---------------------
         Column(
             modifier = Modifier
@@ -387,21 +469,6 @@ private fun NowPlayingBody(np: LcdScreen.NowPlaying) {
                 color = LcdDim,
                 maxLines = 1
             )
-        }
-
-        // ---- the strip along the bottom -------------------------------------------------
-        Box(
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .fillMaxWidth()
-                .height(px(92))
-                .padding(horizontal = px(28))
-        ) {
-            when (np.bar) {
-                LcdScreen.Bar.PROGRESS -> TimeBar(np.positionMs, np.durationMs, diamond = false)
-                LcdScreen.Bar.SCRUB -> TimeBar(np.scrubMs, np.durationMs, diamond = true)
-                LcdScreen.Bar.VOLUME -> VolumeBar(np.volume)
-            }
         }
     }
 }

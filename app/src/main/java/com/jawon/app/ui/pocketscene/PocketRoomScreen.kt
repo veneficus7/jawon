@@ -42,6 +42,7 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.google.android.filament.LightManager
+import com.jawon.app.data.lyrics.LyricsState
 import com.jawon.app.ui.theme.JawonTextStyle
 import com.jawon.app.ui.theme.LabelDim
 import com.jawon.app.ui.wallscene.CaseArt
@@ -260,6 +261,16 @@ fun PocketRoomScreen(
         )
     }
 
+    // **Lyrics are asked for only while their page is up**, never in the background: the third
+    // place they are looked for is LRCLIB, and the privacy policy promises a lookup happens when
+    // the words are asked for — the CD room's lyrics page keeps the same promise.
+    val lyricsState = if (device.lyricsOpen.value && currentKey == MenuKey.NowPlaying) {
+        viewModel.lyrics.collectAsStateWithLifecycle().value
+    } else {
+        null
+    }
+    device.lyricLineCount = (lyricsState as? LyricsState.Ready)?.lyrics?.lines?.size ?: 0
+
     val nowPlayingAlbum = nowPlayingAlbumId?.let { library.album(it) }
     val cover by produceState<ImageBitmap?>(initialValue = null, nowPlayingAlbum?.coverPath) {
         val path = nowPlayingAlbum?.coverPath
@@ -285,8 +296,15 @@ fun PocketRoomScreen(
         cover = cover,
         bar = device.bar.value,
         volume = device.volume.value,
-        scrubMs = device.scrubMs.value
+        scrubMs = device.scrubMs.value,
+        lyrics = if (device.lyricsOpen.value) {
+            lyricsView(lyricsState, positionMs, device.lyricTop.value, device.lyricsFollowing.value)
+        } else {
+            null
+        }
     )
+    // Where the lyrics page is actually showing from, for the wheel's first turn on it.
+    device.lyricShownTop = (screen as? LcdScreen.NowPlaying)?.lyrics?.top ?: 0
     val lcd = remember { mutableStateOf(screen) }
     SideEffect { lcd.value = screen }
 
@@ -539,7 +557,8 @@ private fun lcdScreenFor(
     cover: ImageBitmap?,
     bar: LcdScreen.Bar,
     volume: Float,
-    scrubMs: Long
+    scrubMs: Long,
+    lyrics: LcdScreen.LyricsView?
 ): LcdScreen {
     val key = nav.current.key
     if (key == MenuKey.NowPlaying) {
@@ -558,7 +577,8 @@ private fun lcdScreenFor(
             cover = cover,
             bar = bar,
             volume = volume,
-            scrubMs = scrubMs
+            scrubMs = scrubMs,
+            lyrics = lyrics
         )
     }
     if (key == MenuKey.CoverFlow || key is MenuKey.Flipped) {
@@ -610,6 +630,31 @@ private fun lcdScreenFor(
     )
 }
 
+/** Lyric lines on the page at once. */
+private const val LYRIC_ROWS = 7
+
+/**
+ * The lyrics page's window onto the words: following the line being sung — kept third from the
+ * top so what comes next is in view — unless the wheel has scrolled it, in which case [top].
+ */
+private fun lyricsView(
+    state: LyricsState?,
+    positionMs: Long,
+    top: Int,
+    following: Boolean
+): LcdScreen.LyricsView = when (state) {
+    null, LyricsState.Idle, LyricsState.Looking -> LcdScreen.LyricsView(emptyList(), -1, "Looking for the words…")
+    LyricsState.None -> LcdScreen.LyricsView(emptyList(), -1, "No lyrics for this song")
+    is LyricsState.Ready -> {
+        val lines = state.lyrics.lines
+        val current = state.lyrics.lineAt(positionMs)
+        val first = if (following && current >= 0) current - 2 else top
+        val from = first.coerceIn(0, (lines.size - LYRIC_ROWS).coerceAtLeast(0))
+        val shown = lines.subList(from, minOf(from + LYRIC_ROWS, lines.size)).map { it.text }
+        LcdScreen.LyricsView(shown, if (current >= 0) current - from else -1, null, top = from)
+    }
+}
+
 /**
  * The device's behaviour: what each touch of the wheel does, given where the menus are and
  * what is playing.
@@ -637,6 +682,17 @@ private class PocketDevice(
      * timer — and comes back on the next one, which still does what it was going to do.
      */
     val backlight = mutableStateOf(true)
+
+    /**
+     * The lyrics page on Now Playing, the classic's third press of the centre. While it is up,
+     * turning scrolls the words; a few seconds after the last turn they follow the song again.
+     */
+    val lyricsOpen = mutableStateOf(false)
+    val lyricTop = mutableStateOf(0)
+    val lyricsFollowing = mutableStateOf(true)
+    var lyricLineCount = 0
+    var lyricShownTop = 0
+    private var lyricTurnedAt = 0L
 
     var library = PocketLibrary()
     var trackTitles: Map<String, List<String>> = emptyMap()
@@ -799,6 +855,11 @@ private class PocketDevice(
             viewModel.onSeek(scrubMs.value)
         }
 
+        // Scrolled lyrics go back to following the song once the wheel has been left a while.
+        if (lyricsOpen.value && !lyricsFollowing.value && now - lyricTurnedAt > LYRICS_FOLLOW_AFTER_MS) {
+            lyricsFollowing.value = true
+        }
+
         // The scrubber and the volume fall back to the song's progress once the wheel is left.
         if (bar.value != LcdScreen.Bar.PROGRESS && now - barTouchedAt > BAR_IDLE_MS) {
             if (scrubPending) {
@@ -905,6 +966,10 @@ private class PocketDevice(
 
     private fun turn(turn: WheelGesture.Event.Turn, now: Long) {
         if (nav.value.current.key == MenuKey.NowPlaying && deck.tracks.isNotEmpty()) {
+            if (lyricsOpen.value && lyricLineCount > 0 && bar.value != LcdScreen.Bar.SCRUB) {
+                scrollLyrics(turn.steps, now)
+                return
+            }
             barTouchedAt = now
             if (bar.value == LcdScreen.Bar.SCRUB) scrub(turn) else changeVolume(turn.steps)
             return
@@ -920,6 +985,20 @@ private class PocketDevice(
             // At the end of the list the highlight stops, and so does the clicking — the
             // classic's way of telling you there is no more without showing you anything.
             nav.value = clamped
+        }
+    }
+
+    private fun scrollLyrics(steps: Int, now: Long) {
+        val maxTop = (lyricLineCount - LYRIC_ROWS).coerceAtLeast(0)
+        // From what is on screen: while following the song that is wherever the song has got
+        // to, not wherever the page was last scrolled — the first version jumped back to it.
+        val base = if (lyricsFollowing.value) lyricShownTop else lyricTop.value
+        val next = (base + steps).coerceIn(0, maxTop)
+        lyricsFollowing.value = false
+        lyricTurnedAt = now
+        if (next != lyricTop.value) {
+            lyricTop.value = next
+            step(now)
         }
     }
 
@@ -965,13 +1044,20 @@ private class PocketDevice(
             ClickWheel.Button.MENU -> back(silent = true)
             ClickWheel.Button.SELECT -> {
                 if (onNowPlaying) {
-                    // One press brings up the scrubber, another puts it away.
+                    // The classic's cycle: the scrubber, then the words, then back to the song.
                     barTouchedAt = now
-                    if (bar.value == LcdScreen.Bar.SCRUB) {
-                        bar.value = LcdScreen.Bar.PROGRESS
-                    } else {
-                        scrubMs.value = positionMs
-                        bar.value = LcdScreen.Bar.SCRUB
+                    when {
+                        bar.value == LcdScreen.Bar.SCRUB -> {
+                            bar.value = LcdScreen.Bar.PROGRESS
+                            lyricsOpen.value = true
+                            lyricsFollowing.value = true
+                            lyricTop.value = 0
+                        }
+                        lyricsOpen.value -> lyricsOpen.value = false
+                        else -> {
+                            scrubMs.value = positionMs
+                            bar.value = LcdScreen.Bar.SCRUB
+                        }
                     }
                     return
                 }
@@ -1077,7 +1163,10 @@ private class PocketDevice(
     /** MENU, and the phone's own back: one level up. */
     fun back(silent: Boolean = false) {
         if (!silent) press()
-        if (nav.value.current.key == MenuKey.NowPlaying) bar.value = LcdScreen.Bar.PROGRESS
+        if (nav.value.current.key == MenuKey.NowPlaying) {
+            bar.value = LcdScreen.Bar.PROGRESS
+            lyricsOpen.value = false
+        }
         nav.value = nav.value.back()
     }
 
@@ -1104,6 +1193,7 @@ private class PocketDevice(
     private companion object {
         const val CLICK_MIN_INTERVAL_MS = 18L
         const val BACKLIGHT_MS = 10_000L
+        const val LYRICS_FOLLOW_AFTER_MS = 4_000L
         val X_AXIS = Float3(1f, 0f, 0f)
         val Y_AXIS = Float3(0f, 1f, 0f)
         const val BAR_IDLE_MS = 3_500L
