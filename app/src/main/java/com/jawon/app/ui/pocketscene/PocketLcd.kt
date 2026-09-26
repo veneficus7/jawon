@@ -25,6 +25,7 @@ import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
@@ -241,6 +242,7 @@ fun PocketLcd(
                 }
             }
         }
+        LcdGlass()
         if (unlit > 0f) {
             Box(
                 modifier = Modifier
@@ -250,6 +252,42 @@ fun PocketLcd(
         }
     }
 }
+
+/**
+ * What makes the picture an LCD rather than an image of one: a backlit panel is not a perfect
+ * white, it falls off toward its corners, and it sits a millimetre under the plate's window —
+ * whose lip, lit from above, leaves a thin shadow along the panel's top and left edges.
+ * Multiplied over the content, so blacks stay black and only light is tinted.
+ */
+@Composable
+private fun LcdGlass() {
+    Canvas(modifier = Modifier.fillMaxSize()) {
+        // The backlight: a touch cool, and never quite white.
+        drawRect(color = BacklightTint, blendMode = BlendMode.Multiply)
+        // Falloff toward the corners.
+        drawRect(
+            brush = Brush.radialGradient(
+                colors = listOf(Color.White, Color.White, Color(0xFFD9DCE0)),
+                center = center,
+                radius = size.maxDimension * 0.62f
+            ),
+            blendMode = BlendMode.Multiply
+        )
+        // The window's lip, casting down onto the panel from the lamp above and to the left.
+        val lip = size.height * 0.045f
+        drawRect(
+            brush = Brush.verticalGradient(listOf(Color(0x66000000), Color.Transparent), startY = 0f, endY = lip),
+            size = Size(size.width, lip)
+        )
+        drawRect(
+            brush = Brush.horizontalGradient(listOf(Color(0x44000000), Color.Transparent), startX = 0f, endX = lip * 0.8f),
+            size = Size(lip * 0.8f, size.height)
+        )
+    }
+}
+
+/** The classic's panel was a slightly cool, slightly grey white; this is the multiplier for it. */
+private val BacklightTint = Color(0xFFEDF1F7)
 
 /** How dark the picture goes with the backlight out: still legible up close, as the real one was. */
 const val BACKLIGHT_OFF_DIM = 0.8f
