@@ -609,6 +609,24 @@ class WallSceneViewModel @Inject constructor(
     suspend fun trackTitles(albumId: String): List<String> =
         trackDao.getForAlbum(albumId).first().map { it.title }
 
+    /**
+     * Take on whatever album the player already has queued, if this view model has none.
+     *
+     * The pocket player's Now Playing is the player's, as the classic's was: come back to the
+     * room while music played on in the background and it should know what is on. This view
+     * model otherwise learns it only by starting it — fine for the CD room, where a record is
+     * "on" because its case is open, so only the pocket room calls this.
+     */
+    fun adoptPlayingAlbum() {
+        viewModelScope.launch {
+            playbackRepository.attach()
+            if (_nowPlayingAlbumId.value != null) return@launch
+            val first = playbackRepository.playback.value.queuedTrackIds.firstOrNull() ?: return@launch
+            val albumId = trackDao.albumIdOf(first) ?: return@launch
+            if (_nowPlayingAlbumId.value == null) _nowPlayingAlbumId.value = albumId
+        }
+    }
+
     /** Called when the case closes. */
     fun stop() {
         viewModelScope.launch {

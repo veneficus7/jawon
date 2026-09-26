@@ -276,6 +276,18 @@ class PlaybackRepository @Inject constructor(
         }
     }
 
+    /**
+     * Connects to the service and publishes what it is already doing.
+     *
+     * For a room rebuilt while music played on without it — the activity recreated, the service
+     * still going. The controller otherwise connects only when something is played, and state is
+     * published only on the player's events, so until then a rebuilt room sees an empty queue
+     * however much is playing. Connecting starts nothing.
+     */
+    suspend fun attach() {
+        updatePlaybackState(ensureController())
+    }
+
     private fun updatePlaybackState(player: Player) {
         _playback.value = PlaybackState(
             isPlaying = player.isPlaying,

@@ -197,6 +197,10 @@ fun PocketRoomScreen(
 
     val library = remember(layout) { pocketLibraryOf(layout) }
 
+    // Whatever the player is already playing is Now Playing, even when this room was rebuilt
+    // while it played on — the classic always knew what was on.
+    LaunchedEffect(viewModel) { viewModel.adoptPlayingAlbum() }
+
     // ---- what the device's own Settings menu shows ----------------------------------------
     val eqEnabled by viewModel.eqEnabled.collectAsStateWithLifecycle()
     val eqPresets by viewModel.eqPresets.collectAsStateWithLifecycle()

@@ -12,6 +12,10 @@ interface TrackDao {
     @Query("SELECT * FROM Track WHERE albumId = :albumId ORDER BY discNumber, trackNumber")
     fun getForAlbum(albumId: String): Flow<List<Track>>
 
+    /** Which album a track belongs to — for finding the record the player already has queued. */
+    @Query("SELECT albumId FROM Track WHERE id = :id")
+    suspend fun albumIdOf(id: String): String?
+
     /** How many tracks the whole library holds — the pocket player's About screen. */
     @Query("SELECT COUNT(*) FROM Track")
     fun count(): Flow<Int>
