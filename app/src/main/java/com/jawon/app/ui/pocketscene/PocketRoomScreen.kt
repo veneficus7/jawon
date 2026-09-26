@@ -8,6 +8,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.background
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
@@ -25,6 +27,7 @@ import io.github.sceneview.math.Rotation
 import io.github.sceneview.node.LightNode
 import io.github.sceneview.node.ModelNode
 import io.github.sceneview.node.Node
+import io.github.sceneview.node.ViewNode
 import io.github.sceneview.rememberCameraNode
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberEnvironmentLoader
@@ -33,6 +36,7 @@ import io.github.sceneview.rememberModelInstance
 import io.github.sceneview.rememberModelLoader
 import io.github.sceneview.rememberRenderer
 import io.github.sceneview.rememberView
+import io.github.sceneview.rememberViewNodeManager
 import kotlin.math.max
 
 /** Where the device's model lives. Seven objects in one file — see `docs/models.md`. */
@@ -49,6 +53,24 @@ private const val SENSOR_HEIGHT_MM = 24f
 
 /** The lens held level — see the `onFrame` note and trap 8. A value, so it is not reallocated per frame. */
 private val LEVEL = Rotation(0f, 0f, 0f)
+
+/**
+ * The LCD panel, in the device's own frame — these must agree with `build_pocket()`.
+ *
+ * The panel is `POCKET_SCREEN_W/H` less 1.2mm, centred `POCKET_SCREEN_Y` up the face and
+ * `POCKET_SCREEN_SINK` (1.0mm) behind it. The live screen sits **0.1mm in front of that panel**:
+ * enough that the depth buffer never has to choose between them, and still 0.45mm under the
+ * glass, which is what makes it read as a picture *under* a window rather than a sticker on one.
+ *
+ * **Why the screen could not be seen for a morning**: the panel was 1.6mm down, *inside* the
+ * back shell, which is solid up to the plate's underside. What the window showed was the
+ * shell's polished top face reflecting the lamp. Two probes — the glass hidden, then the panel
+ * hidden — changed nothing, and the one that moved the screen in front of everything showed it
+ * working perfectly; the depth it had been given was the whole problem.
+ */
+private const val SCREEN_W_M = 0.0443f
+private const val SCREEN_CENTRE_Y = 0.0255f
+private const val SCREEN_Z = 0.00525f - 0.0010f + 0.0001f
 
 /**
  * The iPod mode's room: a pocket player at life size, lit by a carriage at night.
@@ -84,6 +106,9 @@ fun PocketRoomScreen(onOpenSettings: () -> Unit) {
 
     val deviceModel = rememberModelInstance(modelLoader, POCKET_MODEL_ASSET)
     val ydpi = remember(context) { max(context.resources.displayMetrics.ydpi, 1f) }
+    // What renders Compose into the scene. See `docs/realism.md` §1.4: a SurfaceTexture feeding
+    // a Filament Stream — the path video takes — so the screen is live UI, not a baked image.
+    val viewNodeManager = rememberViewNodeManager()
 
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
         // **Life size, computed from the scene's own height rather than chosen by eye.**
@@ -114,6 +139,7 @@ fun PocketRoomScreen(onOpenSettings: () -> Unit) {
             cameraNode = cameraNode,
             cameraManipulator = null,
             autoCenterContent = false,
+            viewNodeWindowManager = viewNodeManager,
             // **Trap 8, again, and measured again at the same −8.28°.** SceneView's camera node
             // arrives already pitched down, and nothing in this room resets it, so the device
             // sat a quarter of a screen too high while the arithmetic above was right. The CD
@@ -158,6 +184,25 @@ fun PocketRoomScreen(onOpenSettings: () -> Unit) {
                             isShadowReceiver = false
                         }
                     )
+                    // The screen, as a child of the device so it turns with it. Unlit because
+                    // an LCD is its own light: nothing in the carriage should be able to
+                    // darken what the backlight is putting out.
+                    ViewNode(
+                        windowManager = viewNodeManager,
+                        unlit = true,
+                        position = Position(0f, SCREEN_CENTRE_Y, SCREEN_Z),
+                        apply = {
+                            pxPerUnits = LCD_PX_W / SCREEN_W_M
+                            isTouchable = false
+                        }
+                    ) {
+                        PocketLcd(
+                            title = "Jawon",
+                            rows = listOf("Albums", "Shelves", "Artists", "Now Playing", "Settings"),
+                            selected = 0,
+                            playing = false
+                        )
+                    }
                 }
             }
         }

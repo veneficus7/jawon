@@ -166,6 +166,13 @@ mistake.
 A tray whose Z straddles zero, or a lid whose X is centred on zero, is the axis
 trap or the origin trap respectively.
 
+**The pocket player's back shell is solid** — from its back face right up to the front
+plate's underside at Z **+0.00415**. Anything meant to be seen *through* the plate's holes
+must sit above that plane: the LCD panel was first put at +0.00365, inside the shell, and
+the window then showed the shell's mirror-polished top face with the lamp in it, which read
+in both Cycles and Filament as a dark screen under glass. It is at **+0.00425** now. The
+check is one number: `pocket_screen`'s Z must exceed `pocket_back`'s maximum.
+
 **A wheel that is proud of its plate is the same class of error**, and the bounds
 caught it: the pocket player's wheel first exported at Z +0.0037…+0.0050, standing
 0.7mm out of a face it is meant to sit 0.6mm inside, because `SOLIDIFY` with

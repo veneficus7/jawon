@@ -962,7 +962,13 @@ POCKET_SCREEN_W = 0.0455
 POCKET_SCREEN_H = 0.0341
 POCKET_SCREEN_Y = 0.0255     # centre of the window, above the device's middle
 POCKET_SCREEN_R = 0.0016
-POCKET_SCREEN_SINK = 0.0016  # how far the panel sits behind the front surface
+# How far the LCD panel sits behind the front surface. **It must stay above the back
+# shell's top face**, which is solid and rises to the underside of the front plate
+# (front_z - POCKET_FRONT_T): at 1.6mm the panel was *inside* the shell, and what showed
+# through the window was the shell's mirror-polished top — a streak of reflected lamp that
+# read, in both Cycles and Filament, as a dark screen under glass. 1.0mm puts it 0.1mm
+# above that face, with the live screen and then the glass above it.
+POCKET_SCREEN_SINK = 0.0010
 
 POCKET_WHEEL_Y = -0.0225
 POCKET_WHEEL_R = 0.0195      # 39mm across, which is a thumb's reach
@@ -1131,13 +1137,21 @@ def build_pocket():
         # Flush with the plate, 0.4mm thick, and the only transmissive thing on the
         # device. It is what puts the room on top of the picture.
         #
-        # **No clear coat, and that is not taste.** gltfio 1.72.1's ubershaders cannot
-        # combine clearcoat with transmission, volume, sheen or IOR: loaded on a device it
-        # logs "Volume, transmission, sheen and IOR are not supported in ubershader mode for
-        # clearcoat materials (PocketGlass)" and quietly drops the transmission. Glass is
-        # itself the clear layer, so the coat was never buying anything here.
-        "PocketGlass", base_color=(0.92, 0.93, 0.95), metallic=0.0,
-        roughness=0.02, transmission=0.90, ior=1.52, blend=True,
+        # **Blended, not transmissive — and both earlier versions were wrong on a device.**
+        #
+        # With a clear coat, gltfio's ubershader dropped the transmission outright ("Volume,
+        # transmission, sheen and IOR are not supported in ubershader mode for clearcoat
+        # materials"). Without it, transmission worked exactly as Filament implements it:
+        # screen-space refraction of the *opaque* pass — and the live screen is a transparent
+        # ViewNode, so the glass faithfully refracted the dark panel underneath and painted
+        # that over the picture. Hiding the glass is what showed it.
+        #
+        # A flat 0.4mm cover bends almost nothing, so refraction was never buying anything a
+        # person could see. What a screen cover *does* do is reflect, and a blended surface at
+        # a few percent alpha keeps its full specular (Filament's `transparent` blending) while
+        # sorting after the screen, because it is nearer the lens.
+        "PocketGlass", base_color=(0.015, 0.016, 0.018), metallic=0.0,
+        roughness=0.03, alpha=0.06, blend=True,
     ))
     finish(glass, bevel_width=0.00008, harden=True)
     objects.append(glass)
