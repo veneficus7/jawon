@@ -228,10 +228,12 @@ One thing at a time, checked on the owner's phone between each (the working agre
    `build_models.py`, with bounds checks added to `docs/models.md` the way the case's are.
 5. **Its room** — the train window (§4), lit by the lights going past
    (`docs/realism.md` §3). **The window is up (2026-09-26)**: `night_window.mat`, the night
-   out of focus at three depths with poles and a rocking carriage, behind the device. Still to
-   come: the lights going past as *light* — glints sliding across the glass, rim light on the
-   edges — and a key light that registers at SceneView's default exposure, where the room's
-   first point lights were worth nothing (`docs/models.md`, the print's note).
+   out of focus at three depths with poles and a rocking carriage, behind the device. **And
+   the lights going past are light**: a key spot for the carriage's ceiling lamp, and a pool of
+   lamps on an irregular schedule whose glints slide across the glass and whose light rims the
+   edge (`PassingLamps`). First tuning on the AVD: a lamp behind you at 900–2600cd washed the
+   whole anodised face bronze (16 -> 60 of 255), so it runs at 380–1100cd; the key light took
+   the wheel from 10 to 14 and its print from 32 to 51. **Judged on the phone, not here.**
 6. **Browsing on its screen — done, bar Cover Flow (2026-09-26).** Albums (filed as iTunes
    filed them, "The" and "A" set aside), Shelves as playlists in their wall order, Artists, an
    album's tracks, and Now Playing. `PocketMenu.kt`. Cover Flow is still to come.

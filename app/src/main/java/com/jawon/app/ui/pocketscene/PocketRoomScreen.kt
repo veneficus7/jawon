@@ -69,6 +69,18 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlin.math.max
 
+/**
+ * The key light: where the carriage's ceiling lamp hangs relative to the device, and how hard it
+ * shines. Aimed back at the device from there.
+ */
+private val KEY_POSITION = floatArrayOf(-0.12f, 0.50f, 0.42f)
+private const val KEY_CANDELA = 1_300f
+private const val KEY_CONE_INNER_RAD = 0.35f
+private const val KEY_CONE_OUTER_RAD = 0.80f
+
+/** How far a passing lamp reaches — past the device from either window, with room to spare. */
+private const val LAMP_FALLOFF_M = 6f
+
 /** The window's picture — see `materials/night_window.mat` and `NightWindow`. */
 private const val NIGHT_WINDOW_MATERIAL_ASSET = "materials/night_window.filamat"
 
@@ -254,30 +266,39 @@ fun PocketRoomScreen(
                 device.onFrame(SystemClock.uptimeMillis())
             }
         ) {
-            // The carriage's own ceiling light: warm, above and slightly behind the viewer, so
-            // the anodised front has a gradient down it rather than a flat wash.
+            // **The carriage's ceiling lamp: the key light.** Warm, above and just behind you, aimed
+            // at the device, so the anodised face has a sheen running down it and the wheel's
+            // coat a highlight. At SceneView's default exposure a light has to be in the
+            // thousand-candela range to register against the carriage's ambient at all: the two
+            // lamps this replaced were 2.6 and 3.4cd, about one per cent of the ambient on the
+            // device's face, and tuning them moved nothing (see docs/models.md, the print's note).
             LightNode(
-                type = LightManager.Type.POINT,
-                position = Position(-0.18f, 0.34f, 0.30f),
+                type = LightManager.Type.SPOT,
+                position = Position(KEY_POSITION[0], KEY_POSITION[1], KEY_POSITION[2]),
+                direction = Direction(-KEY_POSITION[0], -KEY_POSITION[1], -KEY_POSITION[2]),
                 apply = {
                     color(1.0f, 0.86f, 0.70f)
-                    intensityCandela(2.6f)
-                    falloff(1.4f)
+                    intensityCandela(KEY_CANDELA)
+                    spotLightCone(KEY_CONE_INNER_RAD, KEY_CONE_OUTER_RAD)
+                    falloff(3f)
                     castShadows(false)
                 }
             )
-            // The window, as a light and not only as a reflection: cool, low, from the right,
-            // which is what puts the cold edge along the polished side.
-            LightNode(
-                type = LightManager.Type.POINT,
-                position = Position(0.42f, -0.06f, 0.22f),
-                apply = {
-                    color(0.62f, 0.76f, 1.0f)
-                    intensityCandela(3.4f)
-                    falloff(1.6f)
-                    castShadows(false)
-                }
-            )
+            // **The lights going past**, as light: a fixed pool the frame loop moves and dims —
+            // see PassingLamps. Off by intensity, never by hiding (trap 24).
+            repeat(PassingLamps.COUNT) { index ->
+                LightNode(
+                    type = LightManager.Type.POINT,
+                    position = Position(0f, 0f, 2f),
+                    apply = {
+                        color(1f, 0.6f, 0.3f)
+                        intensityCandela(0f)
+                        falloff(LAMP_FALLOFF_M)
+                        castShadows(false)
+                    },
+                    nodeApply = { device.lampNodes[index] = this }
+                )
+            }
             // **The window**, behind everything: the night going past, out of focus. Its
             // instance is made in this scope because a PlaneNode destroys the one it is handed.
             val outside = remember(windowMaterial) {
@@ -495,8 +516,10 @@ private class PocketDevice(
     var cameraNode: CameraNode? = null
     var lcdNode: ViewNode? = null
     var windowMaterial: com.google.android.filament.MaterialInstance? = null
+    val lampNodes = arrayOfNulls<io.github.sceneview.node.LightNode>(PassingLamps.COUNT)
 
     private val train = TrainMotion()
+    private val passing = PassingLamps()
 
     private val gesture = WheelGesture()
     private val rock = WheelRock()
@@ -596,6 +619,17 @@ private class PocketDevice(
             outside.setParameter("scroll", train.scroll(0), train.scroll(1), train.scroll(2), train.scroll(3))
             val (bobX, bobY) = train.bob()
             outside.setParameter("bob", bobX, bobY)
+        }
+
+        // And the lamps out there that land on the device, keeping pace with the train.
+        passing.advance(dt, pace = train.speed() / NightWindow.BASE_SPEED_M_S)
+        passing.lamps.forEachIndexed { i, lamp ->
+            val node = lampNodes[i] ?: return@forEachIndexed
+            if (lamp.active) {
+                node.position = Position(lamp.x, lamp.y, lamp.z)
+                node.color = Float4(lamp.r, lamp.g, lamp.b, 1f)
+            }
+            node.setIntensityCandela(lamp.intensity)
         }
 
         if (backlight.value && now - lastInputAt > BACKLIGHT_MS) backlight.value = false
