@@ -3,6 +3,7 @@ package com.jawon.app.data.prefs
 import android.content.Context
 import androidx.core.content.edit
 import com.jawon.app.BuildConfig
+import com.jawon.app.Format
 import com.jawon.app.data.remote.ServerInvite
 import com.jawon.app.data.remote.SubsonicServer
 import com.jawon.app.ui.theme.RoomScheme
@@ -60,6 +61,24 @@ class AppPreferences @Inject constructor(@param:ApplicationContext context: Cont
         // everyone to a different scheme.
         prefs.edit { putString(KEY_ROOM_SCHEME, scheme.name) }
         _roomScheme.value = scheme
+    }
+
+    private val _format =
+        MutableStateFlow(Format.fromName(prefs.getString(KEY_FORMAT, null)))
+
+    /**
+     * Which room the app opens in — the medium the library is handled as. See [Format].
+     *
+     * Read at the navigation host, not inside a room: leaving a room already destroys the
+     * SceneView and returning rebuilds it, so a format chosen in Settings simply takes effect
+     * on the way back, with no mid-session teardown of Filament resources.
+     */
+    val format: StateFlow<Format> = _format.asStateFlow()
+
+    fun setFormat(format: Format) {
+        // By name, like the room scheme above, and for the same reason.
+        prefs.edit { putString(KEY_FORMAT, format.name) }
+        _format.value = format
     }
 
     private val _equalizerEnabled =
@@ -406,6 +425,7 @@ class AppPreferences @Inject constructor(@param:ApplicationContext context: Cont
         const val KEY_FETCH_LYRICS = "fetch_lyrics"
         const val KEY_PREFER_ONLINE_LYRICS = "prefer_online_lyrics"
         const val KEY_ROOM_SCHEME = "room_scheme"
+        const val KEY_FORMAT = "format"
         const val KEY_EQ_ENABLED = "equalizer_enabled"
         const val KEY_EQ_BANDS = "equalizer_bands"
         const val KEY_REPLAY_GAIN = "replay_gain_mode"

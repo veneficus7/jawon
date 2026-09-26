@@ -208,10 +208,12 @@ measure its tier cost as it lands. **Open:** its room.
 
 One thing at a time, checked on the owner's phone between each (the working agreement):
 
-1. **The format switch, with only the CD behind it.** A format preference, and the start
-   destination showing the room for it; CD shows `WallSceneScreen`, untouched. No picker until
-   a second room exists. Checked by the room being identical and returning from Settings
-   behaving exactly as before.
+1. **The format switch — done (2026-09-26).** `Format` (CD, POCKET), a preference, and
+   `JawonNavHost(format)` choosing the room; CD shows `WallSceneScreen` untouched. The picker is
+   in Settings → THE ROOM in **debug builds only** until a second room is finished, so an
+   unfinished one is never a tap away on a release build. The pocket room's first pass
+   (`ui/pocketscene/`) sits behind it: the device at computed life size under its own carriage
+   IBL. Checked on the flagship AVD, both ways — into the pocket room and back to the CD room.
 2. **Spike: a live screen on a 3D object.** A bare plane carrying a `ViewNode` with a list
    scrolling at full frame rate, measured per thread against the room at rest, on the S25
    Ultra and on the lowest device to hand. Decides whether the screen is in-world or drawn

@@ -208,7 +208,14 @@ def principled(name, base_color, metallic, roughness,
     # is physically what a moulded plastic's polished skin is, and the thing the
     # stock SceneView material could not express at all.
     setv("Coat Weight", coat)
-    setv("Coat Roughness", coat_roughness)
+    # **Only when there is a coat.** Setting the roughness alone makes the exporter emit
+    # KHR_materials_clearcoat with no factor — a coat of weight zero — and gltfio keys its
+    # shader on the extension's *presence*: every such material compiles the clearcoat
+    # variant for nothing, and on a transmissive one the ubershader then drops the
+    # transmission outright (see PocketGlass). Models already committed were exported with
+    # the empty extension and keep it until they are next regenerated.
+    if coat > 0.0:
+        setv("Coat Roughness", coat_roughness)
     # -> KHR_materials_anisotropy. Colourless directional stretch of the
     # highlight. NOT iridescence — that was built in M8 and removed because the
     # owner did not want a rainbow, and this is a different thing entirely.
@@ -1123,9 +1130,14 @@ def build_pocket():
     glass.data.materials.append(principled(
         # Flush with the plate, 0.4mm thick, and the only transmissive thing on the
         # device. It is what puts the room on top of the picture.
+        #
+        # **No clear coat, and that is not taste.** gltfio 1.72.1's ubershaders cannot
+        # combine clearcoat with transmission, volume, sheen or IOR: loaded on a device it
+        # logs "Volume, transmission, sheen and IOR are not supported in ubershader mode for
+        # clearcoat materials (PocketGlass)" and quietly drops the transmission. Glass is
+        # itself the clear layer, so the coat was never buying anything here.
         "PocketGlass", base_color=(0.92, 0.93, 0.95), metallic=0.0,
-        roughness=0.02, coat=1.0, coat_roughness=0.01,
-        transmission=0.90, ior=1.52, blend=True,
+        roughness=0.02, transmission=0.90, ior=1.52, blend=True,
     ))
     finish(glass, bevel_width=0.00008, harden=True)
     objects.append(glass)

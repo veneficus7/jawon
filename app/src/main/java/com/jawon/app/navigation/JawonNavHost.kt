@@ -24,6 +24,8 @@ import com.jawon.app.ui.editalbum.EditAlbumScreen
 import com.jawon.app.ui.listening.ListeningScreen
 import com.jawon.app.ui.settings.SettingsScreen
 import com.jawon.app.ui.shelfmanager.ShelfManagerScreen
+import com.jawon.app.Format
+import com.jawon.app.ui.pocketscene.PocketRoomScreen
 import com.jawon.app.ui.wallscene.WallSceneScreen
 
 /**
@@ -71,7 +73,20 @@ private const val ROOM_RETURN_MS = 420
 private const val ROOM_RETURN_DELAY_MS = 140
 
 @Composable
-fun JawonNavHost(navController: NavHostController = rememberNavController()) {
+fun JawonNavHost(
+    /**
+     * Which room the start destination is.
+     *
+     * **The seam for every format, and deliberately the only one.** A new format is a sibling
+     * room here, not a branch inside `WallSceneScreen` — that file is 3,000 lines of finished
+     * CD room and does not grow a `when` at every one of them (`ENGINEERING.md`, "Building a new
+     * format room"). Switching costs nothing extra to apply either: leaving a room already
+     * destroys its SceneView and coming back rebuilds it, so a format chosen in Settings is
+     * simply what gets rebuilt.
+     */
+    format: Format = Format.CD,
+    navController: NavHostController = rememberNavController()
+) {
     NavHost(
         navController = navController,
         startDestination = JawonDestination.Wall.route,
@@ -120,14 +135,22 @@ fun JawonNavHost(navController: NavHostController = rememberNavController()) {
         popExitTransition = { ExitTransition.None }
     ) {
         composable(JawonDestination.Wall.route) {
-            WallSceneScreen(
-                onAddAlbum = { navController.navigate(JawonDestination.AddAlbum.route) },
-                onOpenShelfManager = { navController.navigate(JawonDestination.ShelfManager.route) },
-                onOpenSettings = { navController.navigate(JawonDestination.Settings.route) },
-                onEditAlbum = { albumId ->
-                    navController.navigate(JawonDestination.EditAlbum.routeFor(albumId))
-                }
-            )
+            when (format) {
+                Format.CD -> WallSceneScreen(
+                    onAddAlbum = { navController.navigate(JawonDestination.AddAlbum.route) },
+                    onOpenShelfManager = {
+                        navController.navigate(JawonDestination.ShelfManager.route)
+                    },
+                    onOpenSettings = { navController.navigate(JawonDestination.Settings.route) },
+                    onEditAlbum = { albumId ->
+                        navController.navigate(JawonDestination.EditAlbum.routeFor(albumId))
+                    }
+                )
+
+                Format.POCKET -> PocketRoomScreen(
+                    onOpenSettings = { navController.navigate(JawonDestination.Settings.route) }
+                )
+            }
         }
         composable(JawonDestination.AddAlbum.route) { entry ->
             // The CD screen hands its finished folder back through this entry's saved state,

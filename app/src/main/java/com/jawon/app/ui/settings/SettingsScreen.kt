@@ -59,7 +59,9 @@ import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
+import com.jawon.app.BuildConfig
 import com.jawon.app.Features
+import com.jawon.app.Format
 import com.jawon.app.R
 import com.jawon.app.data.remote.ServerProbe
 import com.jawon.app.data.remote.SubsonicServer
@@ -264,6 +266,56 @@ private fun TextChip(text: String, onClick: () -> Unit) {
  * That matters more here than in most pickers, because the difference between these is entirely
  * visual — no amount of naming tells you what "Workshop" looks like.
  */
+/**
+ * Which room the app opens in — the format, not the light.
+ *
+ * Plain rows rather than the picture cards below, deliberately: a scheme is a *look* and can
+ * only be chosen by looking, while a format is a different room with a different object in it,
+ * and its name says more than a 52dp thumbnail could. Unfinished ones are labelled as such
+ * instead of hidden, because in a debug build being able to open one is the point.
+ */
+@Composable
+private fun FormatPicker(current: Format, onPick: (Format) -> Unit) {
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Format.entries.forEach { format ->
+            val selected = format == current
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .border(
+                        width = if (selected) 2.dp else 1.dp,
+                        color = if (selected) LampAmber else CrateEdge
+                    )
+                    .clickable { onPick(format) }
+                    .padding(horizontal = 14.dp, vertical = 12.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = format.displayName.uppercase(Locale.ROOT),
+                    style = JawonTextStyle.mono.copy(
+                        color = if (selected) LampAmber else LabelCream,
+                        fontSize = 12.sp
+                    )
+                )
+                if (!format.built) {
+                    Text(
+                        text = "IN PROGRESS",
+                        style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = 9.5.sp)
+                    )
+                }
+            }
+        }
+        Text(
+            text = "Debug builds only until a second room is finished.",
+            style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = 9.5.sp)
+        )
+    }
+}
+
 @Composable
 private fun SchemePicker(current: RoomScheme, onPick: (RoomScheme) -> Unit) {
     Column(
@@ -1378,6 +1430,7 @@ fun SettingsScreen(
     val fetchLyrics by viewModel.fetchLyrics.collectAsStateWithLifecycle()
     val preferOnlineLyrics by viewModel.preferOnlineLyrics.collectAsStateWithLifecycle()
     val roomScheme by viewModel.roomScheme.collectAsStateWithLifecycle()
+    val format by viewModel.format.collectAsStateWithLifecycle()
     val crossfadeMs by viewModel.crossfadeMs.collectAsStateWithLifecycle()
     val updateState by viewModel.updateState.collectAsStateWithLifecycle()
     val caseSpin by viewModel.caseSpin.collectAsStateWithLifecycle()
@@ -1519,6 +1572,17 @@ fun SettingsScreen(
             )
 
             SectionHeader("THE ROOM")
+
+            // **Debug builds only, until a second room is finished.** The format decides which
+            // room the app opens in, and an unfinished one is worth working on for weeks
+            // without ever being one tap away for somebody holding a release build. When the
+            // pocket player is done, this gate comes off and it becomes an ordinary setting.
+            if (BuildConfig.DEBUG) {
+                FormatPicker(
+                    current = format,
+                    onPick = viewModel::onFormatChanged
+                )
+            }
 
             SchemePicker(
                 current = roomScheme,

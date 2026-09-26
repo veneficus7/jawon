@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import android.content.Context
 import android.net.Uri
 import com.jawon.app.data.backup.LibraryBackup
+import com.jawon.app.Format
 import com.jawon.app.data.diagnostics.CrashLog
 import com.jawon.app.data.local.SpotifyCleanup
 import com.jawon.app.data.prefs.AppPreferences
@@ -215,6 +216,11 @@ class SettingsViewModel @Inject constructor(
     }
 
     fun onRoomSchemeChanged(scheme: RoomScheme) = preferences.setRoomScheme(scheme)
+
+    /** Which room the app opens in. See [com.jawon.app.Format]. */
+    val format: StateFlow<Format> = preferences.format
+
+    fun onFormatChanged(format: Format) = preferences.setFormat(format)
 
     val caseSpin: StateFlow<Float> = preferences.caseSpin
 

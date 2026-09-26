@@ -57,9 +57,12 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             val roomScheme by preferences.roomScheme.collectAsStateWithLifecycle()
+            // Which room the app opens in. Read here, above the NavHost, because it decides the
+            // start destination rather than anything inside one — see JawonNavHost's `format`.
+            val format by preferences.format.collectAsStateWithLifecycle()
             JawonTheme(roomScheme = roomScheme) {
                 Surface(modifier = Modifier.fillMaxSize()) {
-                    JawonNavHost()
+                    JawonNavHost(format = format)
 
                     // Over the NavHost rather than before it, so the room is being built
                     // underneath while the card is up — the scene's cubemap, models and first
