@@ -30,6 +30,10 @@ sealed interface MenuKey {
     data object About : MenuKey
     /** One setting's choices, the current one ticked. */
     data class Choice(val setting: PocketSetting) : MenuKey
+    /** The rack, one effect a row — see [PocketSound]. */
+    data object Sound : MenuKey
+    /** One effect's slider, which the wheel turns. */
+    data class Adjust(val control: SoundControl) : MenuKey
 }
 
 /** The settings the device's own menu can change. */
@@ -37,7 +41,8 @@ enum class PocketSetting(val title: String) {
     EQ("EQ"),
     SOUND_CHECK("Sound Check"),
     BACKLIGHT("Backlight"),
-    CLICKER("Clicker")
+    CLICKER("Clicker"),
+    REVERB("Reverb")
 }
 
 /** What choosing a row does. */
@@ -52,6 +57,8 @@ sealed interface RowAction {
     data class Choose(val setting: PocketSetting, val option: Int) : RowAction
     /** A line of information that goes nowhere — About's rows. */
     data object Nothing : RowAction
+    /** Every effect back to where it does nothing. */
+    data object FlatSound : RowAction
 }
 
 data class MenuRow(
@@ -83,7 +90,12 @@ data class PocketSettings(
     val albums: Int = 0,
     val songs: Int = 0,
     val shelves: Int = 0,
-    val version: String = ""
+    val version: String = "",
+    /** Where each of the rack's faders sits. */
+    val sound: Map<SoundControl, Float> = emptyMap(),
+    /** Reverb's choices ("Off" first) and which is on. */
+    val reverbOptions: List<String> = listOf("Off"),
+    val reverb: Int = 0
 ) {
     companion object {
         /** Sound Check's choices — Jawon's ReplayGain modes, in `ReplayGain.Mode` order of meaning. */
@@ -131,6 +143,8 @@ object PocketMenus {
         MenuKey.NowPlaying -> "Now Playing"
         MenuKey.Settings -> "Settings"
         MenuKey.About -> "About"
+        MenuKey.Sound -> "Sound"
+        is MenuKey.Adjust -> key.control.title
         is MenuKey.Choice -> key.setting.title
     }
 
@@ -170,6 +184,7 @@ object PocketMenus {
                 RowAction.Open(MenuKey.Choice(PocketSetting.SOUND_CHECK)),
                 value = PocketSettings.SOUND_CHECK_OPTIONS.getOrNull(settings.soundCheck)
             ),
+            MenuRow("Sound", RowAction.Open(MenuKey.Sound)),
             MenuRow(
                 "Backlight",
                 RowAction.Open(MenuKey.Choice(PocketSetting.BACKLIGHT)),
@@ -189,6 +204,27 @@ object PocketMenus {
             MenuRow("Version", RowAction.Nothing, value = settings.version)
         )
         is MenuKey.Choice -> choices(key.setting, settings)
+        MenuKey.Sound -> buildList {
+            for (control in SoundControl.entries) {
+                add(
+                    MenuRow(
+                        control.title,
+                        RowAction.Open(MenuKey.Adjust(control)),
+                        value = PocketSound.label(control, settings.sound[control] ?: 0f)
+                    )
+                )
+            }
+            add(
+                MenuRow(
+                    "Reverb",
+                    RowAction.Open(MenuKey.Choice(PocketSetting.REVERB)),
+                    value = settings.reverbOptions.getOrNull(settings.reverb)
+                )
+            )
+            add(MenuRow("Flat", RowAction.FlatSound))
+        }
+        // A slider has no rows: the wheel moves its value, and MENU or the centre goes back.
+        is MenuKey.Adjust -> emptyList()
         MenuKey.Albums -> albumsInOrder(library)
             .map { MenuRow(it.title, RowAction.Open(MenuKey.Album(it.id))) }
         // The same order as Albums, so a record is in the same place in both.
@@ -222,12 +258,14 @@ object PocketMenus {
             PocketSetting.SOUND_CHECK -> PocketSettings.SOUND_CHECK_OPTIONS
             PocketSetting.BACKLIGHT -> PocketSettings.BACKLIGHT_OPTIONS_MS.map { PocketSettings.backlightLabel(it) }
             PocketSetting.CLICKER -> listOf("On", "Off")
+            PocketSetting.REVERB -> settings.reverbOptions
         }
         val current = when (setting) {
             PocketSetting.EQ -> settings.eqChosen
             PocketSetting.SOUND_CHECK -> settings.soundCheck
             PocketSetting.BACKLIGHT -> PocketSettings.BACKLIGHT_OPTIONS_MS.indexOf(settings.backlightMs)
             PocketSetting.CLICKER -> if (settings.clicker) 0 else 1
+            PocketSetting.REVERB -> settings.reverb
         }
         return labels.mapIndexed { i, label ->
             MenuRow(label, RowAction.Choose(setting, i), checked = i == current)
@@ -327,6 +365,8 @@ data class PocketNav(val stack: List<Level> = listOf(Level(MenuKey.Main))) {
                 MenuKey.Settings -> "settings" to ""
                 MenuKey.About -> "about" to ""
                 is MenuKey.Choice -> "choice" to k.setting.name
+                MenuKey.Sound -> "sound" to ""
+                is MenuKey.Adjust -> "adjust" to k.control.name
                 is MenuKey.Shelf -> "shelf" to k.shelfId
                 is MenuKey.Artist -> "artist" to k.name
                 is MenuKey.Album -> "album" to k.albumId
@@ -351,6 +391,9 @@ data class PocketNav(val stack: List<Level> = listOf(Level(MenuKey.Main))) {
                 "settings" -> MenuKey.Settings
                 "about" -> MenuKey.About
                 "choice" -> PocketSetting.entries.firstOrNull { it.name == arg }?.let { MenuKey.Choice(it) }
+                    ?: return null
+                "sound" -> MenuKey.Sound
+                "adjust" -> SoundControl.entries.firstOrNull { it.name == arg }?.let { MenuKey.Adjust(it) }
                     ?: return null
                 "shelf" -> MenuKey.Shelf(arg)
                 "artist" -> MenuKey.Artist(arg)

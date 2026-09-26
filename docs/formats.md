@@ -263,8 +263,11 @@ One thing at a time, checked on the owner's phone between each (the working agre
    scrubber, follows timed words line by line and lets the wheel scroll them; they are asked
    for only while that page is up, which keeps LRCLIB out of the background. The *sound* is
    reached the classic's way too, through the device's own Settings — EQ over the phone's
-   presets and Sound Check as Jawon's ReplayGain modes, beside Backlight and Clicker. **Still
-   open: the rest of the rack** (filter, echo, drive, varispeed) has no way in from this room.
+   presets and Sound Check as Jawon's ReplayGain modes, beside Backlight and Clicker. **And the
+   rest of the rack** — filter, speed, drive, echo, bass, width, reverb — is Settings → Sound: a
+   row each with its reading, a slider each that the wheel turns, the classic's Brightness
+   screen with Jawon's rack behind it. Touching an effect switches its cell in; Flat puts them
+   all back.
 9. **Vinyl** (§5), then **cassette** (§6), each its own room and built the same way.
 
 Each of 3–8 is about a session's work. **Measure every tier as it lands** (traps 28–30).

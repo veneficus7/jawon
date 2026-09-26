@@ -193,6 +193,15 @@ fun PocketRoomScreen(
     val backlightMs by viewModel.pocketBacklightMs.collectAsStateWithLifecycle()
     val clickerOn by viewModel.pocketClicker.collectAsStateWithLifecycle()
     val songCount by viewModel.trackCount.collectAsStateWithLifecycle()
+    val filter by viewModel.filterPosition.collectAsStateWithLifecycle()
+    val speed by viewModel.speedPosition.collectAsStateWithLifecycle()
+    val drive by viewModel.drivePosition.collectAsStateWithLifecycle()
+    val echoMix by viewModel.echoMix.collectAsStateWithLifecycle()
+    val echoTime by viewModel.echoTime.collectAsStateWithLifecycle()
+    val echoFeedback by viewModel.echoFeedback.collectAsStateWithLifecycle()
+    val bass by viewModel.bassStrength.collectAsStateWithLifecycle()
+    val width by viewModel.stereoWidth.collectAsStateWithLifecycle()
+    val reverb by viewModel.reverbPreset.collectAsStateWithLifecycle()
     val trackTitles = remember { mutableStateMapOf<String, List<String>>() }
     val navState = rememberSaveable(stateSaver = PocketNav.Saver) { mutableStateOf(PocketNav()) }
     val device = remember { PocketDevice(context, viewModel, navState) }
@@ -222,7 +231,19 @@ fun PocketRoomScreen(
         albums = library.albums.size,
         songs = songCount,
         shelves = library.shelves.size,
-        version = com.jawon.app.BuildConfig.VERSION_NAME
+        version = com.jawon.app.BuildConfig.VERSION_NAME,
+        sound = mapOf(
+            SoundControl.FILTER to filter,
+            SoundControl.SPEED to speed,
+            SoundControl.DRIVE to drive,
+            SoundControl.ECHO to echoMix,
+            SoundControl.ECHO_TIME to echoTime,
+            SoundControl.ECHO_FEEDBACK to echoFeedback,
+            SoundControl.BASS to bass,
+            SoundControl.WIDTH to width
+        ),
+        reverbOptions = PocketSound.reverbOptions(com.jawon.app.data.playback.NativeEffects.REVERB_PRESETS),
+        reverb = reverb
     )
     device.deck = deck
     device.positionMs = positionMs
@@ -692,6 +713,19 @@ private fun lcdScreenFor(
         }
         return LcdScreen.CoverFlow(covers, albumsInOrder[centre].title, albumsInOrder[centre].artist, back)
     }
+    if (key is MenuKey.Adjust) {
+        val control = key.control
+        val position = settings.sound[control] ?: 0f
+        val (low, high) = PocketSound.ends(control)
+        return LcdScreen.Slider(
+            title = control.title,
+            position = position,
+            bipolar = control.bipolar,
+            valueText = PocketSound.label(control, position),
+            lowEnd = low,
+            highEnd = high
+        )
+    }
     val rows = PocketMenus.rows(key, library, trackTitles, hasNowPlaying, settings)
     val level = nav.clamp(rows.size).current
     val end = minOf(level.top + PocketMenus.VISIBLE_ROWS, rows.size)
@@ -1056,6 +1090,11 @@ private class PocketDevice(
         PocketMenus.rows(nav.value.current.key, library, trackTitles, hasNowPlaying, settings)
 
     private fun turn(turn: WheelGesture.Event.Turn, now: Long) {
+        val adjusting = nav.value.current.key
+        if (adjusting is MenuKey.Adjust) {
+            adjust(adjusting.control, turn.steps, now)
+            return
+        }
         if (nav.value.current.key == MenuKey.NowPlaying && deck.tracks.isNotEmpty()) {
             if (lyricsOpen.value && lyricLineCount > 0 && bar.value != LcdScreen.Bar.SCRUB) {
                 scrollLyrics(turn.steps, now)
@@ -1077,6 +1116,55 @@ private class PocketDevice(
             // classic's way of telling you there is no more without showing you anything.
             nav.value = clamped
         }
+    }
+
+    /**
+     * One of the rack's faders, turned from the pocket player. Read straight from the view
+     * model's flows rather than from the last composition, so a fast spin never builds on a
+     * stale value; and the effect's cell switched in, or a bypassed effect would turn silently.
+     */
+    private fun adjust(control: SoundControl, steps: Int, now: Long) {
+        val before = soundValue(control)
+        val after = PocketSound.nudge(control, before, steps)
+        if (after == before) return
+        viewModel.engage(control.channel)
+        setSound(control, after)
+        step(now)
+    }
+
+    private fun soundValue(control: SoundControl): Float = when (control) {
+        SoundControl.FILTER -> viewModel.filterPosition.value
+        SoundControl.SPEED -> viewModel.speedPosition.value
+        SoundControl.DRIVE -> viewModel.drivePosition.value
+        SoundControl.ECHO -> viewModel.echoMix.value
+        SoundControl.ECHO_TIME -> viewModel.echoTime.value
+        SoundControl.ECHO_FEEDBACK -> viewModel.echoFeedback.value
+        SoundControl.BASS -> viewModel.bassStrength.value
+        SoundControl.WIDTH -> viewModel.stereoWidth.value
+    }
+
+    private fun setSound(control: SoundControl, value: Float) {
+        when (control) {
+            SoundControl.FILTER -> viewModel.onFilterChange(value)
+            SoundControl.SPEED -> viewModel.onSpeedChange(value)
+            SoundControl.DRIVE -> viewModel.onDriveChange(value)
+            SoundControl.ECHO -> viewModel.onEchoMixChange(value)
+            SoundControl.ECHO_TIME -> viewModel.onEchoTimeChange(value)
+            SoundControl.ECHO_FEEDBACK -> viewModel.onEchoFeedbackChange(value)
+            SoundControl.BASS -> viewModel.onBassChange(value)
+            SoundControl.WIDTH -> viewModel.onWidthChange(value)
+        }
+    }
+
+    /** Flat: every effect back to where it does nothing. Echo's time and repeats are kept. */
+    private fun flatten() {
+        setSound(SoundControl.FILTER, 0f)
+        setSound(SoundControl.SPEED, 0f)
+        setSound(SoundControl.DRIVE, 0f)
+        setSound(SoundControl.ECHO, 0f)
+        setSound(SoundControl.BASS, 0f)
+        setSound(SoundControl.WIDTH, 0f)
+        viewModel.onReverbChange(0)
     }
 
     private fun scrollLyrics(steps: Int, now: Long) {
@@ -1134,6 +1222,11 @@ private class PocketDevice(
         when (button) {
             ClickWheel.Button.MENU -> back(silent = true)
             ClickWheel.Button.SELECT -> {
+                // On a slider the centre is done, as MENU is.
+                if (key is MenuKey.Adjust) {
+                    nav.value = nav.value.back()
+                    return
+                }
                 if (onNowPlaying) {
                     // The classic's cycle: the scrubber, then the words, then back to the song.
                     barTouchedAt = now
@@ -1225,6 +1318,7 @@ private class PocketDevice(
                 nav.value = nav.value.back()
             }
             RowAction.Nothing -> Unit
+            RowAction.FlatSound -> flatten()
         }
     }
 
@@ -1249,6 +1343,10 @@ private class PocketDevice(
             PocketSetting.BACKLIGHT -> PocketSettings.BACKLIGHT_OPTIONS_MS.getOrNull(option)
                 ?.let { viewModel.onPocketBacklightChanged(it) }
             PocketSetting.CLICKER -> viewModel.onPocketClickerChanged(option == 0)
+            PocketSetting.REVERB -> {
+                if (option > 0) viewModel.engage(com.jawon.app.playback.RackChannel.SPACE)
+                viewModel.onReverbChange(option)
+            }
         }
     }
 

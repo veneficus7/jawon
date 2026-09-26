@@ -110,6 +110,21 @@ class PocketMenuTest {
     }
 
     @Test
+    fun `Sound lists every effect with its reading, then Reverb, then Flat`() {
+        val settings = PocketSettings(
+            sound = mapOf(SoundControl.FILTER to -0.4f, SoundControl.SPEED to 0f),
+            reverbOptions = listOf("Off", "Plate"), reverb = 1
+        )
+        val rows = PocketMenus.rows(MenuKey.Sound, library, emptyMap(), false, settings)
+        assertEquals(SoundControl.entries.map { it.title } + listOf("Reverb", "Flat"), rows.map { it.label })
+        assertEquals("Low 40%", rows.first().value)
+        assertEquals("1.00×", rows[1].value)
+        assertEquals("Plate", rows.first { it.label == "Reverb" }.value)
+        assertEquals(RowAction.Open(MenuKey.Adjust(SoundControl.FILTER)), rows.first().action)
+        assertTrue(PocketMenus.rows(MenuKey.Adjust(SoundControl.DRIVE), library, emptyMap(), false, settings).isEmpty())
+    }
+
+    @Test
     fun `About counts the library and goes nowhere`() {
         val rows = PocketMenus.rows(
             MenuKey.About, library, emptyMap(), false,
@@ -177,6 +192,7 @@ class PocketMenuTest {
             .open(MenuKey.Artist("Sly | The Family Stone")).open(MenuKey.Album("a-1")).move(1, 5)
             .open(MenuKey.CoverFlow).move(3, 9).open(MenuKey.Flipped("a-2"))
             .open(MenuKey.Settings).open(MenuKey.About).open(MenuKey.Choice(PocketSetting.CLICKER))
+            .open(MenuKey.Sound).open(MenuKey.Adjust(SoundControl.ECHO_TIME))
         val restored = nav.stack.map { PocketNav.encode(it) }.map { PocketNav.decode(it) }
         assertEquals(nav.stack, restored)
     }

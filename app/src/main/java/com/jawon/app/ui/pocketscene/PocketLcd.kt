@@ -159,6 +159,19 @@ sealed interface LcdScreen {
     )
 
     /**
+     * One effect's level, as the classic's Brightness screen showed one: the value large, a bar
+     * under it, and what each end means. [position] is the fader, 0…1 or −1…+1 when [bipolar].
+     */
+    data class Slider(
+        override val title: String,
+        val position: Float,
+        val bipolar: Boolean,
+        val valueText: String,
+        val lowEnd: String,
+        val highEnd: String
+    ) : LcdScreen
+
+    /**
      * Cover Flow: the covers near the selection, the middle one's name, and — when a cover has
      * been turned over — its tracks on the back, windowed as any list is.
      */
@@ -222,6 +235,7 @@ fun PocketLcd(
                 when (screen) {
                     is LcdScreen.Menu -> MenuBody(screen, slide)
                     is LcdScreen.NowPlaying -> NowPlayingBody(screen)
+                    is LcdScreen.Slider -> SliderBody(screen)
                     is LcdScreen.CoverFlow -> Unit
                 }
             }
@@ -675,6 +689,69 @@ private fun TimeBar(positionMs: Long, durationMs: Long, diamond: Boolean) {
                 fontSize = lcdSp(21),
                 color = LcdInk
             )
+        }
+    }
+}
+
+@Composable
+private fun SliderBody(slider: LcdScreen.Slider) {
+    val density = LocalDensity.current
+    fun px(v: Int): Dp = with(density) { v.toDp() }
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(horizontal = px(34)),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Spacer(Modifier.height(px(92)))
+        Text(
+            text = slider.valueText,
+            fontFamily = InterFamily,
+            fontWeight = FontWeight.Bold,
+            fontSize = lcdSp(44),
+            color = LcdInk
+        )
+        Spacer(Modifier.height(px(40)))
+        Canvas(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(px(30))
+        ) {
+            val h = size.height * 0.56f
+            val top = (size.height - h) / 2f
+            drawRoundRect(
+                brush = Brush.verticalGradient(listOf(TrackTop, TrackBottom), startY = top, endY = top + h),
+                topLeft = Offset(0f, top),
+                size = Size(size.width, h),
+                cornerRadius = CornerRadius(h / 2f, h / 2f)
+            )
+            val p = slider.position
+            // A centred control fills from the middle outward, so "off" reads as nothing lit.
+            val from = if (slider.bipolar) size.width / 2f + minOf(p, 0f) * size.width / 2f else 0f
+            val to = if (slider.bipolar) size.width / 2f + maxOf(p, 0f) * size.width / 2f else size.width * p
+            if (to - from > 0.5f) {
+                drawRoundRect(
+                    brush = Brush.verticalGradient(listOf(SelectTop, SelectBottom), startY = top, endY = top + h),
+                    topLeft = Offset(from, top),
+                    size = Size(to - from, h),
+                    cornerRadius = CornerRadius(h / 2f, h / 2f)
+                )
+            }
+            if (slider.bipolar) {
+                drawLine(LcdInk.copy(alpha = 0.45f), Offset(size.width / 2f, 0f), Offset(size.width / 2f, size.height), strokeWidth = 2f)
+            }
+            drawRoundRect(
+                color = TitleRule,
+                topLeft = Offset(0f, top),
+                size = Size(size.width, h),
+                cornerRadius = CornerRadius(h / 2f, h / 2f),
+                style = Stroke(width = 1.5f)
+            )
+        }
+        Row(modifier = Modifier.fillMaxWidth().padding(top = px(8))) {
+            Text(slider.lowEnd, fontFamily = InterFamily, fontSize = lcdSp(20), color = LcdDim)
+            Spacer(Modifier.weight(1f))
+            Text(slider.highEnd, fontFamily = InterFamily, fontSize = lcdSp(20), color = LcdDim)
         }
     }
 }

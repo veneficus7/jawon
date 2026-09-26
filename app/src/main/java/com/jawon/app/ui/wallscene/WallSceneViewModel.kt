@@ -332,6 +332,18 @@ class WallSceneViewModel @Inject constructor(
      * boost or its virtualiser on the target phone, so both are Jawon's own arithmetic now and
      * the cell needs no telling. See [com.jawon.app.playback.Tone].
      */
+    /**
+     * Switches a cell in if it is out. The pocket player's sliders only ever mean "in" — turning
+     * an effect up that is bypassed would otherwise do nothing you could hear.
+     */
+    fun engage(channel: RackChannel) {
+        if (channel == RackChannel.EQ) {
+            if (!equalizer.enabled.value) onEqEnabledChanged(true)
+            return
+        }
+        if (!rack.isEngaged(channel)) onChannelToggle(channel)
+    }
+
     fun onChannelToggle(channel: RackChannel) {
         // The equaliser owns its own switch, so this flips that and never touches the rack's
         // set — otherwise the two drift and the cell starts lying again.

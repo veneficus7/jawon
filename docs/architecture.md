@@ -89,6 +89,7 @@ rather than branching inside it. `JawonNavHost` shows it instead of `WallSceneSc
 |---|---|
 | `ClickWheel.kt` | **Pure.** The wheel's geometry (agreeing with `build_pocket()`), which button a point is on, and `WheelGesture` — one finger from landing to lifting, deciding between a turn, a press and a hold the way the classic's wheel did. Also `unproject`, the arithmetic that puts a touch on the glass back into the wheel's plane. |
 | `PocketMenu.kt` | **Pure.** `MenuKey` (what a level *is*), `PocketMenus.rows` (what it lists, from a `PocketLibrary` snapshot and a `PocketSettings` one), and `PocketNav` — the stack of levels with each one's highlight and scroll, and its `Saver`. The device's own Settings live here too: About, EQ (Off and the phone's presets), Sound Check (the ReplayGain modes), Backlight, Clicker, and All Settings for the phone app's. |
+| `PocketSound.kt` | **Pure.** The rack as the pocket player reaches it — Settings → Sound, each effect a row and each row a slider the wheel turns, as the classic's Brightness screen was. `SoundControl` names each fader, its travel, its step and the rack cell it belongs to; `PocketSound` nudges a fader onto the wheel's grid (so the middle of Speed is found exactly) and reads its value for a small screen. The same faders the CD room's rack draws. |
 | `ClickSound.kt` | **Pure** `ClickSound.render`, the click's waveform; and `ClickPlayer`, the static low-latency `AudioTrack` that replays it. |
 | `WheelRock.kt` | **Pure.** The ring tipping toward a press and the centre button going down, as critically damped springs integrated exactly — the same path at any frame rate. The room poses the model's `pocket_wheel`, `pocket_print` and `pocket_button` from it. |
 | `CoverFlowLcd.kt` | Cover Flow, drawn: the covers in perspective with their reflections on a black floor, and a turned-over cover's tracklist. **Drawn with `android.graphics.Camera` and `Matrix` onto the native canvas**, because the in-world screen is copied into its texture in software (trap 33) and a perspective bitmap draw is certain there; the flow position and the turn come in from the room. |
@@ -99,7 +100,7 @@ rather than branching inside it. `JawonNavHost` shows it instead of `WallSceneSc
 | `TiltFilter.kt` | **Pure.** The phone's tilt *from how it is being held*: quaternions from the game rotation vector against a baseline that follows slowly, so any grip is neutral and a phone held upright — where Euler angles lock — is no special case. The room turns the environment and the passing lamps by its inverse, so reflections slide as the phone tilts. The sensor listens only while the room is resumed. |
 | `NightWindow.kt` | The window behind the device — where its picture hangs, each layer's depth and cell size (which must agree with `night_window.mat`) — and **pure** `TrainMotion`: the train's drifting speed, each layer's parallax scroll, the carriage's rock and its rail-joint jolt. |
 
-The seven pure pieces have test files (`ClickWheelTest`, `PocketMenuTest`, `ClickSoundTest`, `WheelRockTest`, `TrainMotionTest`, `PassingLampsTest`, `TiltFilterTest`).
+The eight pure pieces have test files (`ClickWheelTest`, `PocketMenuTest`, `ClickSoundTest`, `WheelRockTest`, `TrainMotionTest`, `PassingLampsTest`, `TiltFilterTest`, `PocketSoundTest`).
 
 ---
 
