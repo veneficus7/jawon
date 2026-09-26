@@ -255,7 +255,11 @@ One thing at a time, checked on the owner's phone between each (the working agre
    stop. The ring tips 0.3mm toward a press, pivoting on its far edge, and the centre button
    goes down 0.25mm; the backlight goes out after ten seconds. Checked end to end on the flagship AVD. **What the emulator cannot answer** is the
    feel: the click's latency (it has no fast mixer), the haptic, and whether 15° a step is the
-   right size under a real thumb — all of that is the owner's phone.
+   right size under a real thumb — all of that is the owner's phone. **The click's path is
+   confirmed on it (2026-09-27)**: `dumpsys media.audio_flinger` lists the click as fast-mixer
+   track `F3` — static, 48kHz mono, 576 frames, sonification, to the speaker — the lowest-latency
+   route Android has; each click is mixed in about 5ms after its routing patch and released when
+   it ends, so nothing is held open between clicks. The feel itself is the owner's to judge.
    **Step 2's spike answered itself along the way:** a `ViewNode` does render a moving
    screen, once it is told to (trap 33) — the cost per redraw is still unmeasured.
 8. **Now Playing, and a way to the rack and the lyrics — mostly done (2026-09-26).** The
