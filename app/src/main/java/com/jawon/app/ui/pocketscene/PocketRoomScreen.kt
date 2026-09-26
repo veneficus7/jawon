@@ -1,5 +1,9 @@
 package com.jawon.app.ui.pocketscene
 
+import android.hardware.Sensor
+import android.hardware.SensorEvent
+import android.hardware.SensorEventListener
+import android.hardware.SensorManager
 import android.os.SystemClock
 import android.view.MotionEvent
 import androidx.activity.compose.BackHandler
@@ -35,6 +39,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.google.android.filament.LightManager
 import com.jawon.app.ui.theme.JawonTextStyle
@@ -286,6 +291,37 @@ fun PocketRoomScreen(
     SideEffect { lcd.value = screen }
 
     BackHandler(enabled = nav.stack.size > 1) { device.back() }
+
+    // **The phone is the device**, so tilting it turns the device against the world: the
+    // carriage's reflections slide across the glass and the polished edge — first-order, twice
+    // the tilt, as a turned mirror's do. Only the change from how it is held counts (TiltFilter).
+    // Listening only while the room is on screen: a sensor left running in the background is
+    // battery for nothing.
+    val tilt = remember { TiltFilter() }
+    LifecycleResumeEffect(context) {
+        val sensors = context.getSystemService(SensorManager::class.java)
+        val rotation = sensors?.getDefaultSensor(Sensor.TYPE_GAME_ROTATION_VECTOR)
+        val quat = FloatArray(4)
+        var lastNs = 0L
+        val listener = object : SensorEventListener {
+            override fun onSensorChanged(event: SensorEvent) {
+                SensorManager.getQuaternionFromVector(quat, event.values)
+                val dt = if (lastNs == 0L) 0f else (event.timestamp - lastNs) / 1e9f
+                lastNs = event.timestamp
+                // getQuaternionFromVector writes (w, x, y, z).
+                tilt.update(quat[1], quat[2], quat[3], quat[0], dt)
+            }
+
+            override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) = Unit
+        }
+        tilt.reset()
+        if (sensors != null && rotation != null) {
+            sensors.registerListener(listener, rotation, SensorManager.SENSOR_DELAY_GAME)
+        }
+        onPauseOrDispose { sensors?.unregisterListener(listener) }
+    }
+    device.tilt = tilt
+    device.indirectLight = environment.indirectLight
 
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
         // **Life size, computed from the scene's own height rather than chosen by eye.**
@@ -614,6 +650,13 @@ private class PocketDevice(
     var cameraNode: CameraNode? = null
     var lcdNode: ViewNode? = null
     var windowMaterial: com.google.android.filament.MaterialInstance? = null
+    var tilt: TiltFilter? = null
+    var indirectLight: com.google.android.filament.IndirectLight? = null
+
+    // The world's turn against the device, as a column-major 3×3 — written only when it changes.
+    private val worldTurn = FloatArray(9).also { it[0] = 1f; it[4] = 1f; it[8] = 1f }
+    private var turnPitch = Float.NaN
+    private var turnYaw = Float.NaN
     val lampNodes = arrayOfNulls<io.github.sceneview.node.LightNode>(PassingLamps.COUNT)
 
     private val train = TrainMotion()
@@ -719,12 +762,20 @@ private class PocketDevice(
             outside.setParameter("bob", bobX, bobY)
         }
 
+        // The world turned against the phone's tilt: the environment, and the lamps in it.
+        turnWorld()
+
         // And the lamps out there that land on the device, keeping pace with the train.
         passing.advance(dt, pace = train.speed() / NightWindow.BASE_SPEED_M_S)
+        val m = worldTurn
         passing.lamps.forEachIndexed { i, lamp ->
             val node = lampNodes[i] ?: return@forEachIndexed
             if (lamp.active) {
-                node.position = Position(lamp.x, lamp.y, lamp.z)
+                node.position = Position(
+                    m[0] * lamp.x + m[3] * lamp.y + m[6] * lamp.z,
+                    m[1] * lamp.x + m[4] * lamp.y + m[7] * lamp.z,
+                    m[2] * lamp.x + m[5] * lamp.y + m[8] * lamp.z
+                )
                 node.color = Float4(lamp.r, lamp.g, lamp.b, 1f)
             }
             node.setIntensityCandela(lamp.intensity)
@@ -776,6 +827,29 @@ private class PocketDevice(
         val ex = screen(r, ClickWheel.CENTRE_Y_M)
         val ey = screen(0f, ClickWheel.CENTRE_Y_M + r)
         return ClickWheel.unproject(c.x, c.y, ex.x, ex.y, ey.x, ey.y, x, y, wheelPoint)
+    }
+
+    /**
+     * The inverse of the phone's tilt, applied to the world: `Ry(-yaw) · Rx(-pitch)`. Rotating the
+     * environment the other way is the same, to the eye, as the device turning inside a still
+     * room — which is what the phone in the hand is doing.
+     */
+    private fun turnWorld() {
+        val t = tilt ?: return
+        val p = t.pitch
+        val y = t.yaw
+        if (p == turnPitch && y == turnYaw) return
+        turnPitch = p
+        turnYaw = y
+        val cp = kotlin.math.cos(-p)
+        val sp = kotlin.math.sin(-p)
+        val cy = kotlin.math.cos(-y)
+        val sy = kotlin.math.sin(-y)
+        // Ry(-y) · Rx(-p), column by column.
+        worldTurn[0] = cy; worldTurn[1] = 0f; worldTurn[2] = -sy
+        worldTurn[3] = sy * sp; worldTurn[4] = cp; worldTurn[5] = cy * sp
+        worldTurn[6] = sy * cp; worldTurn[7] = -sp; worldTurn[8] = cy * cp
+        indirectLight?.setRotation(worldTurn)
     }
 
     /**

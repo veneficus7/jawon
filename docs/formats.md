@@ -234,6 +234,12 @@ One thing at a time, checked on the owner's phone between each (the working agre
    edge (`PassingLamps`). First tuning on the AVD: a lamp behind you at 900–2600cd washed the
    whole anodised face bronze (16 -> 60 of 255), so it runs at 380–1100cd; the key light took
    the wheel from 10 to 14 and its print from 32 to 51. **Judged on the phone, not here.**
+   **And the phone's tilt turns the world** (`TiltFilter`): the environment and the passing
+   lamps rotate against how far the phone has just been tilted, so reflections slide across
+   the glass and the edge — first-order, twice the tilt, as a turned mirror's do. The window
+   behind is left still on purpose: for a phone turning about its own middle, a world-fixed
+   picture behind it barely moves, and making it swing would be the stylised parallax of a
+   wallpaper, not a device in the hand.
 6. **Browsing on its screen — done (2026-09-26).** Cover Flow first on the main menu — the
    covers in perspective on a glossy black floor, eased to the wheel, a cover turned over by
    the centre to list its tracks on the back — then Albums (filed as iTunes filed them, "The"
