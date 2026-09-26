@@ -235,7 +235,8 @@ One thing at a time, checked on the owner's phone between each (the working agre
    the centre; MENU (held: the main menu); Play/Pause (held: off, the screen dark until any
    button); the sides (held: cue through the track); on Now Playing the volume, and the
    scrubber on a press of the centre. Each step clicks and ticks, and at the end of a list both
-   stop. Checked end to end on the flagship AVD. **What the emulator cannot answer** is the
+   stop. The ring tips 0.3mm toward a press, pivoting on its far edge, and the centre button
+   goes down 0.25mm; the backlight goes out after ten seconds. Checked end to end on the flagship AVD. **What the emulator cannot answer** is the
    feel: the click's latency (it has no fast mixer), the haptic, and whether 15° a step is the
    right size under a real thumb — all of that is the owner's phone.
    **Step 2's spike answered itself along the way:** a `ViewNode` does render a moving

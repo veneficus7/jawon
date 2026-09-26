@@ -3,6 +3,8 @@ package com.jawon.app.ui.pocketscene
 import android.os.SystemClock
 import android.view.MotionEvent
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -38,7 +40,10 @@ import com.jawon.app.ui.wallscene.CaseArt
 import com.jawon.app.ui.wallscene.RoomHaptics
 import com.jawon.app.ui.wallscene.WallLayout
 import com.jawon.app.ui.wallscene.WallSceneViewModel
+import dev.romainguy.kotlin.math.Float3
 import dev.romainguy.kotlin.math.Float4
+import dev.romainguy.kotlin.math.rotation
+import dev.romainguy.kotlin.math.translation
 import io.github.sceneview.SceneView
 import io.github.sceneview.collision.Vector3
 import io.github.sceneview.math.Position
@@ -276,6 +281,7 @@ fun PocketRoomScreen(
                             isTouchable = false
                             isShadowCaster = false
                             isShadowReceiver = false
+                            device.bindParts(renderableNodes)
                         }
                     )
                     // The screen, as a child of the device so it turns with it. Unlit because
@@ -291,10 +297,18 @@ fun PocketRoomScreen(
                             device.lcdNode = this
                         }
                     ) {
+                        // Animated *here*, in the scope that invalidates the texture below —
+                        // see PocketLcd's note and trap 33.
+                        val unlit by animateFloatAsState(
+                            targetValue = if (device.backlight.value) 0f else BACKLIGHT_OFF_DIM,
+                            animationSpec = tween(durationMillis = if (device.backlight.value) 90 else 700),
+                            label = "backlight"
+                        )
                         PocketLcd(
                             screen = lcd.value,
                             playing = device.playingNow.value,
-                            awake = device.awake.value
+                            awake = device.awake.value,
+                            unlit = unlit
                         )
                         // **A ViewNode draws its texture once unless told otherwise** — trap 33.
                         // It copies its children into the texture only from its own container's
@@ -430,6 +444,12 @@ private class PocketDevice(
     val awake = mutableStateOf(true)
     val playingNow = mutableStateOf(false)
 
+    /**
+     * The backlight, which goes out after [BACKLIGHT_MS] without a touch — the classic's default
+     * timer — and comes back on the next one, which still does what it was going to do.
+     */
+    val backlight = mutableStateOf(true)
+
     var library = PocketLibrary()
     var trackTitles: Map<String, List<String>> = emptyMap()
     var deck = com.jawon.app.ui.wallscene.DeckState()
@@ -443,6 +463,14 @@ private class PocketDevice(
     var lcdNode: ViewNode? = null
 
     private val gesture = WheelGesture()
+    private val rock = WheelRock()
+
+    // The model's own moving parts: the ring and its print tip together; the button goes down.
+    private var wheelParts: List<Node> = emptyList()
+    private var buttonPart: Node? = null
+    private var lastFrameAt = 0L
+    private var rockWasMoving = false
+    private var lastInputAt = 0L
     private val haptics = RoomHaptics(context)
     private val clicker = ClickPlayer(context)
     private val audio = context.getSystemService(android.content.Context.AUDIO_SERVICE) as android.media.AudioManager
@@ -506,8 +534,27 @@ private class PocketDevice(
         return false
     }
 
+    /** Finds the parts that move, by the names `build_pocket()` gives them. Once. */
+    fun bindParts(nodes: List<Node>) {
+        if (wheelParts.isNotEmpty()) return
+        wheelParts = nodes.filter { it.name == "pocket_wheel" || it.name == "pocket_print" }
+        buttonPart = nodes.firstOrNull { it.name == "pocket_button" }
+    }
+
     fun onFrame(now: Long) {
+        if (lastInputAt == 0L) lastInputAt = now
         handle(gesture.poll(now), now)
+
+        val dt = if (lastFrameAt == 0L) 0f else (now - lastFrameAt) / 1000f
+        lastFrameAt = now
+        // Written only while something moves, and once more to leave it exactly at rest.
+        if (rock.isMoving || rockWasMoving) {
+            rock.step(dt)
+            poseParts()
+        }
+        rockWasMoving = rock.isMoving
+
+        if (backlight.value && now - lastInputAt > BACKLIGHT_MS) backlight.value = false
 
         if (seekDirection != 0 && now - seekTickAt >= SEEK_TICK_MS) {
             seekTickAt = now
@@ -555,6 +602,23 @@ private class PocketDevice(
         return ClickWheel.unproject(c.x, c.y, ex.x, ex.y, ey.x, ey.y, x, y, wheelPoint)
     }
 
+    /**
+     * The ring about its centre, tipped and sunk so it pivots on its far edge ([WheelRock]); the
+     * print is on the ring and goes with it; the button goes straight down.
+     */
+    private fun poseParts() {
+        // Spelled out rather than `centre + …`: kotlin-math's vector operators are inline and
+        // built for a newer JVM target than this module, so they will not compile here.
+        val y = ClickWheel.CENTRE_Y_M
+        val z = ClickWheel.FACE_Z_M
+        val ring = translation(Float3(0f, y, z - rock.sinkMm / 1000f)) *
+            rotation(X_AXIS, rock.tiltXDeg) *
+            rotation(Y_AXIS, rock.tiltYDeg) *
+            translation(Float3(0f, -y, -z))
+        for (part in wheelParts) part.transform = ring
+        buttonPart?.transform = translation(Float3(0f, 0f, -rock.buttonMm / 1000f))
+    }
+
     // ---- behaviour --------------------------------------------------------------------------
 
     private fun handle(events: List<WheelGesture.Event>, now: Long) {
@@ -562,6 +626,14 @@ private class PocketDevice(
     }
 
     private fun handle(event: WheelGesture.Event, now: Long) {
+        lastInputAt = now
+        backlight.value = true
+        when (event) {
+            is WheelGesture.Event.Press -> rock.tap(event.button)
+            is WheelGesture.Event.HoldStart -> rock.hold(event.button)
+            is WheelGesture.Event.HoldEnd -> rock.release()
+            is WheelGesture.Event.Turn -> Unit
+        }
         if (!awake.value) {
             // Switched off: any button wakes it, as on the classic. Turning does not.
             if (event is WheelGesture.Event.Press) {
@@ -777,6 +849,9 @@ private class PocketDevice(
 
     private companion object {
         const val CLICK_MIN_INTERVAL_MS = 18L
+        const val BACKLIGHT_MS = 10_000L
+        val X_AXIS = Float3(1f, 0f, 0f)
+        val Y_AXIS = Float3(0f, 1f, 0f)
         const val BAR_IDLE_MS = 3_500L
         const val SEEK_TICK_MS = 200L
         const val SEEK_FAST_AFTER_MS = 2_500L

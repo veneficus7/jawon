@@ -90,11 +90,12 @@ rather than branching inside it. `JawonNavHost` shows it instead of `WallSceneSc
 | `ClickWheel.kt` | **Pure.** The wheel's geometry (agreeing with `build_pocket()`), which button a point is on, and `WheelGesture` — one finger from landing to lifting, deciding between a turn, a press and a hold the way the classic's wheel did. Also `unproject`, the arithmetic that puts a touch on the glass back into the wheel's plane. |
 | `PocketMenu.kt` | **Pure.** `MenuKey` (what a level *is*), `PocketMenus.rows` (what it lists, from a `PocketLibrary` snapshot), and `PocketNav` — the stack of levels with each one's highlight and scroll, and its `Saver`. |
 | `ClickSound.kt` | **Pure** `ClickSound.render`, the click's waveform; and `ClickPlayer`, the static low-latency `AudioTrack` that replays it. |
-| `PocketLcd.kt` | The device's screen, as Compose: menus with a scrollbar, and Now Playing with its progress, volume and scrubber strips. Sized in LCD pixels, not dp. |
+| `WheelRock.kt` | **Pure.** The ring tipping toward a press and the centre button going down, as critically damped springs integrated exactly — the same path at any frame rate. The room poses the model's `pocket_wheel`, `pocket_print` and `pocket_button` from it. |
+| `PocketLcd.kt` | The device's screen, as Compose: menus with a scrollbar, and Now Playing with its progress, volume and scrubber strips. Sized in LCD pixels, not dp. **Stateless on purpose** — anything animated inside it never reaches the glass (trap 33). |
 | `PocketRoomScreen.kt` | The scene — the device at computed life size, its lights, the screen as a `ViewNode` — and `PocketDevice`, which turns wheel events into menu moves and playback. Read trap 33 before changing how the screen is drawn. |
 | `PocketLighting.kt` | The carriage IBL: a procedural cubemap of a train window at night. |
 
-The three pure files have test files (`ClickWheelTest`, `PocketMenuTest`, `ClickSoundTest`).
+The four pure files have test files (`ClickWheelTest`, `PocketMenuTest`, `ClickSoundTest`, `WheelRockTest`).
 
 ---
 

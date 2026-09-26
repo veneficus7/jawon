@@ -129,11 +129,18 @@ sealed interface LcdScreen {
 /**
  * The player's screen.
  *
- * [awake] false is the backlight off after the player has been switched off: a real LCD is
- * then a dark, dead rectangle under the glass, and that is what is drawn.
+ * [awake] false is the player switched off: a real LCD is then a dark, dead rectangle under the
+ * glass, and that is what is drawn. [unlit] is how far the backlight has faded, 0..1 — with the
+ * lamp out the picture is still there, lit by nothing but the carriage, the way a transflective
+ * panel reads.
+ *
+ * **Keep this stateless — no `animate*`, no `remember`ed state inside.** The in-world screen
+ * only takes a new frame when the scope that invalidates its `ViewNode` recomposes (trap 33), so
+ * anything that animates in here on its own is never seen on the glass. The backlight's fade was
+ * written in here first and did exactly that. Animate in the room and pass the value in.
  */
 @Composable
-fun PocketLcd(screen: LcdScreen, playing: Boolean, awake: Boolean) {
+fun PocketLcd(screen: LcdScreen, playing: Boolean, awake: Boolean, unlit: Float = 0f) {
     val density = LocalDensity.current
     fun px(v: Int): Dp = with(density) { v.toDp() }
 
@@ -150,8 +157,18 @@ fun PocketLcd(screen: LcdScreen, playing: Boolean, awake: Boolean) {
                 is LcdScreen.NowPlaying -> NowPlayingBody(screen)
             }
         }
+        if (unlit > 0f) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(LcdOff.copy(alpha = unlit))
+            )
+        }
     }
 }
+
+/** How dark the picture goes with the backlight out: still legible up close, as the real one was. */
+const val BACKLIGHT_OFF_DIM = 0.8f
 
 @Composable
 private fun TitleBar(title: String, playing: Boolean) {
