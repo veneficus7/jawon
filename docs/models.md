@@ -12,7 +12,7 @@ modelled by hand and not downloaded.
 | `case_lid` | the held case | 708 | origin on the hinge axis |
 | `case_closed` | the wall | 768 | shelved frame, opaque |
 | `disc` | the held case | 4608 | 1.2mm thick, radial UVs |
-| `pocket` | the iPod mode's device | 6958 | seven objects, one per material; life size, 61.8 × 103.5 × 10.5mm |
+| `pocket` | the iPod mode's device | 7522 | eight objects, one per material; life size, 61.8 × 103.5 × 10.5mm |
 
 **Why the shelf gets its own case.** A shut jewel case shows none of the tray's
 interior, and the wall draws up to ~470 at once — carrying that interior would
@@ -156,7 +156,7 @@ they are in final glTF/app coordinates:
 | `case_lid.glb` | **X 0 … +0.125** (hinge origin), Y ±0.071, Z −0.0022 … +0.0040 |
 | `case_closed.glb` | **X ±0.005** (thickness), Y ±0.071, **Z ±0.0625** (depth) |
 | `disc.glb` | X/Y ±0.060, Z ±0.0006 (1.2mm thick) |
-| `pocket.glb` | X ±0.0309, Y ±0.0518, **Z −0.00525 … +0.00525** (10.5mm), and per part: the wheel's front face at **+0.00465** (0.6mm inside the plate's +0.00525) and the button's at **+0.0047**. Nothing in `pocket_details` may pass ±0.0518 in Y — the jack, the hold switch and the connector are sunk into those edges, not stuck on them. |
+| `pocket.glb` | X ±0.0309, Y ±0.0518, **Z −0.00525 … +0.00525** (10.5mm), and per part: the wheel's front face at **+0.00465** (0.6mm inside the plate's +0.00525) and the button's at **+0.0047**; `pocket_print` flat at **+0.00467**, 20µm over the wheel. Nothing in `pocket_details` may pass ±0.0518 in Y — the jack, the hold switch and the connector are sunk into those edges, not stuck on them. |
 
 Note `case_closed`'s axes are the odd ones out, and deliberately: it is the only
 model in the shelved frame, so its X is the 10mm edge rather than the 125mm
@@ -205,6 +205,21 @@ into the vertex normals right around the panel's edge, and since a filled face c
 enormous triangle fan, that tilt is interpolated across the whole panel: the pocket
 player's 1.1mm front plate rendered as a deep sloping tray. It reads as a modelling
 mistake and is a shading one — the geometry was flat the whole time.
+
+### The wheel's print is geometry
+
+`pocket_print` — MENU and the three transport glyphs — is a mesh laid 20µm over the wheel's face,
+not a texture. At life size the device is looked at from a hand's length, where a label is only
+as sharp as its pixels if it is baked; a mesh is sharp at any distance for a few hundred triangles.
+The caption is set in `res/font/inter_variable.ttf`, converted to a mesh by Blender at build time,
+so the build needs the app's own font file and nothing else.
+
+**Its brightness is the room's, not the ink's.** The print is a light grey (0.62). Probing it at a
+pure white 1.0 took it from 24 to only 42 out of 255 on the flagship AVD against a wheel at 11: the
+wheel is lit almost entirely by the carriage's ambient at SceneView's default sunny-16 exposure,
+where the room's 2.6cd point lights are worth ~0.2cd/m² against ~180 from the IBL — nothing. So a
+label that has to read better needs light on the wheel, which is the train window's job
+(`docs/formats.md` §7 step 5), not a whiter ink.
 
 ### A face with holes, without booleans
 

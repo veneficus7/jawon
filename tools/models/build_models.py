@@ -1020,8 +1020,9 @@ def circle_loop(bm, radius, y, cz, segments=96):
 
 def build_pocket():
     """
-    Seven objects, one per material: front plate, back shell, screen panel, its
-    glass, the wheel, its centre button, and the dark details on the edges.
+    Eight objects, one per material: front plate, back shell, screen panel, its
+    glass, the wheel, its centre button, the print on the wheel, and the dark
+    details on the edges.
 
     **The front plate is a face with two holes, filled and then extruded** — not a
     slab with holes cut out of it. `docs/models.md` records what booleans do to
@@ -1209,6 +1210,8 @@ def build_pocket():
     finish(button, bevel_width=0.00012, harden=True)
     objects.append(button)
 
+    objects.append(build_pocket_print(wheel_z))
+
     # ---- the edges: hold switch, headphone jack, connector -----------------
     details = new_mesh_object("pocket_details")
     bm = bmesh.new()
@@ -1231,6 +1234,123 @@ def build_pocket():
     objects.append(details)
 
     return objects
+
+
+# Where the wheel's print sits: halfway across the ring, a shade outward of the
+# arithmetic middle ((8.55 + 19.5) / 2 = 14.0mm), which is where a thumb's pad
+# covers it least while pressing.
+POCKET_PRINT_R = 0.0143
+# How far above the wheel's face the print is laid — 20µm, nothing a finger or an
+# eye could find, and a long way clear of any depth-buffer fight at arm's length.
+POCKET_PRINT_LIFT = 0.00002
+# The caption's cap height and the transport glyphs' height. The classic's were
+# small and quiet; the controls are found by feel and by habit, not by reading.
+POCKET_PRINT_CAP_H = 0.0018
+POCKET_PRINT_GLYPH_H = 0.0019
+# Inter's capitals stand 0.727 of an em, which is how a cap height becomes a size.
+INTER_CAP_HEIGHT_EM = 0.727
+
+
+def build_pocket_print(wheel_z):
+    """
+    The wheel's four labels — MENU at the top, previous and next at the sides,
+    play/pause at the bottom — as **geometry**, not a texture.
+
+    Printed ink is flat and sharp-edged, and at life size the device is looked
+    at from a hand's length: a label baked into a texture is only as crisp as
+    its pixels, where a mesh is crisp at any distance and costs a few hundred
+    triangles. The caption is set in Inter, the app's own face, loaded from
+    `res/font` and converted to a mesh here, so nothing Apple drew is borrowed;
+    the three transport glyphs are plain triangles and bars.
+
+    One object, one material, 20µm proud of the wheel's face.
+    """
+    z = az(wheel_z + POCKET_PRINT_LIFT)
+    cy = POCKET_WHEEL_Y
+    bm = bmesh.new()
+
+    def poly(points):
+        """A flat face from (x, up) points, facing the viewer (Blender -Y)."""
+        verts = [bm.verts.new((x, z, cy + u)) for (x, u) in points]
+        bm.faces.new(verts)
+
+    def triangle(x0, u0, w, h, right=True):
+        """An isosceles triangle, base at x0, pointing right (or left)."""
+        tip = x0 + w if right else x0 - w
+        pts = [(x0, u0 - h / 2.0), (tip, u0), (x0, u0 + h / 2.0)]
+        # Counter-clockwise seen from the front, which is what faces -Y.
+        poly(pts if right else list(reversed(pts)))
+
+    def bar(x0, u0, w, h):
+        poly([(x0, u0 - h / 2.0), (x0 + w, u0 - h / 2.0),
+              (x0 + w, u0 + h / 2.0), (x0, u0 + h / 2.0)])
+
+    h = POCKET_PRINT_GLYPH_H
+    tri_w = h * 0.80
+    bar_w = h * 0.19
+    gap = h * 0.16
+    r = POCKET_PRINT_R
+
+    # Next, on the right: two triangles nose to tail, then the bar they run into.
+    width = tri_w * 2.0 + bar_w
+    x = r - width / 2.0
+    triangle(x, 0.0, tri_w, h)
+    triangle(x + tri_w, 0.0, tri_w, h)
+    bar(x + tri_w * 2.0, 0.0, bar_w, h)
+
+    # Previous, on the left: the mirror of it.
+    x = -r + width / 2.0
+    triangle(x, 0.0, tri_w, h, right=False)
+    triangle(x - tri_w, 0.0, tri_w, h, right=False)
+    bar(x - tri_w * 2.0 - bar_w, 0.0, bar_w, h)
+
+    # Play/pause, at the bottom: a triangle, then two bars.
+    width = tri_w + gap * 1.6 + bar_w * 2.0 + gap
+    x = -width / 2.0
+    u = -r
+    triangle(x, u, tri_w, h)
+    x += tri_w + gap * 1.6
+    bar(x, u, bar_w, h)
+    bar(x + bar_w + gap, u, bar_w, h)
+
+    # MENU, at the top, in the app's own face.
+    # Relative to the repository root, like OUT_DIR — the script is run from there.
+    font_path = os.path.abspath(os.path.join("app", "src", "main", "res", "font", "inter_variable.ttf"))
+    curve = bpy.data.curves.new("pocket_menu_caption", type="FONT")
+    curve.font = bpy.data.fonts.load(font_path)
+    curve.body = "MENU"
+    curve.size = POCKET_PRINT_CAP_H / INTER_CAP_HEIGHT_EM
+    curve.align_x = "CENTER"
+    curve.align_y = "CENTER"
+    # Tracked out a little, as small capitals on a control always are, and thickened
+    # by a hair so the strokes hold up in grey on a dark moulding.
+    curve.space_character = 1.16
+    curve.offset = 0.000025
+    curve.resolution_u = 8
+    caption = bpy.data.objects.new("pocket_menu_caption", curve)
+    bpy.context.collection.objects.link(caption)
+    depsgraph = bpy.context.evaluated_depsgraph_get()
+    text_mesh = bpy.data.meshes.new_from_object(caption.evaluated_get(depsgraph))
+    # A text object lies in its own XY plane facing +Z. Standing it up in the XZ
+    # plane faces it down -Y — towards the viewer, per [az] — with its tops up.
+    text_mesh.transform(
+        Matrix.Translation((0.0, z, cy + r)) @ Matrix.Rotation(math.radians(90.0), 4, "X"))
+    bm.from_mesh(text_mesh)
+    bpy.data.meshes.remove(text_mesh)
+    bpy.data.objects.remove(caption)
+
+    obj = new_mesh_object("pocket_print")
+    bm.normal_update()
+    bm.to_mesh(obj.data)
+    bm.free()
+    obj.data.materials.append(principled(
+        # Grey ink under the same polished skin as the wheel it is printed on, so the
+        # gloss runs over the print without a seam — pad printing is under the coat.
+        "PocketPrint", base_color=(0.62, 0.62, 0.63), metallic=0.0,
+        roughness=0.50, coat=0.28, coat_roughness=0.30,
+    ))
+    finish(obj, bevel=False)
+    return obj
 
 
 def mesh_add(target, source):
@@ -1585,7 +1705,7 @@ def main():
         clear_scene()
         paths.append(export(build_plant(), "plant.glb"))
 
-    # The pocket player — the iPod mode's device. Seven objects in one file,
+    # The pocket player — the iPod mode's device. Eight objects in one file,
     # because they are one object in the hand and the app addresses its parts by
     # the names they carry here.
     if not skip("pocket.glb"):

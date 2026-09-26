@@ -61,7 +61,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlin.math.max
 
-/** Where the device's model lives. Seven objects in one file — see `docs/models.md`. */
+/** Where the device's model lives. Eight objects in one file — see `docs/models.md`. */
 const val POCKET_MODEL_ASSET = "models/pocket.glb"
 
 /**
