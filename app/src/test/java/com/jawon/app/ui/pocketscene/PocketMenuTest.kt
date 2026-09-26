@@ -74,6 +74,52 @@ class PocketMenuTest {
     }
 
     @Test
+    fun `the main menu's Settings is the device's own, and each setting shows its value`() {
+        val main = PocketMenus.rows(MenuKey.Main, library, emptyMap(), false)
+        assertEquals(RowAction.Open(MenuKey.Settings), main.last().action)
+        val settings = PocketSettings(
+            eqOptions = listOf("Off", "Rock"), eqChosen = 1, soundCheck = 1,
+            backlightMs = 0L, clicker = false
+        )
+        val rows = PocketMenus.rows(MenuKey.Settings, library, emptyMap(), false, settings)
+            .associate { it.label to it.value }
+        assertEquals("Rock", rows["EQ"])
+        assertEquals("Album", rows["Sound Check"])
+        assertEquals("Always On", rows["Backlight"])
+        assertEquals("Off", rows["Clicker"])
+    }
+
+    @Test
+    fun `bands set by hand in the rack read as Custom rather than as a preset they are not`() {
+        val rows = PocketMenus.rows(
+            MenuKey.Settings, library, emptyMap(), false,
+            PocketSettings(eqOptions = listOf("Off", "Rock"), eqChosen = -1)
+        )
+        assertEquals("Custom", rows.first { it.label == "EQ" }.value)
+    }
+
+    @Test
+    fun `a setting's choices tick the current one, and choosing leads nowhere further`() {
+        val rows = PocketMenus.rows(
+            MenuKey.Choice(PocketSetting.BACKLIGHT), library, emptyMap(), false,
+            PocketSettings(backlightMs = 15_000L)
+        )
+        assertEquals(listOf("15 Seconds"), rows.filter { it.checked }.map { it.label })
+        assertEquals(RowAction.Choose(PocketSetting.BACKLIGHT, 3), rows.first { it.checked }.action)
+        assertFalse(rows.any { it.leadsOn })
+    }
+
+    @Test
+    fun `About counts the library and goes nowhere`() {
+        val rows = PocketMenus.rows(
+            MenuKey.About, library, emptyMap(), false,
+            PocketSettings(albums = 4, songs = 37, shelves = 2, version = "0.6.2")
+        )
+        assertEquals(listOf("4", "37", "2", "0.6.2"), rows.map { it.value })
+        assertTrue(rows.all { it.action == RowAction.Nothing && !it.leadsOn })
+    }
+
+    @Test
     fun `sort keys set aside an article but not a whole name`() {
         assertEquals("beatles", PocketMenus.sortKey("The Beatles"))
         assertEquals("the", PocketMenus.sortKey("The"))
@@ -130,6 +176,7 @@ class PocketMenuTest {
         val nav = PocketNav().move(2, 6).open(MenuKey.Artists).move(4, 9)
             .open(MenuKey.Artist("Sly | The Family Stone")).open(MenuKey.Album("a-1")).move(1, 5)
             .open(MenuKey.CoverFlow).move(3, 9).open(MenuKey.Flipped("a-2"))
+            .open(MenuKey.Settings).open(MenuKey.About).open(MenuKey.Choice(PocketSetting.CLICKER))
         val restored = nav.stack.map { PocketNav.encode(it) }.map { PocketNav.decode(it) }
         assertEquals(nav.stack, restored)
     }

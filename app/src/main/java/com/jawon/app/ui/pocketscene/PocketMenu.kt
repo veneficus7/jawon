@@ -25,6 +25,19 @@ sealed interface MenuKey {
     data class Artist(val name: String) : MenuKey
     data class Album(val albumId: String) : MenuKey
     data object NowPlaying : MenuKey
+    /** The device's own Settings — the classic's, cut to what Jawon has behind it. */
+    data object Settings : MenuKey
+    data object About : MenuKey
+    /** One setting's choices, the current one ticked. */
+    data class Choice(val setting: PocketSetting) : MenuKey
+}
+
+/** The settings the device's own menu can change. */
+enum class PocketSetting(val title: String) {
+    EQ("EQ"),
+    SOUND_CHECK("Sound Check"),
+    BACKLIGHT("Backlight"),
+    CLICKER("Clicker")
 }
 
 /** What choosing a row does. */
@@ -33,12 +46,54 @@ sealed interface RowAction {
     /** Play [albumId] from its [index]th track. */
     data class PlayTrack(val albumId: String, val index: Int) : RowAction
     data object AddAlbums : RowAction
+    /** The phone app's own Settings, everything the device's menu does not carry. */
     data object OpenSettings : RowAction
+    /** Pick option [option] of [setting]. */
+    data class Choose(val setting: PocketSetting, val option: Int) : RowAction
+    /** A line of information that goes nowhere — About's rows. */
+    data object Nothing : RowAction
 }
 
-data class MenuRow(val label: String, val action: RowAction) {
+data class MenuRow(
+    val label: String,
+    val action: RowAction,
+    /** A current value shown at the right of the row, as the classic's Settings did. */
+    val value: String? = null,
+    /** The ticked choice in a list of choices. */
+    val checked: Boolean = false
+) {
     /** Whether the row leads to another list — the chevron. A track plays instead. */
-    val leadsOn: Boolean get() = action !is RowAction.PlayTrack
+    val leadsOn: Boolean
+        get() = action is RowAction.Open || action == RowAction.AddAlbums || action == RowAction.OpenSettings
+}
+
+/**
+ * What the Settings menu shows: every current value, and the choices each setting offers.
+ * Built by the room from the preferences and the player; kept here so the menus stay pure.
+ */
+data class PocketSettings(
+    /** "Off", then the phone's own equaliser presets. */
+    val eqOptions: List<String> = listOf("Off"),
+    /** Which of [eqOptions] is on, or −1 when the bands have been set by hand in the rack. */
+    val eqChosen: Int = 0,
+    /** Index into [SOUND_CHECK_OPTIONS]. */
+    val soundCheck: Int = 0,
+    val backlightMs: Long = 10_000L,
+    val clicker: Boolean = true,
+    val albums: Int = 0,
+    val songs: Int = 0,
+    val shelves: Int = 0,
+    val version: String = ""
+) {
+    companion object {
+        /** Sound Check's choices — Jawon's ReplayGain modes, in `ReplayGain.Mode` order of meaning. */
+        val SOUND_CHECK_OPTIONS = listOf("Off", "Album", "Track")
+
+        /** The classic's backlight timer, with 0 standing for Always On. */
+        val BACKLIGHT_OPTIONS_MS = listOf(2_000L, 5_000L, 10_000L, 15_000L, 20_000L, 30_000L, 0L)
+
+        fun backlightLabel(ms: Long): String = if (ms <= 0L) "Always On" else "${ms / 1000} Seconds"
+    }
 }
 
 /** The library as the menus see it — built from the wall's layout, which is already loaded. */
@@ -74,6 +129,9 @@ object PocketMenus {
         is MenuKey.Artist -> key.name
         is MenuKey.Album -> library.album(key.albumId)?.title ?: "Album"
         MenuKey.NowPlaying -> "Now Playing"
+        MenuKey.Settings -> "Settings"
+        MenuKey.About -> "About"
+        is MenuKey.Choice -> key.setting.title
     }
 
     /**
@@ -88,7 +146,8 @@ object PocketMenus {
         key: MenuKey,
         library: PocketLibrary,
         tracks: Map<String, List<String>>,
-        hasNowPlaying: Boolean
+        hasNowPlaying: Boolean,
+        settings: PocketSettings = PocketSettings()
     ): List<MenuRow> = when (key) {
         MenuKey.Main -> buildList {
             add(MenuRow("Cover Flow", RowAction.Open(MenuKey.CoverFlow)))
@@ -97,8 +156,39 @@ object PocketMenus {
             add(MenuRow("Artists", RowAction.Open(MenuKey.Artists)))
             if (hasNowPlaying) add(MenuRow("Now Playing", RowAction.Open(MenuKey.NowPlaying)))
             add(MenuRow("Add Albums", RowAction.AddAlbums))
-            add(MenuRow("Settings", RowAction.OpenSettings))
+            add(MenuRow("Settings", RowAction.Open(MenuKey.Settings)))
         }
+        MenuKey.Settings -> listOf(
+            MenuRow("About", RowAction.Open(MenuKey.About)),
+            MenuRow(
+                "EQ",
+                RowAction.Open(MenuKey.Choice(PocketSetting.EQ)),
+                value = settings.eqOptions.getOrNull(settings.eqChosen) ?: "Custom"
+            ),
+            MenuRow(
+                "Sound Check",
+                RowAction.Open(MenuKey.Choice(PocketSetting.SOUND_CHECK)),
+                value = PocketSettings.SOUND_CHECK_OPTIONS.getOrNull(settings.soundCheck)
+            ),
+            MenuRow(
+                "Backlight",
+                RowAction.Open(MenuKey.Choice(PocketSetting.BACKLIGHT)),
+                value = PocketSettings.backlightLabel(settings.backlightMs)
+            ),
+            MenuRow(
+                "Clicker",
+                RowAction.Open(MenuKey.Choice(PocketSetting.CLICKER)),
+                value = if (settings.clicker) "On" else "Off"
+            ),
+            MenuRow("All Settings", RowAction.OpenSettings)
+        )
+        MenuKey.About -> listOf(
+            MenuRow("Albums", RowAction.Nothing, value = "${settings.albums}"),
+            MenuRow("Songs", RowAction.Nothing, value = "${settings.songs}"),
+            MenuRow("Shelves", RowAction.Nothing, value = "${settings.shelves}"),
+            MenuRow("Version", RowAction.Nothing, value = settings.version)
+        )
+        is MenuKey.Choice -> choices(key.setting, settings)
         MenuKey.Albums -> albumsInOrder(library)
             .map { MenuRow(it.title, RowAction.Open(MenuKey.Album(it.id))) }
         // The same order as Albums, so a record is in the same place in both.
@@ -124,6 +214,24 @@ object PocketMenus {
         is MenuKey.Album -> tracks[key.albumId].orEmpty()
             .mapIndexed { index, title -> MenuRow(title, RowAction.PlayTrack(key.albumId, index)) }
         MenuKey.NowPlaying -> emptyList()
+    }
+
+    private fun choices(setting: PocketSetting, settings: PocketSettings): List<MenuRow> {
+        val labels: List<String> = when (setting) {
+            PocketSetting.EQ -> settings.eqOptions
+            PocketSetting.SOUND_CHECK -> PocketSettings.SOUND_CHECK_OPTIONS
+            PocketSetting.BACKLIGHT -> PocketSettings.BACKLIGHT_OPTIONS_MS.map { PocketSettings.backlightLabel(it) }
+            PocketSetting.CLICKER -> listOf("On", "Off")
+        }
+        val current = when (setting) {
+            PocketSetting.EQ -> settings.eqChosen
+            PocketSetting.SOUND_CHECK -> settings.soundCheck
+            PocketSetting.BACKLIGHT -> PocketSettings.BACKLIGHT_OPTIONS_MS.indexOf(settings.backlightMs)
+            PocketSetting.CLICKER -> if (settings.clicker) 0 else 1
+        }
+        return labels.mapIndexed { i, label ->
+            MenuRow(label, RowAction.Choose(setting, i), checked = i == current)
+        }
     }
 
     /** Every album, filed as the Albums list files them. */
@@ -216,6 +324,9 @@ data class PocketNav(val stack: List<Level> = listOf(Level(MenuKey.Main))) {
                 MenuKey.Shelves -> "shelves" to ""
                 MenuKey.Artists -> "artists" to ""
                 MenuKey.NowPlaying -> "nowplaying" to ""
+                MenuKey.Settings -> "settings" to ""
+                MenuKey.About -> "about" to ""
+                is MenuKey.Choice -> "choice" to k.setting.name
                 is MenuKey.Shelf -> "shelf" to k.shelfId
                 is MenuKey.Artist -> "artist" to k.name
                 is MenuKey.Album -> "album" to k.albumId
@@ -237,6 +348,10 @@ data class PocketNav(val stack: List<Level> = listOf(Level(MenuKey.Main))) {
                 "shelves" -> MenuKey.Shelves
                 "artists" -> MenuKey.Artists
                 "nowplaying" -> MenuKey.NowPlaying
+                "settings" -> MenuKey.Settings
+                "about" -> MenuKey.About
+                "choice" -> PocketSetting.entries.firstOrNull { it.name == arg }?.let { MenuKey.Choice(it) }
+                    ?: return null
                 "shelf" -> MenuKey.Shelf(arg)
                 "artist" -> MenuKey.Artist(arg)
                 "album" -> MenuKey.Album(arg)

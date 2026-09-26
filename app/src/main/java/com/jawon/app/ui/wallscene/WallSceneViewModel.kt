@@ -789,6 +789,29 @@ class WallSceneViewModel @Inject constructor(
     val eqPresets: StateFlow<List<String>> = equalizer.presets
 
     fun onEqEnabledChanged(on: Boolean) = equalizer.setEnabled(on)
+
+    // ---- The pocket player's own Settings menu --------------------------------------------
+    //
+    // Pass-throughs rather than a view model of its own: three preferences and a count are not
+    // yet two rooms pulling this class in different directions (docs/formats.md §3).
+
+    /** Sound Check, as the classic called it: which ReplayGain tags to level by. */
+    val replayGainMode: StateFlow<String> = preferences.replayGainMode
+
+    fun onReplayGainModeChanged(mode: com.jawon.app.playback.ReplayGain.Mode) =
+        preferences.setReplayGainMode(mode.name)
+
+    val pocketBacklightMs: StateFlow<Long> = preferences.pocketBacklightMs
+
+    fun onPocketBacklightChanged(ms: Long) = preferences.setPocketBacklightMs(ms)
+
+    val pocketClicker: StateFlow<Boolean> = preferences.pocketClicker
+
+    fun onPocketClickerChanged(on: Boolean) = preferences.setPocketClicker(on)
+
+    /** How many songs the library holds, for the pocket player's About. */
+    val trackCount: StateFlow<Int> = trackDao.count()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0)
     fun onEqBandChanged(index: Int, levelMb: Int) = equalizer.setBand(index, levelMb)
     fun onEqPreset(index: Int) = equalizer.usePreset(index)
     fun onEqReset() = equalizer.reset()

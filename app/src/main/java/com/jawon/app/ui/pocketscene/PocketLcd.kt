@@ -78,8 +78,16 @@ private val LcdOff = Color(0xFF0C0E10)
 private val SelectTop = Color(0xFF4FA597)
 private val SelectBottom = Color(0xFF276A5F)
 
-/** One row as the screen draws it. */
-data class LcdRow(val label: String, val leadsOn: Boolean)
+/**
+ * One row as the screen draws it: a label, and at its right either a chevron (it leads on), a
+ * current value (a setting), or a tick (the chosen one of a list of choices).
+ */
+data class LcdRow(
+    val label: String,
+    val leadsOn: Boolean,
+    val value: String? = null,
+    val checked: Boolean = false
+)
 
 /** What the screen is showing. Deliberately dumb: whoever drives the wheel decides it. */
 sealed interface LcdScreen {
@@ -292,6 +300,18 @@ private fun MenuBody(menu: LcdScreen.Menu) {
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f)
                     )
+                    if (row.value != null) {
+                        Text(
+                            text = row.value,
+                            fontFamily = InterFamily,
+                            fontWeight = FontWeight.Medium,
+                            fontSize = lcdSp(24),
+                            color = if (isSelected) Color.White.copy(alpha = 0.86f) else LcdDim,
+                            maxLines = 1,
+                            modifier = Modifier.padding(start = px(12), end = px(if (row.leadsOn) 12 else 0))
+                        )
+                    }
+                    if (row.checked) Tick(if (isSelected) Color.White else SelectBottom)
                     if (row.leadsOn) Chevron(if (isSelected) Color.White else LcdInk.copy(alpha = 0.55f))
                 }
             }
@@ -644,6 +664,21 @@ private fun lcdSp(px: Int): TextUnit = with(LocalDensity.current) { px.toSp() }
 internal fun formatTime(ms: Long): String {
     val total = (ms / 1000L).coerceAtLeast(0L)
     return "%d:%02d".format(total / 60L, total % 60L)
+}
+
+/** The tick against the chosen one of a list of choices. Drawn, like the chevron. */
+@Composable
+private fun Tick(color: Color) {
+    val density = LocalDensity.current
+    val s = with(density) { 24.toDp() }
+    Canvas(modifier = Modifier.size(s, s)) {
+        val path = Path().apply {
+            moveTo(size.width * 0.12f, size.height * 0.55f)
+            lineTo(size.width * 0.40f, size.height * 0.82f)
+            lineTo(size.width * 0.90f, size.height * 0.20f)
+        }
+        drawPath(path, color, style = Stroke(width = size.width * 0.13f))
+    }
 }
 
 /** The ">" at the end of a row that leads somewhere. Drawn, so it is not a font's idea of one. */

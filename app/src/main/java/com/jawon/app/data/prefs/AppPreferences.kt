@@ -63,6 +63,34 @@ class AppPreferences @Inject constructor(@param:ApplicationContext context: Cont
         _roomScheme.value = scheme
     }
 
+    private val _pocketBacklightMs =
+        MutableStateFlow(prefs.getLong(KEY_POCKET_BACKLIGHT_MS, 10_000L))
+
+    /**
+     * The pocket player's backlight timer: how long its screen stays lit after the last touch,
+     * or 0 for always on. The classic's own choices, and its default of ten seconds.
+     */
+    val pocketBacklightMs: StateFlow<Long> = _pocketBacklightMs.asStateFlow()
+
+    fun setPocketBacklightMs(ms: Long) {
+        prefs.edit { putLong(KEY_POCKET_BACKLIGHT_MS, ms) }
+        _pocketBacklightMs.value = ms
+    }
+
+    private val _pocketClicker = MutableStateFlow(prefs.getBoolean(KEY_POCKET_CLICKER, true))
+
+    /**
+     * Whether the pocket player's wheel clicks. On by default — the click is most of what the
+     * wheel was remembered for — and the classic let you turn it off, so this does too. The
+     * haptic tick is the phone's, not the clicker's, and stays either way.
+     */
+    val pocketClicker: StateFlow<Boolean> = _pocketClicker.asStateFlow()
+
+    fun setPocketClicker(on: Boolean) {
+        prefs.edit { putBoolean(KEY_POCKET_CLICKER, on) }
+        _pocketClicker.value = on
+    }
+
     private val _format =
         MutableStateFlow(Format.fromName(prefs.getString(KEY_FORMAT, null)))
 
@@ -426,6 +454,8 @@ class AppPreferences @Inject constructor(@param:ApplicationContext context: Cont
         const val KEY_PREFER_ONLINE_LYRICS = "prefer_online_lyrics"
         const val KEY_ROOM_SCHEME = "room_scheme"
         const val KEY_FORMAT = "format"
+        const val KEY_POCKET_BACKLIGHT_MS = "pocket_backlight_ms"
+        const val KEY_POCKET_CLICKER = "pocket_clicker"
         const val KEY_EQ_ENABLED = "equalizer_enabled"
         const val KEY_EQ_BANDS = "equalizer_bands"
         const val KEY_REPLAY_GAIN = "replay_gain_mode"

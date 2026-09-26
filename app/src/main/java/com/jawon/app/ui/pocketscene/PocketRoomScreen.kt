@@ -180,6 +180,14 @@ fun PocketRoomScreen(
     val nowPlayingAlbumId by viewModel.nowPlayingAlbumId.collectAsStateWithLifecycle()
 
     val library = remember(layout) { pocketLibraryOf(layout) }
+
+    // ---- what the device's own Settings menu shows ----------------------------------------
+    val eqEnabled by viewModel.eqEnabled.collectAsStateWithLifecycle()
+    val eqPresets by viewModel.eqPresets.collectAsStateWithLifecycle()
+    val replayGainMode by viewModel.replayGainMode.collectAsStateWithLifecycle()
+    val backlightMs by viewModel.pocketBacklightMs.collectAsStateWithLifecycle()
+    val clickerOn by viewModel.pocketClicker.collectAsStateWithLifecycle()
+    val songCount by viewModel.trackCount.collectAsStateWithLifecycle()
     val trackTitles = remember { mutableStateMapOf<String, List<String>>() }
     val navState = rememberSaveable(stateSaver = PocketNav.Saver) { mutableStateOf(PocketNav()) }
     val device = remember { PocketDevice(context, viewModel, navState) }
@@ -191,6 +199,26 @@ fun PocketRoomScreen(
     // built once and handed to SceneView.
     device.library = library
     device.trackTitles = trackTitles
+    device.eqPresets = eqPresets
+    device.backlightMs = backlightMs
+    device.clickerOn = clickerOn
+    device.settings = PocketSettings(
+        eqOptions = listOf("Off") + eqPresets,
+        // Off when the equaliser is; otherwise the preset chosen here this session, and
+        // "Custom" when the bands have been set by hand in the rack instead.
+        eqChosen = if (!eqEnabled) 0 else device.eqPicked.value ?: -1,
+        soundCheck = when (com.jawon.app.playback.ReplayGain.Mode.fromName(replayGainMode)) {
+            com.jawon.app.playback.ReplayGain.Mode.OFF -> 0
+            com.jawon.app.playback.ReplayGain.Mode.ALBUM -> 1
+            com.jawon.app.playback.ReplayGain.Mode.TRACK -> 2
+        },
+        backlightMs = backlightMs,
+        clicker = clickerOn,
+        albums = library.albums.size,
+        songs = songCount,
+        shelves = library.shelves.size,
+        version = com.jawon.app.BuildConfig.VERSION_NAME
+    )
     device.deck = deck
     device.positionMs = positionMs
     device.hasNowPlaying = nowPlayingAlbumId != null && deck.tracks.isNotEmpty()
@@ -285,6 +313,7 @@ fun PocketRoomScreen(
     val screen = lcdScreenFor(
         nav = nav,
         library = library,
+        settings = device.settings,
         albumsInOrder = albumsInOrder,
         coverArt = coverArt,
         trackTitles = trackTitles,
@@ -546,6 +575,7 @@ private fun pocketLibraryOf(layout: WallLayout): PocketLibrary {
 private fun lcdScreenFor(
     nav: PocketNav,
     library: PocketLibrary,
+    settings: PocketSettings,
     albumsInOrder: List<PocketLibrary.Album>,
     coverArt: Map<String, ImageBitmap?>,
     trackTitles: Map<String, List<String>>,
@@ -611,13 +641,13 @@ private fun lcdScreenFor(
         }
         return LcdScreen.CoverFlow(covers, albumsInOrder[centre].title, albumsInOrder[centre].artist, back)
     }
-    val rows = PocketMenus.rows(key, library, trackTitles, hasNowPlaying)
+    val rows = PocketMenus.rows(key, library, trackTitles, hasNowPlaying, settings)
     val level = nav.clamp(rows.size).current
     val end = minOf(level.top + PocketMenus.VISIBLE_ROWS, rows.size)
     val window = if (level.top < end) rows.subList(level.top, end) else emptyList()
     return LcdScreen.Menu(
         title = PocketMenus.title(key, library),
-        rows = window.map { LcdRow(it.label, it.leadsOn) },
+        rows = window.map { LcdRow(it.label, it.leadsOn, it.value, it.checked) },
         selected = level.selected - level.top,
         top = level.top,
         total = rows.size,
@@ -678,8 +708,9 @@ private class PocketDevice(
     val playingNow = mutableStateOf(false)
 
     /**
-     * The backlight, which goes out after [BACKLIGHT_MS] without a touch — the classic's default
-     * timer — and comes back on the next one, which still does what it was going to do.
+     * The backlight, which goes out after [backlightMs] without a touch — ten seconds unless the
+     * device's own Settings say otherwise, as on the classic — and comes back on the next touch,
+     * which still does what it was going to do.
      */
     val backlight = mutableStateOf(true)
 
@@ -696,6 +727,13 @@ private class PocketDevice(
 
     var library = PocketLibrary()
     var trackTitles: Map<String, List<String>> = emptyMap()
+    var settings = PocketSettings()
+    var eqPresets: List<String> = emptyList()
+    var backlightMs = 10_000L
+    var clickerOn = true
+
+    /** The EQ preset chosen here this session; the equaliser itself only remembers bands. */
+    val eqPicked = mutableStateOf<Int?>(null)
     var deck = com.jawon.app.ui.wallscene.DeckState()
     var positionMs = 0L
     var hasNowPlaying = false
@@ -837,7 +875,8 @@ private class PocketDevice(
             node.setIntensityCandela(lamp.intensity)
         }
 
-        if (backlight.value && now - lastInputAt > BACKLIGHT_MS) backlight.value = false
+        // The backlight timer, as set in the device's own Settings; 0 is Always On.
+        if (backlight.value && backlightMs > 0L && now - lastInputAt > backlightMs) backlight.value = false
 
         if (seekDirection != 0 && now - seekTickAt >= SEEK_TICK_MS) {
             seekTickAt = now
@@ -962,7 +1001,7 @@ private class PocketDevice(
     }
 
     private fun rows(): List<MenuRow> =
-        PocketMenus.rows(nav.value.current.key, library, trackTitles, hasNowPlaying)
+        PocketMenus.rows(nav.value.current.key, library, trackTitles, hasNowPlaying, settings)
 
     private fun turn(turn: WheelGesture.Event.Turn, now: Long) {
         if (nav.value.current.key == MenuKey.NowPlaying && deck.tracks.isNotEmpty()) {
@@ -1113,7 +1152,14 @@ private class PocketDevice(
         when (action) {
             is RowAction.Open -> {
                 if (action.key == MenuKey.NowPlaying) bar.value = LcdScreen.Bar.PROGRESS
-                nav.value = nav.value.open(action.key)
+                var next = nav.value.open(action.key)
+                if (action.key is MenuKey.Choice) {
+                    // A list of choices opens on the one in force, as the classic's did.
+                    val choices = PocketMenus.rows(action.key, library, trackTitles, hasNowPlaying, settings)
+                    val chosen = choices.indexOfFirst { it.checked }
+                    if (chosen > 0) next = next.move(chosen, choices.size)
+                }
+                nav.value = next
             }
             is RowAction.PlayTrack -> {
                 viewModel.playAlbumFrom(action.albumId, action.index)
@@ -1121,6 +1167,36 @@ private class PocketDevice(
             }
             RowAction.AddAlbums -> onAddAlbum()
             RowAction.OpenSettings -> onOpenSettings()
+            is RowAction.Choose -> {
+                choose(action.setting, action.option)
+                // The classic went back to Settings once a choice was made.
+                nav.value = nav.value.back()
+            }
+            RowAction.Nothing -> Unit
+        }
+    }
+
+    private fun choose(setting: PocketSetting, option: Int) {
+        when (setting) {
+            PocketSetting.EQ -> {
+                if (option == 0) {
+                    viewModel.onEqEnabledChanged(false)
+                } else {
+                    viewModel.onEqEnabledChanged(true)
+                    viewModel.onEqPreset(option - 1)
+                }
+                eqPicked.value = option
+            }
+            PocketSetting.SOUND_CHECK -> viewModel.onReplayGainModeChanged(
+                when (option) {
+                    0 -> com.jawon.app.playback.ReplayGain.Mode.OFF
+                    1 -> com.jawon.app.playback.ReplayGain.Mode.ALBUM
+                    else -> com.jawon.app.playback.ReplayGain.Mode.TRACK
+                }
+            )
+            PocketSetting.BACKLIGHT -> PocketSettings.BACKLIGHT_OPTIONS_MS.getOrNull(option)
+                ?.let { viewModel.onPocketBacklightChanged(it) }
+            PocketSetting.CLICKER -> viewModel.onPocketClickerChanged(option == 0)
         }
     }
 
@@ -1176,13 +1252,13 @@ private class PocketDevice(
     private fun step(now: Long) {
         if (now - lastClickAt < CLICK_MIN_INTERVAL_MS) return
         lastClickAt = now
-        clicker.click()
+        if (clickerOn) clicker.click()
         haptics.tick()
     }
 
     /** A button: the same click, and the heavier haptic a switch closing deserves. */
     private fun press() {
-        clicker.click()
+        if (clickerOn) clicker.click()
         haptics.detent()
     }
 
@@ -1192,7 +1268,6 @@ private class PocketDevice(
 
     private companion object {
         const val CLICK_MIN_INTERVAL_MS = 18L
-        const val BACKLIGHT_MS = 10_000L
         const val LYRICS_FOLLOW_AFTER_MS = 4_000L
         val X_AXIS = Float3(1f, 0f, 0f)
         val Y_AXIS = Float3(0f, 1f, 0f)

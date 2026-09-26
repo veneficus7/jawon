@@ -256,7 +256,13 @@ One thing at a time, checked on the owner's phone between each (the working agre
    right size under a real thumb — all of that is the owner's phone.
    **Step 2's spike answered itself along the way:** a `ViewNode` does render a moving
    screen, once it is told to (trap 33) — the cost per redraw is still unmeasured.
-8. **Now Playing, and a way to the rack and the lyrics.**
+8. **Now Playing, and a way to the rack and the lyrics — mostly done (2026-09-26).** The
+   lyrics are the classic's own route: the centre's third press on Now Playing, after the
+   scrubber, follows timed words line by line and lets the wheel scroll them; they are asked
+   for only while that page is up, which keeps LRCLIB out of the background. The *sound* is
+   reached the classic's way too, through the device's own Settings — EQ over the phone's
+   presets and Sound Check as Jawon's ReplayGain modes, beside Backlight and Clicker. **Still
+   open: the rest of the rack** (filter, echo, drive, varispeed) has no way in from this room.
 9. **Vinyl** (§5), then **cassette** (§6), each its own room and built the same way.
 
 Each of 3–8 is about a session's work. **Measure every tier as it lands** (traps 28–30).
