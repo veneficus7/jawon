@@ -1,6 +1,19 @@
 # Custom Filament materials
 
-**Jawon ships two:**
+**Jawon ships four.** Three in the CD room — dust, fog and the neon sign (`neon.mat`,
+additive, drawn from a two-channel mask) — and one in the pocket player's:
+
+- `materials/night_window.mat` → `assets/materials/night_window.filamat`, the train window
+  behind the device: out-of-focus lights at three depths, poles, the sky, and the carriage
+  light's reflection on the glass, **drawn as a lens renders them** rather than as scenery to be
+  blurred. A depth-of-field pass cannot reach the circle of confusion a 50mm lens focused at
+  30cm throws on a light at infinity — about a fifth of the frame — and this is a handful of
+  discs per pixel. The room integrates the train's speed on the CPU and hands each layer's
+  scroll in, wrapped at exactly the shader's `PERIOD` of cells so the value stays small and the
+  wrap is seamless (`NightWindow`, `TrainMotion`). **SceneView's `PlaneNode` runs V downward**:
+  the first build hung the sky under the device, which the luminance boxes caught first.
+
+And the CD room's first two:
 
 - `materials/dust.mat` → `assets/materials/dust.filamat`, which animates every
   dust mote in the vertex shader from a single `time` uniform — and, since

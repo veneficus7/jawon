@@ -46,11 +46,14 @@ import dev.romainguy.kotlin.math.rotation
 import dev.romainguy.kotlin.math.translation
 import io.github.sceneview.SceneView
 import io.github.sceneview.collision.Vector3
+import io.github.sceneview.math.Direction
 import io.github.sceneview.math.Position
+import io.github.sceneview.math.Size
 import io.github.sceneview.math.Rotation
 import io.github.sceneview.node.CameraNode
 import io.github.sceneview.node.LightNode
 import io.github.sceneview.node.ModelNode
+import io.github.sceneview.node.PlaneNode
 import io.github.sceneview.node.Node
 import io.github.sceneview.node.ViewNode
 import io.github.sceneview.rememberCameraNode
@@ -65,6 +68,9 @@ import io.github.sceneview.rememberViewNodeManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlin.math.max
+
+/** The window's picture — see `materials/night_window.mat` and `NightWindow`. */
+private const val NIGHT_WINDOW_MATERIAL_ASSET = "materials/night_window.filamat"
 
 /** Where the device's model lives. Eight objects in one file — see `docs/models.md`. */
 const val POCKET_MODEL_ASSET = "models/pocket.glb"
@@ -129,6 +135,11 @@ fun PocketRoomScreen(
 
     val cameraNode = rememberCameraNode(engine) {
         focalLength = FOCAL_LENGTH_MM.toDouble()
+    }
+
+    // The window behind the device. Created here, handed to its PlaneNode below, which owns it.
+    val windowMaterial = remember(materialLoader) {
+        materialLoader.createMaterial(NIGHT_WINDOW_MATERIAL_ASSET)
     }
 
     val deviceModel = rememberModelInstance(modelLoader, POCKET_MODEL_ASSET)
@@ -265,6 +276,28 @@ fun PocketRoomScreen(
                     intensityCandela(3.4f)
                     falloff(1.6f)
                     castShadows(false)
+                }
+            )
+            // **The window**, behind everything: the night going past, out of focus. Its
+            // instance is made in this scope because a PlaneNode destroys the one it is handed.
+            val outside = remember(windowMaterial) {
+                materialLoader.createInstance(windowMaterial).apply {
+                    setParameter("size", NightWindow.PLANE_W_M, NightWindow.PLANE_H_M)
+                    setParameter("scroll", 0f, 0f, 0f, 0f)
+                    setParameter("bob", 0f, 0f)
+                    setParameter("gain", 1f)
+                }
+            }
+            device.windowMaterial = outside
+            PlaneNode(
+                size = Size(NightWindow.PLANE_W_M, NightWindow.PLANE_H_M, 0f),
+                normal = Direction(z = 1f),
+                materialInstance = outside,
+                position = Position(0f, 0f, NightWindow.PLANE_Z_M),
+                apply = {
+                    isTouchable = false
+                    isShadowCaster = false
+                    isShadowReceiver = false
                 }
             )
             deviceModel?.let { instance ->
@@ -461,6 +494,9 @@ private class PocketDevice(
     var deviceNode: Node? = null
     var cameraNode: CameraNode? = null
     var lcdNode: ViewNode? = null
+    var windowMaterial: com.google.android.filament.MaterialInstance? = null
+
+    private val train = TrainMotion()
 
     private val gesture = WheelGesture()
     private val rock = WheelRock()
@@ -553,6 +589,14 @@ private class PocketDevice(
             poseParts()
         }
         rockWasMoving = rock.isMoving
+
+        // The night going past: the train's distance, split into each layer's parallax.
+        train.advance(dt)
+        windowMaterial?.let { outside ->
+            outside.setParameter("scroll", train.scroll(0), train.scroll(1), train.scroll(2), train.scroll(3))
+            val (bobX, bobY) = train.bob()
+            outside.setParameter("bob", bobX, bobY)
+        }
 
         if (backlight.value && now - lastInputAt > BACKLIGHT_MS) backlight.value = false
 

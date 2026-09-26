@@ -94,8 +94,9 @@ rather than branching inside it. `JawonNavHost` shows it instead of `WallSceneSc
 | `PocketLcd.kt` | The device's screen, as Compose: menus with a scrollbar, and Now Playing with its progress, volume and scrubber strips. Sized in LCD pixels, not dp. **Stateless on purpose** — anything animated inside it never reaches the glass (trap 33). |
 | `PocketRoomScreen.kt` | The scene — the device at computed life size, its lights, the screen as a `ViewNode` — and `PocketDevice`, which turns wheel events into menu moves and playback. Read trap 33 before changing how the screen is drawn. |
 | `PocketLighting.kt` | The carriage IBL: a procedural cubemap of a train window at night. |
+| `NightWindow.kt` | The window behind the device — where its picture hangs, each layer's depth and cell size (which must agree with `night_window.mat`) — and **pure** `TrainMotion`: the train's drifting speed, each layer's parallax scroll, the carriage's rock and its rail-joint jolt. |
 
-The four pure files have test files (`ClickWheelTest`, `PocketMenuTest`, `ClickSoundTest`, `WheelRockTest`).
+The five pure pieces have test files (`ClickWheelTest`, `PocketMenuTest`, `ClickSoundTest`, `WheelRockTest`, `TrainMotionTest`).
 
 ---
 
