@@ -250,6 +250,12 @@ One thing at a time, checked on the owner's phone between each (the working agre
    vignette, and ambient occlusion at a 3.5mm radius for the wheel's recess and the screen's
    inset. The screen itself reads as a backlit panel now: a cool never-quite-white, a falloff to
    its corners, and the window lip's shadow along its top and left edges.
+   **And an outline (2026-09-26, on the AVD):** the steel comes round the edge as a polished bead
+   0.8mm across, and the ceiling is two runs of light traced down the carriage rather than a ring
+   of points — worked out from where each part of the bead looks, so a line of light runs along
+   every visible edge and the lower corners no longer dissolve into the dark. The steel wears its
+   own material so those lines stay lines instead of breaking into dashes (ENGINEERING.md, trap 34).
+   Not yet judged on the phone.
    **And the phone's tilt turns the world** (`TiltFilter`): the environment and the passing
    lamps rotate against how far the phone has just been tilted, so reflections slide across
    the glass and the edge — first-order, twice the tilt, as a turned mirror's do. The window

@@ -1,0 +1,55 @@
+// The pocket player's polished steel: its back shell, its sides and the bead that brings the steel
+// round to meet the face (build_pocket() in tools/models/build_models.py). It replaces the glTF's
+// own material on that one part, at load (PocketRoomScreen's bindParts).
+//
+// **Why it is hand-written.** A mirror on a curved edge 0.8mm across is the one surface in the room
+// that cannot be shaded one sample per pixel. The bead turns through 90 degrees in about sixteen
+// pixels, so one pixel of it reflects about a tenth of a radian of the carriage, and a ceiling run
+// narrower than that arrives as a line thinner than a pixel — drawn as a dashed line stepping down
+// a row at a time, which crawls whenever the reflection moves. Filament's own geometric specular AA
+// is compiled into gltfio's material but changed nothing at any strength: a probe at a variance of
+// 1000 left every pixel on the bead as it was. So the filtering is done here, where it can be seen
+// to work: the roughness is floored at the width of the pixel's own footprint on the curve. Where
+// the steel is flat — the sides, the back — the footprint is nothing and the mirror stays a mirror.
+//
+// Compiled by hand with a version-matched matc. See docs/materials.md.
+
+material {
+    name : PolishedSteel,
+    shadingModel : lit,
+    blending : opaque,
+    parameters : [
+        {
+            // Linear. A metal's colour is its reflectance.
+            type : float3,
+            name : baseColor
+        },
+        {
+            // The polish, where nothing else widens it.
+            type : float,
+            name : roughness
+        },
+        {
+            // How far the lobe is widened per radian the surface turns across a pixel. Set by
+            // eye against dashes, not derived: see STEEL_FOOTPRINT in PocketRoomScreen.
+            type : float,
+            name : footprint
+        }
+    ]
+}
+
+fragment {
+    void material(inout MaterialInputs material) {
+        prepareMaterial(material);
+        material.baseColor = vec4(materialParams.baseColor, 1.0);
+        material.metallic = 1.0;
+
+        // How far the surface turns across one pixel, in radians of normal: nothing on a flat
+        // face, most on the bead. The lobe is widened in proportion, so a pixel shows roughly
+        // what a camera's pixel would have integrated from that much of the room.
+        highp vec3 n = getWorldGeometricNormalVector();
+        float turn = length(fwidth(n));
+        float alpha = clamp(materialParams.footprint * turn, 0.0, 1.0);
+        material.roughness = max(materialParams.roughness, sqrt(alpha));
+    }
+}

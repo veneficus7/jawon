@@ -12,7 +12,7 @@ modelled by hand and not downloaded.
 | `case_lid` | the held case | 708 | origin on the hinge axis |
 | `case_closed` | the wall | 768 | shelved frame, opaque |
 | `disc` | the held case | 4608 | 1.2mm thick, radial UVs |
-| `pocket` | the iPod mode's device | 7522 | eight objects, one per material; life size, 61.8 × 103.5 × 10.5mm; ~820KB, most of it three wear maps |
+| `pocket` | the iPod mode's device | 8314 | eight objects, one per material; life size, 61.8 × 103.5 × 10.5mm; a polished bead round the face; ~830KB, most of it three wear maps |
 
 **Why the shelf gets its own case.** A shut jewel case shows none of the tray's
 interior, and the wall draws up to ~470 at once — carrying that interior would
@@ -171,7 +171,9 @@ plate's underside at Z **+0.00415**. Anything meant to be seen *through* the pla
 must sit above that plane: the LCD panel was first put at +0.00365, inside the shell, and
 the window then showed the shell's mirror-polished top face with the lamp in it, which read
 in both Cycles and Filament as a dark screen under glass. It is at **+0.00425** now. The
-check is one number: `pocket_screen`'s Z must exceed `pocket_back`'s maximum.
+check is one number: `pocket_screen`'s Z must exceed the shell's floor under the plate. That
+used to be `pocket_back`'s maximum; since the bead, the shell rises to **+0.00524** round the
+outside of the plate, so read the floor (+0.00415) rather than the maximum.
 
 **A wheel that is proud of its plate is the same class of error**, and the bounds
 caught it: the pocket player's wheel first exported at Z +0.0037…+0.0050, standing
@@ -236,6 +238,21 @@ so no hand-written material is involved. Generated with numpy from fixed seeds: 
 reproducible. To look at one, dump it from Blender rather than squinting at a render — a print
 only shows in a glint, and the first version's prints turned out, once dumped, to be perfect
 concentric rings: a target, not a finger.
+
+### The bead draws the outline
+
+The back shell's steel comes round the edge to meet the face as a quarter-round 0.8mm across
+(`POCKET_RIM`), with a 0.05mm seam between it and the plate, which is inset to make room. It
+exists for the silhouette. A flat face and a flat side each reflect one direction of the room, so
+against a dark carriage the phone's screenshots lost the bottom corners into the background
+entirely; a rounded edge faces every way between the two, and some part of it always finds a
+light — the ceiling's runs along the top, the reading lamp down the right, the window down the
+left. The shell is one loft of rounded rects (floor under the plate, the seam's wall, the bead's
+eight steps, the side), each ring with the same vertex count so each bridges square to the next.
+
+**The bead is why the steel has a hand-written material.** At 16px for 90° of curve, a reflected
+light run is thinner than a pixel and rasterises as a dashed line; see `polished_steel.mat` and
+ENGINEERING.md's trap on sub-pixel highlights.
 
 ### A face with holes, without booleans
 

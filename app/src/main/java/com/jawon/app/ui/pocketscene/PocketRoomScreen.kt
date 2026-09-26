@@ -34,6 +34,7 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.google.android.filament.LightManager
+import com.google.android.filament.MaterialInstance
 import com.google.android.filament.Renderer
 import com.jawon.app.data.lyrics.LyricsState
 import com.jawon.app.ui.wallscene.CaseArt
@@ -56,6 +57,7 @@ import io.github.sceneview.node.LightNode
 import io.github.sceneview.node.ModelNode
 import io.github.sceneview.node.PlaneNode
 import io.github.sceneview.node.Node
+import io.github.sceneview.node.RenderableNode
 import io.github.sceneview.rememberCameraNode
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberEnvironmentLoader
@@ -109,6 +111,19 @@ private const val LAMP_FALLOFF_M = 6f
 
 /** The window's picture — see `materials/night_window.mat` and `NightWindow`. */
 private const val NIGHT_WINDOW_MATERIAL_ASSET = "materials/night_window.filamat"
+
+/**
+ * The shell's polished steel: the glTF's own values (`build_pocket()`), with the lobe widened
+ * across a pixel's footprint where the bead curves — see `materials/polished_steel.mat`.
+ *
+ * [STEEL_FOOTPRINT] is measured, not derived. On the flagship AVD the ceiling's runs crossed the
+ * top of the bead as dashed lines at 1; at **4** they joined into continuous lines that still read
+ * as a mirror; at 12 the bead went to satin. The arithmetic had predicted 1.
+ */
+private const val POLISHED_STEEL_MATERIAL_ASSET = "materials/polished_steel.filamat"
+private val STEEL_BASE_COLOUR = floatArrayOf(0.560f, 0.570f, 0.580f)
+private const val STEEL_ROUGHNESS = 0.055f
+private const val STEEL_FOOTPRINT = 4f
 
 /** Where the device's model lives. Eight objects in one file — see `docs/models.md`. */
 const val POCKET_MODEL_ASSET = "models/pocket.glb"
@@ -175,6 +190,15 @@ fun PocketRoomScreen(
         focalLength = FOCAL_LENGTH_MM.toDouble()
     }
 
+    // The shell's steel, put on the model's part when it loads (bindParts). The loader owns it,
+    // and is disposed after the model, so the part is gone before its material is.
+    val steel = remember(materialLoader) {
+        materialLoader.createInstance(materialLoader.createMaterial(POLISHED_STEEL_MATERIAL_ASSET)).apply {
+            setParameter("baseColor", STEEL_BASE_COLOUR[0], STEEL_BASE_COLOUR[1], STEEL_BASE_COLOUR[2])
+            setParameter("roughness", STEEL_ROUGHNESS)
+            setParameter("footprint", STEEL_FOOTPRINT)
+        }
+    }
     // The window behind the device. Created here, handed to its PlaneNode below, which owns it.
     val windowMaterial = remember(materialLoader) {
         materialLoader.createMaterial(NIGHT_WINDOW_MATERIAL_ASSET)
@@ -620,7 +644,7 @@ fun PocketRoomScreen(
                             isTouchable = false
                             isShadowCaster = false
                             isShadowReceiver = false
-                            device.bindParts(renderableNodes)
+                            device.bindParts(renderableNodes, steel)
                         }
                     )
                     // The screen, as a child of the device so it turns with it. Unlit because
@@ -862,7 +886,7 @@ private class PocketDevice(
 
     var deviceNode: Node? = null
     var cameraNode: CameraNode? = null
-    var windowMaterial: com.google.android.filament.MaterialInstance? = null
+    var windowMaterial: MaterialInstance? = null
     var tilt: TiltFilter? = null
     var indirectLight: com.google.android.filament.IndirectLight? = null
 
@@ -947,11 +971,16 @@ private class PocketDevice(
         return false
     }
 
-    /** Finds the parts that move, by the names `build_pocket()` gives them. Once. */
-    fun bindParts(nodes: List<Node>) {
+    /**
+     * Finds the parts that move, by the names `build_pocket()` gives them, and puts the steel's
+     * own material on the shell. Once.
+     */
+    fun bindParts(nodes: List<Node>, steel: MaterialInstance) {
         if (wheelParts.isNotEmpty()) return
         wheelParts = nodes.filter { it.name == "pocket_wheel" || it.name == "pocket_print" }
         buttonPart = nodes.firstOrNull { it.name == "pocket_button" }
+        // The steel wears its own material — see `materials/polished_steel.mat` for why.
+        (nodes.firstOrNull { it.name == "pocket_back" } as? RenderableNode)?.materialInstance = steel
     }
 
     /** A thumb on the wheel, or the wheel still moving from one: the room draws every vsync. */

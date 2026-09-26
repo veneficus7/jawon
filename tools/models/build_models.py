@@ -957,6 +957,16 @@ POCKET_H = 0.1035       # tall
 POCKET_T = 0.0105       # thick
 POCKET_R = 0.0065       # corner radius
 POCKET_FRONT_T = 0.0011  # the anodised front plate
+# **The bead**: the back shell's polished steel brought round the edge to meet the face, as a
+# quarter-round this wide. It is what draws the device's outline. A flat side and a flat face
+# each reflect one direction of the room, so against a dark carriage the silhouette dissolved —
+# the phone's screenshots lost the bottom corners into the background entirely. A rounded edge
+# faces every way between the two, so some part of it always finds a light: the ceiling along
+# the top, the reading lamp down the right, the window down the left.
+POCKET_RIM = 0.0008
+POCKET_RIM_SEGMENTS = 8
+# The hairline where the plate meets the bead: two parts, not one surface.
+POCKET_RIM_SEAM = 0.00005
 
 POCKET_SCREEN_W = 0.0455
 POCKET_SCREEN_H = 0.0341
@@ -1248,7 +1258,10 @@ def build_pocket():
     # ---- the front plate ---------------------------------------------------
     front = new_mesh_object("pocket_front")
     bm = bmesh.new()
-    _, outer_e = rounded_rect(bm, POCKET_W, POCKET_H, POCKET_R, az(front_z))
+    # Inside the bead, with the seam's hairline between them.
+    plate_inset = POCKET_RIM + POCKET_RIM_SEAM
+    _, outer_e = rounded_rect(bm, POCKET_W - 2.0 * plate_inset, POCKET_H - 2.0 * plate_inset,
+                              POCKET_R - plate_inset, az(front_z))
     _, screen_e = rounded_rect(bm, POCKET_SCREEN_W, POCKET_SCREEN_H,
                                POCKET_SCREEN_R, az(front_z), cz=POCKET_SCREEN_Y)
     _, wheel_e = circle_loop(bm, POCKET_WHEEL_R + POCKET_WHEEL_GAP,
@@ -1276,24 +1289,29 @@ def build_pocket():
     finish(front, bevel_width=0.00018, harden=True)
     objects.append(front)
 
-    # ---- the back shell, domed ---------------------------------------------
+    # ---- the back shell, and the bead it brings round the edge ---------------
     back = new_mesh_object("pocket_back")
     bm = bmesh.new()
     back_inner_z = front_z - POCKET_FRONT_T
-    top_v, top_e = rounded_rect(bm, POCKET_W, POCKET_H, POCKET_R, az(back_inner_z))
-    bmesh.ops.contextual_create(bm, geom=top_e)
-    ex = bmesh.ops.extrude_face_region(bm, geom=[f for f in bm.faces])
-    moved = [v for v in ex["geom"] if isinstance(v, bmesh.types.BMVert)]
-    depth = back_inner_z + POCKET_T / 2.0
-    bmesh.ops.translate(bm, verts=moved, vec=(0.0, -az(depth), 0.0))
-    # The dome. A polished back that is dead flat reads as sheet metal; 0.5mm of
-    # crown across 56mm is what makes the highlight travel when the device moves.
-    back_y = az(-POCKET_T / 2.0)
-    for v in bm.verts:
-        if abs(v.co.y - back_y) < 1e-6:
-            u = min(1.0, math.hypot(v.co.x / (POCKET_W / 2.0),
-                                    v.co.z / (POCKET_H / 2.0)))
-            v.co.y -= az(0.0005 * math.cos(u * math.pi / 2.0))
+    # One profile, lofted: from the floor under the plate up the seam's wall, over the bead
+    # and down the side to the back — (inset from the outline, app Z) per ring. Every ring is
+    # a rounded rect with the same vertex count, so each bridges square to the next.
+    rim = POCKET_RIM
+    profile = [(rim, back_inner_z), (rim, front_z)]
+    for i in range(1, POCKET_RIM_SEGMENTS + 1):
+        t = (math.pi / 2.0) * i / POCKET_RIM_SEGMENTS
+        profile.append((rim * (1.0 - math.sin(t)), front_z - rim * (1.0 - math.cos(t))))
+    profile.append((0.0, -POCKET_T / 2.0))
+    rings = []
+    for inset, z in profile:
+        _, e = rounded_rect(bm, POCKET_W - 2.0 * inset, POCKET_H - 2.0 * inset,
+                            POCKET_R - inset, az(z))
+        rings.append(e)
+    for lower, upper in zip(rings, rings[1:]):
+        bmesh.ops.bridge_loops(bm, edges=lower + upper)
+    bmesh.ops.contextual_create(bm, geom=rings[0])
+    bmesh.ops.contextual_create(bm, geom=rings[-1])
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
     bm.to_mesh(back.data)
     bm.free()
     back.data.materials.append(principled(
@@ -1303,7 +1321,9 @@ def build_pocket():
         "PocketBack", base_color=(0.560, 0.570, 0.580), metallic=1.0,
         roughness=0.055, anisotropic=0.08,
     ))
-    finish(back, bevel_width=0.00025, harden=True)
+    # A small bevel for the seam's lip and the back edge; the bead is round already, and its
+    # 11° steps sit well inside the smoothing angle.
+    finish(back, bevel_width=0.0001)
     objects.append(back)
 
     # ---- the screen: panel, then glass over it -----------------------------

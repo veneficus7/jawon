@@ -1,7 +1,7 @@
 # Custom Filament materials
 
-**Jawon ships four.** Three in the CD room — dust, fog and the neon sign (`neon.mat`,
-additive, drawn from a two-channel mask) — and one in the pocket player's:
+**Jawon ships five.** Three in the CD room — dust, fog and the neon sign (`neon.mat`,
+additive, drawn from a two-channel mask) — and two in the pocket player's:
 
 - `materials/night_window.mat` → `assets/materials/night_window.filamat`, the train window
   behind the device: out-of-focus lights at three depths, poles, the sky, and the carriage
@@ -12,6 +12,14 @@ additive, drawn from a two-channel mask) — and one in the pocket player's:
   scroll in, wrapped at exactly the shader's `PERIOD` of cells so the value stays small and the
   wrap is seamless (`NightWindow`, `TrainMotion`). **SceneView's `PlaneNode` runs V downward**:
   the first build hung the sky under the device, which the luminance boxes caught first.
+- `materials/polished_steel.mat` → `assets/materials/polished_steel.filamat`, the device's steel
+  shell and the bead round its face, put on that one part in place of the glTF's own material
+  when the model loads. It exists for one line of shader: **roughness floored at the pixel's
+  footprint on the curve**, `footprint × length(fwidth(normal))`. The bead turns 90° in ~16px, so
+  a ceiling run reflected in it is thinner than a pixel and rasterises as a dashed line that
+  crawls. gltfio's own `base_lit_opaque` lists `_specularAntiAliasingVariance` among its
+  parameters, and raising it changed nothing — a probe at 1000 left every pixel on the bead as it
+  was — so the filtering is done where it can be seen to work. Flat steel keeps its 0.055.
 
 And the CD room's first two:
 

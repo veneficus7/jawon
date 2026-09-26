@@ -33,8 +33,10 @@ import kotlin.math.sqrt
  *   its top, the look of every good product photograph.
  * - **the visible left side** toward azimuth ~−120°, level — the window behind the device, cool
  *   and dark with the city low in it, which is what the polished edge should show.
- * - **the chamfers** all round, which catch the **ceiling lamps**: a row of small warm points
- *   overhead, for the bright hairlines along the edges that say *machined metal*.
+ * - **the polished bead** round the face, which faces every way between the front and the side and
+ *   so crosses the **ceiling's light runs** — overhead along the top, converging toward the
+ *   carriage's two ends down the sides — for the bright lines along the edges that say *machined
+ *   metal* and draw the outline against the dark.
  *
  * Everything else is the dark of a carriage at night. The lights that *move* across the device are
  * analytic ones the room animates ([PassingLamps]); this is the room that holds still.
@@ -92,11 +94,32 @@ object PocketLighting {
     )
     private const val WINDOW_LIGHT_SIZE = 0.035f
 
-    /** The ceiling lamps: a row of small warm points down the carriage, overhead. */
-    private const val CEILING_EL = 1.12f
-    private const val CEILING_LAMPS = 7
-    private const val CEILING_LAMP_SIZE = 0.05f
-    private val CEILING_LAMP_COLOUR = floatArrayOf(6.0f, 5.0f, 3.8f)
+    /**
+     * The ceiling's light: two runs of diffuser down the carriage's length (along X) — one over the
+     * window, one over the aisle behind you — in fittings with short gaps between them, running off
+     * to the carriage's two ends. How a carriage is actually lit.
+     *
+     * **Placed by where the bead looks, not by eye.** The polished bead's top sweeps straight over
+     * the zenith as it turns from the face to the edge, and its sides look along the carriage toward
+     * its ends, where the runs converge — so a line down the ceiling draws a line along every
+     * visible edge. What this replaced was a ring of seven round points at one elevation: a ceiling
+     * no carriage has, which put a dot here and there on the chamfers and left the outline dark.
+     *
+     * **Traced rather than painted**: a direction's ray meets the ceiling [CEILING_H_M] up and the
+     * run is a band on it, so the runs narrow and converge with distance as real ones do. Near the
+     * ends a fitting is thinner than one texel of the cubemap, and it is spread across the texel
+     * ([coverage]) rather than falling between samples and flickering in and out along the edge.
+     */
+    private const val CEILING_H_M = 1.05f
+    private val CEILING_RUNS_Z_M = floatArrayOf(-0.30f, 0.60f)
+    private const val CEILING_RUN_W_M = 0.07f
+    private const val CEILING_FITTING_M = 1.20f
+    private const val CEILING_GAP_M = 0.30f
+    private const val CARRIAGE_HALF_LENGTH_M = 11f
+    private val CEILING_RUN_COLOUR = floatArrayOf(5.2f, 4.9f, 4.4f)
+
+    /** One texel of the cubemap, as an angle — the least a light can be spread over. */
+    private const val TEXEL_RAD = 2f / CUBEMAP_PX
 
     /**
      * The window's frames: dark verticals between the panes, every [MULLION_SPACING] radians.
@@ -164,12 +187,23 @@ object PocketLighting {
             for (c in 0..2) out[c] += light[2 + c] * spot
         }
 
-        // The ceiling lamps, evenly down the carriage's length (along X).
-        for (i in 0 until CEILING_LAMPS) {
-            val lampAz = (-PI + (i + 0.5) * 2.0 * PI / CEILING_LAMPS).toFloat()
-            val d = hypot2(angleDelta(az, lampAz) * kotlin.math.cos(CEILING_EL), el - CEILING_EL)
-            val spot = exp(-(d / CEILING_LAMP_SIZE) * (d / CEILING_LAMP_SIZE))
-            for (c in 0..2) out[c] += CEILING_LAMP_COLOUR[c] * spot
+        // The ceiling's runs: where this direction meets the ceiling, is it under a fitting?
+        if (dy > 0f) {
+            val t = CEILING_H_M * len / dy
+            val hx = dx / len * t
+            val hz = dz / len * t
+            if (abs(hx) < CARRIAGE_HALF_LENGTH_M) {
+                // How much ceiling one texel covers out there.
+                val texel = t * TEXEL_RAD
+                // Fittings centred on the device, so it is under one rather than a gap.
+                val pitch = CEILING_FITTING_M + CEILING_GAP_M
+                val along = abs(((hx / pitch + 0.5f) % 1f + 1f) % 1f - 0.5f) * pitch
+                val lit = coverage(along, CEILING_FITTING_M / 2f, texel)
+                for (z in CEILING_RUNS_Z_M) {
+                    val across = coverage(abs(hz - z), CEILING_RUN_W_M / 2f, texel) * lit
+                    for (c in 0..2) out[c] += CEILING_RUN_COLOUR[c] * across
+                }
+            }
         }
 
         // The other windows, all round.
@@ -256,4 +290,15 @@ object PocketLighting {
     }
 
     private fun hypot2(a: Float, b: Float): Float = sqrt(a * a + b * b)
+
+    /**
+     * How much of a sample [filter] wide, centred [offset] from a band's middle, falls inside the
+     * band's ±[half] — 1 well inside, 0 well outside, and a band narrower than the sample gives its
+     * share of it rather than all or nothing.
+     */
+    private fun coverage(offset: Float, half: Float, filter: Float): Float {
+        val lo = maxOf(offset - filter / 2f, -half)
+        val hi = minOf(offset + filter / 2f, half)
+        return (maxOf(0f, hi - lo) / filter).coerceIn(0f, 1f)
+    }
 }
