@@ -119,6 +119,19 @@ sealed interface LcdScreen {
     }
 
     /**
+     * Cover Flow: the covers near the selection, the middle one's name, and — when a cover has
+     * been turned over — its tracks on the back, windowed as any list is.
+     */
+    data class CoverFlow(
+        val covers: List<LcdCover>,
+        val albumTitle: String,
+        val albumArtist: String,
+        val tracks: Menu?
+    ) : LcdScreen {
+        override val title: String get() = "Cover Flow"
+    }
+
+    /**
      * What the strip along the bottom of Now Playing is showing. The classic's: the song's
      * progress normally, the volume as soon as the wheel turns, and the scrubber after one press
      * of the centre.
@@ -140,7 +153,15 @@ sealed interface LcdScreen {
  * written in here first and did exactly that. Animate in the room and pass the value in.
  */
 @Composable
-fun PocketLcd(screen: LcdScreen, playing: Boolean, awake: Boolean, unlit: Float = 0f) {
+fun PocketLcd(
+    screen: LcdScreen,
+    playing: Boolean,
+    awake: Boolean,
+    unlit: Float = 0f,
+    /** Cover Flow's position, as a fractional index, and how far a cover is turned over. */
+    flow: Float = 0f,
+    flip: Float = 0f
+) {
     val density = LocalDensity.current
     fun px(v: Int): Dp = with(density) { v.toDp() }
 
@@ -150,11 +171,17 @@ fun PocketLcd(screen: LcdScreen, playing: Boolean, awake: Boolean, unlit: Float 
             .background(if (awake) LcdWhite else LcdOff)
     ) {
         if (!awake) return@Box
-        Column(modifier = Modifier.fillMaxSize()) {
-            TitleBar(screen.title, playing)
-            when (screen) {
-                is LcdScreen.Menu -> MenuBody(screen)
-                is LcdScreen.NowPlaying -> NowPlayingBody(screen)
+        if (screen is LcdScreen.CoverFlow) {
+            // The whole screen, as the classic gave it: no title bar over the covers.
+            CoverFlowBody(screen, flow, flip)
+        } else {
+            Column(modifier = Modifier.fillMaxSize()) {
+                TitleBar(screen.title, playing)
+                when (screen) {
+                    is LcdScreen.Menu -> MenuBody(screen)
+                    is LcdScreen.NowPlaying -> NowPlayingBody(screen)
+                    is LcdScreen.CoverFlow -> Unit
+                }
             }
         }
         if (unlit > 0f) {

@@ -3,7 +3,10 @@ package com.jawon.app.ui.pocketscene
 import android.os.SystemClock
 import android.view.MotionEvent
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -77,6 +80,10 @@ private val KEY_POSITION = floatArrayOf(-0.12f, 0.50f, 0.42f)
 private const val KEY_CANDELA = 1_300f
 private const val KEY_CONE_INNER_RAD = 0.35f
 private const val KEY_CONE_OUTER_RAD = 0.80f
+
+/** Covers drawn either side of the middle one in Cover Flow, and how many are kept decoded. */
+private const val COVER_WINDOW = 4
+private const val COVER_CACHE_MAX = 40
 
 /** How far a passing lamp reaches — past the device from either window, with room to spare. */
 private const val LAMP_FALLOFF_M = 6f
@@ -189,9 +196,63 @@ fun PocketRoomScreen(
 
     // A tracklist is not part of the wall's layout: read one when its album is opened.
     LaunchedEffect(currentKey) {
-        if (currentKey is MenuKey.Album && currentKey.albumId !in trackTitles) {
-            trackTitles[currentKey.albumId] = viewModel.trackTitles(currentKey.albumId)
+        val albumId = when (currentKey) {
+            is MenuKey.Album -> currentKey.albumId
+            is MenuKey.Flipped -> currentKey.albumId
+            else -> null
         }
+        if (albumId != null && albumId !in trackTitles) {
+            trackTitles[albumId] = viewModel.trackTitles(albumId)
+        }
+    }
+
+    // ---- Cover Flow: covers loaded around the selection, the flow and the turn eased ---------
+    val inFlow = currentKey == MenuKey.CoverFlow || currentKey is MenuKey.Flipped
+    val flowCentre = if (!inFlow) 0 else {
+        val level = if (currentKey is MenuKey.Flipped) nav.stack[nav.stack.size - 2] else nav.current
+        level.selected
+    }
+    val coverArt = remember { mutableStateMapOf<String, ImageBitmap?>() }
+    val albumsInOrder = remember(library) { PocketMenus.albumsInOrder(library) }
+    LaunchedEffect(inFlow, flowCentre, albumsInOrder) {
+        if (!inFlow || albumsInOrder.isEmpty()) return@LaunchedEffect
+        val from = (flowCentre - COVER_WINDOW - 2).coerceAtLeast(0)
+        val to = (flowCentre + COVER_WINDOW + 2).coerceAtMost(albumsInOrder.lastIndex)
+        for (i in from..to) {
+            val album = albumsInOrder[i]
+            if (album.id in coverArt) continue
+            coverArt[album.id] = withContext(Dispatchers.IO) {
+                album.coverPath?.let { CaseArt.loadCover(it, maxPx = 256)?.asImageBitmap() }
+            }
+        }
+        // Keep the cache near the selection: a long library turned through end to end would
+        // otherwise hold every cover it passed.
+        if (coverArt.size > COVER_CACHE_MAX) {
+            val keep = (from..to).map { albumsInOrder[it].id }.toSet()
+            coverArt.keys.filter { it !in keep }.take(coverArt.size - COVER_CACHE_MAX).forEach { coverArt.remove(it) }
+        }
+    }
+    val flowAnim = remember { Animatable(0f) }
+    val flipAnim = remember { Animatable(0f) }
+    val wasInFlow = remember { mutableStateOf(false) }
+    LaunchedEffect(inFlow, flowCentre) {
+        if (!inFlow) {
+            wasInFlow.value = false
+            return@LaunchedEffect
+        }
+        if (!wasInFlow.value) {
+            // Arriving in Cover Flow: start where the selection is, not a library away.
+            flowAnim.snapTo(flowCentre.toFloat())
+            wasInFlow.value = true
+        } else {
+            flowAnim.animateTo(flowCentre.toFloat(), spring(dampingRatio = 0.92f, stiffness = 170f))
+        }
+    }
+    LaunchedEffect(currentKey is MenuKey.Flipped) {
+        flipAnim.animateTo(
+            if (currentKey is MenuKey.Flipped) 1f else 0f,
+            tween(durationMillis = 460, easing = FastOutSlowInEasing)
+        )
     }
 
     val nowPlayingAlbum = nowPlayingAlbumId?.let { library.album(it) }
@@ -208,6 +269,8 @@ fun PocketRoomScreen(
     val screen = lcdScreenFor(
         nav = nav,
         library = library,
+        albumsInOrder = albumsInOrder,
+        coverArt = coverArt,
         trackTitles = trackTitles,
         hasNowPlaying = device.hasNowPlaying,
         deck = deck,
@@ -362,7 +425,10 @@ fun PocketRoomScreen(
                             screen = lcd.value,
                             playing = device.playingNow.value,
                             awake = device.awake.value,
-                            unlit = unlit
+                            unlit = unlit,
+                            // Read here for the same reason as the backlight: trap 33.
+                            flow = flowAnim.value,
+                            flip = flipAnim.value
                         )
                         // **A ViewNode draws its texture once unless told otherwise** — trap 33.
                         // It copies its children into the texture only from its own container's
@@ -426,6 +492,8 @@ private fun pocketLibraryOf(layout: WallLayout): PocketLibrary {
 private fun lcdScreenFor(
     nav: PocketNav,
     library: PocketLibrary,
+    albumsInOrder: List<PocketLibrary.Album>,
+    coverArt: Map<String, ImageBitmap?>,
     trackTitles: Map<String, List<String>>,
     hasNowPlaying: Boolean,
     deck: com.jawon.app.ui.wallscene.DeckState,
@@ -456,6 +524,36 @@ private fun lcdScreenFor(
             volume = volume,
             scrubMs = scrubMs
         )
+    }
+    if (key == MenuKey.CoverFlow || key is MenuKey.Flipped) {
+        if (albumsInOrder.isEmpty()) {
+            return LcdScreen.Menu("Cover Flow", emptyList(), -1, 0, 0, emptyText = "No albums yet")
+        }
+        val flowLevel = if (key is MenuKey.Flipped) nav.stack[nav.stack.size - 2] else nav.current
+        val centre = flowLevel.selected.coerceIn(0, albumsInOrder.lastIndex)
+        val from = (centre - COVER_WINDOW).coerceAtLeast(0)
+        val to = (centre + COVER_WINDOW).coerceAtMost(albumsInOrder.lastIndex)
+        val covers = (from..to).map { i ->
+            val album = albumsInOrder[i]
+            LcdCover(album.id, i, coverArt[album.id])
+        }
+        val back = if (key is MenuKey.Flipped) {
+            val rows = PocketMenus.rows(key, library, trackTitles, hasNowPlaying)
+            val level = nav.clamp(rows.size).current
+            val end = minOf(level.top + PocketMenus.VISIBLE_ROWS, rows.size)
+            LcdScreen.Menu(
+                title = albumsInOrder[centre].title,
+                rows = (if (level.top < end) rows.subList(level.top, end) else emptyList())
+                    .map { LcdRow(it.label, it.leadsOn) },
+                selected = level.selected - level.top,
+                top = level.top,
+                total = rows.size,
+                emptyText = if (key.albumId in trackTitles) "No tracks" else ""
+            )
+        } else {
+            null
+        }
+        return LcdScreen.CoverFlow(covers, albumsInOrder[centre].title, albumsInOrder[centre].artist, back)
     }
     val rows = PocketMenus.rows(key, library, trackTitles, hasNowPlaying)
     val level = nav.clamp(rows.size).current
@@ -834,9 +932,13 @@ private class PocketDevice(
                     return
                 }
                 is RowAction.Open -> {
-                    val target = action.key
-                    if (target is MenuKey.Album) {
-                        viewModel.playAlbum(target.albumId)
+                    val albumId = when (val target = action.key) {
+                        is MenuKey.Album -> target.albumId
+                        is MenuKey.Flipped -> target.albumId
+                        else -> null
+                    }
+                    if (albumId != null) {
+                        viewModel.playAlbum(albumId)
                         showNowPlaying()
                         return
                     }

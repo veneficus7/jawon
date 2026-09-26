@@ -64,6 +64,16 @@ class PocketMenuTest {
     }
 
     @Test
+    fun `Cover Flow holds the albums in the Albums list's order, and turning one over lists its tracks`() {
+        assertEquals(labels(MenuKey.Albums), labels(MenuKey.CoverFlow))
+        val flow = PocketMenus.rows(MenuKey.CoverFlow, library, emptyMap(), false)
+        assertEquals(RowAction.Open(MenuKey.Flipped("a2")), flow.first().action)
+        val back = PocketMenus.rows(MenuKey.Flipped("a1"), library, mapOf("a1" to listOf("In the Flesh?")), false)
+        assertEquals(RowAction.PlayTrack("a1", 0), back.single().action)
+        assertEquals("The Wall", PocketMenus.title(MenuKey.Flipped("a1"), library))
+    }
+
+    @Test
     fun `sort keys set aside an article but not a whole name`() {
         assertEquals("beatles", PocketMenus.sortKey("The Beatles"))
         assertEquals("the", PocketMenus.sortKey("The"))
@@ -119,6 +129,7 @@ class PocketMenuTest {
     fun `where you were survives being saved, including a name with a bar in it`() {
         val nav = PocketNav().move(2, 6).open(MenuKey.Artists).move(4, 9)
             .open(MenuKey.Artist("Sly | The Family Stone")).open(MenuKey.Album("a-1")).move(1, 5)
+            .open(MenuKey.CoverFlow).move(3, 9).open(MenuKey.Flipped("a-2"))
         val restored = nav.stack.map { PocketNav.encode(it) }.map { PocketNav.decode(it) }
         assertEquals(nav.stack, restored)
     }

@@ -14,6 +14,10 @@ package com.jawon.app.ui.pocketscene
  */
 sealed interface MenuKey {
     data object Main : MenuKey
+    /** The albums as covers, turned through in perspective — the classic's Cover Flow. */
+    data object CoverFlow : MenuKey
+    /** One cover in Cover Flow turned over, its tracks listed on the back. */
+    data class Flipped(val albumId: String) : MenuKey
     data object Albums : MenuKey
     data object Shelves : MenuKey
     data object Artists : MenuKey
@@ -61,6 +65,8 @@ object PocketMenus {
 
     fun title(key: MenuKey, library: PocketLibrary): String = when (key) {
         MenuKey.Main -> DEVICE_NAME
+        MenuKey.CoverFlow -> "Cover Flow"
+        is MenuKey.Flipped -> library.album(key.albumId)?.title ?: "Album"
         MenuKey.Albums -> "Albums"
         MenuKey.Shelves -> "Shelves"
         MenuKey.Artists -> "Artists"
@@ -85,6 +91,7 @@ object PocketMenus {
         hasNowPlaying: Boolean
     ): List<MenuRow> = when (key) {
         MenuKey.Main -> buildList {
+            add(MenuRow("Cover Flow", RowAction.Open(MenuKey.CoverFlow)))
             add(MenuRow("Albums", RowAction.Open(MenuKey.Albums)))
             add(MenuRow("Shelves", RowAction.Open(MenuKey.Shelves)))
             add(MenuRow("Artists", RowAction.Open(MenuKey.Artists)))
@@ -92,9 +99,13 @@ object PocketMenus {
             add(MenuRow("Add Albums", RowAction.AddAlbums))
             add(MenuRow("Settings", RowAction.OpenSettings))
         }
-        MenuKey.Albums -> library.albums
-            .sortedWith(compareBy<PocketLibrary.Album> { sortKey(it.title) }.thenBy { sortKey(it.artist) })
+        MenuKey.Albums -> albumsInOrder(library)
             .map { MenuRow(it.title, RowAction.Open(MenuKey.Album(it.id))) }
+        // The same order as Albums, so a record is in the same place in both.
+        MenuKey.CoverFlow -> albumsInOrder(library)
+            .map { MenuRow(it.title, RowAction.Open(MenuKey.Flipped(it.id))) }
+        is MenuKey.Flipped -> tracks[key.albumId].orEmpty()
+            .mapIndexed { index, title -> MenuRow(title, RowAction.PlayTrack(key.albumId, index)) }
         MenuKey.Shelves -> library.shelves
             .map { MenuRow(it.name, RowAction.Open(MenuKey.Shelf(it.id))) }
         MenuKey.Artists -> library.albums
@@ -114,6 +125,12 @@ object PocketMenus {
             .mapIndexed { index, title -> MenuRow(title, RowAction.PlayTrack(key.albumId, index)) }
         MenuKey.NowPlaying -> emptyList()
     }
+
+    /** Every album, filed as the Albums list files them. */
+    fun albumsInOrder(library: PocketLibrary): List<PocketLibrary.Album> =
+        library.albums.sortedWith(
+            compareBy<PocketLibrary.Album> { sortKey(it.title) }.thenBy { sortKey(it.artist) }
+        )
 
     /**
      * How the classic filed a name: case ignored, and a leading "The" or "A" set aside, so
@@ -193,6 +210,8 @@ data class PocketNav(val stack: List<Level> = listOf(Level(MenuKey.Main))) {
         fun encode(level: Level): String {
             val (kind, arg) = when (val k = level.key) {
                 MenuKey.Main -> "main" to ""
+                MenuKey.CoverFlow -> "coverflow" to ""
+                is MenuKey.Flipped -> "flipped" to k.albumId
                 MenuKey.Albums -> "albums" to ""
                 MenuKey.Shelves -> "shelves" to ""
                 MenuKey.Artists -> "artists" to ""
@@ -212,6 +231,8 @@ data class PocketNav(val stack: List<Level> = listOf(Level(MenuKey.Main))) {
             val arg = parts[3]
             val key = when (parts[2]) {
                 "main" -> MenuKey.Main
+                "coverflow" -> MenuKey.CoverFlow
+                "flipped" -> MenuKey.Flipped(arg)
                 "albums" -> MenuKey.Albums
                 "shelves" -> MenuKey.Shelves
                 "artists" -> MenuKey.Artists

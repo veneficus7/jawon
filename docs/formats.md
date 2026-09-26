@@ -234,9 +234,12 @@ One thing at a time, checked on the owner's phone between each (the working agre
    edge (`PassingLamps`). First tuning on the AVD: a lamp behind you at 900–2600cd washed the
    whole anodised face bronze (16 -> 60 of 255), so it runs at 380–1100cd; the key light took
    the wheel from 10 to 14 and its print from 32 to 51. **Judged on the phone, not here.**
-6. **Browsing on its screen — done, bar Cover Flow (2026-09-26).** Albums (filed as iTunes
-   filed them, "The" and "A" set aside), Shelves as playlists in their wall order, Artists, an
-   album's tracks, and Now Playing. `PocketMenu.kt`. Cover Flow is still to come.
+6. **Browsing on its screen — done (2026-09-26).** Cover Flow first on the main menu — the
+   covers in perspective on a glossy black floor, eased to the wheel, a cover turned over by
+   the centre to list its tracks on the back — then Albums (filed as iTunes filed them, "The"
+   and "A" set aside), Shelves as playlists in their wall order, Artists, an album's tracks,
+   and Now Playing. `PocketMenu.kt`, `CoverFlowLcd.kt`. **Cost unmeasured**: the flow redraws
+   the screen in software every frame it moves (trap 33's copy), which the phone has to answer.
 7. **The wheel — done (2026-09-26), bar the feel.** Turning, with acceleration on long lists;
    the centre; MENU (held: the main menu); Play/Pause (held: off, the screen dark until any
    button); the sides (held: cue through the track); on Now Playing the volume, and the
