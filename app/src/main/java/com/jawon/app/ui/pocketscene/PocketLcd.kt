@@ -3,6 +3,7 @@ package com.jawon.app.ui.pocketscene
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -333,8 +334,12 @@ private fun MenuBody(menu: LcdScreen.Menu, slide: Float) {
                         fontSize = lcdSp(27),
                         color = if (isSelected) Color.White else LcdInk,
                         maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f)
+                        // The highlighted row scrolls what does not fit, as the classic's did;
+                        // the rest keep the ellipsis.
+                        overflow = if (isSelected) TextOverflow.Clip else TextOverflow.Ellipsis,
+                        modifier = Modifier
+                            .weight(1f)
+                            .then(if (isSelected) Modifier.lcdMarquee() else Modifier)
                     )
                     if (row.value != null) {
                         Text(
@@ -581,7 +586,8 @@ private fun CoverAndNames(np: LcdScreen.NowPlaying, art: Int) {
                 fontSize = lcdSp(23),
                 color = LcdInk,
                 maxLines = 1,
-                overflow = TextOverflow.Ellipsis
+                overflow = TextOverflow.Clip,
+                modifier = Modifier.lcdMarquee()
             )
             Spacer(Modifier.height(px(4)))
             Text(
@@ -591,7 +597,8 @@ private fun CoverAndNames(np: LcdScreen.NowPlaying, art: Int) {
                 fontSize = lcdSp(23),
                 color = LcdDim,
                 maxLines = 1,
-                overflow = TextOverflow.Ellipsis
+                overflow = TextOverflow.Clip,
+                modifier = Modifier.lcdMarquee()
             )
             Spacer(Modifier.height(px(14)))
             Text(
@@ -831,6 +838,26 @@ private fun SpeakerGlyph(waves: Int) {
             )
         }
     }
+}
+
+/**
+ * Text too long for its line scrolls to show the rest, after a moment's pause — the classic's
+ * way with a long title, where Jawon's first screen cut it off with an ellipsis. Only text that
+ * overflows moves; it runs at about 70 of the screen's own pixels a second.
+ *
+ * Possible at all because the screen is drawn by `LcdPanel`, which redraws on any change beneath
+ * it: under SceneView's `ViewNode` an animation inside the screen never reached the glass
+ * (trap 33).
+ */
+@Composable
+internal fun Modifier.lcdMarquee(): Modifier {
+    val speed = with(LocalDensity.current) { 70.toDp() }
+    return basicMarquee(
+        iterations = Int.MAX_VALUE,
+        initialDelayMillis = 1_400,
+        repeatDelayMillis = 1_800,
+        velocity = speed
+    )
 }
 
 /** LCD pixels as text size, so type is sized in the screen's own pixels like everything else. */

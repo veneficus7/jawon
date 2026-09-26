@@ -99,9 +99,11 @@ internal fun CoverFlowBody(screen: LcdScreen.CoverFlow, flow: Float, flip: Float
                     fontSize = coverSp(25),
                     color = Color.White,
                     maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
+                    overflow = TextOverflow.Clip,
                     textAlign = TextAlign.Center,
-                    modifier = Modifier.padding(horizontal = px(24))
+                    modifier = Modifier
+                        .padding(horizontal = px(24))
+                        .lcdMarquee()
                 )
                 Text(
                     text = screen.albumArtist,
@@ -196,7 +198,8 @@ private fun TrackBack(tracks: LcdScreen.Menu) {
                     fontSize = coverSp(23),
                     color = if (selected) Color.White else Color(0xFF15181B),
                     maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
+                    overflow = if (selected) TextOverflow.Clip else TextOverflow.Ellipsis,
+                    modifier = if (selected) Modifier.lcdMarquee() else Modifier
                 )
             }
         }
