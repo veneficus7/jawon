@@ -1577,7 +1577,9 @@ fun SettingsScreen(
             // room the app opens in, and an unfinished one is worth working on for weeks
             // without ever being one tap away for somebody holding a release build. When the
             // pocket player is done, this gate comes off and it becomes an ordinary setting.
-            if (BuildConfig.DEBUG) {
+            // SHOW_FORMATS is the one exception: a release build cut for testing on the owner's
+            // phone, which only a release-signed build can reach (see app/build.gradle.kts).
+            if (BuildConfig.DEBUG || BuildConfig.SHOW_FORMATS) {
                 FormatPicker(
                     current = format,
                     onPick = viewModel::onFormatChanged

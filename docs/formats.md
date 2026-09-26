@@ -271,6 +271,15 @@ One thing at a time, checked on the owner's phone between each (the working agre
 9. **Vinyl** (§5), then **cassette** (§6), each its own room and built the same way.
 
 Each of 3–8 is about a session's work. **Measure every tier as it lands** (traps 28–30).
+
+**First measured on the owner's S25 Ultra, 2026-09-27** (release build, thermal status 0, on USB):
+the pocket room idle on its main menu — window drifting, slideshow ticking — costs **0.54 of a
+core** (Filament's thread 0.36, main 0.10), about the CD room's own. It is drawn at **60fps unless
+a thumb is on the wheel** (`RoomCadence`, reused), and the GPU clock is the measurement that shows
+why: **342–525MHz idle at 60 against 734–967MHz at every vsync** with a finger held. Busy stays
+~80% either way — the governor trades clock for it, which is trap 29 in another form — so read
+the clock, not the percentage. `dumpsys SurfaceFlinger --latency` reports nothing for this layer
+on this Android, BLAST or not.
 The lowest tier has never been the one anybody needed, but every new room is a new scene to
 pay for.
 

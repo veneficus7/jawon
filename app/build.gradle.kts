@@ -69,6 +69,24 @@ android {
             "DEFAULT_SERVER_INVITE",
             "\"${project.findProperty("jawon.serverInvite") ?: ""}\""
         )
+
+        /**
+         * Offer the unfinished format rooms in Settings on a *release-signed* build.
+         *
+         * The picker is debug-only until a second room is finished (SettingsScreen). But the
+         * owner's phone runs the release-signed build, and a debug one cannot replace it without
+         * an uninstall that would wipe his library (ENGINEERING.md, trap 31) — so testing a new room
+         * on his phone needs a release build that shows it anyway:
+         *
+         *     ./gradlew assembleRelease -Pjawon.showFormats=true
+         *
+         * Never set in `gradle.properties`: a published build must not carry it.
+         */
+        buildConfigField(
+            "boolean",
+            "SHOW_FORMATS",
+            "${project.findProperty("jawon.showFormats") == "true"}"
+        )
     }
 
     // Room writes each schema version here as JSON, and the directory is committed. It is

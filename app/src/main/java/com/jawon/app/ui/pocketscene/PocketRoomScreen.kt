@@ -44,10 +44,12 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.google.android.filament.LightManager
+import com.google.android.filament.Renderer
 import com.jawon.app.data.lyrics.LyricsState
 import com.jawon.app.ui.theme.JawonTextStyle
 import com.jawon.app.ui.theme.LabelDim
 import com.jawon.app.ui.wallscene.CaseArt
+import com.jawon.app.ui.wallscene.RoomCadence
 import com.jawon.app.ui.wallscene.RoomHaptics
 import com.jawon.app.ui.wallscene.WallLayout
 import com.jawon.app.ui.wallscene.WallSceneViewModel
@@ -88,6 +90,9 @@ private val KEY_POSITION = floatArrayOf(-0.12f, 0.50f, 0.42f)
 private const val KEY_CANDELA = 1_300f
 private const val KEY_CONE_INNER_RAD = 0.35f
 private const val KEY_CONE_OUTER_RAD = 0.80f
+
+/** The rate the room is drawn at when nobody is touching it — see the note in onFrame. */
+private const val POCKET_IDLE_FPS = 60f
 
 /** How often the main menu's slideshow moves on. */
 private const val SLIDE_TICK_MS = 50L
@@ -174,6 +179,13 @@ fun PocketRoomScreen(
 
     val deviceModel = rememberModelInstance(modelLoader, POCKET_MODEL_ASSET)
     val ydpi = remember(context) { max(context.resources.displayMetrics.ydpi, 1f) }
+    // How often the room is actually drawn — the CD room's cadence, reused by call. See onFrame.
+    val cadence = remember(context) {
+        RoomCadence().apply {
+            refreshHz = context.display?.refreshRate ?: RoomCadence.DEFAULT_REFRESH_HZ
+        }
+    }
+    val publishedDivisor = remember { intArrayOf(0) }
     // What renders Compose into the scene. See `docs/realism.md` §1.4: a SurfaceTexture feeding
     // a Filament Stream — the path video takes — so the screen is live UI, not a baked image.
     val viewNodeManager = rememberViewNodeManager()
@@ -480,6 +492,25 @@ fun PocketRoomScreen(
             onFrame = {
                 cameraNode.rotation = LEVEL
                 device.onFrame(SystemClock.uptimeMillis())
+                // **Drawn at 60 unless a thumb is on the wheel.** SceneView renders every vsync —
+                // 120 a second on the owner's phone — and nothing in this room moves fast enough
+                // to need it except the device answering a touch: the night outside drifts, the
+                // lamps take a second or more to pass. So the clocks all advance every vsync as
+                // before and only the rasterising drops to 60, which is half the GPU work on a
+                // 120Hz panel (traps 28-30: the CD room's problem is heat, not jank). A finger
+                // down or the wheel still rocking is back to every vsync on the next frame.
+                val divisor = if (device.interacting) {
+                    RoomCadence.LIVE
+                } else {
+                    cadence.divisorForFps(POCKET_IDLE_FPS)
+                }
+                if (divisor != publishedDivisor[0]) {
+                    publishedDivisor[0] = divisor
+                    renderer.frameRateOptions = Renderer.FrameRateOptions().apply {
+                        interval = divisor.toFloat()
+                    }
+                }
+                if (!cadence.shouldDraw(divisor)) renderer.skipNextFrames(1)
             }
         ) {
             // **The carriage's ceiling lamp: the key light.** Warm, above and just behind you, aimed
@@ -920,6 +951,10 @@ private class PocketDevice(
         wheelParts = nodes.filter { it.name == "pocket_wheel" || it.name == "pocket_print" }
         buttonPart = nodes.firstOrNull { it.name == "pocket_button" }
     }
+
+    /** A thumb on the wheel, or the wheel still moving from one: the room draws every vsync. */
+    val interacting: Boolean
+        get() = gesture.isDown || rock.isMoving
 
     fun onFrame(now: Long) {
         if (lastInputAt == 0L) lastInputAt = now
