@@ -419,7 +419,14 @@ trap 11 and trap 15 in three different files, each correct in the era it was wri
     that inner scope, the `SideEffect` never ran, and the screen never dimmed. The screen
     composable stays stateless and the room animates. The CD room's shelf plates never met this
     because they never change after they are laid out; **a plate whose text changed in place
-    would show the same fault.**
+    would show the same fault.** **And the copy is slow**: `ViewNode$Layout` draws into
+    `Surface.lockCanvas` — *software*, on the main thread, ~5–6ms for a 640×475 screen — which on
+    the owner's phone put the main thread at 0.71 of a core while Cover Flow moved. **The pocket
+    player's screen no longer uses `ViewNode` at all**: `LcdPanel` rebuilds the same texture
+    plumbing (read out of `ViewNode`'s bytecode) around a host that draws into
+    `Surface.lockHardwareCanvas()` and redraws on `onDescendantInvalidated` — the GPU rasterises,
+    any change beneath it reaches the glass, and the Cover Flow main thread fell to 0.24. Reach
+    for `LcdPanel`, not `ViewNode`, for any in-world UI that moves.
 
 ### The owner's library
 

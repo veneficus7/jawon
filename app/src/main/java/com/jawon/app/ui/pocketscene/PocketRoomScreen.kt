@@ -68,7 +68,6 @@ import io.github.sceneview.node.LightNode
 import io.github.sceneview.node.ModelNode
 import io.github.sceneview.node.PlaneNode
 import io.github.sceneview.node.Node
-import io.github.sceneview.node.ViewNode
 import io.github.sceneview.rememberCameraNode
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberEnvironmentLoader
@@ -419,6 +418,33 @@ fun PocketRoomScreen(
     val lcd = remember { mutableStateOf(screen) }
     SideEffect { lcd.value = screen }
 
+    // The screen's own composition, on LcdPanel's hardware-drawn surface. Set once: everything it
+    // shows is read from state inside it, and any change beneath the panel's host redraws the
+    // texture (LcdPanel.onDescendantInvalidated) — which is what trap 33 needed all along.
+    val lcdPanel = remember(engine) { LcdPanel(context, engine, LCD_PX_W, LCD_PX_H) }
+    DisposableEffect(lcdPanel, viewNodeManager) {
+        viewNodeManager.addView(lcdPanel.host)
+        onDispose { viewNodeManager.removeView(lcdPanel.host) }
+    }
+    remember(lcdPanel) {
+        lcdPanel.composeView.setContent {
+            val unlit by animateFloatAsState(
+                targetValue = if (device.backlight.value) 0f else BACKLIGHT_OFF_DIM,
+                animationSpec = tween(durationMillis = if (device.backlight.value) 90 else 700),
+                label = "backlight"
+            )
+            PocketLcd(
+                screen = lcd.value,
+                playing = device.playingNow.value,
+                awake = device.awake.value,
+                unlit = unlit,
+                flow = flowAnim.value,
+                flip = flipAnim.value,
+                slide = slideClock.floatValue
+            )
+        }
+    }
+
     BackHandler(enabled = nav.stack.size > 1) { device.back() }
 
     // **The phone is the device**, so tilting it turns the device against the world: the
@@ -588,42 +614,25 @@ fun PocketRoomScreen(
                     // The screen, as a child of the device so it turns with it. Unlit because
                     // an LCD is its own light: nothing in the carriage should be able to
                     // darken what the backlight is putting out.
-                    ViewNode(
-                        windowManager = viewNodeManager,
-                        unlit = true,
+                    // **The screen**: LcdPanel's texture on a plane 0.1mm over the panel, a child of
+                    // the device so it turns with it. Unlit because an LCD is its own light. The
+                    // panel's release is declared *before* the plane, so Compose — forgetting in
+                    // reverse — takes the plane and the material sampling the texture down first.
+                    DisposableEffect(lcdPanel) { onDispose { lcdPanel.release(engine) } }
+                    val screenMaterial = remember(lcdPanel) {
+                        materialLoader.createViewInstance(lcdPanel.texture, true, false)
+                    }
+                    PlaneNode(
+                        size = Size(SCREEN_W_M, SCREEN_W_M * LCD_PX_H / LCD_PX_W, 0f),
+                        normal = Direction(z = 1f),
+                        materialInstance = screenMaterial,
                         position = Position(0f, SCREEN_CENTRE_Y, SCREEN_Z),
                         apply = {
-                            pxPerUnits = LCD_PX_W / SCREEN_W_M
                             isTouchable = false
-                            device.lcdNode = this
+                            isShadowCaster = false
+                            isShadowReceiver = false
                         }
-                    ) {
-                        // Animated *here*, in the scope that invalidates the texture below —
-                        // see PocketLcd's note and trap 33.
-                        val unlit by animateFloatAsState(
-                            targetValue = if (device.backlight.value) 0f else BACKLIGHT_OFF_DIM,
-                            animationSpec = tween(durationMillis = if (device.backlight.value) 90 else 700),
-                            label = "backlight"
-                        )
-                        PocketLcd(
-                            screen = lcd.value,
-                            playing = device.playingNow.value,
-                            awake = device.awake.value,
-                            unlit = unlit,
-                            // Read here for the same reason as the backlight: trap 33.
-                            flow = flowAnim.value,
-                            flip = flipAnim.value,
-                            slide = slideClock.floatValue
-                        )
-                        // **A ViewNode draws its texture once unless told otherwise** — trap 33.
-                        // It copies its children into the texture only from its own container's
-                        // `dispatchDraw`, and under hardware acceleration a child's invalidate
-                        // re-records the child and never reaches that container. So the screen
-                        // recomposed on every turn of the wheel and the texture showed the first
-                        // frame forever. Invalidating the container after each recomposition is
-                        // what puts the new frame on the glass — once per change, never per frame.
-                        SideEffect { device.lcdNode?.layout?.invalidate() }
-                    }
+                    )
                 }
             }
         }
@@ -859,7 +868,6 @@ private class PocketDevice(
 
     var deviceNode: Node? = null
     var cameraNode: CameraNode? = null
-    var lcdNode: ViewNode? = null
     var windowMaterial: com.google.android.filament.MaterialInstance? = null
     var tilt: TiltFilter? = null
     var indirectLight: com.google.android.filament.IndirectLight? = null
