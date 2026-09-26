@@ -12,7 +12,7 @@ modelled by hand and not downloaded.
 | `case_lid` | the held case | 708 | origin on the hinge axis |
 | `case_closed` | the wall | 768 | shelved frame, opaque |
 | `disc` | the held case | 4608 | 1.2mm thick, radial UVs |
-| `pocket` | the iPod mode's device | 7522 | eight objects, one per material; life size, 61.8 × 103.5 × 10.5mm |
+| `pocket` | the iPod mode's device | 7522 | eight objects, one per material; life size, 61.8 × 103.5 × 10.5mm; ~820KB, most of it three wear maps |
 
 **Why the shelf gets its own case.** A shut jewel case shows none of the tray's
 interior, and the wall draws up to ~470 at once — carrying that interior would
@@ -220,6 +220,22 @@ wheel is lit almost entirely by the carriage's ambient at SceneView's default su
 where the room's 2.6cd point lights are worth ~0.2cd/m² against ~180 from the IBL — nothing. So a
 label that has to read better needs light on the wheel, which is the train window's job
 (`docs/formats.md` §7 step 5), not a whiter ink.
+
+### The pocket player is worn, on purpose
+
+Three of its surfaces carry a **roughness map** generated in the script (`pocket_glass_wear`,
+`pocket_front_wear`, `pocket_wheel_wear`): two fingerprints, a faint wiped haze and a few
+hairlines on the screen's glass; a slow mottle, a fine grain and smoother edges on the
+anodised front; and on the wheel a band polished by a thumb going round, with the fine
+circular marks that leaves. A perfectly even surface is the surest sign a thing was rendered.
+
+They are roughness only, never colour, so they are invisible until light moves across them —
+which is what the room's passing lamps do — and they reach the app as ordinary glTF
+metallic-roughness textures (roughness in G, metallic in B) through a Separate Color node,
+so no hand-written material is involved. Generated with numpy from fixed seeds: the build stays
+reproducible. To look at one, dump it from Blender rather than squinting at a render — a print
+only shows in a glint, and the first version's prints turned out, once dumped, to be perfect
+concentric rings: a target, not a finger.
 
 ### A face with holes, without booleans
 

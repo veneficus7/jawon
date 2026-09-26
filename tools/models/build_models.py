@@ -1018,6 +1018,214 @@ def circle_loop(bm, radius, y, cz, segments=96):
     return verts, edges
 
 
+# ---------------------------------------------------------------------------
+# The pocket player's wear: roughness maps, generated.
+#
+# A surface that is perfectly even is the surest sign a thing was rendered. A real
+# player that has been carried has fingerprints on its screen, a ring polished into
+# its wheel where the thumb goes round, and anodising that is not quite the same
+# everywhere — and none of it shows until light moves across it, which is what the
+# room's passing lamps do. So each is a roughness map, not a colour: invisible when
+# still, there the moment a glint crosses it.
+#
+# Written as glTF wants a metallic-roughness texture — roughness in green, metallic
+# in blue — and wired through a Separate Color node, which the exporter recognises.
+# Generated with numpy from fixed seeds, so the build stays reproducible.
+# ---------------------------------------------------------------------------
+
+def _np():
+    import numpy
+    return numpy
+
+
+def _smooth_noise(h, w, cells_x, cells_y, rng, wrap_x=False):
+    """Value noise: a random grid, smoothly interpolated up to h x w. [wrap_x] makes it periodic across."""
+    np = _np()
+    grid = rng.random((cells_y + 1, cells_x + 1))
+    if wrap_x:
+        grid[:, -1] = grid[:, 0]
+    ys = np.linspace(0.0, cells_y, h, endpoint=False)
+    xs = np.linspace(0.0, cells_x, w, endpoint=False)
+    y0 = ys.astype(int)
+    x0 = xs.astype(int)
+    ty = ys - y0
+    tx = xs - x0
+    ty = ty * ty * (3.0 - 2.0 * ty)
+    tx = tx * tx * (3.0 - 2.0 * tx)
+    a = grid[y0][:, x0]
+    b = grid[y0][:, x0 + 1]
+    c = grid[y0 + 1][:, x0]
+    d = grid[y0 + 1][:, x0 + 1]
+    top = a + (b - a) * tx[None, :]
+    bottom = c + (d - c) * tx[None, :]
+    return top + (bottom - top) * ty[:, None]
+
+
+def _fbm(h, w, base_cells, octaves, rng, aspect=1.0):
+    """Octaves of value noise, 0..1."""
+    np = _np()
+    out = np.zeros((h, w))
+    amp = 1.0
+    total = 0.0
+    cells = base_cells
+    for _ in range(octaves):
+        out += amp * _smooth_noise(h, w, max(1, int(cells * aspect)), max(1, cells), rng)
+        total += amp
+        amp *= 0.5
+        cells *= 2
+    return out / total
+
+
+def _scratches(field, count, length_px, strength, rng, angle=None, width_px=0.8):
+    """Thin straight scratches, anti-aliased, added into [field]."""
+    np = _np()
+    h, w = field.shape
+    for _ in range(count):
+        cx, cy = rng.random() * w, rng.random() * h
+        a = angle if angle is not None else rng.random() * math.pi
+        a += (rng.random() - 0.5) * 0.3
+        half = length_px * (0.4 + 0.6 * rng.random()) / 2.0
+        dx, dy = math.cos(a), math.sin(a)
+        x0, x1 = int(max(0, cx - abs(dx) * half - 3)), int(min(w, cx + abs(dx) * half + 4))
+        y0, y1 = int(max(0, cy - abs(dy) * half - 3)), int(min(h, cy + abs(dy) * half + 4))
+        if x1 <= x0 or y1 <= y0:
+            continue
+        yy, xx = np.mgrid[y0:y1, x0:x1]
+        px, py = xx - cx, yy - cy
+        along = np.clip(px * dx + py * dy, -half, half)
+        dist = np.hypot(px - along * dx, py - along * dy)
+        line = np.clip(1.0 - dist / width_px, 0.0, 1.0)
+        field[y0:y1, x0:x1] += line * strength * (0.5 + 0.5 * rng.random())
+
+
+def _metal_rough_image(name, roughness, metallic):
+    """A packed image: roughness in G, metallic in B, as glTF's metallicRoughness wants."""
+    np = _np()
+    h, w = roughness.shape
+    rgba = np.zeros((h, w, 4), dtype=np.float32)
+    rgba[..., 0] = 1.0
+    rgba[..., 1] = np.clip(roughness, 0.0, 1.0)
+    rgba[..., 2] = metallic
+    rgba[..., 3] = 1.0
+    img = bpy.data.images.new(name, width=w, height=h, alpha=False)
+    img.colorspace_settings.name = "Non-Color"
+    # Blender's pixel buffer runs bottom row first, the same way the arrays here are built.
+    img.pixels.foreach_set(rgba.ravel())
+    img.pack()
+    return img
+
+
+def _use_metal_rough(mat, image):
+    """Wire [image] to Roughness (G) and Metallic (B) through a Separate Color node."""
+    nt = mat.node_tree
+    bsdf = nt.nodes["Principled BSDF"]
+    tex = nt.nodes.new("ShaderNodeTexImage")
+    tex.image = image
+    sep = nt.nodes.new("ShaderNodeSeparateColor")
+    nt.links.new(tex.outputs["Color"], sep.inputs["Color"])
+    nt.links.new(sep.outputs["Green"], bsdf.inputs["Roughness"])
+    nt.links.new(sep.outputs["Blue"], bsdf.inputs["Metallic"])
+
+
+def _planar_uvs(obj, x0, x1, z0, z1):
+    """UVs straight off the device's face (Blender XZ), normalised over a rectangle."""
+    mesh = obj.data
+    if not mesh.uv_layers:
+        mesh.uv_layers.new(name="UVMap")
+    uv = mesh.uv_layers.active.data
+    for poly in mesh.polygons:
+        for li in poly.loop_indices:
+            v = mesh.vertices[mesh.loops[li].vertex_index].co
+            uv[li].uv = ((v.x - x0) / (x1 - x0), (v.z - z0) / (z1 - z0))
+
+
+def pocket_glass_wear(w=512, h=384, seed=11):
+    """
+    The screen's cover as it is after a week in a pocket: a faint haze, wiped
+    unevenly; two fingerprints, one partial; and a few hairline scratches. Base
+    roughness 0.03 — what the glass is when clean — rising to ~0.2 on a ridge.
+    """
+    np = _np()
+    rng = np.random.default_rng(seed)
+    mm_per_px = POCKET_SCREEN_W * 1000.0 / w
+    rough = np.full((h, w), 0.03)
+    haze = _fbm(h, w, 3, 4, rng, aspect=w / h)
+    rough += np.clip(haze - 0.48, 0.0, 1.0) * 0.10
+    yy, xx = np.mgrid[0:h, 0:w]
+    # Fingerprints. What a print on glass mostly is, is *oil*: a hazy oval where a
+    # pad pressed, rougher than clean glass. The ridges are a faint texture inside
+    # that haze, ~0.45mm apart, and they wander — the first version drew them as
+    # perfect concentric rings and the map read as a target. Warping the ridge field
+    # hard, with noise at about the pad's own scale, is what bends rings into a whorl.
+    for (fx, fy, rx_mm, ry_mm, turn, cover) in (
+        (0.70, 0.36, 7.0, 9.0, 0.5, 0.75),
+        (0.28, 0.66, 6.0, 7.5, -0.3, 0.45),
+    ):
+        cx, cy = fx * w, fy * h
+        rx, ry = rx_mm / mm_per_px, ry_mm / mm_per_px
+        c, s = math.cos(turn), math.sin(turn)
+        u = ((xx - cx) * c + (yy - cy) * s) / rx
+        v = (-(xx - cx) * s + (yy - cy) * c) / ry
+        pad = np.clip((1.0 - np.hypot(u, v)) / 0.4, 0.0, 1.0)
+        # Where the finger did not quite press: a print is nearly always partial.
+        broken = np.clip((_fbm(h, w, 6, 3, rng, aspect=w / h) - (1.0 - cover)) * 3.0, 0.0, 1.0)
+        # The warp: about a quarter of the pad's radius, at a little under its scale —
+        # several ridges' worth, slowly. Twice as fine and twice as strong turned the
+        # print into a maze.
+        wu = (_fbm(h, w, 5, 2, rng, aspect=w / h) - 0.5) * 0.5
+        wv = (_fbm(h, w, 5, 2, rng, aspect=w / h) - 0.5) * 0.5
+        # A loop rather than a bullseye: squash the field on one side of the core.
+        uu = u + wu + 0.25 * np.clip(v, 0.0, None) ** 2
+        vv = v + wv
+        r_mm = np.hypot(uu * rx_mm, vv * ry_mm)
+        ridges = 0.5 + 0.5 * np.sin(2.0 * math.pi * r_mm / 0.45)
+        rough += pad * broken * (0.045 + 0.06 * ridges)
+    _scratches(rough, 7, 14.0 / mm_per_px, 0.10, rng)
+    return rough
+
+
+def pocket_front_wear(w=512, h=860, seed=12):
+    """
+    Anodised aluminium is never one roughness: a slow mottle from the bath, a fine
+    grain from the blasting, and the edges a touch smoother where hands have been.
+    """
+    np = _np()
+    rng = np.random.default_rng(seed)
+    rough = 0.34 + (_fbm(h, w, 4, 3, rng, aspect=w / h) - 0.5) * 0.05
+    rough += (rng.random((h, w)) - 0.5) * 0.018
+    yy, xx = np.mgrid[0:h, 0:w]
+    edge = np.minimum(np.minimum(xx, w - 1 - xx) / w, np.minimum(yy, h - 1 - yy) / h * (h / w))
+    rough -= np.clip(1.0 - edge / 0.05, 0.0, 1.0) * 0.05
+    _scratches(rough, 5, 60.0, -0.06, rng, width_px=1.1)
+    return rough
+
+
+def pocket_wheel_wear(size=512, seed=13):
+    """
+    The ring polished by a thumb going round it: a band a few millimetres wide at
+    the thumb's radius, smoother by a good margin, with the fine circular marks a
+    thumb leaves — the one piece of wear that says how the thing is used.
+    """
+    np = _np()
+    rng = np.random.default_rng(seed)
+    mm_per_px = POCKET_WHEEL_R * 2000.0 / size
+    yy, xx = np.mgrid[0:size, 0:size]
+    cx = cy = (size - 1) / 2.0
+    r_mm = np.hypot(xx - cx, yy - cy) * mm_per_px
+    theta = np.arctan2(yy - cy, xx - cx)
+    band = np.exp(-((r_mm - 14.2) / 3.2) ** 2)
+    rough = np.full((size, size), 0.54)
+    rough -= band * 0.15
+    # Circular marks: noise stretched round the ring, not across it — and periodic round it,
+    # or the marks would stop dead in a seam at nine o'clock.
+    streaks = _smooth_noise(size, size, 3, 120, rng, wrap_x=True)
+    ang = ((theta + math.pi) / (2.0 * math.pi) * (size - 1)).astype(int)
+    rad = np.clip((r_mm / (POCKET_WHEEL_R * 1000.0)) * (size - 1), 0, size - 1).astype(int)
+    rough += (streaks[rad, ang] - 0.5) * 0.08 * band
+    rough += (_fbm(size, size, 6, 3, rng) - 0.5) * 0.03
+    return rough
+
+
 def build_pocket():
     """
     Eight objects, one per material: front plate, back shell, screen panel, its
@@ -1056,12 +1264,15 @@ def build_pocket():
     bmesh.ops.translate(bm, verts=moved, vec=(0.0, -az(POCKET_FRONT_T), 0.0))
     bm.to_mesh(front.data)
     bm.free()
-    front.data.materials.append(principled(
+    front_mat = principled(
         # Bead-blasted anodised aluminium: a metal wearing an oxide skin, which is
         # why it has a coat as well as a middling roughness. Not paint.
         "PocketFront", base_color=(0.205, 0.200, 0.196), metallic=1.0,
         roughness=0.34, coat=0.12, coat_roughness=0.26, anisotropic=0.15,
-    ))
+    )
+    _planar_uvs(front, -POCKET_W / 2.0, POCKET_W / 2.0, -POCKET_H / 2.0, POCKET_H / 2.0)
+    _use_metal_rough(front_mat, _metal_rough_image("pocket_front_mr", pocket_front_wear(), 1.0))
+    front.data.materials.append(front_mat)
     finish(front, bevel_width=0.00018, harden=True)
     objects.append(front)
 
@@ -1154,6 +1365,9 @@ def build_pocket():
         "PocketGlass", base_color=(0.015, 0.016, 0.018), metallic=0.0,
         roughness=0.03, alpha=0.06, blend=True,
     ))
+    _planar_uvs(glass, -POCKET_SCREEN_W / 2.0, POCKET_SCREEN_W / 2.0,
+                POCKET_SCREEN_Y - POCKET_SCREEN_H / 2.0, POCKET_SCREEN_Y + POCKET_SCREEN_H / 2.0)
+    _use_metal_rough(glass.data.materials[0], _metal_rough_image("pocket_glass_mr", pocket_glass_wear(), 0.0))
     finish(glass, bevel_width=0.00008, harden=True)
     objects.append(glass)
 
@@ -1190,6 +1404,9 @@ def build_pocket():
         "PocketWheel", base_color=(0.072, 0.071, 0.070), metallic=0.0,
         roughness=0.54, coat=0.28, coat_roughness=0.30,
     ))
+    _planar_uvs(wheel, -POCKET_WHEEL_R, POCKET_WHEEL_R,
+                POCKET_WHEEL_Y - POCKET_WHEEL_R, POCKET_WHEEL_Y + POCKET_WHEEL_R)
+    _use_metal_rough(wheel.data.materials[0], _metal_rough_image("pocket_wheel_mr", pocket_wheel_wear(), 0.0))
     finish(wheel, bevel_width=0.00010, harden=True)
     objects.append(wheel)
 
