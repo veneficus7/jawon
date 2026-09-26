@@ -62,7 +62,14 @@ object PocketLighting {
     private const val SOFTBOX_HALF_AZ = 0.50f
     private const val SOFTBOX_HALF_EL = 0.30f
     private const val SOFTBOX_EDGE = 0.10f
-    private val SOFTBOX_COLOUR = floatArrayOf(2.30f, 1.95f, 1.52f)
+    private val SOFTBOX_COLOUR = floatArrayOf(3.10f, 2.62f, 2.05f)
+
+    // **No glare on the screen's glass, on purpose.** A thin tube thirty times the softbox's
+    // brightness, placed exactly where the glass reflects, left no visible streak over the lit
+    // screen — and a probe at ten times that showed why: the glass *does* reflect it, but a rough
+    // surface collects a light's total energy where smooth glass shows only its peak, so anything
+    // bright enough to read on the glass floods the anodised front first (it went from 30 to 60
+    // of 255). The passing lamps' glints are the honest version of a glare, and they move.
 
     /** The window behind the device: the glass dark and cool, the city a warm glow low in it. */
     private const val WINDOW_AZ = (-PI / 2.0).toFloat()
@@ -89,7 +96,16 @@ object PocketLighting {
     private const val CEILING_EL = 1.12f
     private const val CEILING_LAMPS = 7
     private const val CEILING_LAMP_SIZE = 0.05f
-    private val CEILING_LAMP_COLOUR = floatArrayOf(3.4f, 2.8f, 2.1f)
+    private val CEILING_LAMP_COLOUR = floatArrayOf(6.0f, 5.0f, 3.8f)
+
+    /**
+     * The window's frames: dark verticals between the panes, every [MULLION_SPACING] radians.
+     * Polished steel shows the world's *structure*, not its average — a window that is one smooth
+     * colour reflects as a dull band, where one crossed by dark frames puts the crisp light-and-dark
+     * lines along the edge that say "polished".
+     */
+    private const val MULLION_SPACING = 0.62f
+    private const val MULLION_WIDTH = 0.07f
 
     /**
      * The carriage's other windows, all round at eye level, dimmer than the one behind the device:
@@ -136,7 +152,12 @@ object PocketLighting {
             softStep(WINDOW_LOW_EL - 0.05f, WINDOW_LOW_EL + 0.05f, el) *
             (1f - softStep(WINDOW_HIGH_EL - 0.08f, WINDOW_HIGH_EL + 0.08f, el))
         val glow = exp(-((el - 0.02f) / 0.10f) * ((el - 0.02f) / 0.10f))
-        for (c in 0..2) out[c] += (WINDOW_COLOUR[c] + CITY_GLOW[c] * glow) * inWindow
+        // The frames between the panes, and the sill's dark line under the glass.
+        val pane = ((angleDelta(az, WINDOW_AZ) / MULLION_SPACING) % 1f + 1f) % 1f
+        val frame = softStep(MULLION_WIDTH, 0f, minOf(pane, 1f - pane) * MULLION_SPACING)
+        val sill = exp(-((el - WINDOW_LOW_EL - 0.04f) / 0.025f) * ((el - WINDOW_LOW_EL - 0.04f) / 0.025f))
+        val glass = (1f - 0.92f * frame) * (1f - 0.85f * sill)
+        for (c in 0..2) out[c] += (WINDOW_COLOUR[c] + CITY_GLOW[c] * glow) * inWindow * glass
         for (light in WINDOW_LIGHTS) {
             val d = hypot2(angleDelta(az, light[0]), el - light[1])
             val spot = exp(-(d / WINDOW_LIGHT_SIZE) * (d / WINDOW_LIGHT_SIZE)) * inWindow

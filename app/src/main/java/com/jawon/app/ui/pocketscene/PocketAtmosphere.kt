@@ -51,8 +51,29 @@ object PocketAtmosphere {
             feather = VIGNETTE_FEATHER
             color = floatArrayOf(0f, 0f, 0f, 1f)
         }
+        // **Ambient occlusion at the scale of millimetres.** The wheel sits 0.6mm down in a
+        // 0.4mm gap and the screen 1mm under the plate, and those recesses are what the eye reads
+        // as depth — but lit only by the environment they get no shadow at all, and read as
+        // lines drawn on a flat face. A radius of a few millimetres puts a contact shade in
+        // exactly those places and nowhere else on an object this size.
+        view.ambientOcclusionOptions = View.AmbientOcclusionOptions().apply {
+            enabled = true
+            radius = AO_RADIUS_M
+            intensity = AO_INTENSITY
+            power = AO_POWER
+            bias = AO_BIAS_M
+            quality = View.QualityLevel.HIGH
+            resolution = 1.0f
+            upsampling = View.QualityLevel.HIGH
+            lowPassFilter = View.QualityLevel.MEDIUM
+        }
         view.dithering = View.Dithering.TEMPORAL
     }
+
+    private const val AO_RADIUS_M = 0.0035f
+    private const val AO_INTENSITY = 1.1f
+    private const val AO_POWER = 1.4f
+    private const val AO_BIAS_M = 0.00005f
 
     fun isApplied(view: View): Boolean = view.bloomOptions.strength == BLOOM_STRENGTH
 }

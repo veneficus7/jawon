@@ -12,15 +12,8 @@ import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.BoxWithConstraints
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.navigationBarsPadding
-import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -33,21 +26,16 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.google.android.filament.LightManager
 import com.google.android.filament.Renderer
 import com.jawon.app.data.lyrics.LyricsState
-import com.jawon.app.ui.theme.JawonTextStyle
-import com.jawon.app.ui.theme.LabelDim
 import com.jawon.app.ui.wallscene.CaseArt
 import com.jawon.app.ui.wallscene.RoomCadence
 import com.jawon.app.ui.wallscene.RoomHaptics
@@ -89,6 +77,9 @@ private val KEY_POSITION = floatArrayOf(-0.12f, 0.50f, 0.42f)
 private const val KEY_CANDELA = 1_300f
 private const val KEY_CONE_INNER_RAD = 0.35f
 private const val KEY_CONE_OUTER_RAD = 0.80f
+
+/** How bright the night outside is drawn, relative to the material's own tuning. */
+private const val WINDOW_GAIN = 0.8f
 
 /** The rate the room is drawn at when nobody is touching it — see the note in onFrame. */
 private const val POCKET_IDLE_FPS = 60f
@@ -585,7 +576,9 @@ fun PocketRoomScreen(
                     setParameter("size", NightWindow.PLANE_W_M, NightWindow.PLANE_H_M)
                     setParameter("scroll", 0f, 0f, 0f, 0f)
                     setParameter("bob", 0f, 0f)
-                    setParameter("gain", 1f)
+                    // A little under full: the lights outside are the room, and the device in
+                    // front of them is the subject — at 1.0 they competed with it.
+                    setParameter("gain", WINDOW_GAIN)
                 }
             }
             device.windowMaterial = outside
@@ -643,27 +636,9 @@ fun PocketRoomScreen(
             }
         }
 
-        Column(
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .fillMaxWidth()
-                .navigationBarsPadding()
-                .padding(horizontal = 20.dp, vertical = 18.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            Text(
-                text = "POCKET PLAYER · IN PROGRESS",
-                style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = 10.sp)
-            )
-            Text(
-                text = "SETTINGS",
-                style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = 12.sp),
-                modifier = Modifier
-                    .clickable(onClick = onOpenSettings)
-                    .padding(10.dp)
-            )
-        }
+        // No chrome over the room: the device *is* the interface, and the phone app's Settings
+        // are on its own menu (Settings → All Settings). The debug line and a SETTINGS link used
+        // to sit under the device and were the first thing that said "screen", not "object".
     }
 
     // Kept in step with the player, for the title bar's play glyph.
