@@ -78,6 +78,19 @@ private const val KEY_CANDELA = 1_300f
 private const val KEY_CONE_INNER_RAD = 0.35f
 private const val KEY_CONE_OUTER_RAD = 0.80f
 
+/**
+ * How the device is turned toward you: a few degrees off square, because an object photographed
+ * dead-on shows none of its thickness, and the thickness is where the polished back and the
+ * chamfer live.
+ *
+ * **Held still on purpose.** A synthetic hand sway was tried: small enough not to float the
+ * device, it moved nothing measurable (0px over 2.5s), and it was wrong in principle — the phone
+ * *is* the device here, so the hand's real motion already arrives through the gyro (TiltFilter).
+ * A sway would only fake what the hand does, or move a phone lying still on a table.
+ */
+private const val DEVICE_PITCH_DEG = -6f
+private const val DEVICE_YAW_DEG = 15f
+
 /** How bright the night outside is drawn, relative to the material's own tuning. */
 private const val WINDOW_GAIN = 0.8f
 
@@ -598,7 +611,7 @@ fun PocketRoomScreen(
                 // of its thickness, and the thickness is where the polished back and the
                 // chamfer live.
                 Node(
-                    rotation = Rotation(x = -6f, y = 15f, z = 0f),
+                    rotation = Rotation(x = DEVICE_PITCH_DEG, y = DEVICE_YAW_DEG, z = 0f),
                     apply = { device.deviceNode = this }
                 ) {
                     ModelNode(

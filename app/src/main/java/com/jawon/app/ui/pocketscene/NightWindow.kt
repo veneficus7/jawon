@@ -121,9 +121,12 @@ class TrainMotion(private val baseSpeed: Float = NightWindow.BASE_SPEED_M_S) {
     }
 
     /** The last rail joint's jolt, dying away: a sharp 6Hz shake gone within a quarter second. */
-    fun jolt(): Double = 0.0016 * exp(-jointAge * 9.0) * sin(jointAge * 2.0 * PI * 6.0)
+    fun jolt(): Double = JOLT_M * exp(-jointAge * 9.0) * sin(jointAge * 2.0 * PI * 6.0)
 
-    private companion object {
-        const val PICTURE_DISTANCE = 0.85
+    companion object {
+        private const val PICTURE_DISTANCE = 0.85
+
+        /** The jolt's peak, in metres of picture — what [HandSway] scales its own jolt by. */
+        const val JOLT_M = 0.0016
     }
 }
