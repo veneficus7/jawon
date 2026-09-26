@@ -521,6 +521,8 @@ fun PocketRoomScreen(
             // a device held square in front of you is looked at square on.
             onFrame = {
                 cameraNode.rotation = LEVEL
+                // The grade, re-applied if SceneView's own preset has undone it — see PocketAtmosphere.
+                if (!PocketAtmosphere.isApplied(filamentView)) PocketAtmosphere.apply(filamentView)
                 device.onFrame(SystemClock.uptimeMillis())
                 // **Drawn at 60 unless a thumb is on the wheel.** SceneView renders every vsync —
                 // 120 a second on the owner's phone — and nothing in this room moves fast enough
