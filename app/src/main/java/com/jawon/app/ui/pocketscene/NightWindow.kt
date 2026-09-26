@@ -126,7 +126,7 @@ class TrainMotion(private val baseSpeed: Float = NightWindow.BASE_SPEED_M_S) {
     companion object {
         private const val PICTURE_DISTANCE = 0.85
 
-        /** The jolt's peak, in metres of picture — what [HandSway] scales its own jolt by. */
+        /** The jolt's peak, in metres of picture. */
         const val JOLT_M = 0.0016
     }
 }
