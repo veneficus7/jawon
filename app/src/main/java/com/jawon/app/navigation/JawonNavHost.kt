@@ -148,7 +148,8 @@ fun JawonNavHost(
                 )
 
                 Format.POCKET -> PocketRoomScreen(
-                    onOpenSettings = { navController.navigate(JawonDestination.Settings.route) }
+                    onOpenSettings = { navController.navigate(JawonDestination.Settings.route) },
+                    onAddAlbum = { navController.navigate(JawonDestination.AddAlbum.route) }
                 )
             }
         }

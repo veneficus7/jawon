@@ -13,7 +13,8 @@ are*.
 ## The shape of it
 
 ```
-MainActivity → JawonNavHost ─┬─ WallSceneScreen   the room: browse + play
+MainActivity → JawonNavHost ─┬─ WallSceneScreen   the CD room: browse + play
+                             │   or PocketRoomScreen, when the format is POCKET
                              ├─ AddAlbumScreen    import
                              ├─ EditAlbumScreen   fix an album after import
                              ├─ ShelfManagerScreen
@@ -75,6 +76,25 @@ move that into this list first.
 | `DiscArt.kt` | Bakes the printed disc face. |
 | `CaseArtCache.kt` | Holds the baked artwork per album, and resolves each album's hue — stored, else the cover's dominant hue, else a stable fallback. |
 | `RoomHaptics.kt` | The platter's vibration. Goes to the vibrator directly rather than through view haptic feedback; see its KDoc for why that mattered. |
+
+---
+
+## `ui/pocketscene` — the pocket player's room
+
+The second format (`docs/formats.md`), a sibling of the CD room that shares its view model
+rather than branching inside it. `JawonNavHost` shows it instead of `WallSceneScreen` when
+`AppPreferences.format` is `POCKET` — offered in Settings on debug builds only, for now.
+
+| File | Owns |
+|---|---|
+| `ClickWheel.kt` | **Pure.** The wheel's geometry (agreeing with `build_pocket()`), which button a point is on, and `WheelGesture` — one finger from landing to lifting, deciding between a turn, a press and a hold the way the classic's wheel did. Also `unproject`, the arithmetic that puts a touch on the glass back into the wheel's plane. |
+| `PocketMenu.kt` | **Pure.** `MenuKey` (what a level *is*), `PocketMenus.rows` (what it lists, from a `PocketLibrary` snapshot), and `PocketNav` — the stack of levels with each one's highlight and scroll, and its `Saver`. |
+| `ClickSound.kt` | **Pure** `ClickSound.render`, the click's waveform; and `ClickPlayer`, the static low-latency `AudioTrack` that replays it. |
+| `PocketLcd.kt` | The device's screen, as Compose: menus with a scrollbar, and Now Playing with its progress, volume and scrubber strips. Sized in LCD pixels, not dp. |
+| `PocketRoomScreen.kt` | The scene — the device at computed life size, its lights, the screen as a `ViewNode` — and `PocketDevice`, which turns wheel events into menu moves and playback. Read trap 33 before changing how the screen is drawn. |
+| `PocketLighting.kt` | The carriage IBL: a procedural cubemap of a train window at night. |
+
+The three pure files have test files (`ClickWheelTest`, `PocketMenuTest`, `ClickSoundTest`).
 
 ---
 

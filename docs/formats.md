@@ -228,8 +228,18 @@ One thing at a time, checked on the owner's phone between each (the working agre
    `build_models.py`, with bounds checks added to `docs/models.md` the way the case's are.
 5. **Its room** — the train window (§4), lit by the lights going past
    (`docs/realism.md` §3).
-6. **Browsing on its screen** — albums, shelves as playlists, tracks.
-7. **The wheel** — scroll, select, transport, volume and the scrubber, detents, the click.
+6. **Browsing on its screen — done, bar Cover Flow (2026-09-26).** Albums (filed as iTunes
+   filed them, "The" and "A" set aside), Shelves as playlists in their wall order, Artists, an
+   album's tracks, and Now Playing. `PocketMenu.kt`. Cover Flow is still to come.
+7. **The wheel — done (2026-09-26), bar the feel.** Turning, with acceleration on long lists;
+   the centre; MENU (held: the main menu); Play/Pause (held: off, the screen dark until any
+   button); the sides (held: cue through the track); on Now Playing the volume, and the
+   scrubber on a press of the centre. Each step clicks and ticks, and at the end of a list both
+   stop. Checked end to end on the flagship AVD. **What the emulator cannot answer** is the
+   feel: the click's latency (it has no fast mixer), the haptic, and whether 15° a step is the
+   right size under a real thumb — all of that is the owner's phone.
+   **Step 2's spike answered itself along the way:** a `ViewNode` does render a moving
+   screen, once it is told to (trap 33) — the cost per redraw is still unmeasured.
 8. **Now Playing, and a way to the rack and the lyrics.**
 9. **Vinyl** (§5), then **cassette** (§6), each its own room and built the same way.
 

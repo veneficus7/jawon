@@ -572,6 +572,31 @@ class WallSceneViewModel @Inject constructor(
         }
     }
 
+    /**
+     * Play an album from a track chosen off its list — the pocket player's tracklist.
+     *
+     * Not [playAlbum]: that resumes where the record was left, which is right for taking a
+     * record off the wall and wrong for choosing a song by name. Choosing one is a request to
+     * hear *that* one, from its start.
+     */
+    fun playAlbumFrom(albumId: String, trackIndex: Int) {
+        viewModelScope.launch {
+            val tracks = trackDao.getForAlbum(albumId).first()
+            if (tracks.isEmpty()) return@launch
+            _nowPlayingAlbumId.value = albumId
+            val album = albumDao.findById(albumId)
+            playbackRepository.playAlbum(
+                tracks,
+                startIndex = trackIndex.coerceIn(0, tracks.lastIndex),
+                albumArtist = album?.artist
+            )
+        }
+    }
+
+    /** One album's track titles, in order, for a list that shows them. One shot, off the main thread. */
+    suspend fun trackTitles(albumId: String): List<String> =
+        trackDao.getForAlbum(albumId).first().map { it.title }
+
     /** Called when the case closes. */
     fun stop() {
         viewModelScope.launch {

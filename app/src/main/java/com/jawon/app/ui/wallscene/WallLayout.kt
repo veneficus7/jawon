@@ -322,8 +322,14 @@ data class WallLayout(
          * user with a shelf they did not make and might not want — and would need a migration
          * to change its mind later.
          */
+        /**
+         * The placeholder board an empty library shows. Not a shelf in the database, so
+         * anything listing real shelves — the pocket player's playlists — leaves it out.
+         */
+        const val WAITING_SHELF_ID = "waiting"
+
         private fun waitingRow() = RowLayout(
-            shelfId = "waiting",
+            shelfId = WAITING_SHELF_ID,
             name = "Your first shelf",
             row = 0,
             centerY = 0f,
