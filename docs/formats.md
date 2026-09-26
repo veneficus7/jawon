@@ -234,6 +234,22 @@ One thing at a time, checked on the owner's phone between each (the working agre
    edge (`PassingLamps`). First tuning on the AVD: a lamp behind you at 900–2600cd washed the
    whole anodised face bronze (16 -> 60 of 255), so it runs at 380–1100cd; the key light took
    the wheel from 10 to 14 and its print from 32 to 51. **Judged on the phone, not here.**
+   **Relit for the phone (2026-09-27), by fixed luminance boxes on the owner's S25 Ultra.** The
+   first environment was a ring of window, and the device read as a flat black slab: a flat face
+   reflects one small patch of the world, and nothing bright was in it. `PocketLighting` now
+   places each light from the device's own pose — the front and the glass reflect ~60° round and
+   ~0.2 rad up, so the reading lamp is a softbox there; the polished left side reflects the window
+   behind the device; a dimmer ring of the carriage's other windows keeps the wheel's rim and the
+   chamfers lit from every side, which is most of what separates a dark device from a dark room.
+   The front went from a flat 16–20 of 255 to a gradient, ~40 beside the screen falling to ~12 at
+   the foot. Three things learned: dimming the window to a fifth took the side from 35 to 3 — it
+   is what gives the edges their sheen; a vignette at a midpoint of 0.42 took the top of the
+   window from 23 to 3; and **no light can put a readable glare on the screen's glass** without
+   flooding the rough front first, which a pure-red probe showed plainly (`PocketLighting`'s
+   note). `PocketAtmosphere` is the room's own grade: 4× MSAA, a restrained bloom, a light
+   vignette, and ambient occlusion at a 3.5mm radius for the wheel's recess and the screen's
+   inset. The screen itself reads as a backlit panel now: a cool never-quite-white, a falloff to
+   its corners, and the window lip's shadow along its top and left edges.
    **And the phone's tilt turns the world** (`TiltFilter`): the environment and the passing
    lamps rotate against how far the phone has just been tilted, so reflections slide across
    the glass and the edge — first-order, twice the tilt, as a turned mirror's do. The window
