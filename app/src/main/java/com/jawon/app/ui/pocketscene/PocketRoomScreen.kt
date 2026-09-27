@@ -39,6 +39,7 @@ import com.jawon.app.ui.wallscene.CaseArt
 import com.jawon.app.ui.wallscene.RoomCadence
 import com.jawon.app.ui.wallscene.RoomHaptics
 import com.jawon.app.ui.wallscene.WallSceneViewModel
+import dev.romainguy.kotlin.math.Float4
 import dev.romainguy.kotlin.math.rotation
 import io.github.sceneview.SceneView
 import io.github.sceneview.math.Direction
@@ -129,6 +130,21 @@ private const val CARRIAGE_MODEL_ASSET = "models/carriage.glb"
  * night, softly, as a night train's glass does.
  */
 private const val CARRIAGE_GLASS_ASSET = "models/carriage_glass.glb"
+
+/** The earphone plug in the top edge's jack, in the device's frame (`build_earphone_plug()`). */
+private const val EARPHONE_PLUG_ASSET = "models/earphone_plug.glb"
+
+/**
+ * The lamp's light on the earphones' white plastic, from the reading lamp's direction over your
+ * shoulder, on the cord's own channel (`CordMesh.CORD_LIGHT_CHANNEL`) — so it lights the cord and the
+ * plug and nothing else.
+ */
+private val CORD_FILL_POSITION = floatArrayOf(0.35f, 0.45f, 0.60f)
+private const val CORD_FILL_CANDELA = 2_500f
+
+/** The cord's white plastic, the plug's own: a little gloss, no coat. Linear RGB. */
+private val CORD_COLOUR = Float4(0.80f, 0.80f, 0.78f, 1f)
+private const val CORD_ROUGHNESS = 0.28f
 
 /**
  * **The reading lamp**, over the window's right-hand corner: warm, shaded downward onto the table,
@@ -231,6 +247,7 @@ fun PocketRoomScreen(
     val deviceModel = rememberModelInstance(modelLoader, POCKET_MODEL_ASSET)
     val carriageModel = rememberModelInstance(modelLoader, CARRIAGE_MODEL_ASSET)
     val carriageGlass = rememberModelInstance(modelLoader, CARRIAGE_GLASS_ASSET)
+    val earphonePlug = rememberModelInstance(modelLoader, EARPHONE_PLUG_ASSET)
     val ydpi = remember(context) { max(context.resources.displayMetrics.ydpi, 1f) }
     // How often the room is actually drawn — the CD room's cadence, reused by call. See onFrame.
     val cadence = remember(context) {
@@ -480,6 +497,19 @@ fun PocketRoomScreen(
     )
     // Where the lyrics page is actually showing from, for the wheel's first turn on it.
     device.lyricShownTop = (screen as? LcdScreen.NowPlaying)?.lyrics?.top ?: 0
+    // The earphone cord: the plug's white plastic, drawn round the simulated chain every frame.
+    val cordMesh = remember(engine, materialLoader) {
+        CordMesh(engine, materialLoader.createColorInstance(CORD_COLOUR, 0f, CORD_ROUGHNESS, 0.5f))
+    }
+    DisposableEffect(cordMesh) {
+        device.cordMesh = cordMesh
+        onDispose {
+            device.cordMesh = null
+            filamentView.scene?.removeEntity(cordMesh.entity)
+            cordMesh.destroy()
+        }
+    }
+
     val lcd = remember { mutableStateOf(screen) }
     SideEffect { lcd.value = screen }
     // Which page it is, so the screen can slide between pages as the classic's did.
@@ -596,6 +626,9 @@ fun PocketRoomScreen(
                 cameraNode.rotation = LEVEL
                 // The grade, re-applied if SceneView's own preset has undone it — see PocketAtmosphere.
                 if (!PocketAtmosphere.isApplied(filamentView)) PocketAtmosphere.apply(filamentView)
+                // The earphone cord is drawn by a renderable of its own, not a node: into the scene
+                // once SceneView has made one.
+                device.addCordTo(filamentView.scene)
                 device.onFrame(SystemClock.uptimeMillis())
                 // **Drawn at 60 unless a thumb is on the wheel.** SceneView renders every vsync —
                 // 120 a second on the owner's phone — and nothing in this room moves fast enough
@@ -634,6 +667,19 @@ fun PocketRoomScreen(
                     spotLightCone(KEY_CONE_INNER_RAD, KEY_CONE_OUTER_RAD)
                     falloff(3f)
                     castShadows(false)
+                }
+            )
+            // The lamp's light on the earphones' white plastic, and on nothing else.
+            LightNode(
+                type = LightManager.Type.POINT,
+                position = Position(CORD_FILL_POSITION[0], CORD_FILL_POSITION[1], CORD_FILL_POSITION[2]),
+                apply = {
+                    color(1.0f, 0.86f, 0.70f)
+                    intensityCandela(CORD_FILL_CANDELA)
+                    falloff(3f)
+                    castShadows(false)
+                    lightChannel(0, false)
+                    lightChannel(CordMesh.CORD_LIGHT_CHANNEL, true)
                 }
             )
             // **The lights going past**, as light: a fixed pool the frame loop moves and dims —
@@ -733,6 +779,23 @@ fun PocketRoomScreen(
                             device.bindParts(renderableNodes, steel)
                         }
                     )
+                    // The earphones' plug, in the jack: it rides with the device, and catches the
+                    // lamp as the cord does.
+                    earphonePlug?.let { plug ->
+                        ModelNode(
+                            plug,
+                            apply = {
+                                isTouchable = false
+                                isShadowCaster = true
+                                isShadowReceiver = false
+                                for (part in renderableNodes) {
+                                    part.renderableManager.setLightChannel(
+                                        part.renderableInstance, CordMesh.CORD_LIGHT_CHANNEL, true
+                                    )
+                                }
+                            }
+                        )
+                    }
                     // The screen, as a child of the device so it turns with it. Unlit because
                     // an LCD is its own light: nothing in the carriage should be able to
                     // darken what the backlight is putting out.

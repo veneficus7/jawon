@@ -31,12 +31,19 @@ class RestState(
     private var flatSince = -1L
     private var liftable = false
     private var activeAt = -1L
+    /**
+     * Whether lying flat may put it to rest. A touch disarms it until the phone has been lifted
+     * and put down again: touching a phone that lies on the table means using it there, and without
+     * this the device came back to the hand and flew straight off to the table a second later.
+     */
+    private var flatArmed = true
 
     /** A finger on the screen: back to the hand, and the clock starts again. */
     fun touched(now: Long) {
         activeAt = now
         atRest = false
         liftable = false
+        flatArmed = false
     }
 
     /**
@@ -49,6 +56,7 @@ class RestState(
             if (flatSince < 0L) flatSince = now
         } else {
             flatSince = -1L
+            flatArmed = true
             // Picked up off the table: back to the hand.
             if (atRest && liftable) {
                 atRest = false
@@ -56,7 +64,7 @@ class RestState(
                 activeAt = now
             }
         }
-        val flatLongEnough = lyingFlat && now - flatSince >= flatHoldMs
+        val flatLongEnough = lyingFlat && flatArmed && now - flatSince >= flatHoldMs
         if (atRest) {
             // Resting on the clock, then put down: lifting it now should wake it too.
             if (flatLongEnough) liftable = true

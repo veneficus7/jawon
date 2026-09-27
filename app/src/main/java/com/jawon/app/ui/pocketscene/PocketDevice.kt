@@ -110,6 +110,14 @@ internal class PocketDevice(
     private val floatPitch = Wander(seed = 13, periodS = 4.4f)
     private val floatRoll = Wander(seed = 14, periodS = 5.3f)
     private val look = FloatArray(2)
+
+    // **The earphone cord** (PocketCord): its simulation, what draws it, and where its far end is.
+    private val cord = Cord()
+    var cordMesh: CordMesh? = null
+    private var cordInScene = false
+    private val ears = FloatArray(3)
+    private val earsVelocity = FloatArray(3)
+    private var earsPrimed = false
     /** How much of the phone's tilt turns the world: all of it in the hand, none on the table. */
     private var turnWeight = 1f
     var windowMaterial: MaterialInstance? = null
@@ -256,6 +264,7 @@ internal class PocketDevice(
         turnWeight += (turnTarget - turnWeight) * approach(TURN_FADE_RATE, dt)
         flight.step(dt)
         pose(dt)
+        swingCord(dt)
         // Written only while something moves, and once more to leave it exactly at rest.
         if (rock.isMoving || rockWasMoving) {
             rock.step(dt)
@@ -384,6 +393,48 @@ internal class PocketDevice(
             lerp(DEVICE_YAW_DEG, RestPose.DEVICE_YAW_DEG + RestPose.FLOAT_YAW_DEG * floatYaw.at(floatTime), d),
             RestPose.FLOAT_ROLL_DEG * floatRoll.at(floatTime) * d
         )
+    }
+
+    /** Puts the cord's renderable into [scene], once. */
+    fun addCordTo(scene: com.google.android.filament.Scene?) {
+        val mesh = cordMesh ?: return
+        if (cordInScene || scene == null) return
+        scene.addEntity(mesh.entity)
+        cordInScene = true
+    }
+
+    /**
+     * The cord, one frame on: its start carried by the device — out of the plug's strain relief,
+     * along the plug's axis — and its far end, the earbuds, following the device on a spring, so
+     * the cord hangs, sways as the device floats and trails when it flies.
+     */
+    private fun swingCord(dt: Float) {
+        val mesh = cordMesh ?: return
+        val node = deviceNode ?: return
+        val m = node.worldTransform
+        val start = m * Float4(Cord.PLUG_X_M, Cord.PLUG_TIP_Y_M, 0f, 1f)
+        val axis = m * Float4(0f, 1f, 0f, 0f)
+        val al = kotlin.math.sqrt(axis.x * axis.x + axis.y * axis.y + axis.z * axis.z).coerceAtLeast(1e-6f)
+        val centre = m * Float4(0f, 0f, 0f, 1f)
+        val tx = centre.x + Cord.EARS_X_M
+        val ty = centre.y + Cord.EARS_Y_M
+        val tz = centre.z + Cord.EARS_Z_M
+        if (!earsPrimed) {
+            ears[0] = tx; ears[1] = ty; ears[2] = tz
+            earsPrimed = true
+        } else if (dt > 0f) {
+            // Critically damped: the far end catches up without overshooting.
+            val w = Cord.EARS_FOLLOW_OMEGA
+            val h = kotlin.math.min(dt, Cord.MAX_STEP_S)
+            val target = floatArrayOf(tx, ty, tz)
+            for (k in 0..2) {
+                val accel = -2f * w * earsVelocity[k] - w * w * (ears[k] - target[k])
+                earsVelocity[k] += accel * h
+                ears[k] += earsVelocity[k] * h
+            }
+        }
+        cord.step(dt, start.x, start.y, start.z, axis.x / al, axis.y / al, axis.z / al, ears[0], ears[1], ears[2])
+        mesh.update(cord)
     }
 
     /**

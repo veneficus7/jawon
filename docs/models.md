@@ -12,6 +12,7 @@ modelled by hand and not downloaded.
 | `case_lid` | the held case | 708 | origin on the hinge axis |
 | `case_closed` | the wall | 768 | shelved frame, opaque |
 | `disc` | the held case | 4608 | 1.2mm thick, radial UVs |
+| `earphone_plug` | the pocket player's earphone plug | ~1000 | in the device's own frame: a chrome collar on the top edge's jack at X +15.5mm, a white body and a tapered strain relief whose tip — Y **+79.9mm** — is where `PocketCord` takes over |
 | `carriage_glass` | the compartment window's pane | 2 | its own file because its grime needs PNG's alpha while the carriage's wood is JPEG; ~190KB |
 | `carriage` | the pocket player's compartment | ~3600 | table, panelling boards and their backing, window frame, sill — in the room's own coordinates; ~560KB, most of it two generated wood-grain JPEGs |
 | `pocket` | the iPod mode's device | 8314 | eight objects, one per material; life size, 61.8 × 103.5 × 10.5mm; a polished bead round the face; ~830KB, most of it three wear maps |

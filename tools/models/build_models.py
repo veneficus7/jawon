@@ -1469,6 +1469,62 @@ def build_pocket():
     return objects
 
 
+# The earphone plug, seated in the jack on the top edge (build_pocket()'s details), in the device's
+# own frame so the app parents it to the device and it rides along. The cord leaves the tip of the
+# strain relief, at EARPHONE_CORD_Y, straight up; `PocketCord` takes it from there.
+EARPHONE_X = 0.0155
+EARPHONE_COLLAR_R = 0.0024
+EARPHONE_COLLAR_H = 0.0017
+EARPHONE_BODY_R = 0.0030
+EARPHONE_BODY_H = 0.0150
+EARPHONE_RELIEF_R0 = 0.0019
+EARPHONE_RELIEF_R1 = 0.00115
+EARPHONE_RELIEF_H = 0.0115
+EARPHONE_CORD_Y = POCKET_H / 2.0 + EARPHONE_COLLAR_H + EARPHONE_BODY_H + EARPHONE_RELIEF_H
+
+
+def build_earphone_plug():
+    """
+    A 3.5mm plug in the device's jack, white like the cord, with a chrome collar where it meets the
+    steel. Two objects, one per material.
+    """
+    top = POCKET_H / 2.0
+    objects = []
+
+    collar = new_mesh_object("earphone_collar")
+    bm = bmesh.new()
+    cylinder(bm, EARPHONE_X, az(0.0), top + EARPHONE_COLLAR_H / 2.0,
+             EARPHONE_COLLAR_R, EARPHONE_COLLAR_H, segments=32, axis="Z")
+    bm.to_mesh(collar.data)
+    bm.free()
+    collar.data.materials.append(principled(
+        "EarphoneChrome", base_color=(0.85, 0.86, 0.88), metallic=1.0, roughness=0.14,
+    ))
+    finish(collar, bevel_width=0.0002)
+    objects.append(collar)
+
+    body = new_mesh_object("earphone_body")
+    bm = bmesh.new()
+    body_y0 = top + EARPHONE_COLLAR_H
+    cylinder(bm, EARPHONE_X, az(0.0), body_y0 + EARPHONE_BODY_H / 2.0,
+             EARPHONE_BODY_R, EARPHONE_BODY_H, segments=32, axis="Z")
+    relief_y0 = body_y0 + EARPHONE_BODY_H
+    bmesh.ops.create_cone(
+        bm, cap_ends=True, cap_tris=False, segments=24,
+        radius1=EARPHONE_RELIEF_R0, radius2=EARPHONE_RELIEF_R1, depth=EARPHONE_RELIEF_H,
+        matrix=Matrix.Translation((EARPHONE_X, az(0.0), relief_y0 + EARPHONE_RELIEF_H / 2.0)),
+    )
+    bm.to_mesh(body.data)
+    bm.free()
+    body.data.materials.append(principled(
+        # Glossy white plastic, the cord's own: a moulding, so a little shine and no coat.
+        "EarphoneWhite", base_color=(0.80, 0.80, 0.78), metallic=0.0, roughness=0.28,
+    ))
+    finish(body, bevel_width=0.0006)
+    objects.append(body)
+    return objects
+
+
 # Where the wheel's print sits: halfway across the ring, a shade outward of the
 # arithmetic middle ((8.55 + 19.5) / 2 = 14.0mm), which is where a thumb's pad
 # covers it least while pressing.
@@ -2305,6 +2361,11 @@ def main():
     if not skip("pocket.glb"):
         clear_scene()
         paths.append(export(build_pocket(), "pocket.glb"))
+
+    # The earphone plug, in the device's frame — the app parents it to the device.
+    if not skip("earphone_plug.glb"):
+        clear_scene()
+        paths.append(export(build_earphone_plug(), "earphone_plug.glb"))
 
     # The pocket player's carriage: the room around it, in the room's own coordinates.
     if not skip("carriage.glb"):

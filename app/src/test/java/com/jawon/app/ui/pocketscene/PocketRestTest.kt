@@ -69,6 +69,21 @@ class PocketRestTest {
     }
 
     @Test
+    fun `touched while it lies on the table, it stays in the hand until twenty seconds pass`() {
+        val rest = RestState()
+        rest.update(0, lyingFlat = false)
+        val down = rest.run(from = 100, ms = 2_000, flat = true)
+        assertTrue(rest.atRest)
+        rest.touched(down)
+        // Still lying flat — being used where it lies. Not back to the table a second later.
+        rest.run(from = down + 16, ms = 10_000, flat = true)
+        assertFalse(rest.atRest)
+        // But left alone long enough, it rests again.
+        rest.run(from = down + 10_016, ms = 10_100, flat = true)
+        assertTrue(rest.atRest)
+    }
+
+    @Test
     fun `a phone held up while resting on the clock stays at rest until it is touched`() {
         val rest = RestState()
         rest.update(0, lyingFlat = false)

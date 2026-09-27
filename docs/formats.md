@@ -340,7 +340,13 @@ One thing at a time, checked on the owner's phone between each (the working agre
       `build_carriage()`), and a shadow-casting reading lamp over the window's corner at 15,000cd,
       which is what this room's exposure asks of a lamp that pools on dark wood. Lying on the
       desk, the phone went to rest by itself and floated the device over the table. **Cost at
-      rest**: 0.50 of a core, GPU 443–525MHz, against 342–443 in the hand.
+      rest**: 0.50 of a core, GPU 443–525MHz, against 342–443 in the hand. **And the earphones**:
+      a white plug in the top edge's jack (`build_earphone_plug()`) and a simulated cord from it
+      (`PocketCord.kt`) that rises out of the frame in the hand and sways over the table at rest.
+      Two things it took: white plastic in a room exposed for polished metal renders grey, so the
+      cord and plug have a light channel of their own with one light, from the reading lamp's
+      direction; and a touch on a phone lying flat must not send the device straight back to the
+      table — lying flat is disarmed by a touch until the phone is lifted and put down again.
    2. **The glass and what passes it** — rain and grime (a hand-written material, `docs/realism.md`
       §3), the carriage and the device's screen reflected in the pane, and events outside:
       tunnels, bridges, a level crossing, showers, and **stations**, tied to pause and play.
