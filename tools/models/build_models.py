@@ -1620,6 +1620,7 @@ CARRIAGE_FRAME_DEPTH = 0.03      # how far it stands proud of the panelling
 CARRIAGE_FRAME_R = 0.07          # the opening's rounded corners
 CARRIAGE_SILL_DEPTH = 0.06
 CARRIAGE_SILL_T = 0.015
+CARRIAGE_PANE_Z = -0.515         # the glass, in the frame, just in front of the night picture
 
 
 def rounded_rect_xy(bm, w, d, r, z, cx=0.0, cy=0.0, arc=8):
@@ -1692,6 +1693,111 @@ def _use_base_colour(mat, image):
     tex = nt.nodes.new("ShaderNodeTexImage")
     tex.image = image
     nt.links.new(tex.outputs["Color"], nt.nodes["Principled BSDF"].inputs["Base Color"])
+
+
+def carriage_pane_grime(w=1024, h=704, seed=31):
+    """
+    The window's glass as a night train's is: never clean. Returned as (grime, 0..1) over the pane,
+    bottom row first as Blender's pixel buffer runs.
+
+    A haze thickening toward the bottom and into the corners, where condensation dries and dust
+    settles; a wiped arc through it at shoulder height, where a sleeve cleared a patch to see out;
+    and a few drip streaks down from the top. **Grime is what reads as glass**: a perfectly clean
+    pane is invisible, and invisible is what the window was.
+    """
+    np = _np()
+    rng = np.random.default_rng(seed)
+    y = np.linspace(0.0, 1.0, h)[:, None]          # 0 at the bottom edge
+    x = np.linspace(0.0, 1.0, w)[None, :]
+    bottom = np.exp(-y / 0.10)
+    corner = np.exp(-(np.minimum(x, 1.0 - x) / 0.07)) * np.exp(-(np.minimum(y, 1.0 - y) / 0.12))
+    mottle = _fbm(h, w, 6, 4, rng, aspect=1.45)
+    grime = 0.25 + 0.45 * bottom + 0.35 * corner
+    grime = grime * (0.55 + 0.9 * mottle)
+    # The wiped arc: a sleeve's sweep across the middle, cleaner inside, streaky at its edge.
+    cx, cy, r = 0.42, 0.18, 0.46
+    d = np.hypot((x - cx) * 1.45, y - cy)
+    band = np.exp(-((d - r) / 0.09) ** 2) * (y > 0.08)
+    streak = _fbm(h, w, 40, 2, rng, aspect=0.2)
+    grime = grime * (1.0 - 0.75 * band * (0.6 + 0.4 * streak))
+    # Drip streaks from the top: thin, wandering, fading as they fall.
+    for _ in range(9):
+        x0 = rng.random()
+        length = 0.2 + 0.5 * rng.random()
+        wobble = (_fbm(h, 1, 5, 2, rng)[:, 0] - 0.5) * 0.02
+        xs = x0 + wobble
+        top = 1.0 - y[:, 0]
+        on = (top < length) * (1.0 - top / length)
+        dist = np.abs(x - xs[:, None])
+        grime += 0.35 * on[:, None] * np.exp(-(dist / 0.0025) ** 2)
+    return np.clip(grime, 0.0, 1.0)
+
+
+def _colour_alpha_image(name, rgb, alpha):
+    """A packed PNG from a linear h x w x 3 colour and an h x w alpha."""
+    np = _np()
+    h, w, _ = rgb.shape
+    srgb = np.where(rgb <= 0.0031308, rgb * 12.92, 1.055 * np.power(np.clip(rgb, 0.0, 1.0), 1.0 / 2.4) - 0.055)
+    rgba = np.ones((h, w, 4), dtype=np.float32)
+    rgba[..., :3] = np.clip(srgb, 0.0, 1.0)
+    rgba[..., 3] = np.clip(alpha, 0.0, 1.0)
+    img = bpy.data.images.new(name, width=w, height=h, alpha=True)
+    img.pixels.foreach_set(rgba.ravel())
+    img.file_format = "PNG"
+    img.pack()
+    return img
+
+
+def _use_colour_alpha(mat, image):
+    nt = mat.node_tree
+    bsdf = nt.nodes["Principled BSDF"]
+    tex = nt.nodes.new("ShaderNodeTexImage")
+    tex.image = image
+    nt.links.new(tex.outputs["Color"], bsdf.inputs["Base Color"])
+    nt.links.new(tex.outputs["Alpha"], bsdf.inputs["Alpha"])
+
+
+def build_carriage_glass():
+    """
+    The carriage window's pane, as a file of its own: its grime needs an alpha channel, so it
+    exports as PNG, while the carriage's wood grain is JPEG — the exporter takes one image format
+    per file, and one file of both was 1.7MB where these two are 0.6.
+    """
+    ow = CARRIAGE_WINDOW_HALF_W
+    lo, hi = CARRIAGE_WINDOW_BOTTOM_Y, CARRIAGE_WINDOW_TOP_Y
+    ww, wh = 2.0 * ow, hi - lo
+    cz = (lo + hi) / 2.0
+    objects = []
+    # ---- the pane: glass in the frame, never quite clean -------------------------------------
+    # **What makes the window a window.** Blended rather than transmissive, for the reason the
+    # device's glass is (trap 32 and `PocketGlass`): a flat pane bends nothing a person could see,
+    # and a blended surface keeps its full 4% specular — so it reflects the lit compartment
+    # behind the viewer, the lamp and the ceiling's lines, over the night, which is the look of a
+    # train window after dark. A little rough, so those reflections are as soft as the night
+    # behind them: the reflected carriage is as far off as the lights are, and would be out of
+    # focus too.
+    pane = new_mesh_object("carriage_glass")
+    bm = bmesh.new()
+    _, e = rounded_rect(bm, ww, wh, CARRIAGE_FRAME_R, az(CARRIAGE_PANE_Z), cz=cz)
+    bmesh.ops.contextual_create(bm, geom=e)
+    bm.to_mesh(pane.data)
+    bm.free()
+    grime = carriage_pane_grime()
+    np = _np()
+    dust = np.zeros(grime.shape + (3,))
+    dust[..., 0], dust[..., 1], dust[..., 2] = 0.20, 0.19, 0.17
+    glass = principled(
+        "CarriageGlass", base_color=(0.02, 0.022, 0.025), metallic=0.0,
+        roughness=0.12, alpha=0.05, blend=True,
+    )
+    _use_colour_alpha(glass, _colour_alpha_image("carriage_glass_grime", dust, 0.03 + 0.10 * grime))
+    _use_metal_rough(glass, _metal_rough_image("carriage_glass_mr", 0.10 + 0.30 * grime, 0.0))
+    pane.data.materials.append(glass)
+    _uvs_along(pane, "x", -ww / 2.0, ww / 2.0, "z", lo, hi)
+    finish(pane, bevel=False)
+    objects.append(pane)
+
+    return objects
 
 
 def build_carriage():
@@ -2204,6 +2310,10 @@ def main():
     if not skip("carriage.glb"):
         clear_scene()
         paths.append(export(build_carriage(), "carriage.glb", image_format="JPEG"))
+    # Its pane on its own: the grime needs PNG's alpha (see build_carriage_glass).
+    if not skip("carriage_glass.glb"):
+        clear_scene()
+        paths.append(export(build_carriage_glass(), "carriage_glass.glb"))
 
     # Exported together, unlike the case parts: these eight are one object that
     # has come apart, the app wants them all or none, and it addresses them by

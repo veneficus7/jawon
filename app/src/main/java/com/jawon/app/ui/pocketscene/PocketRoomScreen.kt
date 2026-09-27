@@ -124,6 +124,13 @@ private const val STEEL_FOOTPRINT = 4f
 private const val CARRIAGE_MODEL_ASSET = "models/carriage.glb"
 
 /**
+ * The window's pane, in a file of its own because its grime needs PNG's alpha (`build_carriage_glass()`).
+ * It is what makes the window a window: it reflects the lit compartment behind the viewer over the
+ * night, softly, as a night train's glass does.
+ */
+private const val CARRIAGE_GLASS_ASSET = "models/carriage_glass.glb"
+
+/**
  * **The reading lamp**, over the window's right-hand corner: warm, shaded downward onto the table,
  * and the room's one shadow caster. At rest it pools on the walnut and throws the floating
  * device's shadow onto it just below and in front — which is what makes the float read as a
@@ -223,6 +230,7 @@ fun PocketRoomScreen(
 
     val deviceModel = rememberModelInstance(modelLoader, POCKET_MODEL_ASSET)
     val carriageModel = rememberModelInstance(modelLoader, CARRIAGE_MODEL_ASSET)
+    val carriageGlass = rememberModelInstance(modelLoader, CARRIAGE_GLASS_ASSET)
     val ydpi = remember(context) { max(context.resources.displayMetrics.ydpi, 1f) }
     // How often the room is actually drawn — the CD room's cadence, reused by call. See onFrame.
     val cadence = remember(context) {
@@ -667,6 +675,16 @@ fun PocketRoomScreen(
                         isTouchable = false
                         isShadowCaster = false
                         isShadowReceiver = true
+                    }
+                )
+            }
+            carriageGlass?.let { glass ->
+                ModelNode(
+                    glass,
+                    apply = {
+                        isTouchable = false
+                        isShadowCaster = false
+                        isShadowReceiver = false
                     }
                 )
             }
