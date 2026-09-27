@@ -14,6 +14,7 @@ import dev.romainguy.kotlin.math.translation
 import io.github.sceneview.SceneView
 import io.github.sceneview.collision.Vector3
 import io.github.sceneview.math.Position
+import io.github.sceneview.math.Rotation
 import io.github.sceneview.node.CameraNode
 import io.github.sceneview.node.LightNode
 import io.github.sceneview.node.Node
@@ -92,6 +93,25 @@ internal class PocketDevice(
 
     var deviceNode: Node? = null
     var cameraNode: CameraNode? = null
+
+    // **In the hand and at rest** (PocketRest): the state, the move between, and the float.
+    private val rest = RestState()
+    private val flight = RestFlight()
+    /** The phone face up and still, from the room's sensor listener (FlatDetector). */
+    var lyingFlat = false
+    /** Where the camera stands for life size — worked out by the room from the screen's height. */
+    var handCameraZ = 0.33f
+    /** Half the frame's height per metre of distance, for this lens — the window's cat's eye. */
+    var frameScale = 0.24f
+    private var consumingTouch = false
+    private var floatTime = 0f
+    private val floatY = Wander(seed = 11, periodS = 3.2f)
+    private val floatYaw = Wander(seed = 12, periodS = 6.5f)
+    private val floatPitch = Wander(seed = 13, periodS = 4.4f)
+    private val floatRoll = Wander(seed = 14, periodS = 5.3f)
+    private val look = FloatArray(2)
+    /** How much of the phone's tilt turns the world: all of it in the hand, none on the table. */
+    private var turnWeight = 1f
     var windowMaterial: MaterialInstance? = null
     var tilt: TiltFilter? = null
     var indirectLight: com.google.android.filament.IndirectLight? = null
@@ -142,6 +162,24 @@ internal class PocketDevice(
 
     fun onTouch(event: MotionEvent): Boolean {
         val now = event.eventTime
+        if (event.actionMasked == MotionEvent.ACTION_DOWN) {
+            rest.touched(now)
+            // At rest, or on its way to or from the table, a touch only brings the device back —
+            // the wheel is not under the finger until the device is in the hand again. It lights
+            // the screen as any touch of the classic's did.
+            consumingTouch = flight.progress > 0f || flight.target > 0f
+            if (consumingTouch) {
+                flight.target = 0f
+                lastInputAt = now
+                backlight.value = true
+                return true
+            }
+        }
+        if (consumingTouch) {
+            val action = event.actionMasked
+            if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) consumingTouch = false
+            return true
+        }
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
                 if (!toWheel(event.x, event.y)) return false
@@ -191,7 +229,7 @@ internal class PocketDevice(
 
     /** A thumb on the wheel, or the wheel still moving from one: the room draws every vsync. */
     val interacting: Boolean
-        get() = gesture.isDown || rock.isMoving
+        get() = gesture.isDown || rock.isMoving || flight.isMoving
 
     fun onFrame(now: Long) {
         if (lastInputAt == 0L) lastInputAt = now
@@ -201,6 +239,23 @@ internal class PocketDevice(
 
         val dt = if (lastFrameAt == 0L) 0f else (now - lastFrameAt) / 1000f
         lastFrameAt = now
+
+        // In the hand or at rest, and the move between.
+        if (gesture.isDown) rest.touched(now)
+        val wasResting = flight.target > 0f
+        flight.target = if (rest.update(now, lyingFlat)) 1f else 0f
+        // Picked up off the table: the screen lights as it comes back to the hand, the way a
+        // phone raised to the face wakes — a touch already did.
+        if (wasResting && flight.target == 0f) {
+            lastInputAt = now
+            backlight.value = true
+        }
+        // The phone's tilt turns the world only while the device is in the hand: on the table it
+        // is not the phone any more, and a phone being put down swings the reflections round.
+        val turnTarget = if (lyingFlat) 0f else 1f - flight.camera
+        turnWeight += (turnTarget - turnWeight) * approach(TURN_FADE_RATE, dt)
+        flight.step(dt)
+        pose(dt)
         // Written only while something moves, and once more to leave it exactly at rest.
         if (rock.isMoving || rockWasMoving) {
             rock.step(dt)
@@ -290,14 +345,56 @@ internal class PocketDevice(
     }
 
     /**
+     * The camera and the device, between the hand and the table. **In the hand this is exactly the
+     * life-size pose** — the camera at [handCameraZ] looking straight ahead, the device at the
+     * origin turned by [DEVICE_PITCH_DEG] and [DEVICE_YAW_DEG] — and it is written every frame,
+     * which is also what trap 8 needs: SceneView's camera re-aims itself at the origin otherwise.
+     */
+    private fun pose(dt: Float) {
+        val camera = cameraNode ?: return
+        val node = deviceNode ?: return
+        val c = flight.camera
+        val d = flight.device
+
+        val cx = lerp(0f, RestPose.CAMERA_X, c)
+        val cy = lerp(0f, RestPose.CAMERA_Y, c)
+        val cz = lerp(handCameraZ, RestPose.CAMERA_Z, c)
+        // Aimed at the device itself, wherever the flight has it — straight ahead in the hand —
+        // so it stays framed through the move. Not at its float: the shot holds steady while the
+        // device drifts in it. (Aiming at where it would land left the lagging device high in the
+        // frame mid-flight, over the window sill.)
+        lookAngles(
+            cx, cy, cz,
+            lerp(0f, RestPose.DEVICE_X, d), lerp(0f, RestPose.DEVICE_Y, d), lerp(0f, RestPose.DEVICE_Z, d),
+            look
+        )
+        camera.position = Position(cx, cy, cz)
+        camera.rotation = Rotation(look[0], look[1], 0f)
+        windowMaterial?.setParameter("frame", (cz - NightWindow.PLANE_Z_M) * frameScale)
+
+        // The float: a wander that fades in as the device leaves the hand and out as it returns.
+        if (d > 0f) floatTime += dt
+        node.position = Position(
+            lerp(0f, RestPose.DEVICE_X, d),
+            lerp(0f, RestPose.DEVICE_Y, d) + RestPose.FLOAT_Y_M * floatY.at(floatTime) * d,
+            lerp(0f, RestPose.DEVICE_Z, d)
+        )
+        node.rotation = Rotation(
+            lerp(DEVICE_PITCH_DEG, RestPose.DEVICE_PITCH_DEG + RestPose.FLOAT_PITCH_DEG * floatPitch.at(floatTime), d),
+            lerp(DEVICE_YAW_DEG, RestPose.DEVICE_YAW_DEG + RestPose.FLOAT_YAW_DEG * floatYaw.at(floatTime), d),
+            RestPose.FLOAT_ROLL_DEG * floatRoll.at(floatTime) * d
+        )
+    }
+
+    /**
      * The inverse of the phone's tilt, applied to the world: `Ry(-yaw) · Rx(-pitch)`. Rotating the
      * environment the other way is the same, to the eye, as the device turning inside a still
      * room — which is what the phone in the hand is doing.
      */
     private fun turnWorld() {
         val t = tilt ?: return
-        val p = t.pitch
-        val y = t.yaw
+        val p = t.pitch * turnWeight
+        val y = t.yaw * turnWeight
         if (p == turnPitch && y == turnYaw) return
         turnPitch = p
         turnYaw = y
@@ -705,5 +802,7 @@ internal class PocketDevice(
         const val SEEK_RATE_FAST = 16f
         const val SCRUB_SEEK_MS = 150L
         const val SCRUB_STEPS_PER_TRACK = 96L
+        /** How quickly the tilt's turn of the world fades out on the table and back in the hand, 1/s. */
+        const val TURN_FADE_RATE = 3f
     }
 }

@@ -19,11 +19,13 @@ object NightWindow {
     const val PLANE_Z_M = -0.55f
 
     /**
-     * The picture's size. The frame at that distance is ~0.41m tall and ~0.19m wide on a
-     * 19.5:9 phone; this covers it with room for the phone to be tilted later.
+     * The picture's size. In the hand the frame at that distance is ~0.41m tall and ~0.19m wide on
+     * a 19.5:9 phone; at rest the camera pulls back and the whole of the carriage's window shows —
+     * its opening is 0.80 × 0.55m, 5cm in front of this — so the picture is wider than the opening
+     * with room to spare for the camera's parallax.
      */
-    const val PLANE_W_M = 0.50f
-    const val PLANE_H_M = 0.70f
+    const val PLANE_W_M = 1.0f
+    const val PLANE_H_M = 0.8f
 
     /**
      * How fast the train goes, m/s — about 58km/h. A calm speed, on purpose: at intercity speed

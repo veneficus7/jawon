@@ -327,7 +327,13 @@ One thing at a time, checked on the owner's phone between each (the working agre
    fast it goes:
    1. **The two states and a blockout of the carriage** — the camera pulling back, the table and
       the window frame, the device levitating with a real shadow from the reading lamp, and the
-      flight between the table and the hand, reversible from any point.
+      flight between the table and the hand, reversible from any point. **Built (2026-09-27) and
+      running on the owner's phone**: `PocketRest.kt` (the state, the flight, the float, the
+      put-down detector — tested), `carriage.glb` (walnut table, mahogany boards, frame, sill —
+      `build_carriage()`), and a shadow-casting reading lamp over the window's corner at 15,000cd,
+      which is what this room's exposure asks of a lamp that pools on dark wood. Lying on the
+      desk, the phone went to rest by itself and floated the device over the table. **Cost at
+      rest**: 0.50 of a core, GPU 443–525MHz, against 342–443 in the hand.
    2. **The glass and what passes it** — rain and grime (a hand-written material, `docs/realism.md`
       §3), the carriage and the device's screen reflected in the pane, and events outside:
       tunnels, bridges, a level crossing, showers, and **stations**, tied to pause and play.

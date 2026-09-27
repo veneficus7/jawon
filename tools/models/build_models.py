@@ -1586,6 +1586,258 @@ def build_pocket_print(wheel_z):
     return obj
 
 
+# ---------------------------------------------------------------------------
+# The pocket player's carriage — the room around the device (docs/formats.md §4).
+# ---------------------------------------------------------------------------
+
+# A classic night train's compartment, on the owner's call (2026-09-27): a varnished walnut
+# table under the window, mahogany panelling, a rounded window frame and its sill.
+#
+# **Built in the room's own coordinates, not the object's**: app Y up, +Z toward the viewer,
+# the device held at the origin. Everything is placed so the life-size view does not change —
+# the table top is 30cm under the hand and the window opening stands wider than anything the
+# life-size frame can see through it — and only the view at rest, pulled back, reveals it.
+# `PocketRoomScreen` agrees with these numbers; the exported bounds in docs/models.md are the
+# check.
+CARRIAGE_TABLE_TOP_Y = -0.30
+CARRIAGE_TABLE_W = 0.70
+CARRIAGE_TABLE_FRONT_Z = -0.05
+CARRIAGE_TABLE_T = 0.028
+CARRIAGE_TABLE_R = 0.025
+CARRIAGE_WALL_Z = -0.50          # the panelling's face; the night outside is drawn behind it
+CARRIAGE_WALL_T = 0.02
+CARRIAGE_BOARD_W = 0.20          # panelling boards; the window's edges fall on board edges
+CARRIAGE_BOARD_GAP = 0.003
+CARRIAGE_BACKING_T = 0.01
+CARRIAGE_WALL_HALF_W = 1.2
+CARRIAGE_WALL_BOTTOM_Y = -0.95
+CARRIAGE_WALL_TOP_Y = 0.95
+CARRIAGE_WINDOW_HALF_W = 0.40
+CARRIAGE_WINDOW_BOTTOM_Y = -0.25
+CARRIAGE_WINDOW_TOP_Y = 0.30
+CARRIAGE_FRAME_W = 0.04          # the frame's face, all round the opening
+CARRIAGE_FRAME_DEPTH = 0.03      # how far it stands proud of the panelling
+CARRIAGE_FRAME_R = 0.07          # the opening's rounded corners
+CARRIAGE_SILL_DEPTH = 0.06
+CARRIAGE_SILL_T = 0.015
+
+
+def rounded_rect_xy(bm, w, d, r, z, cx=0.0, cy=0.0, arc=8):
+    """A closed rounded-rectangle loop in Blender's XY plane at height [z] — a tabletop's outline."""
+    hw, hd = w / 2.0 - r, d / 2.0 - r
+    verts = []
+    for ccx, ccy, a0 in ((hw, hd, 0.0), (-hw, hd, 90.0), (-hw, -hd, 180.0), (hw, -hd, 270.0)):
+        for i in range(arc + 1):
+            a = math.radians(a0 + 90.0 * i / arc)
+            verts.append(bm.verts.new((cx + ccx + r * math.cos(a), cy + ccy + r * math.sin(a), z)))
+    edges = [bm.edges.new((verts[i], verts[(i + 1) % len(verts)])) for i in range(len(verts))]
+    return verts, edges
+
+
+def _uvs_along(obj, axis_u, u0, u1, axis_v, v0, v1):
+    """Planar UVs from two Blender axes ("x", "y" or "z"), normalised over a rectangle."""
+    mesh = obj.data
+    if not mesh.uv_layers:
+        mesh.uv_layers.new(name="UVMap")
+    uv = mesh.uv_layers.active.data
+    for poly in mesh.polygons:
+        for li in poly.loop_indices:
+            co = mesh.vertices[mesh.loops[li].vertex_index].co
+            uv[li].uv = ((getattr(co, axis_u) - u0) / (u1 - u0), (getattr(co, axis_v) - v0) / (v1 - v0))
+
+
+def wood_grain(w, h, seed, dark, light, rings=140.0, drift=0.12):
+    """
+    Varnished hardwood's colour, generated. Linear RGB in, an h x w x 3 array out; the grain runs
+    along the width.
+
+    **Fine and nearly straight, because that is what sawn hardwood is.** The first version bent
+    the rings by most of the texture's height and drew a ring every centimetre: in a render it
+    read as a cartoon of wood, swirls the size of a hand. Rings here are a few millimetres apart
+    at the sizes these are mapped to, and drift across the board by [drift] of its width over its
+    length — the gentle arches of a flat-sawn board — with a finer wander on top.
+    """
+    np = _np()
+    rng = np.random.default_rng(seed)
+    v = np.linspace(0.0, 1.0, h, endpoint=False)[:, None]
+    warp = (_fbm(h, w, 2, 3, rng, aspect=1.5) - 0.5) * drift
+    wander = (_fbm(h, w, 8, 2, rng, aspect=4.0) - 0.5) * (1.5 / rings)
+    phase = (v + warp + wander) * rings
+    ring = 0.5 + 0.5 * np.cos(2.0 * math.pi * phase)
+    ring = ring ** 3.0                                   # thin dark latewood lines, broad earlywood
+    figure = _fbm(h, w, 4, 3, rng, aspect=0.35)          # broad bands of the figure
+    pores = _fbm(h, w, 64, 2, rng, aspect=0.08)          # fine streaks along the grain
+    t = np.clip(0.60 * (1.0 - ring) + 0.22 * figure + 0.18 * pores, 0.0, 1.0)
+    dark = np.array(dark)[None, None, :]
+    light = np.array(light)[None, None, :]
+    return dark + (light - dark) * t[..., None]
+
+
+def _colour_image(name, rgb):
+    """A packed sRGB colour image from a linear h x w x 3 array."""
+    np = _np()
+    h, w, _ = rgb.shape
+    srgb = np.where(rgb <= 0.0031308, rgb * 12.92, 1.055 * np.power(np.clip(rgb, 0.0, 1.0), 1.0 / 2.4) - 0.055)
+    rgba = np.ones((h, w, 4), dtype=np.float32)
+    rgba[..., :3] = np.clip(srgb, 0.0, 1.0)
+    img = bpy.data.images.new(name, width=w, height=h, alpha=False)
+    img.pixels.foreach_set(rgba.ravel())
+    img.file_format = "JPEG"
+    img.pack()
+    return img
+
+
+def _use_base_colour(mat, image):
+    nt = mat.node_tree
+    tex = nt.nodes.new("ShaderNodeTexImage")
+    tex.image = image
+    nt.links.new(tex.outputs["Color"], nt.nodes["Principled BSDF"].inputs["Base Color"])
+
+
+def build_carriage():
+    """
+    The compartment around the pocket player, one object per material: the table, the
+    panelling's boards and the dark backing behind them, the window frame and its sill.
+
+    The panelling is four slabs round the window rather than one with a hole cut in it, for
+    the reason the device's plate is filled rather than cut (docs/models.md): at these sizes a
+    boolean leaves slivers, and a slab cannot.
+    """
+    objects = []
+
+    # ---- the table: varnished walnut, under the window --------------------------------------
+    table = new_mesh_object("carriage_table")
+    bm = bmesh.new()
+    depth = CARRIAGE_TABLE_FRONT_Z - CARRIAGE_WALL_Z
+    centre_y = az((CARRIAGE_TABLE_FRONT_Z + CARRIAGE_WALL_Z) / 2.0)
+    top_z = CARRIAGE_TABLE_TOP_Y
+    _, e = rounded_rect_xy(bm, CARRIAGE_TABLE_W, depth, CARRIAGE_TABLE_R, top_z, cy=centre_y)
+    bmesh.ops.contextual_create(bm, geom=e)
+    ex = bmesh.ops.extrude_face_region(bm, geom=[f for f in bm.faces])
+    moved = [v for v in ex["geom"] if isinstance(v, bmesh.types.BMVert)]
+    bmesh.ops.translate(bm, verts=moved, vec=(0.0, 0.0, -CARRIAGE_TABLE_T))
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    bm.to_mesh(table.data)
+    bm.free()
+    walnut = principled(
+        # Walnut under a varnish: the wood itself a little rough, the varnish over it glossy,
+        # which is what gives a lamp a soft pool on the table and a sharp glint on its edge.
+        "CarriageWalnut", base_color=(0.06, 0.03, 0.017), metallic=0.0,
+        roughness=0.42, coat=0.65, coat_roughness=0.09,
+    )
+    _use_base_colour(walnut, _colour_image(
+        "carriage_walnut", wood_grain(2048, 1024, 21, (0.030, 0.014, 0.007), (0.105, 0.052, 0.026))))
+    table.data.materials.append(walnut)
+    _uvs_along(table, "x", -CARRIAGE_TABLE_W / 2.0, CARRIAGE_TABLE_W / 2.0,
+               "y", az(CARRIAGE_TABLE_FRONT_Z), az(CARRIAGE_WALL_Z))
+    finish(table, bevel_width=0.003, harden=True)
+    objects.append(table)
+
+    # ---- the panelling, round the window: boards over a dark backing -------------------------
+    # **Boards, not a sheet.** Panelling is narrow boards with hairline gaps between them, each
+    # cut from a different part of the log; one sheet of grain the size of the wall read as
+    # veneer on a cupboard. The boards run floor to ceiling in 20cm columns, broken only by the
+    # window, and each samples its own band of the grain. The backing behind them is what the
+    # gaps show — without it they would show the night outside.
+    hw = CARRIAGE_WALL_HALF_W
+    ow = CARRIAGE_WINDOW_HALF_W
+    lo, hi = CARRIAGE_WINDOW_BOTTOM_Y, CARRIAGE_WINDOW_TOP_Y
+    bottom, top = CARRIAGE_WALL_BOTTOM_Y, CARRIAGE_WALL_TOP_Y
+    slabs = ((-hw, -ow, bottom, top), (ow, hw, bottom, top), (-ow, ow, bottom, lo), (-ow, ow, hi, top))
+
+    backing = new_mesh_object("carriage_backing")
+    bm = bmesh.new()
+    by = az(CARRIAGE_WALL_Z - CARRIAGE_WALL_T - CARRIAGE_BACKING_T / 2.0)
+    for x0, x1, y0, y1 in slabs:
+        box(bm, (x0 + x1) / 2.0, by, (y0 + y1) / 2.0, x1 - x0, CARRIAGE_BACKING_T, y1 - y0)
+    bm.to_mesh(backing.data)
+    bm.free()
+    backing.data.materials.append(principled(
+        "CarriageBacking", base_color=(0.012, 0.008, 0.006), metallic=0.0, roughness=0.9,
+    ))
+    finish(backing, bevel=False)
+    objects.append(backing)
+
+    wall = new_mesh_object("carriage_wall")
+    bm = bmesh.new()
+    wy = az(CARRIAGE_WALL_Z - CARRIAGE_WALL_T / 2.0)
+    boards = []
+    columns = int(round(2.0 * hw / CARRIAGE_BOARD_W))
+    for i in range(columns):
+        x0 = -hw + i * CARRIAGE_BOARD_W
+        x1 = x0 + CARRIAGE_BOARD_W
+        spans = ((bottom, lo), (hi, top)) if (x0 >= -ow - 1e-6 and x1 <= ow + 1e-6) else ((bottom, top),)
+        for y0, y1 in spans:
+            boards.append((x0 + CARRIAGE_BOARD_GAP / 2.0, x1 - CARRIAGE_BOARD_GAP / 2.0, y0, y1))
+    for x0, x1, y0, y1 in boards:
+        box(bm, (x0 + x1) / 2.0, wy, (y0 + y1) / 2.0, x1 - x0, CARRIAGE_WALL_T, y1 - y0)
+    bm.to_mesh(wall.data)
+    bm.free()
+    mahogany = principled(
+        "CarriageMahogany", base_color=(0.07, 0.028, 0.016), metallic=0.0,
+        roughness=0.5, coat=0.35, coat_roughness=0.18,
+    )
+    _use_base_colour(mahogany, _colour_image(
+        "carriage_mahogany", wood_grain(2048, 1024, 22, (0.040, 0.014, 0.008), (0.100, 0.040, 0.022))))
+    wall.data.materials.append(mahogany)
+    # Grain upright, the full height of the wall along the texture's width; across it, each board
+    # takes its own quarter-height band of the texture, chosen from a fixed seed.
+    band_rng = __import__("random").Random(23)
+    offsets = [band_rng.random() * 0.75 for _ in boards]
+    mesh = wall.data
+    mesh.uv_layers.new(name="UVMap")
+    uv = mesh.uv_layers.active.data
+    for poly in mesh.polygons:
+        cx = poly.center.x
+        cz = poly.center.z
+        k = next((j for j, (x0, x1, y0, y1) in enumerate(boards)
+                  if x0 - 1e-4 <= cx <= x1 + 1e-4 and y0 - 1e-4 <= cz <= y1 + 1e-4), 0)
+        x0, x1, _, _ = boards[k]
+        for li in poly.loop_indices:
+            co = mesh.vertices[mesh.loops[li].vertex_index].co
+            uv[li].uv = ((co.z - bottom) / (top - bottom), offsets[k] + 0.25 * (co.x - x0) / (x1 - x0))
+    finish(wall, bevel_width=0.0015)
+    objects.append(wall)
+
+    # ---- the window frame: a rounded ring standing proud of the panelling ---------------------
+    frame = new_mesh_object("carriage_frame")
+    bm = bmesh.new()
+    face_y = az(CARRIAGE_WALL_Z + CARRIAGE_FRAME_DEPTH)
+    cz = (lo + hi) / 2.0
+    ww, wh = 2.0 * ow, hi - lo
+    fw = CARRIAGE_FRAME_W
+    _, outer = rounded_rect(bm, ww + 2.0 * fw, wh + 2.0 * fw, CARRIAGE_FRAME_R + fw, face_y, cz=cz)
+    _, inner = rounded_rect(bm, ww, wh, CARRIAGE_FRAME_R, face_y, cz=cz)
+    bmesh.ops.triangle_fill(bm, use_beauty=True, use_dissolve=False, edges=outer + inner)
+    ex = bmesh.ops.extrude_face_region(bm, geom=[f for f in bm.faces])
+    moved = [v for v in ex["geom"] if isinstance(v, bmesh.types.BMVert)]
+    bmesh.ops.translate(bm, verts=moved, vec=(0.0, -az(CARRIAGE_FRAME_DEPTH + CARRIAGE_WALL_T), 0.0))
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    bm.to_mesh(frame.data)
+    bm.free()
+    frame_wood = principled(
+        # The same mahogany, French-polished: the frame is what the hand touches.
+        "CarriageFrame", base_color=(0.06, 0.024, 0.014), metallic=0.0,
+        roughness=0.35, coat=0.7, coat_roughness=0.07,
+    )
+    frame.data.materials.append(frame_wood)
+    finish(frame, bevel_width=0.004, harden=True)
+    objects.append(frame)
+
+    # ---- the sill, a ledge under the glass ------------------------------------------------------
+    sill = new_mesh_object("carriage_sill")
+    bm = bmesh.new()
+    box(bm, 0.0, az(CARRIAGE_WALL_Z + CARRIAGE_SILL_DEPTH / 2.0), lo - CARRIAGE_SILL_T / 2.0,
+        ww, CARRIAGE_SILL_DEPTH, CARRIAGE_SILL_T)
+    bm.to_mesh(sill.data)
+    bm.free()
+    sill.data.materials.append(frame_wood)
+    finish(sill, bevel_width=0.003)
+    objects.append(sill)
+
+    return objects
+
+
 def mesh_add(target, source):
     """Fold `source` into `target` and free it. bmesh has no union operator."""
     tmp = bpy.data.meshes.new("tmp")
@@ -1857,7 +2109,7 @@ def build_disc_shards():
     return objects
 
 
-def export(objects, filename):
+def export(objects, filename, image_format="AUTO"):
     bpy.ops.object.select_all(action="DESELECT")
     for obj in objects:
         obj.select_set(True)
@@ -1875,6 +2127,9 @@ def export(objects, filename):
         export_tangents=True,   # anisotropy needs a tangent frame
         export_texcoords=True,
         export_materials="EXPORT",
+        # JPEG for large colour maps (the carriage's wood): lossy is fine for albedo, and a
+        # 2048-wide grain is megabytes as PNG. Everything else keeps its own format.
+        export_image_format=image_format,
         export_extras=False,
     )
     return path
@@ -1944,6 +2199,11 @@ def main():
     if not skip("pocket.glb"):
         clear_scene()
         paths.append(export(build_pocket(), "pocket.glb"))
+
+    # The pocket player's carriage: the room around it, in the room's own coordinates.
+    if not skip("carriage.glb"):
+        clear_scene()
+        paths.append(export(build_carriage(), "carriage.glb", image_format="JPEG"))
 
     # Exported together, unlike the case parts: these eight are one object that
     # has come apart, the app wants them all or none, and it addresses them by

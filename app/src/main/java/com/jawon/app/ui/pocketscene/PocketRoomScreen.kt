@@ -81,8 +81,8 @@ private const val KEY_CONE_OUTER_RAD = 0.80f
  * *is* the device here, so the hand's real motion already arrives through the gyro (TiltFilter).
  * A sway would only fake what the hand does, or move a phone lying still on a table.
  */
-private const val DEVICE_PITCH_DEG = -6f
-private const val DEVICE_YAW_DEG = 15f
+internal const val DEVICE_PITCH_DEG = -6f
+internal const val DEVICE_YAW_DEG = 15f
 
 /** How bright the night outside is drawn, relative to the material's own tuning. */
 private const val WINDOW_GAIN = 0.8f
@@ -115,6 +115,30 @@ private const val POLISHED_STEEL_MATERIAL_ASSET = "materials/polished_steel.fila
 private val STEEL_BASE_COLOUR = floatArrayOf(0.560f, 0.570f, 0.580f)
 private const val STEEL_ROUGHNESS = 0.055f
 private const val STEEL_FOOTPRINT = 4f
+
+/**
+ * The compartment around the device — table, panelling, window frame, sill — in the room's own
+ * coordinates (`build_carriage()`). Placed so the life-size view does not change: only the view at
+ * rest, pulled back, shows it.
+ */
+private const val CARRIAGE_MODEL_ASSET = "models/carriage.glb"
+
+/**
+ * **The reading lamp**, over the window's right-hand corner: warm, shaded downward onto the table,
+ * and the room's one shadow caster. At rest it pools on the walnut and throws the floating
+ * device's shadow onto it just below and in front — which is what makes the float read as a
+ * float. In the hand it is above and behind the device, and lays a line along its top edge.
+ *
+ * **Placed for the shadow.** Beside the window, where it was first, the float's shadow fell 15cm
+ * to the side and out of the frame. **And bright for this exposure**: the room is exposed for the
+ * daylight-level values the metal needs (`PocketLighting`), so a lamp that pools visibly on dark
+ * walnut is in the tens of thousands of candela, not the hundreds — at 800 the table was black.
+ */
+private val LAMP_POSITION = floatArrayOf(0.30f, 0.34f, -0.44f)
+private val LAMP_TARGET = floatArrayOf(0.0f, -0.30f, -0.25f)
+private const val LAMP_CANDELA = 15_000f
+private const val LAMP_CONE_INNER_RAD = 0.5f
+private const val LAMP_CONE_OUTER_RAD = 1.0f
 
 /** Where the device's model lives. Eight objects in one file — see `docs/models.md`. */
 const val POCKET_MODEL_ASSET = "models/pocket.glb"
@@ -198,6 +222,7 @@ fun PocketRoomScreen(
     }
 
     val deviceModel = rememberModelInstance(modelLoader, POCKET_MODEL_ASSET)
+    val carriageModel = rememberModelInstance(modelLoader, CARRIAGE_MODEL_ASSET)
     val ydpi = remember(context) { max(context.resources.displayMetrics.ydpi, 1f) }
     // How often the room is actually drawn — the CD room's cadence, reused by call. See onFrame.
     val cadence = remember(context) {
@@ -490,6 +515,8 @@ fun PocketRoomScreen(
     // Listening only while the room is on screen: a sensor left running in the background is
     // battery for nothing.
     val tilt = remember { TiltFilter() }
+    // And whether it has been put down on a table — the device's cue to rest (PocketRest).
+    val flat = remember { FlatDetector() }
     LifecycleResumeEffect(context) {
         val sensors = context.getSystemService(SensorManager::class.java)
         val rotation = sensors?.getDefaultSensor(Sensor.TYPE_GAME_ROTATION_VECTOR)
@@ -502,11 +529,14 @@ fun PocketRoomScreen(
                 lastNs = event.timestamp
                 // getQuaternionFromVector writes (w, x, y, z).
                 tilt.update(quat[1], quat[2], quat[3], quat[0], dt)
+                device.lyingFlat = flat.update(quat[1], quat[2], quat[3], quat[0], dt)
             }
 
             override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) = Unit
         }
         tilt.reset()
+        flat.reset()
+        device.lyingFlat = false
         if (sensors != null && rotation != null) {
             sensors.registerListener(listener, rotation, SensorManager.SENSOR_DELAY_GAME)
         }
@@ -529,6 +559,8 @@ fun PocketRoomScreen(
         val sceneHeightM = constraints.maxHeight / ydpi * 0.0254f
         cameraNode.position = Position(0f, 0f, sceneHeightM * FOCAL_LENGTH_MM / SENSOR_HEIGHT_MM)
         device.cameraNode = cameraNode
+        device.handCameraZ = sceneHeightM * FOCAL_LENGTH_MM / SENSOR_HEIGHT_MM
+        device.frameScale = SENSOR_HEIGHT_MM / 2f / FOCAL_LENGTH_MM
 
         SceneView(
             modifier = Modifier.fillMaxSize(),
@@ -624,12 +656,36 @@ fun PocketRoomScreen(
                 }
             }
             device.windowMaterial = outside
-            // Where the frame's edge falls on the window, for the lens's cat's eye: half the
-            // frame's height at the plane's distance, for this lens.
-            SideEffect {
-                val toWindow = cameraNode.position.z - NightWindow.PLANE_Z_M
-                outside.setParameter("frame", toWindow * SENSOR_HEIGHT_MM / 2f / FOCAL_LENGTH_MM)
+            // Where the frame's edge falls on the window, for the lens's cat's eye, is written by
+            // the device each frame — the camera moves between the hand and the table.
+            outside.setParameter("frame", device.handCameraZ.minus(NightWindow.PLANE_Z_M) * device.frameScale)
+            // **The carriage**, and the lamp beside its window.
+            carriageModel?.let { carriage ->
+                ModelNode(
+                    carriage,
+                    apply = {
+                        isTouchable = false
+                        isShadowCaster = false
+                        isShadowReceiver = true
+                    }
+                )
             }
+            LightNode(
+                type = LightManager.Type.SPOT,
+                position = Position(LAMP_POSITION[0], LAMP_POSITION[1], LAMP_POSITION[2]),
+                direction = Direction(
+                    LAMP_TARGET[0] - LAMP_POSITION[0],
+                    LAMP_TARGET[1] - LAMP_POSITION[1],
+                    LAMP_TARGET[2] - LAMP_POSITION[2]
+                ),
+                apply = {
+                    color(1.0f, 0.74f, 0.48f)
+                    intensityCandela(LAMP_CANDELA)
+                    spotLightCone(LAMP_CONE_INNER_RAD, LAMP_CONE_OUTER_RAD)
+                    falloff(3f)
+                    castShadows(true)
+                }
+            )
             PlaneNode(
                 size = Size(NightWindow.PLANE_W_M, NightWindow.PLANE_H_M, 0f),
                 normal = Direction(z = 1f),
@@ -653,7 +709,8 @@ fun PocketRoomScreen(
                         instance,
                         apply = {
                             isTouchable = false
-                            isShadowCaster = false
+                            // Its shadow on the table is what makes the float at rest a float.
+                            isShadowCaster = true
                             isShadowReceiver = false
                             device.bindParts(renderableNodes, steel)
                         }
