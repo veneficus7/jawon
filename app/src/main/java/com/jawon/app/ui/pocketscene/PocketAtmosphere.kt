@@ -56,6 +56,11 @@ object PocketAtmosphere {
         // as depth — but lit only by the environment they get no shadow at all, and read as
         // lines drawn on a flat face. A radius of a few millimetres puts a contact shade in
         // exactly those places and nowhere else on an object this size.
+        //
+        // **At half resolution, measured.** Full resolution held the owner's phone's GPU at
+        // 607–660MHz idle on the main menu; half, 342–443MHz, with every luminance box on the face
+        // — the wheel's recess included — within 0.2 of 255. The radius is ~70 pixels at life
+        // size, far above anything half resolution can lose.
         view.ambientOcclusionOptions = View.AmbientOcclusionOptions().apply {
             enabled = true
             radius = AO_RADIUS_M
@@ -63,7 +68,7 @@ object PocketAtmosphere {
             power = AO_POWER
             bias = AO_BIAS_M
             quality = View.QualityLevel.HIGH
-            resolution = 1.0f
+            resolution = 0.5f
             upsampling = View.QualityLevel.HIGH
             lowPassFilter = View.QualityLevel.MEDIUM
         }
