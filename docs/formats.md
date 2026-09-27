@@ -255,7 +255,12 @@ One thing at a time, checked on the owner's phone between each (the working agre
    of points — worked out from where each part of the bead looks, so a line of light runs along
    every visible edge and the lower corners no longer dissolve into the dark. The steel wears its
    own material so those lines stay lines instead of breaking into dashes (ENGINEERING.md, trap 34).
-   Not yet judged on the phone.
+   Not yet judged on the phone. **And judge the lower face on the phone, never the AVD**: at
+   rest the AVD renders the front plate beside the wheel at ~2 of 255 where the phone's last
+   screenshot read 13, with a gentler slope all the way down (44 → 2 against 32 → 7). A red
+   probe showed the reflection geometry is the same on both — the lower face looks at eye level
+   behind your right shoulder, where the carriage has little that is bright — so the difference
+   is in how the two render it, and lighting tuned there would be tuned to the wrong device.
    **And the phone's tilt turns the world** (`TiltFilter`): the environment and the passing
    lamps rotate against how far the phone has just been tilted, so reflections slide across
    the glass and the edge — first-order, twice the tilt, as a turned mirror's do. The window
