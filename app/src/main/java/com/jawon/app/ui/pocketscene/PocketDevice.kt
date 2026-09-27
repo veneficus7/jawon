@@ -42,6 +42,12 @@ private const val PULL_BACK = 0.8f
  */
 internal const val PLATFORM_LIGHT_CANDELA = 8_000f
 
+/**
+ * How much of the carriage's ambient goes in a tunnel: the window is a good part of what lights
+ * the device — its polished side is a picture of it — and in a tunnel there is only the wall.
+ */
+private const val TUNNEL_AMBIENT_DIP = 0.3f
+
 /** What the window is told when there is no station about: far past anything it draws. */
 internal const val NO_STATION_M = 10_000f
 
@@ -166,6 +172,8 @@ internal class PocketDevice(
     /** The platform's light coming in at the window, while the train stands at one. */
     var platformLightNode: io.github.sceneview.node.LightNode? = null
     private var platformLightShown = -1f
+    private var tunnelShown = -1f
+    private var tunnelLampsSeen = 0L
 
     private val train = TrainMotion()
     private val passing = PassingLamps()
@@ -377,6 +385,26 @@ internal class PocketDevice(
                 if (ahead.isNaN()) NO_STATION_M else ahead,
                 (train.time % STATION_CLOCK_WRAP_S).toFloat()
             )
+            val entry = train.tunnelEntryAhead
+            val exit = train.tunnelExitAhead
+            outside.setParameter(
+                "tunnel",
+                if (entry.isNaN()) NO_STATION_M else entry,
+                if (exit.isNaN()) NO_STATION_M else exit,
+                train.speed()
+            )
+        }
+        // In a tunnel the window's light is gone from the carriage, and its lamps go by instead.
+        val deep = train.tunnel
+        if (deep != tunnelShown) {
+            indirectLight?.intensity = PocketLighting.AMBIENT_INTENSITY * (1f - TUNNEL_AMBIENT_DIP * deep)
+            tunnelShown = deep
+        }
+        if (train.tunnelLampsPassed != tunnelLampsSeen) {
+            repeat((train.tunnelLampsPassed - tunnelLampsSeen).coerceAtMost(2L).toInt()) {
+                passing.startTunnelLamp(train.speed())
+            }
+            tunnelLampsSeen = train.tunnelLampsPassed
         }
         // And the platform's cold light, in at the window while the train is alongside one —
         // written only when it changes, and off by intensity (trap 24).
@@ -392,7 +420,7 @@ internal class PocketDevice(
         turnWorld()
 
         // And the lamps out there that land on the device, keeping pace with the train.
-        passing.advance(dt, pace = train.speed() / NightWindow.BASE_SPEED_M_S)
+        passing.advance(dt, pace = train.speed() / NightWindow.BASE_SPEED_M_S, quiet = deep > 0.5f)
         val m = worldTurn
         passing.lamps.forEachIndexed { i, lamp ->
             val node = lampNodes[i] ?: return@forEachIndexed

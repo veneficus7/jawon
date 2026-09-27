@@ -25,7 +25,11 @@ additive, drawn from a two-channel mask) — and two in the pocket player's:
   very little**: the screen is portrait, so only about ±0.1m of the picture is seen across — at
   rest x −0.08…+0.15, y −0.27…+0.01; in the hand, the margins round the device. The first two
   layouts were drawn for the window's 0.8m opening and put everything out of frame; a numpy port
-  of the station, cropped to those two views, is what found where things had to go.
+  of the station, cropped to those two views, is what found where things had to go. **And the
+  tunnels** (`tunnel`: the mouth and the exit ahead of the window, and the speed): the wall close
+  outside, near black, two cable runs, and its sodium lamps — drawn as the streak a 1/60s shutter
+  makes of each at speed, the same light spread along the distance it moved, and as a disc at a
+  crawl. At 16m/s a lamp crosses the frame in about a frame, which is what a tunnel's lights do.
 - `materials/polished_steel.mat` → `assets/materials/polished_steel.filamat`, the device's steel
   shell and the bead round its face, put on that one part in place of the glTF's own material
   when the model loads. It exists for one line of shader: **roughness floored at the pixel's

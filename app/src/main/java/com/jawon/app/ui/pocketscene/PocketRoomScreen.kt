@@ -750,8 +750,9 @@ fun PocketRoomScreen(
                     setParameter("size", NightWindow.PLANE_W_M, NightWindow.PLANE_H_M)
                     setParameter("scroll", 0f, 0f, 0f, 0f)
                     setParameter("bob", 0f, 0f)
-                    // No station until the train says so: an unset one would be at the window.
+                    // No station, no tunnel, until the train says so: unset, both would be at the window.
                     setParameter("station", NO_STATION_M, 0f)
+                    setParameter("tunnel", NO_STATION_M, NO_STATION_M, 0f)
                     // A little under full: the lights outside are the room, and the device in
                     // front of them is the subject — at 1.0 they competed with it.
                     setParameter("gain", WINDOW_GAIN)

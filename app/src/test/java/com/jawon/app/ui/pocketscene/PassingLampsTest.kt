@@ -102,4 +102,34 @@ class PassingLampsTest {
         assertTrue(behindYou > behindDevice)
         assertTrue(behindDevice > 0)
     }
+
+    @Test
+    fun `standing at a platform, nothing goes by - and nothing is saved up for the pull-away`() {
+        val lamps = PassingLamps(seed = 5L)
+        repeat(60 * 60) { lamps.advance(1f / 60f, pace = 0f) }
+        assertEquals(0, lamps.lamps.count { it.active })
+        // Moving again, they come one at a time, not the pool at once.
+        lamps.advance(1f / 60f, pace = 1f)
+        assertTrue(lamps.lamps.count { it.active } <= 1)
+    }
+
+    @Test
+    fun `in a tunnel the night's lamps stop, and its own go by fast`() {
+        val lamps = PassingLamps(seed = 5L)
+        repeat(30 * 60) {
+            lamps.advance(1f / 60f, quiet = true)
+            assertEquals(0, lamps.lamps.count { it.active })
+        }
+        lamps.startTunnelLamp(trainSpeed = 16f)
+        var lit = 0
+        var peak = 0f
+        repeat(60) {
+            lamps.advance(1f / 60f, quiet = true)
+            if (lamps.lamps.any { it.active }) lit++
+            peak = maxOf(peak, lamps.lamps.maxOf { it.intensity })
+        }
+        // Gone in well under a second, and brighter than the night's own.
+        assertTrue("lit for $lit frames", lit in 5..40)
+        assertTrue("peak $peak", peak > 1_100f)
+    }
 }

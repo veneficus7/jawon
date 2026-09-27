@@ -364,6 +364,16 @@ One thing at a time, checked on the owner's phone between each (the working agre
       with the platform's middle at 0.0); **the look of the stop and the moving platform is still
       the owner's to judge on his phone**, as is the cost of the platform's shader (A/B on the AVD
       moved nothing measurable).
+      **Tunnels, the same day, on the AVD** (`NightLine`): a few hundred metres long, a couple of
+      kilometres apart, the first a way down the line so the room never opens in one. Inside, the
+      window is the wall with its lamps streaking by, the carriage's ambient dips by 30%, the
+      night's lamps stop and the tunnel's sweep through instead, one per lamp the window passes:
+      bright from behind the device — on the table and the device's edges, which is where they
+      read at rest — and at the night's own level from behind you, because at 5,000cd those
+      washed the whole black front beige in the hand. A pause in a tunnel runs out of it first
+      and stands at a platform clear of the mouth; a tunnel the stop would run into is taken off
+      the line before it is reached, where nobody can see it go. Seen through on the AVD with the
+      first tunnel moved to 40m for the test; the lamps' beat is still his to judge.
    3. **Light, and the small magic** — the screen's glow spilling onto the table in the colour of
       what it shows, a reading lamp that switches off with a tap, dust in its beam, passing
       lights sweeping the whole carriage.

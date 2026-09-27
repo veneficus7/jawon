@@ -67,6 +67,15 @@ object NightWindow {
 
     /** How far from the window a station is drawn at all, metres along the line, either way. */
     const val STATION_RANGE_M = 70f
+
+    /** How far from the window a tunnel is reported to the picture, metres along the line, either way. */
+    const val TUNNEL_RANGE_M = 60.0
+
+    /**
+     * A tunnel's lamps are this far apart along its wall, the first half that in from the mouth.
+     * **Must agree with `night_window.mat`'s `TUNNEL_LAMP_SPACING`.**
+     */
+    const val TUNNEL_LAMP_SPACING_M = 14.0
 }
 
 /**
@@ -89,7 +98,9 @@ object NightWindow {
  */
 class TrainMotion(
     private val baseSpeed: Float = NightWindow.BASE_SPEED_M_S,
-    running: Boolean = true
+    running: Boolean = true,
+    /** What the line is made of — its tunnels. Seeded, so a ride can be replayed. */
+    private val line: NightLine = NightLine()
 ) {
 
     private enum class Mode { RUNNING, BRAKING, STOPPED, DEPARTING }
@@ -103,6 +114,13 @@ class TrainMotion(
 
     /** The platform's middle, metres along the line — NaN when there is no station about. */
     private var station = Double.NaN
+
+    /**
+     * Where the train is to stand. The brake begins where its S-curve from the speed then will end
+     * exactly here — straight away, usually, but a stop put beyond a tunnel is cruised to first.
+     */
+    private var stopAt = 0.0
+    private var braking = false
 
     /** The brake: where it began, how fast the train was going, how long it takes, how far in. */
     private var brakeFrom = 0.0
@@ -148,6 +166,35 @@ class TrainMotion(
     /** The speed right now, m/s — nought at a platform. */
     fun speed(): Float = v.toFloat()
 
+    /** How far the train runs on the S-curve from [speed] to a stand, metres. */
+    private fun brakeDistance(speed: Double): Double =
+        speed * (speed / BRAKE_MEAN_M_S2).coerceAtLeast(BRAKE_MIN_S) / 2.0
+
+    /**
+     * The nearest tunnel's mouth and exit, metres ahead of the window (negative behind), or NaN
+     * when there is none within [NightWindow.TUNNEL_RANGE_M] — for the window to draw.
+     */
+    val tunnelEntryAhead: Float get() = tunnelEdge(entry = true)
+    val tunnelExitAhead: Float get() = tunnelEdge(entry = false)
+
+    private fun tunnelEdge(entry: Boolean): Float {
+        val near = line.tunnelNear(travelled, NightWindow.TUNNEL_RANGE_M) ?: return Float.NaN
+        return ((if (entry) near.from else near.to) - travelled).toFloat()
+    }
+
+    /**
+     * How far into a tunnel the carriage is, 0…1: 1 inside, over its last few metres at each mouth
+     * as the window passes the portal. What the room dims its ambient by, and what turns the lamps
+     * going past into the tunnel's.
+     */
+    val tunnel: Float
+        get() {
+            val near = line.tunnelNear(travelled, TUNNEL_FADE_M) ?: return 0f
+            val into = minOf(travelled - near.from, near.to - travelled)
+            val u = ((into + TUNNEL_FADE_M) / (2.0 * TUNNEL_FADE_M)).coerceIn(0.0, 1.0)
+            return (u * u * (3.0 - 2.0 * u)).toFloat()
+        }
+
     /**
      * How much of a platform's light is coming in at the window, 0…1: all of it alongside the
      * platform, fading over its last few metres as the train runs in or pulls away.
@@ -184,15 +231,19 @@ class TrainMotion(
             departT = 0.0
             mode = Mode.DEPARTING
         } else {
-            brakeFrom = travelled
-            brakeSpeed = v
-            brakeFor = (v / BRAKE_MEAN_M_S2).coerceAtLeast(BRAKE_MIN_S)
-            brakeT = 0.0
-            val stopAt = travelled + v * brakeFor / 2.0
+            var stop = travelled + brakeDistance(v)
             val alongside = !station.isNaN() && kotlin.math.abs(station - travelled) < NightWindow.PLATFORM_HALF_M
             // Still alongside the platform it just left: stop there, as a real train would. Else
-            // the next station, exactly where the brake will bring the train to rest.
-            if (!alongside) station = stopAt
+            // the next station — never in a tunnel. In one (or at its mouth), the train runs on out
+            // of it first; one not reached yet is taken off the line, which nobody can see happen.
+            if (!alongside) {
+                val inside = line.tunnelAt(travelled) ?: line.tunnelNear(travelled + PORTAL_UNSEEN_M / 2.0, PORTAL_UNSEEN_M / 2.0)
+                if (inside != null) stop = maxOf(stop, inside.to + PLATFORM_CLEAR_M)
+                line.clear(after = travelled + PORTAL_UNSEEN_M, from = travelled, to = stop + PLATFORM_CLEAR_M)
+                station = stop
+            }
+            stopAt = stop
+            braking = false
             mode = Mode.BRAKING
         }
     }
@@ -226,29 +277,63 @@ class TrainMotion(
                 if (departT >= departFor) mode = Mode.RUNNING
             }
             Mode.BRAKING -> {
+                if (!braking) {
+                    // Running on to where the brake must begin — at once, unless the stop was put
+                    // beyond a tunnel — then braking so the curve ends exactly at the stop.
+                    val remaining = stopAt - travelled
+                    if (remaining - v * dt <= brakeDistance(v) || v <= 0.0) {
+                        braking = true
+                        brakeFrom = travelled
+                        brakeSpeed = v
+                        brakeFor = if (v > 1e-6) (2.0 * remaining / v).coerceAtLeast(1e-3) else 1e-3
+                        brakeT = 0.0
+                    } else {
+                        travelled += v * dt
+                    }
+                }
+            }
+            else -> Unit
+        }
+        if (mode == Mode.BRAKING && braking) {
+            run {
                 // Where the S-curve has the train now: speed 1 − smoothstep, distance its integral.
                 brakeT += dt
                 val u = (brakeT / brakeFor).coerceAtMost(1.0)
                 travelled = brakeFrom + brakeSpeed * brakeFor * (u - u * u * u + u * u * u * u / 2.0)
                 v = brakeSpeed * (1.0 - u * u * (3.0 - 2.0 * u))
                 if (u >= 1.0) {
+                    travelled = stopAt
                     v = 0.0
                     mode = Mode.STOPPED
                     stoppedAge = 0.0
                 }
             }
-            Mode.STOPPED -> {
-                v = 0.0
-                stoppedAge += dt
-            }
+        }
+        if (mode == Mode.STOPPED) {
+            v = 0.0
+            stoppedAge += dt
         }
         t += dt
+        line.layTo(travelled + LAY_AHEAD_M)
+        line.forgetBehind(travelled)
         jointAge += dt
         val joint = floor(travelled / NightWindow.JOINT_SPACING_M)
         if (joint > lastJoint) {
             lastJoint = joint
             jointAge = 0.0
             jointSpeed = v
+        }
+        // A tunnel's lamps going by the window.
+        val inside = line.tunnelAt(travelled)
+        if (inside != null) {
+            val k = floor((travelled - inside.from) / NightWindow.TUNNEL_LAMP_SPACING_M - 0.5).toLong()
+            if (inside != lampTunnel) {
+                lampTunnel = inside
+                lampIndex = k
+            } else if (k > lampIndex) {
+                tunnelLampsPassed += k - lampIndex
+                lampIndex = k
+            }
         }
         // A station left far enough behind is gone.
         if (!station.isNaN() && travelled - station > NightWindow.STATION_RANGE_M && mode != Mode.BRAKING) {
@@ -257,6 +342,12 @@ class TrainMotion(
     }
 
     private var jointSpeed = 0.0
+
+    /** How many of a tunnel's lamps the window has passed, ever — the room lights one for each. */
+    var tunnelLampsPassed = 0L
+        private set
+    private var lampTunnel: NightLine.Span? = null
+    private var lampIndex = 0L
 
     /**
      * How far layer [layer] of the picture has scrolled, in metres of picture, wrapped at exactly
@@ -320,6 +411,18 @@ class TrainMotion(
 
         /** How long after the room opens the player's state is taken as given — see [setRunning]. */
         const val SETTLE_IN_S = 0.8
+
+        /** How far ahead the line is laid, metres — well beyond anything drawn or planned. */
+        private const val LAY_AHEAD_M = 3_000.0
+
+        /** A platform stands this far clear of a tunnel's mouth. */
+        const val PLATFORM_CLEAR_M = 60.0
+
+        /** A tunnel whose mouth is nearer than this is in view, and must not be taken away. */
+        private const val PORTAL_UNSEEN_M = 6.0
+
+        /** Over how many metres either side of a mouth the carriage goes from the night to the tunnel. */
+        private const val TUNNEL_FADE_M = 3.0
 
         /** Over how many metres either side of the platform's end its light comes and goes. */
         private const val PLATFORM_LIGHT_FADE_M = 5f

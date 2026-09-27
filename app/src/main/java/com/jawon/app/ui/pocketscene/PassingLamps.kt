@@ -40,6 +40,9 @@ class PassingLamps(seed: Long = 7L) {
         internal var toX = 0f
         internal var speed = 0f
         internal var peak = 0f
+
+        /** A tunnel's lamp: it moves at its own speed, already the train's, not the pace's. */
+        internal var absolute = false
     }
 
     val lamps: Array<Lamp> = Array(COUNT) { Lamp() }
@@ -54,18 +57,56 @@ class PassingLamps(seed: Long = 7L) {
 
     /**
      * Moves every lamp on by [dtS], and starts new ones as the schedule comes due.
-     * [pace] scales the lamps' speed with the train's — 1 at its base speed.
+     *
+     * [pace] scales the lamps' speed with the train's — 1 at its base speed — **and the schedule
+     * too**: lamps go by per distance travelled, not per second. A schedule on the wall clock kept
+     * starting lamps while the train stood at a platform, lamps that never moved, until the pool
+     * was full of them and they all set off together as it pulled away. [quiet] is a tunnel: the
+     * night's lamps stop, and the tunnel brings its own ([startTunnelLamp]).
      */
-    fun advance(dtS: Float, pace: Float = 1f) {
+    fun advance(dtS: Float, pace: Float = 1f, quiet: Boolean = false) {
         if (dtS <= 0f) return
         val dt = dtS.coerceAtMost(0.1f)
-        clock += dt
-        for (lamp in lamps) if (lamp.active) move(lamp, dt * pace)
+        val along = dt * pace.coerceAtLeast(0f)
+        clock += along
+        for (lamp in lamps) if (lamp.active) move(lamp, if (lamp.absolute) dt else along)
         while (clock >= nextAt) {
-            start()
+            if (!quiet) start()
             nextAt += nextGap()
         }
     }
+
+    /**
+     * One of a tunnel's lamps going by, the train doing [trainSpeed] m/s: sodium, close outside the
+     * window, so it sweeps across the device fast and bright — alternately past the window behind
+     * the device and past the far side's behind you, as a tunnel has lamps on both walls.
+     */
+    fun startTunnelLamp(trainSpeed: Float) {
+        val lamp = lamps.firstOrNull { !it.active } ?: return
+        tunnelSide = !tunnelSide
+        if (tunnelSide) {
+            lamp.z = -0.78f
+            lamp.y = 0.24f
+            lamp.fromX = 1.2f
+            lamp.toX = -1.2f
+            lamp.speed = (trainSpeed * 0.5f).coerceAtLeast(1.5f)
+            lamp.peak = TUNNEL_NEAR_CANDELA
+        } else {
+            lamp.z = 1.45f
+            lamp.y = 0.30f
+            lamp.fromX = 2.2f
+            lamp.toX = -2.2f
+            lamp.speed = (trainSpeed * 0.6f).coerceAtLeast(1.5f)
+            lamp.peak = TUNNEL_FAR_CANDELA
+        }
+        lamp.setColour(1.0f, 0.50f, 0.18f)
+        lamp.absolute = true
+        lamp.x = lamp.fromX
+        lamp.intensity = 0f
+        lamp.active = true
+    }
+
+    private var tunnelSide = false
 
     private fun move(lamp: Lamp, dt: Float) {
         lamp.x -= lamp.speed * dt
@@ -109,6 +150,7 @@ class PassingLamps(seed: Long = 7L) {
             colour < 0.82f -> lamp.setColour(1.0f, 0.80f, 0.58f)   // warm white
             else -> lamp.setColour(0.74f, 0.85f, 1.0f)             // LED
         }
+        lamp.absolute = false
         lamp.x = lamp.fromX
         lamp.intensity = 0f
         lamp.active = true
@@ -159,6 +201,19 @@ class PassingLamps(seed: Long = 7L) {
         const val CLUSTER_CHANCE = 0.14f
         const val DARK_CHANCE = 0.09f
         const val BEHIND_YOU_SHARE = 0.6f
+
+        /**
+         * A tunnel's lamps, close outside: gone in a blink, and bright enough to be seen going.
+         *
+         * **Behind the device, bright**: at the night's own 2,600 each was ~6% of what the reading
+         * lamp puts on the table, and a run through a tunnel on the AVD showed no beat at all at
+         * rest. From behind, however bright, a lamp cannot reach the face — only the edges and the
+         * table. **Behind you, the night's own level**: at 5,000 those washed the whole anodised
+         * front beige for seconds at a time in the hand, the failure the night's lamps recorded
+         * first (see [start]).
+         */
+        const val TUNNEL_NEAR_CANDELA = 14_000f
+        const val TUNNEL_FAR_CANDELA = 1_100f
         private const val FADE_SHARE = 0.15f
     }
 }

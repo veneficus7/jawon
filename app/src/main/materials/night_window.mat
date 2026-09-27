@@ -66,6 +66,13 @@ material {
             type : float2,
             name : station,
             precision : high
+        },
+        {
+            // The tunnel: how far ahead of the window its mouth and its exit are, metres along
+            // the line (far away when there is none), and the train's speed, m/s, for the blur.
+            type : float3,
+            name : tunnel,
+            precision : high
         }
     ]
 }
@@ -311,6 +318,45 @@ fragment {
         return colour;
     }
 
+    // ---- the tunnel ------------------------------------------------------------------------------
+    // Its wall runs close outside the window, dark, with sodium lamps along it; at speed a lamp
+    // crosses the whole frame in a frame, so it is drawn as the streak a camera's shutter makes
+    // of it — the same light spread along the distance it moved, dimmer for it — and at a crawl
+    // as the disc it is. Must agree with NightWindow's `TUNNEL_LAMP_SPACING_M`.
+    const float TUNNEL_DEPTH = 1.4;
+    const float TUNNEL_LAMP_SPACING = 14.0;
+    const float SHUTTER_S = 1.0 / 60.0;
+
+    vec3 tunnelWall(highp vec2 q, highp float entry, highp float exit, float speed, vec3 scenery) {
+        float y = float(q.y);
+        highp float a = q.x * TUNNEL_DEPTH / PICTURE;
+        // Inside between its mouths, the portals' edges blurred as everything out there is.
+        float soft = 0.03 * TUNNEL_DEPTH / PICTURE;
+        float inside = smoothstep(entry - soft, entry + soft, a) * (1.0 - smoothstep(exit - soft, exit + soft, a));
+        if (inside <= 0.0) return scenery;
+
+        // The wall, near black, and two cable runs along it catching the lamps' light.
+        vec3 wall = vec3(0.0032, 0.0030, 0.0028);
+        wall += vec3(0.011, 0.009, 0.007) * exp(-pow((y + 0.012) / 0.006, 2.0));
+        wall += vec3(0.008, 0.007, 0.006) * exp(-pow((y + 0.118) / 0.007, 2.0));
+
+        // The lamps: at a crawl a disc, at speed the streak the shutter makes of it.
+        float blur = speed * PICTURE / TUNNEL_DEPTH * SHUTTER_S;
+        float rad = 0.030;
+        highp float k = floor((a - entry) / TUNNEL_LAMP_SPACING);
+        vec3 lamps = vec3(0.0);
+        for (int i = 0; i <= 1; i++) {
+            highp float at = entry + (k + float(i) + 0.5) * TUNNEL_LAMP_SPACING;
+            if (at > exit) continue;
+            float cx = float(at * PICTURE / TUNNEL_DEPTH) + blur * 0.5;
+            // Low on the wall, where the view at rest sees them — the hand's is the device itself.
+            float d = capsule(vec2(q), vec2(cx, -0.048), blur * 0.5);
+            float disc = 1.0 - smoothstep(rad * 0.8, rad * 1.15, d);
+            lamps += vec3(1.0, 0.52, 0.18) * 1.5 * disc * (2.0 * rad) / (2.0 * rad + blur);
+        }
+        return mix(scenery, wall + lamps, inside);
+    }
+
     void material(inout MaterialInputs material) {
         prepareMaterial(material);
         vec2 size = materialParams.size;
@@ -345,6 +391,12 @@ fragment {
         highp float ahead = materialParams.station.x;
         if (abs(ahead) < 90.0) {
             colour = station(q, ahead, materialParams.station.y, colour);
+        }
+
+        // ---- a tunnel, when there is one near --------------------------------------------
+        highp vec3 tun = materialParams.tunnel;
+        if (tun.x < 90.0 && tun.y > -90.0) {
+            colour = tunnelWall(q, tun.x, tun.y, float(tun.z), colour);
         }
 
         // ---- the carriage's ceiling light, reflected in the glass: it does not move ----
