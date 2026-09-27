@@ -2,6 +2,7 @@ package com.jawon.app.ui.pocketscene
 
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
@@ -24,6 +25,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -252,9 +255,16 @@ fun PocketLcd(
             .background(if (awake) LcdWhite else LcdOff)
     ) {
         if (!awake) return@Box
+        // **The slide animates the page, never the screen.** Each page draws its own latest
+        // screen from [lastShown]. The first version animated the whole screen as its state, and
+        // since the main menu's screen changes on every tick of its slideshow and every turn of
+        // the wheel, AnimatedContent — which decides what is visible by comparing states — would
+        // now and then find the page going out equal to neither end of the slide, and drop it:
+        // a blank white page leaving where the menu should have been.
+        val lastShown = remember { RecentPages() }
+        SideEffect { lastShown[page] = screen }
         AnimatedContent(
-            targetState = LcdPage(screen, page, depth),
-            contentKey = { it.page },
+            targetState = LcdPage(page, depth),
             transitionSpec = {
                 val deeper = targetState.depth >= initialState.depth
                 val spec = tween<IntOffset>(PAGE_SLIDE_MS, easing = FastOutSlowInEasing)
@@ -264,7 +274,8 @@ fun PocketLcd(
             modifier = Modifier.fillMaxSize().clipToBounds(),
             label = "page"
         ) { shown ->
-            when (val s = shown.screen) {
+            val pageScreen = if (shown.page == page) screen else lastShown[shown.page] ?: screen
+            when (val s = pageScreen) {
                 // The whole screen, as the classic gave it: no title bar over the covers.
                 is LcdScreen.CoverFlow -> CoverFlowBody(s, flow, flip)
                 else -> Column(modifier = Modifier.fillMaxSize().background(LcdWhite)) {
@@ -278,8 +289,17 @@ fun PocketLcd(
                 }
             }
         }
-        // Over the sliding pages, fixed: only its words change.
-        if (screen !is LcdScreen.CoverFlow) Column { TitleBar(screen.title, playing) }
+        // Over the sliding pages, fixed: only its words change. Cover Flow has none, so the bar
+        // fades with the slide into it and out of it, rather than vanishing from over the page
+        // that is leaving and leaving a blank strip where it was.
+        val bar by animateFloatAsState(
+            targetValue = if (screen is LcdScreen.CoverFlow) 0f else 1f,
+            animationSpec = tween(PAGE_SLIDE_MS),
+            label = "titleBar"
+        )
+        if (bar > 0f) {
+            Column(modifier = Modifier.graphicsLayer { alpha = bar }) { TitleBar(screen.title, playing) }
+        }
         LcdGlass()
         if (unlit > 0f) {
             Box(
@@ -291,8 +311,19 @@ fun PocketLcd(
     }
 }
 
-/** One page as it slides: what it shows, and which page it is. */
-private data class LcdPage(val screen: LcdScreen, val page: Any, val depth: Int)
+/** A page, as the slide sees it: which one, and how deep. What it shows is looked up. */
+private data class LcdPage(val page: Any, val depth: Int)
+
+/**
+ * Each page's latest screen, for the slide: the one showing and the few it may still be sliding
+ * away from. Least recently shown goes first.
+ */
+private class RecentPages : LinkedHashMap<Any, LcdScreen>(8, 0.75f, true) {
+    override fun removeEldestEntry(eldest: MutableMap.MutableEntry<Any, LcdScreen>?): Boolean =
+        size > MAX_PAGES_KEPT
+}
+
+private const val MAX_PAGES_KEPT = 6
 
 /**
  * What makes the picture an LCD rather than an image of one: a backlit panel is not a perfect
