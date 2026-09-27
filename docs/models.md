@@ -14,6 +14,7 @@ modelled by hand and not downloaded.
 | `disc` | the held case | 4608 | 1.2mm thick, radial UVs |
 | `earphone_plug` | the pocket player's earphone plug | ~1000 | in the device's own frame: a chrome collar on the top edge's jack at X +15.5mm, a white body and a tapered strain relief whose tip — Y **+79.9mm** — is where `PocketCord` takes over |
 | `carriage_glass` | the compartment window's pane | 2 | its own file because its grime needs PNG's alpha while the carriage's wood is JPEG; ~190KB |
+| `showroom` | the showroom between formats | ~5160 | three objects, one per material: a polished concrete floor, a dark plaster back wall, and four charcoal plinths with moulded caps and feet — in the showroom's own coordinates; ~150KB |
 | `carriage` | the pocket player's compartment | ~3600 | table, panelling boards and their backing, window frame, sill — in the room's own coordinates; ~560KB, most of it two generated wood-grain JPEGs |
 | `pocket` | the iPod mode's device | 8314 | eight objects, one per material; life size, 61.8 × 103.5 × 10.5mm; a polished bead round the face; ~830KB, most of it three wear maps |
 
@@ -160,6 +161,7 @@ they are in final glTF/app coordinates:
 | `case_closed.glb` | **X ±0.005** (thickness), Y ±0.071, **Z ±0.0625** (depth) |
 | `disc.glb` | X/Y ±0.060, Z ±0.0006 (1.2mm thick) |
 | `carriage.glb` | **Room coordinates, not object ones**: the table top at Y **−0.300** (to −0.328), its Z −0.500 … −0.050; the panelling's face at Z **−0.500**, its backing to −0.530; the window opening X ±0.400, Y −0.250 … +0.300, the frame standing proud to Z −0.470. **Nothing may come in front of Z −0.05 or above the table's Y −0.30 below the window**: the device is held at the origin and the life-size view must not change. The night picture hangs behind all of it at −0.55. |
+| `showroom.glb` | **Showroom coordinates**: the floor's top at Y **0**; the plinths' caps topping out at Y **+0.968**, their centres at X **0, 0.42, 0.84, 1.26** (caps ±0.085, so X −0.085 … +1.345) and Z ±0.085; the wall's face at Z **−2.20**, 3.5m high. `ShowroomStage` in the app — spacing, cap top — must agree, or every exhibit floats at the wrong height or beside its plinth. |
 | `pocket.glb` | X ±0.0309, Y ±0.0518, **Z −0.00525 … +0.00525** (10.5mm), and per part: the wheel's front face at **+0.00465** (0.6mm inside the plate's +0.00525) and the button's at **+0.0047**; `pocket_print` flat at **+0.00467**, 20µm over the wheel. Nothing in `pocket_details` may pass ±0.0518 in Y — the jack, the hold switch and the connector are sunk into those edges, not stuck on them. |
 
 Note `case_closed`'s axes are the odd ones out, and deliberately: it is the only

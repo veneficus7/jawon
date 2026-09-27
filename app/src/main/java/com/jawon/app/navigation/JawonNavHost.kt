@@ -26,6 +26,7 @@ import com.jawon.app.ui.settings.SettingsScreen
 import com.jawon.app.ui.shelfmanager.ShelfManagerScreen
 import com.jawon.app.Format
 import com.jawon.app.ui.pocketscene.PocketRoomScreen
+import com.jawon.app.ui.showroom.ShowroomScreen
 import com.jawon.app.ui.wallscene.WallSceneScreen
 
 /**
@@ -71,6 +72,15 @@ private const val PANEL_TRAVEL = 10
  */
 private const val ROOM_RETURN_MS = 420
 private const val ROOM_RETURN_DELAY_MS = 140
+
+/**
+ * How long the showroom takes to come up over the room it was pinched out of.
+ *
+ * Not the panel's slide: the showroom is not a panel lifted over the room but the place the room
+ * pulls back into, and its own camera does the moving — it arrives close on the room's object and
+ * eases back. A fade is all the hand-over needs, over a room already dimmed by the pinch.
+ */
+private const val SHOWROOM_IN_MS = 380
 
 @Composable
 fun JawonNavHost(
@@ -144,14 +154,24 @@ fun JawonNavHost(
                     onOpenSettings = { navController.navigate(JawonDestination.Settings.route) },
                     onEditAlbum = { albumId ->
                         navController.navigate(JawonDestination.EditAlbum.routeFor(albumId))
-                    }
+                    },
+                    onOpenShowroom = { navController.openShowroom() }
                 )
 
                 Format.POCKET -> PocketRoomScreen(
                     onOpenSettings = { navController.navigate(JawonDestination.Settings.route) },
-                    onAddAlbum = { navController.navigate(JawonDestination.AddAlbum.route) }
+                    onAddAlbum = { navController.navigate(JawonDestination.AddAlbum.route) },
+                    onOpenShowroom = { navController.openShowroom() }
                 )
             }
+        }
+        composable(
+            JawonDestination.Showroom.route,
+            enterTransition = {
+                fadeIn(tween(SHOWROOM_IN_MS, easing = FastOutSlowInEasing))
+            }
+        ) {
+            ShowroomScreen(onLeave = { navController.popBackStack() })
         }
         composable(JawonDestination.AddAlbum.route) { entry ->
             // The CD screen hands its finished folder back through this entry's saved state,
@@ -213,4 +233,13 @@ fun JawonNavHost(
             SettingsScreen(onBack = { navController.popBackStack() })
         }
     }
+}
+
+/**
+ * Into the showroom — once. A pinch that keeps closing after it has let go of the room must not
+ * stack a second showroom on the first.
+ */
+private fun NavHostController.openShowroom() {
+    if (currentDestination?.route == JawonDestination.Showroom.route) return
+    navigate(JawonDestination.Showroom.route) { launchSingleTop = true }
 }

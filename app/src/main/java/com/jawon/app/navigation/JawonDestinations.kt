@@ -34,6 +34,13 @@ sealed class JawonDestination(val route: String) {
      */
     data object ImportCd : JawonDestination("import_cd")
 
+    /**
+     * The showroom between formats (`docs/formats.md` §7, step 5b): a gallery with each format on
+     * a plinth, reached by pinching out of a room. Choosing one changes the format and comes back
+     * to [Wall] — which is whichever room the format now says.
+     */
+    data object Showroom : JawonDestination("showroom")
+
     /** Editing one album. Reached from the room's long-press and from the shelf list. */
     data object EditAlbum : JawonDestination("edit_album/{albumId}") {
         fun routeFor(albumId: String) = "edit_album/$albumId"

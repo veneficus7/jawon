@@ -1813,6 +1813,98 @@ def _use_colour_alpha(mat, image):
     nt.links.new(tex.outputs["Alpha"], bsdf.inputs["Alpha"])
 
 
+# ---------------------------------------------------------------------------
+# The showroom — the gallery between formats (docs/formats.md §7, step 5b).
+# ---------------------------------------------------------------------------
+
+# A row of plinths along +X, one per format, on a black floor, in the showroom's own coordinates
+# (app Y up). `ShowroomScreen` puts each format's object on a plinth's cap and a spot over it;
+# these numbers are its numbers.
+SHOWROOM_SPACING = 0.42
+SHOWROOM_PLINTHS = 4
+SHOWROOM_PLINTH_W = 0.15
+SHOWROOM_PLINTH_R = 0.012
+SHOWROOM_PLINTH_H = 0.95
+SHOWROOM_CAP_W = 0.17
+SHOWROOM_CAP_T = 0.018
+SHOWROOM_FOOT_W = 0.17
+SHOWROOM_FOOT_T = 0.03
+SHOWROOM_FLOOR_HALF = 6.0
+# The gallery's back wall, behind the row: what the wash behind each plinth lands on.
+SHOWROOM_WALL_Z = -2.2
+SHOWROOM_WALL_H = 3.5
+
+
+def _rounded_block(bm, w, r, y0, y1, cx):
+    """A square block with rounded upright edges, from app Y [y0] to [y1], centred on X [cx]."""
+    _, e = rounded_rect_xy(bm, w, w, r, y0, cx=cx)
+    faces = bmesh.ops.contextual_create(bm, geom=e)["faces"]
+    ex = bmesh.ops.extrude_face_region(bm, geom=faces)
+    moved = [v for v in ex["geom"] if isinstance(v, bmesh.types.BMVert)]
+    bmesh.ops.translate(bm, verts=moved, vec=(0.0, 0.0, y1 - y0))
+
+
+def build_showroom():
+    """
+    The gallery: a polished concrete floor, a plaster wall behind, and a row of charcoal plinths,
+    each with a moulded cap and foot. One object per material. The objects on the plinths and the
+    lights over them are the app's.
+    """
+    objects = []
+    floor = new_mesh_object("showroom_floor")
+    bm = bmesh.new()
+    mid = SHOWROOM_SPACING * (SHOWROOM_PLINTHS - 1) / 2.0
+    box(bm, mid, az(0.0), -0.01, 2.0 * SHOWROOM_FLOOR_HALF, 2.0 * SHOWROOM_FLOOR_HALF, 0.02)
+    bm.to_mesh(floor.data)
+    bm.free()
+    floor.data.materials.append(principled(
+        # Polished dark concrete: dark enough that the gallery stays dark, light enough that each
+        # spot leaves a pool on it and the plinth's shadow runs back through the pool. Black stone
+        # was tried first and returned nothing at all — at this room's exposure a surface is seen
+        # by what it reflects, and a black floor under a spot reflects a black gallery.
+        "ShowroomFloor", base_color=(0.055, 0.053, 0.050), metallic=0.0, roughness=0.38,
+    ))
+    finish(floor, bevel=False)
+    objects.append(floor)
+
+    wall = new_mesh_object("showroom_wall")
+    bm = bmesh.new()
+    box(bm, mid, az(SHOWROOM_WALL_Z - 0.05), SHOWROOM_WALL_H / 2.0,
+        2.0 * SHOWROOM_FLOOR_HALF, 0.1, SHOWROOM_WALL_H)
+    bm.to_mesh(wall.data)
+    bm.free()
+    wall.data.materials.append(principled(
+        # Dark warm plaster, matte: seen only where the wash behind each plinth lands, a soft glow
+        # the exhibit stands out against rather than a black it disappears into.
+        "ShowroomPlaster", base_color=(0.085, 0.078, 0.070), metallic=0.0, roughness=0.92,
+    ))
+    finish(wall, bevel=False)
+    objects.append(wall)
+
+    plinths = new_mesh_object("showroom_plinths")
+    bm = bmesh.new()
+    for i in range(SHOWROOM_PLINTHS):
+        cx = i * SHOWROOM_SPACING
+        _rounded_block(bm, SHOWROOM_FOOT_W, SHOWROOM_PLINTH_R, 0.0, SHOWROOM_FOOT_T, cx)
+        _rounded_block(bm, SHOWROOM_PLINTH_W, SHOWROOM_PLINTH_R, SHOWROOM_FOOT_T,
+                       SHOWROOM_PLINTH_H, cx)
+        _rounded_block(bm, SHOWROOM_CAP_W, SHOWROOM_PLINTH_R * 1.2, SHOWROOM_PLINTH_H,
+                       SHOWROOM_PLINTH_H + SHOWROOM_CAP_T, cx)
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    bm.to_mesh(plinths.data)
+    bm.free()
+    plinths.data.materials.append(principled(
+        # Charcoal satin under a thin coat: a spot falls off down the front of it into the dark,
+        # which is how a plinth is seen in a gallery. Black lacquer was tried first, and read as
+        # nothing — its only light was the spot's reflection, which goes away from the camera.
+        "ShowroomLacquer", base_color=(0.045, 0.045, 0.048), metallic=0.0,
+        roughness=0.32, coat=0.45, coat_roughness=0.12,
+    ))
+    finish(plinths, bevel_width=0.002, harden=True)
+    objects.append(plinths)
+    return objects
+
+
 def build_carriage_glass():
     """
     The carriage window's pane, as a file of its own: its grime needs an alpha channel, so it
@@ -2366,6 +2458,11 @@ def main():
     if not skip("earphone_plug.glb"):
         clear_scene()
         paths.append(export(build_earphone_plug(), "earphone_plug.glb"))
+
+    # The showroom between formats.
+    if not skip("showroom.glb"):
+        clear_scene()
+        paths.append(export(build_showroom(), "showroom.glb"))
 
     # The pocket player's carriage: the room around it, in the room's own coordinates.
     if not skip("carriage.glb"):

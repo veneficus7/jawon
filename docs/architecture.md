@@ -110,6 +110,30 @@ The eight pure pieces have test files (`ClickWheelTest`, `PocketMenuTest`, `Clic
 
 ---
 
+## `ui/showroom` — the way between formats
+
+A destination of its own, `JawonDestination.Showroom` (`docs/formats.md` §7, step 5b): a dark
+gallery with a plinth per format, reached by **pinching out of a room** — past the CD room's
+`ZOOM_FAR`, or two fingers together in the pocket room — wherever `Exhibit.reachable` says there
+is somewhere else to go. Choosing a plinth sets `AppPreferences.format` and pops back to `Wall`,
+which is whichever room the format now says.
+
+| File | Owns |
+|---|---|
+| `Exhibit.kt` | **Pure.** What stands on the plinths, in order — every format the app is going to have, the unbuilt ones as *coming* with no room behind them — which may open (the rule Settings' picker follows), and whether the showroom is reachable at all. |
+| `PullOut.kt` | **Pure.** Pinching out of a room: past the room's own limit, the pinch's log-span accumulates against a spring, and far enough on it lets go, once. Shared by both rooms; each owns what it pulls back and dims. |
+| `ShowroomCarousel.kt` | **Pure.** The row under the finger: one-to-one while held, a rubber band past either end, a flick that always moves on, a critically damped settle, and one haptic detent per plinth crossed. |
+| `ShowroomCamera.kt` | **Pure.** `ShowroomStage` (the model's numbers) and the camera's three framings — hero, travel, close — blended by the director's springs. |
+| `ShowroomDirector.kt` | The frame loop and the touch: the carousel, the springs, the exhibits' float (`Wander`, never a loop), the arrival that waits for the scene and is revealed from black, and the push into a room that ends in black. |
+| `ShowroomScreen.kt` | The scene: the gallery model, a shadow-casting spot and a wall wash per plinth, the CD's case (the held case's tray and lid, holding the record played last) and the pocket player (its steel, and its screen lit with its own main menu on `LcdPanel`), the captions, and the black. |
+| `ShowroomLighting.kt` | The gallery IBL, placed for what the exhibits' faces reflect — two strips behind the camera, a ceiling glow for fill, slots and a low wall wash; computed off the main thread. `radiance()` is pure and tested. |
+| `ShowroomAtmosphere.kt` | Its grade: 4× MSAA, bloom over the threshold, a heavier vignette, centimetre-scale AO. |
+| `ShowroomViewModel.kt` | The format and its switch, and the cover the CD's case holds. |
+
+Tested in `ShowroomTest` (the row, the pinch, the plinths, the camera) and `ShowroomLightingTest`.
+
+---
+
 ## `data` — the library and playback
 
 | File | Owns |

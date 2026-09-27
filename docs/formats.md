@@ -368,6 +368,39 @@ One thing at a time, checked on the owner's phone between each (the working agre
    built format pushes the camera in, fades, and opens that room. Back returns to the room you
    came from. The format's name sits under it in the app's own type. Once it works on the phone it
    replaces Settings → THE ROOM.
+   **Built on 2026-09-27, on the emulator — the phone was off** (`ui/showroom/`, `docs/architecture.md`).
+   Both rooms pinch out into it (`PullOut`): the CD room gives 8cm past `ZOOM_FAR` against a spring
+   and darkens, and lets go with the fingers a third closer again; the pocket room takes two fingers
+   together, which the wheel then never sees. Only where there is somewhere else to go — a release
+   build with one finished room pinches exactly as before. The CD's plinth holds the held case with
+   **the record played last** in it; the pocket player's screen is **switched on**, its own main menu
+   on `LcdPanel` with the same record beside it — dark, it barely read on a dark plinth. Vinyl and
+   cassette are empty plinths under dim light, marked *coming*. The four things the look cost, in
+   the order they were found, measured as screenshots and luminance boxes:
+   - **Black materials returned nothing at this exposure.** Black lacquer plinths and a black stone
+     floor rendered as a void: a surface this dark is seen only by what it reflects, and a spot's
+     reflection off a horizontal cap goes away from the camera. Charcoal satin and polished
+     concrete, which a spot can show.
+   - **A shadow straight under a floating object reads as a stand.** With the spot in front, each
+     exhibit's shadow fell directly beneath it as the camera sees it — a black block it sat on. The
+     spots come from the front right now, and the camera sits lower, so the gap under the float
+     shows; a ceiling glow in the environment fills the shadow, which was otherwise a hole.
+   - **A face turned to a camera above it reflects a direction *below* level.** The first strips
+     behind the camera stopped just above it and the black anodised front never caught anything; a
+     doorway-sized softbox filled the CD's clear lid at once and laid a grey veil over the cover.
+     Tall strips either side, from well below eye level: as an exhibit turns, a sheen slides across
+     it. And the lid, authored at 22% alpha for the CD room, went milky under a spot this strong —
+     the showroom sets its alpha to 5%, which keeps its reflections and drops the veil.
+   - **Black all round has no depth.** A plaster wall behind the row, with a warm wash on it behind
+     each plinth: the exhibit stands against a glow, and the wash rims it from behind.
+   **Startup, measured on the AVD**: the showroom's first frame arrives ~1.25s after it composes —
+   models, SceneView's setup and first-use shader compilation. It opens black and is revealed as the
+   camera starts back, so the arrival is a move that is seen; the environment's 393k directions are
+   worked out off the main thread (a quarter of a second it used to block). Going into a room costs
+   the same again for that room. **The real fix is an engine that outlives a destination** — every
+   room rebuilds Filament from nothing, which is also the black the NavHost's return fade masks.
+   **Not yet**: checked on the phone, its cost measured, floor reflections, and Settings → THE ROOM
+   retired.
 9. **Vinyl** (§5), then **cassette** (§6), each its own room and built the same way.
 
 Each of 3–8 is about a session's work. **Measure every tier as it lands** (traps 28–30).

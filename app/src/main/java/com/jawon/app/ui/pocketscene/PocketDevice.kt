@@ -3,8 +3,10 @@ package com.jawon.app.ui.pocketscene
 import android.os.SystemClock
 import android.view.MotionEvent
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import com.google.android.filament.MaterialInstance
+import com.jawon.app.ui.showroom.PullOut
 import com.jawon.app.ui.wallscene.RoomHaptics
 import com.jawon.app.ui.wallscene.WallSceneViewModel
 import dev.romainguy.kotlin.math.Float3
@@ -26,6 +28,9 @@ internal data class PendingPlay(val albumId: String, val index: Int?, val at: Lo
 
 /** How long a song asked for may stand in on Now Playing before the player must have answered. */
 private const val PENDING_PLAY_MS = 3_000L
+
+/** How far the camera backs away as the room is pinched away, as a share of where it stands. */
+private const val PULL_BACK = 0.8f
 
 /**
  * The device's behaviour: what each touch of the wheel does, given where the menus are and
@@ -90,6 +95,18 @@ internal class PocketDevice(
     val pendingPlay = mutableStateOf<PendingPlay?>(null)
     var onOpenSettings: () -> Unit = {}
     var onAddAlbum: () -> Unit = {}
+
+    // **Pinching out of the room** - two fingers closing, into the showroom between formats
+    // (docs/formats.md section 7, step 5b). Nothing else here uses two fingers, and the wheel never
+    // sees them: a second finger cancels whatever the first was doing to it.
+    val pullOut = PullOut()
+    var showroomReachable = false
+    var onOpenShowroom: () -> Unit = {}
+    /** For the room's dimming: whether it is being pinched away, and how far. */
+    val pulling = mutableStateOf(false)
+    val pullDim = mutableFloatStateOf(0f)
+    private var pinching = false
+    private var pinchSpan = 0f
 
     var deviceNode: Node? = null
     var cameraNode: CameraNode? = null
@@ -169,6 +186,7 @@ internal class PocketDevice(
     // ---- input ------------------------------------------------------------------------------
 
     fun onTouch(event: MotionEvent): Boolean {
+        if (pinch(event)) return true
         val now = event.eventTime
         if (event.actionMasked == MotionEvent.ACTION_DOWN) {
             rest.touched(now)
@@ -224,6 +242,56 @@ internal class PocketDevice(
     }
 
     /**
+     * Two fingers: the pinch out of the room. True while it has the touch - from the second finger
+     * landing until the last one lifts, so the finger left behind does not start turning the wheel.
+     */
+    private fun pinch(event: MotionEvent): Boolean {
+        if (!showroomReachable) return false
+        when (event.actionMasked) {
+            MotionEvent.ACTION_POINTER_DOWN -> {
+                if (event.pointerCount != 2) return pinching
+                if (gesture.isDown) handle(gesture.cancel(), event.eventTime)
+                pinching = true
+                pinchSpan = span(event)
+                pullOut.begin()
+                return true
+            }
+            MotionEvent.ACTION_MOVE -> {
+                if (!pinching) return false
+                if (event.pointerCount >= 2 && pinchSpan > 0f) {
+                    val now = span(event)
+                    if (now > 0f && pullOut.pinch(now / pinchSpan)) {
+                        haptics.detent()
+                        onOpenShowroom()
+                    }
+                    pinchSpan = now
+                }
+                return true
+            }
+            MotionEvent.ACTION_POINTER_UP -> {
+                if (!pinching) return false
+                // Down to one finger: the pinch is over, but the touch is still the pinch's.
+                if (event.pointerCount <= 2) {
+                    pullOut.end()
+                    pinchSpan = 0f
+                }
+                return true
+            }
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                if (!pinching) return false
+                pinching = false
+                pinchSpan = 0f
+                pullOut.end()
+                return true
+            }
+        }
+        return false
+    }
+
+    private fun span(event: MotionEvent): Float =
+        kotlin.math.hypot(event.getX(0) - event.getX(1), event.getY(0) - event.getY(1))
+
+    /**
      * Finds the parts that move, by the names `build_pocket()` gives them, and puts the steel's
      * own material on the shell. Once.
      */
@@ -237,7 +305,7 @@ internal class PocketDevice(
 
     /** A thumb on the wheel, or the wheel still moving from one: the room draws every vsync. */
     val interacting: Boolean
-        get() = gesture.isDown || rock.isMoving || flight.isMoving
+        get() = gesture.isDown || rock.isMoving || flight.isMoving || pullOut.isMoving
 
     fun onFrame(now: Long) {
         if (lastInputAt == 0L) lastInputAt = now
@@ -263,6 +331,9 @@ internal class PocketDevice(
         val turnTarget = if (lyingFlat) 0f else 1f - flight.camera
         turnWeight += (turnTarget - turnWeight) * approach(TURN_FADE_RATE, dt)
         flight.step(dt)
+        pullOut.step(dt)
+        pullDim.floatValue = pullOut.progress
+        if (pulling.value != pullOut.engaged) pulling.value = pullOut.engaged
         pose(dt)
         swingCord(dt)
         // Written only while something moves, and once more to leave it exactly at rest.
@@ -367,7 +438,8 @@ internal class PocketDevice(
 
         val cx = lerp(0f, RestPose.CAMERA_X, c)
         val cy = lerp(0f, RestPose.CAMERA_Y, c)
-        val cz = lerp(handCameraZ, RestPose.CAMERA_Z, c)
+        // Pinched out of the room, the device goes away from you as the carriage darkens.
+        val cz = lerp(handCameraZ, RestPose.CAMERA_Z, c) * (1f + PULL_BACK * pullOut.progress)
         // Aimed at the device itself, wherever the flight has it — straight ahead in the hand —
         // so it stays framed through the move. Not at its float: the shot holds steady while the
         // device drifts in it. (Aiming at where it would land left the lagging device high in the

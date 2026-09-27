@@ -11,6 +11,8 @@ import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
@@ -26,6 +28,8 @@ import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
@@ -34,7 +38,9 @@ import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.google.android.filament.LightManager
 import com.google.android.filament.Renderer
+import com.jawon.app.BuildConfig
 import com.jawon.app.data.lyrics.LyricsState
+import com.jawon.app.ui.showroom.Exhibit
 import com.jawon.app.ui.wallscene.CaseArt
 import com.jawon.app.ui.wallscene.RoomCadence
 import com.jawon.app.ui.wallscene.RoomHaptics
@@ -85,6 +91,9 @@ private const val KEY_CONE_OUTER_RAD = 0.80f
 internal const val DEVICE_PITCH_DEG = -6f
 internal const val DEVICE_YAW_DEG = 15f
 
+/** How dark the carriage goes as it is pinched away, at the moment it lets go. */
+private const val PULL_DIM = 0.75f
+
 /** How bright the night outside is drawn, relative to the material's own tuning. */
 private const val WINDOW_GAIN = 0.8f
 
@@ -112,10 +121,10 @@ private const val NIGHT_WINDOW_MATERIAL_ASSET = "materials/night_window.filamat"
  * top of the bead as dashed lines at 1; at **4** they joined into continuous lines that still read
  * as a mirror; at 12 the bead went to satin. The arithmetic had predicted 1.
  */
-private const val POLISHED_STEEL_MATERIAL_ASSET = "materials/polished_steel.filamat"
-private val STEEL_BASE_COLOUR = floatArrayOf(0.560f, 0.570f, 0.580f)
-private const val STEEL_ROUGHNESS = 0.055f
-private const val STEEL_FOOTPRINT = 4f
+internal const val POLISHED_STEEL_MATERIAL_ASSET = "materials/polished_steel.filamat"
+internal val STEEL_BASE_COLOUR = floatArrayOf(0.560f, 0.570f, 0.580f)
+internal const val STEEL_ROUGHNESS = 0.055f
+internal const val STEEL_FOOTPRINT = 4f
 
 /**
  * The compartment around the device — table, panelling, window frame, sill — in the room's own
@@ -194,9 +203,9 @@ private val LEVEL = Rotation(0f, 0f, 0f)
  * hidden — changed nothing, and the one that moved the screen in front of everything showed it
  * working perfectly; the depth it had been given was the whole problem.
  */
-private const val SCREEN_W_M = 0.0443f
-private const val SCREEN_CENTRE_Y = 0.0255f
-private const val SCREEN_Z = 0.00525f - 0.0010f + 0.0001f
+internal const val SCREEN_W_M = 0.0443f
+internal const val SCREEN_CENTRE_Y = 0.0255f
+internal const val SCREEN_Z = 0.00525f - 0.0010f + 0.0001f
 
 /**
  * The iPod mode's room: a pocket player at life size, lit by a carriage at night — and now
@@ -210,6 +219,8 @@ private const val SCREEN_Z = 0.00525f - 0.0010f + 0.0001f
 fun PocketRoomScreen(
     onOpenSettings: () -> Unit,
     onAddAlbum: () -> Unit,
+    /** Two fingers pinched together: the showroom between formats. */
+    onOpenShowroom: () -> Unit = {},
     viewModel: WallSceneViewModel = hiltViewModel()
 ) {
     val context = LocalContext.current
@@ -336,6 +347,8 @@ fun PocketRoomScreen(
     device.hasNowPlaying = nowPlayingAlbumId != null && deck.tracks.isNotEmpty()
     device.onOpenSettings = onOpenSettings
     device.onAddAlbum = onAddAlbum
+    device.onOpenShowroom = onOpenShowroom
+    device.showroomReachable = Exhibit.reachable(BuildConfig.DEBUG || BuildConfig.SHOW_FORMATS)
 
     val nav = device.nav.value
     val currentKey = nav.current.key
@@ -832,6 +845,16 @@ fun PocketRoomScreen(
         // No chrome over the room: the device *is* the interface, and the phone app's Settings
         // are on its own menu (Settings → All Settings). The debug line and a SETTINGS link used
         // to sit under the device and were the first thing that said "screen", not "object".
+
+        // The carriage going dark as it is pinched away - composed only while it is (trap 14).
+        if (device.pulling.value) {
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .graphicsLayer { alpha = PULL_DIM * device.pullDim.floatValue }
+                    .background(Color.Black)
+            )
+        }
     }
 
     // Kept in step with the player, for the title bar's play glyph.

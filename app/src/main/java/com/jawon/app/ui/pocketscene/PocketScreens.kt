@@ -175,3 +175,20 @@ internal fun lyricsView(
         LcdScreen.LyricsView(shown, if (current >= 0) current - from else -1, null, top = from)
     }
 }
+
+/**
+ * The main menu as the device shows it switched on and left alone — for the showroom, where it
+ * stands on its plinth with its screen lit: the list at its first row, and [cover] in the split
+ * screen's right half, holding still.
+ */
+internal fun mainMenuAtRest(cover: ImageBitmap?): LcdScreen {
+    val rows = PocketMenus.rows(MenuKey.Main, PocketLibrary(), emptyMap(), hasNowPlaying = false)
+    return LcdScreen.Menu(
+        title = PocketMenus.title(MenuKey.Main, PocketLibrary()),
+        rows = rows.take(PocketMenus.VISIBLE_ROWS).map { LcdRow(it.label, it.leadsOn) },
+        selected = 0,
+        top = 0,
+        total = rows.size,
+        art = cover?.let { LcdScreen.ArtSlides(current = it, next = null, seed = 0) }
+    )
+}
