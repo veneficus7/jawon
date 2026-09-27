@@ -712,7 +712,8 @@ private fun CoverAndNames(np: LcdScreen.NowPlaying, art: Int) {
             )
             Spacer(Modifier.height(px(14)))
             Text(
-                text = "${np.trackNumber} of ${np.trackCount}",
+                // Blank while the player has yet to say which song an album resumed on.
+                text = if (np.trackNumber > 0) "${np.trackNumber} of ${np.trackCount}" else "",
                 fontFamily = InterFamily,
                 fontWeight = FontWeight.Medium,
                 fontSize = lcdSp(20),

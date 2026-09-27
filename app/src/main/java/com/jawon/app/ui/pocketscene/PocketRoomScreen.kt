@@ -96,6 +96,12 @@ private const val DEVICE_YAW_DEG = 15f
 /** How bright the night outside is drawn, relative to the material's own tuning. */
 private const val WINDOW_GAIN = 0.8f
 
+/** A song asked for — see `PocketDevice.pendingPlay`. [at] is `SystemClock.uptimeMillis()`. */
+private data class PendingPlay(val albumId: String, val index: Int?, val at: Long)
+
+/** How long a song asked for may stand in on Now Playing before the player must have answered. */
+private const val PENDING_PLAY_MS = 3_000L
+
 /** The rate the room is drawn at when nobody is touching it — see the note in onFrame. */
 private const val POCKET_IDLE_FPS = 60f
 
@@ -413,7 +419,13 @@ fun PocketRoomScreen(
     }
     device.lyricLineCount = (lyricsState as? LyricsState.Ready)?.lyrics?.lines?.size ?: 0
 
-    val nowPlayingAlbum = nowPlayingAlbumId?.let { library.album(it) }
+    // A song just asked for stands in on Now Playing until the player says it is on.
+    val asked = device.pendingPlay.value
+    val caughtUp = asked != null && deck.currentTrack?.albumId == asked.albumId &&
+        (asked.index == null || deck.currentTrackIndex == asked.index)
+    SideEffect { if (caughtUp) device.pendingPlay.value = null }
+    val pending = asked?.takeIf { !caughtUp }
+    val nowPlayingAlbum = (pending?.albumId ?: nowPlayingAlbumId)?.let { library.album(it) }
     val cover by produceState<ImageBitmap?>(initialValue = null, nowPlayingAlbum?.coverPath) {
         val path = nowPlayingAlbum?.coverPath
         value = if (path == null) null else withContext(Dispatchers.IO) {
@@ -426,6 +438,7 @@ fun PocketRoomScreen(
     // redraws on a change without depending on how SceneView forwards a new content lambda.
     val screen = lcdScreenFor(
         nav = nav,
+        pending = pending,
         library = library,
         settings = device.settings,
         slides = slides,
@@ -716,6 +729,7 @@ private fun pocketLibraryOf(layout: WallLayout): PocketLibrary {
 
 private fun lcdScreenFor(
     nav: PocketNav,
+    pending: PendingPlay?,
     library: PocketLibrary,
     settings: PocketSettings,
     slides: LcdScreen.ArtSlides?,
@@ -734,6 +748,25 @@ private fun lcdScreenFor(
     lyrics: LcdScreen.LyricsView?
 ): LcdScreen {
     val key = nav.current.key
+    if (key == MenuKey.NowPlaying && pending != null) {
+        // What was asked for, until the player says it is on: no time yet, and no number when
+        // the album resumes from wherever it was left.
+        val titles = trackTitles[pending.albumId]
+        return LcdScreen.NowPlaying(
+            trackTitle = pending.index?.let { titles?.getOrNull(it) }.orEmpty(),
+            artist = albumArtist,
+            album = albumTitle,
+            trackNumber = (pending.index ?: -1) + 1,
+            trackCount = titles?.size ?: 0,
+            positionMs = 0L,
+            durationMs = 0L,
+            cover = cover,
+            bar = LcdScreen.Bar.PROGRESS,
+            volume = volume,
+            scrubMs = 0L,
+            lyrics = null
+        )
+    }
     if (key == MenuKey.NowPlaying) {
         val track = deck.currentTrack
         if (track == null || deck.tracks.isEmpty()) {
@@ -894,6 +927,15 @@ private class PocketDevice(
     var deck = com.jawon.app.ui.wallscene.DeckState()
     var positionMs = 0L
     var hasNowPlaying = false
+
+    /**
+     * A song just asked for, shown on Now Playing until the player says it is on. The player
+     * takes a few frames to answer, and without this Now Playing slid in reading "Nothing
+     * playing" — or naming the song before — until it caught up; the classic showed the song you
+     * chose at once. [PendingPlay.index] is null when an album resumes where it was left, which
+     * only the view model knows.
+     */
+    val pendingPlay = mutableStateOf<PendingPlay?>(null)
     var onOpenSettings: () -> Unit = {}
     var onAddAlbum: () -> Unit = {}
 
@@ -1002,6 +1044,8 @@ private class PocketDevice(
 
     fun onFrame(now: Long) {
         if (lastInputAt == 0L) lastInputAt = now
+        // A song asked for that never arrived — a file gone, say — stops standing in for it.
+        pendingPlay.value?.let { if (now - it.at > PENDING_PLAY_MS) pendingPlay.value = null }
         handle(gesture.poll(now), now)
 
         val dt = if (lastFrameAt == 0L) 0f else (now - lastFrameAt) / 1000f
@@ -1351,6 +1395,7 @@ private class PocketDevice(
             when (val action = row?.action) {
                 is RowAction.PlayTrack -> {
                     viewModel.playAlbumFrom(action.albumId, action.index)
+                    pendingPlay.value = PendingPlay(action.albumId, action.index, SystemClock.uptimeMillis())
                     showNowPlaying()
                     return
                 }
@@ -1362,6 +1407,7 @@ private class PocketDevice(
                     }
                     if (albumId != null) {
                         viewModel.playAlbum(albumId)
+                        pendingPlay.value = PendingPlay(albumId, null, SystemClock.uptimeMillis())
                         showNowPlaying()
                         return
                     }
@@ -1387,6 +1433,7 @@ private class PocketDevice(
             }
             is RowAction.PlayTrack -> {
                 viewModel.playAlbumFrom(action.albumId, action.index)
+                pendingPlay.value = PendingPlay(action.albumId, action.index, SystemClock.uptimeMillis())
                 showNowPlaying()
             }
             RowAction.AddAlbums -> onAddAlbum()
