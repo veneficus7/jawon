@@ -210,4 +210,32 @@ class PocketMenuTest {
         assertEquals(3, clamped.current.selected)
         assertEquals(0, clamped.current.top)
     }
+
+    // ---- which page is up, for the screen's slide -------------------------------------------
+
+    @Test
+    fun `a highlight moving within a page is the same page, so nothing slides`() {
+        val nav = PocketNav().open(MenuKey.Albums)
+        assertEquals(nav.page, nav.move(2, rowCount = 4).page)
+    }
+
+    @Test
+    fun `opening goes a page deeper and back comes up one, to the same page as before`() {
+        val albums = PocketNav().open(MenuKey.Albums)
+        val album = albums.open(MenuKey.Album("a2"))
+        assertEquals(albums.page.depth + 1, album.page.depth)
+        assertEquals(albums.page, album.back().page)
+    }
+
+    @Test
+    fun `two albums at the same depth are different pages`() {
+        val albums = PocketNav().open(MenuKey.Albums)
+        assertFalse(albums.open(MenuKey.Album("a1")).page == albums.open(MenuKey.Album("a2")).page)
+    }
+
+    @Test
+    fun `turning a cover over is still Cover Flow's page - it turns, it does not slide`() {
+        val flow = PocketNav().open(MenuKey.CoverFlow)
+        assertEquals(flow.page, flow.open(MenuKey.Flipped("a1")).page)
+    }
 }

@@ -451,6 +451,9 @@ fun PocketRoomScreen(
     device.lyricShownTop = (screen as? LcdScreen.NowPlaying)?.lyrics?.top ?: 0
     val lcd = remember { mutableStateOf(screen) }
     SideEffect { lcd.value = screen }
+    // Which page it is, so the screen can slide between pages as the classic's did.
+    val lcdPage = remember { mutableStateOf(nav.page) }
+    SideEffect { lcdPage.value = nav.page }
 
     // The screen's own composition, on LcdPanel's hardware-drawn surface. Set once: everything it
     // shows is read from state inside it, and any change beneath the panel's host redraws the
@@ -474,7 +477,9 @@ fun PocketRoomScreen(
                 unlit = unlit,
                 flow = flowAnim.value,
                 flip = flipAnim.value,
-                slide = slideClock.floatValue
+                slide = slideClock.floatValue,
+                page = lcdPage.value.path,
+                depth = lcdPage.value.depth
             )
         }
     }

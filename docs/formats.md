@@ -268,8 +268,13 @@ One thing at a time, checked on the owner's phone between each (the working agre
    and "A" set aside), Shelves as playlists in their wall order, Artists, an album's tracks,
    and Now Playing. `PocketMenu.kt`, `CoverFlowLcd.kt`. The main menu is the classic's split
    screen — the list on the left, covers from the library pushed in, drifted and dissolved on
-   the right — on a clock that ticks at 20fps only while that menu is up and lit. **Cost unmeasured**: the flow redraws
-   the screen in software every frame it moves (trap 33's copy), which the phone has to answer.
+   the right — on a clock that ticks at 20fps only while that menu is up and lit. **And pages
+   slide**, as the classic's did (2026-09-27): select, and the new page comes in from the right
+   and pushes the old one off to the left in 260ms; MENU runs it back. The title bar stays put
+   and only its words change; a highlight moving within a page is the same page, and turning a
+   cover over is Cover Flow's own page (it turns, it does not slide) — `PocketNav.page`, tested.
+   **The cost is measured now**: Cover Flow moving put the main thread at 0.71 of a core while
+   `ViewNode` copied the screen in software, and 0.24 once `LcdPanel` drew it on the GPU (trap 33).
 7. **The wheel — done (2026-09-26), bar the feel.** Turning, with acceleration on long lists;
    the centre; MENU (held: the main menu); Play/Pause (held: off, the screen dark until any
    button); the sides (held: cue through the track); on Now Playing the volume, and the

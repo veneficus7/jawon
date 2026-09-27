@@ -1,5 +1,11 @@
 package com.jawon.app.ui.pocketscene
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -40,6 +46,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.TextUnit
 import com.jawon.app.ui.theme.InterFamily
 
@@ -58,8 +65,16 @@ import com.jawon.app.ui.theme.InterFamily
 const val LCD_PX_W = 640
 const val LCD_PX_H = 475
 
+/**
+ * How long a page takes to slide across when one opens or closes. The classic's was quick enough
+ * never to be waited for and slow enough to be seen — it is what makes a menu feel *deeper*
+ * rather than merely different.
+ */
+private const val PAGE_SLIDE_MS = 260
+
 /** Title bar and row heights, in LCD pixels. Eight rows fill the screen under the bar. */
 private const val TITLE_PX = 52
+private const val TITLE_RULE_PX = 2
 private const val ROW_PX = 50
 private const val SCROLLBAR_PX = 14
 
@@ -202,10 +217,16 @@ sealed interface LcdScreen {
  * lamp out the picture is still there, lit by nothing but the carriage, the way a transflective
  * panel reads.
  *
- * **Keep this stateless — no `animate*`, no `remember`ed state inside.** The in-world screen
- * only takes a new frame when the scope that invalidates its `ViewNode` recomposes (trap 33), so
- * anything that animates in here on its own is never seen on the glass. The backlight's fade was
- * written in here first and did exactly that. Animate in the room and pass the value in.
+ * **Pages slide**, as the classic's did: a new one ([page] changing, [depth] deeper) comes in from
+ * the right and pushes the old one off to the left, and going back runs the other way. The title
+ * bar stays where it is and only its words change. A highlight moving within a page is the same
+ * page and does not slide.
+ *
+ * **Driven from outside, animated inside.** What the screen shows is decided by the room and
+ * passed in; how it moves between two of those can live here, because `LcdPanel` redraws the
+ * glass on any change beneath it. (Under SceneView's `ViewNode` nothing animating in here was
+ * ever seen — trap 33 — which is why the backlight's fade and Cover Flow's motion are still
+ * animated in the room.)
  */
 @Composable
 fun PocketLcd(
@@ -217,7 +238,10 @@ fun PocketLcd(
     flow: Float = 0f,
     flip: Float = 0f,
     /** Seconds into the main menu's current slide — see [ArtPanel]. */
-    slide: Float = SLIDE_FADE_S
+    slide: Float = SLIDE_FADE_S,
+    /** Which page this is, and how deep — see `PocketNav.page`. Unchanged, nothing slides. */
+    page: Any = Unit,
+    depth: Int = 0
 ) {
     val density = LocalDensity.current
     fun px(v: Int): Dp = with(density) { v.toDp() }
@@ -228,20 +252,34 @@ fun PocketLcd(
             .background(if (awake) LcdWhite else LcdOff)
     ) {
         if (!awake) return@Box
-        if (screen is LcdScreen.CoverFlow) {
-            // The whole screen, as the classic gave it: no title bar over the covers.
-            CoverFlowBody(screen, flow, flip)
-        } else {
-            Column(modifier = Modifier.fillMaxSize()) {
-                TitleBar(screen.title, playing)
-                when (screen) {
-                    is LcdScreen.Menu -> MenuBody(screen, slide)
-                    is LcdScreen.NowPlaying -> NowPlayingBody(screen)
-                    is LcdScreen.Slider -> SliderBody(screen)
-                    is LcdScreen.CoverFlow -> Unit
+        AnimatedContent(
+            targetState = LcdPage(screen, page, depth),
+            contentKey = { it.page },
+            transitionSpec = {
+                val deeper = targetState.depth >= initialState.depth
+                val spec = tween<IntOffset>(PAGE_SLIDE_MS, easing = FastOutSlowInEasing)
+                slideInHorizontally(spec) { w -> if (deeper) w else -w } togetherWith
+                    slideOutHorizontally(spec) { w -> if (deeper) -w else w }
+            },
+            modifier = Modifier.fillMaxSize().clipToBounds(),
+            label = "page"
+        ) { shown ->
+            when (val s = shown.screen) {
+                // The whole screen, as the classic gave it: no title bar over the covers.
+                is LcdScreen.CoverFlow -> CoverFlowBody(s, flow, flip)
+                else -> Column(modifier = Modifier.fillMaxSize().background(LcdWhite)) {
+                    Spacer(modifier = Modifier.height(px(TITLE_PX + TITLE_RULE_PX)))
+                    when (s) {
+                        is LcdScreen.Menu -> MenuBody(s, slide)
+                        is LcdScreen.NowPlaying -> NowPlayingBody(s)
+                        is LcdScreen.Slider -> SliderBody(s)
+                        is LcdScreen.CoverFlow -> Unit
+                    }
                 }
             }
         }
+        // Over the sliding pages, fixed: only its words change.
+        if (screen !is LcdScreen.CoverFlow) Column { TitleBar(screen.title, playing) }
         LcdGlass()
         if (unlit > 0f) {
             Box(
@@ -252,6 +290,9 @@ fun PocketLcd(
         }
     }
 }
+
+/** One page as it slides: what it shows, and which page it is. */
+private data class LcdPage(val screen: LcdScreen, val page: Any, val depth: Int)
 
 /**
  * What makes the picture an LCD rather than an image of one: a backlit panel is not a perfect
@@ -320,7 +361,7 @@ private fun TitleBar(title: String, playing: Boolean) {
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(px(2))
+            .height(px(TITLE_RULE_PX))
             .background(TitleRule)
     )
 }

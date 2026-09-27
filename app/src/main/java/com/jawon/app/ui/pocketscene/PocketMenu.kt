@@ -308,6 +308,21 @@ data class PocketNav(val stack: List<Level> = listOf(Level(MenuKey.Main))) {
     val current: Level get() = stack.last()
 
     /**
+     * Which page is up, for the screen's slide between pages: the path of menus, and how deep it
+     * is. Deeper slides in from the right, as the classic's did, and back slides out to it; the
+     * same page with its highlight moved is the same page, and does not slide.
+     *
+     * A turned-over cover counts as Cover Flow's own page — it turns over, it does not slide.
+     */
+    val page: Page
+        get() {
+            val path = stack.map { it.key }.filterNot { it is MenuKey.Flipped }
+            return Page(path, path.size)
+        }
+
+    data class Page(val path: List<MenuKey>, val depth: Int)
+
+    /**
      * Moves the highlight [items] rows down (negative is up), stopping at either end — the
      * classic does not wrap round — and scrolls the window only as far as keeps it in view.
      */
