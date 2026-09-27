@@ -498,16 +498,10 @@ fun PocketRoomScreen(
     // Where the lyrics page is actually showing from, for the wheel's first turn on it.
     device.lyricShownTop = (screen as? LcdScreen.NowPlaying)?.lyrics?.top ?: 0
     // The earphone cord: the plug's white plastic, drawn round the simulated chain every frame.
+    // Handed to the device, and taken out of the scene and destroyed, from inside the scene's own
+    // content below — see the note there.
     val cordMesh = remember(engine, materialLoader) {
         CordMesh(engine, materialLoader.createColorInstance(CORD_COLOUR, 0f, CORD_ROUGHNESS, 0.5f))
-    }
-    DisposableEffect(cordMesh) {
-        device.cordMesh = cordMesh
-        onDispose {
-            device.cordMesh = null
-            filamentView.scene?.removeEntity(cordMesh.entity)
-            cordMesh.destroy()
-        }
     }
 
     val lcd = remember { mutableStateOf(screen) }
@@ -651,6 +645,19 @@ fun PocketRoomScreen(
                 if (!cadence.shouldDraw(divisor)) renderer.skipNextFrames(1)
             }
         ) {
+            // **The cord's renderable leaves the scene while there still is one.** This effect was
+            // first declared out beside the `remember` above, which put its disposal *after*
+            // SceneView's — so leaving the room removed the cord from a scene SceneView had already
+            // destroyed, and every way out of this room threw ("Calling method on destroyed Scene").
+            // In here it is disposed with the scene's content, which goes before the scene does.
+            DisposableEffect(cordMesh) {
+                device.cordMesh = cordMesh
+                onDispose {
+                    device.cordMesh = null
+                    filamentView.scene?.removeEntity(cordMesh.entity)
+                    cordMesh.destroy()
+                }
+            }
             // **The carriage's ceiling lamp: the key light.** Warm, above and just behind you, aimed
             // at the device, so the anodised face has a sheen running down it and the wheel's
             // coat a highlight. At SceneView's default exposure a light has to be in the
