@@ -146,6 +146,13 @@ effect on the way back — no mid-session teardown, and no brush with trap 1.
   **Not cheap** is read as: no lens flares, sparkles or glow for its own sake; every effect
   something light or motion really does; springs and noise, never a visible loop; each piece
   measured on the phone as it lands. Built in four phases (§7, step 5a).
+  **Two more, the same day:** the device wears **earphones** — "if its pocket player it should
+  be connected to a wire … just to make it more realistic" — a **white** cord, the classic's,
+  from a plug in the top edge; and **switching between formats becomes a showroom**: pinch out in
+  any room and the camera pulls back into a dark gallery, each format on its own pedestal under a
+  spotlight — swipe between them, tap one to fly into its room. Chosen over objects hidden in
+  each room and over a menu row, because it scales as the formats arrive and it is a moment, not
+  a setting. It replaces Settings → THE ROOM as the way between rooms.
 - **The bar is "as realistic and high quality as possible" — decided.** What that means here:
   - **It is seen closer than anything in the CD room.** At life size, filling the screen, every
     seam, bevel, the wheel's slight recess and the screen's inset glass is on show, so the model
