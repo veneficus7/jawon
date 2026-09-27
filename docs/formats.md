@@ -129,6 +129,23 @@ effect on the way back — no mid-session teardown, and no brush with trap 1.
   the device's glass and its polished back**. That last part is the room: the passing lights
   are its lighting, and a glossy object under moving light is the most convincing thing a
   renderer can show. Day or night is the owner's call.
+- **The room around it — decided (2026-09-27).** The owner asked for the background, the
+  environment and the atmosphere next — "animations, movements, little wiggles, levitations,
+  camera movements, some magical effects, some realistic moody elements like lights and
+  windows" — and that it **not look cheap**. Three calls, made that day:
+  - **A classic night train**: dark wood table and panelling, a warm brass reading lamp,
+    deep-coloured velvet seats, curtains. The moodiest of the three offered.
+  - **The train follows the music**: pause, and it slows into a station — platform lamps holding
+    still, lighting the device from one side — and play pulls it out again.
+  - **Two states.** *In hand* is the device as it is: life size, still, the phone *is* the device
+    (the sway note in `PocketRoomScreen`). *At rest* — the phone laid flat, or twenty seconds
+    untouched — the camera eases back into the carriage and the device lifts off the table and
+    floats in the lamp's light, its shadow moving beneath it; a touch, or picking the phone up,
+    flies it back into the hand. The motion the owner asked for lives in the second state and the
+    move between them, so it never fights the hand holding the phone.
+  **Not cheap** is read as: no lens flares, sparkles or glow for its own sake; every effect
+  something light or motion really does; springs and noise, never a visible loop; each piece
+  measured on the phone as it lands. Built in four phases (§7, step 5a).
 - **The bar is "as realistic and high quality as possible" — decided.** What that means here:
   - **It is seen closer than anything in the CD room.** At life size, filling the screen, every
     seam, bevel, the wheel's slight recess and the screen's inset glass is on show, so the model
@@ -304,6 +321,22 @@ One thing at a time, checked on the owner's phone between each (the working agre
    row each with its reading, a slider each that the wheel turns, the classic's Brightness
    screen with Jawon's rack behind it. Touching an effect switches its cell in; Flat puts them
    all back.
+5a. **The room around the device (planned 2026-09-27, §4).** In four phases, each checked on the
+   owner's phone and measured before the next — the idle GPU clock is 342–443MHz after the
+   ambient occlusion went to half resolution, so there is room, and the CD room's fog showed how
+   fast it goes:
+   1. **The two states and a blockout of the carriage** — the camera pulling back, the table and
+      the window frame, the device levitating with a real shadow from the reading lamp, and the
+      flight between the table and the hand, reversible from any point.
+   2. **The glass and what passes it** — rain and grime (a hand-written material, `docs/realism.md`
+      §3), the carriage and the device's screen reflected in the pane, and events outside:
+      tunnels, bridges, a level crossing, showers, and **stations**, tied to pause and play.
+   3. **Light, and the small magic** — the screen's glow spilling onto the table in the colour of
+      what it shows, a reading lamp that switches off with a tap, dust in its beam, passing
+      lights sweeping the whole carriage.
+   4. **Motion and the bake** — the carriage's sway under the camera at rest, the float on springs
+      and noise, wiggles on a track change and a landing, tilt parallax, a drag to look round, and
+      Cycles baking the interior's bounce light and shadow into lightmaps.
 9. **Vinyl** (§5), then **cassette** (§6), each its own room and built the same way.
 
 Each of 3–8 is about a session's work. **Measure every tier as it lands** (traps 28–30).
