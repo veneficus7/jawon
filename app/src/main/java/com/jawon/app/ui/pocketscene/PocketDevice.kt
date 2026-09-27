@@ -33,6 +33,22 @@ private const val PENDING_PLAY_MS = 3_000L
 private const val PULL_BACK = 0.8f
 
 /**
+ * **The platform's light, in at the window**: the fluorescent tubes outside, as one cool light over
+ * the window's top, aimed down across the table and the device — a rim on the device's edges and a
+ * cold cast on the walnut against the reading lamp's warmth. Measured on the AVD, laid flat: at
+ * 2,400cd it moved nothing that could be measured, a probe at a hundred times that in pure red
+ * flooded the table and rimmed the cord and the wheel (so it reaches what it should), and 12,000
+ * lifted the table by 40% with its blue rising most — a cold cast, but more than a fill.
+ */
+internal const val PLATFORM_LIGHT_CANDELA = 8_000f
+
+/** What the window is told when there is no station about: far past anything it draws. */
+internal const val NO_STATION_M = 10_000f
+
+/** The failing tube's clock is wrapped, so a long night does not wear its precision away. */
+private const val STATION_CLOCK_WRAP_S = 3_600.0
+
+/**
  * The device's behaviour: what each touch of the wheel does, given where the menus are and
  * what is playing.
  *
@@ -146,6 +162,10 @@ internal class PocketDevice(
     private var turnPitch = Float.NaN
     private var turnYaw = Float.NaN
     val lampNodes = arrayOfNulls<io.github.sceneview.node.LightNode>(PassingLamps.COUNT)
+
+    /** The platform's light coming in at the window, while the train stands at one. */
+    var platformLightNode: io.github.sceneview.node.LightNode? = null
+    private var platformLightShown = -1f
 
     private val train = TrainMotion()
     private val passing = PassingLamps()
@@ -343,12 +363,29 @@ internal class PocketDevice(
         }
         rockWasMoving = rock.isMoving
 
-        // The night going past: the train's distance, split into each layer's parallax.
+        // The night going past: the train's distance, split into each layer's parallax — and the
+        // train follows the music, running while it plays and standing at a platform when it stops.
+        train.setRunning(playingNow.value)
         train.advance(dt)
         windowMaterial?.let { outside ->
             outside.setParameter("scroll", train.scroll(0), train.scroll(1), train.scroll(2), train.scroll(3))
             val (bobX, bobY) = train.bob()
             outside.setParameter("bob", bobX, bobY)
+            val ahead = train.stationAhead
+            outside.setParameter(
+                "station",
+                if (ahead.isNaN()) NO_STATION_M else ahead,
+                (train.time % STATION_CLOCK_WRAP_S).toFloat()
+            )
+        }
+        // And the platform's cold light, in at the window while the train is alongside one —
+        // written only when it changes, and off by intensity (trap 24).
+        val platform = train.platformLight
+        if (platform != platformLightShown) {
+            platformLightNode?.let {
+                it.setIntensityCandela(PLATFORM_LIGHT_CANDELA * platform)
+                platformLightShown = platform
+            }
         }
 
         // The world turned against the phone's tilt: the environment, and the lamps in it.

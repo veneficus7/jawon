@@ -57,23 +57,67 @@ object NightWindow {
 
     /** Rail joints go by every this many metres — the "clickety" the carriage rocks to. */
     const val JOINT_SPACING_M = 25f
+
+    /**
+     * **The stations** — where the train stops when the music does (`docs/formats.md` §4). Half a
+     * platform's length, metres: the window is alongside it anywhere within this of its middle.
+     * **Must agree with `night_window.mat`'s `PLATFORM_HALF`.**
+     */
+    const val PLATFORM_HALF_M = 24f
+
+    /** How far from the window a station is drawn at all, metres along the line, either way. */
+    const val STATION_RANGE_M = 70f
 }
 
 /**
- * The train: its speed drifting as a real one's does, the distance it has covered, and the rock
- * of the carriage.
+ * The train: its speed drifting as a real one's does, the distance it has covered, the rock of
+ * the carriage — **and it follows the music.** While something plays it runs; paused, it brakes
+ * into a station and stands at the platform; played again, it pulls away.
  *
- * **Nothing here is periodic in a way the eye can find.** The speed is three slow sines at
+ * **Nothing here is periodic in a way the eye can find.** The cruising speed is three slow sines at
  * incommensurate rates, so it never settles into a rhythm; the bob is the same, plus a small
  * jolt at every rail joint — which *is* regular, as it is on a real track, and is the one
  * rhythm a train is allowed to have.
+ *
+ * **Braking is the S-curve a driver brakes to**: the speed falls as `1 − smoothstep`, so the
+ * deceleration builds from nothing, peaks halfway and eases back to nothing as the train stands —
+ * no jolt going in, no creep at the end. The station is placed where that curve ends, half the
+ * distance the train would have covered at speed, so it comes to rest with the platform's middle
+ * at the window; and the curve is a function of time, not a step, so a stop is the same at 60 and
+ * at 120 frames a second. A critically damped spring was the first version: it never quite
+ * arrives, and the platform was still visibly creeping twelve seconds after the pause.
  */
-class TrainMotion(private val baseSpeed: Float = NightWindow.BASE_SPEED_M_S) {
+class TrainMotion(
+    private val baseSpeed: Float = NightWindow.BASE_SPEED_M_S,
+    running: Boolean = true
+) {
+
+    private enum class Mode { RUNNING, BRAKING, STOPPED, DEPARTING }
 
     private var t = 0.0
     private var travelled = 0.0
+    private var v = 0.0
+    private var mode = Mode.RUNNING
     private var lastJoint = 0.0
     private var jointAge = 10.0
+
+    /** The platform's middle, metres along the line — NaN when there is no station about. */
+    private var station = Double.NaN
+
+    /** The brake: where it began, how fast the train was going, how long it takes, how far in. */
+    private var brakeFrom = 0.0
+    private var brakeSpeed = 0.0
+    private var brakeFor = 1.0
+    private var brakeT = 0.0
+
+    private var departFrom = 0.0
+    private var departFor = DEPART_S
+    private var departT = 0.0
+    private var stoppedAge = SETTLE_GONE_S
+
+    init {
+        placeAt(running)
+    }
 
     /** Seconds since the train set off. */
     val time: Double get() = t
@@ -81,25 +125,138 @@ class TrainMotion(private val baseSpeed: Float = NightWindow.BASE_SPEED_M_S) {
     /** Metres covered. */
     val distance: Double get() = travelled
 
-    /** The speed right now, m/s. Always well above zero — this train does not stop. */
-    fun speed(at: Double = t): Float {
+    /** Whether it is standing at a platform. */
+    val stopped: Boolean get() = mode == Mode.STOPPED
+
+    /**
+     * How far ahead of the window the station's middle is, metres along the line — negative once
+     * it is behind — or NaN when there is none within [NightWindow.STATION_RANGE_M].
+     */
+    val stationAhead: Float
+        get() {
+            if (station.isNaN()) return Float.NaN
+            val ahead = station - travelled
+            return if (kotlin.math.abs(ahead) > NightWindow.STATION_RANGE_M) Float.NaN else ahead.toFloat()
+        }
+
+    /** The cruising speed at time [at], m/s: always well above zero — at speed, this train does not stop. */
+    fun cruise(at: Double = t): Float {
         val drift = 0.12 * sin(0.071 * at) + 0.07 * sin(0.193 * at + 1.3) + 0.04 * sin(0.437 * at + 2.1)
         return (baseSpeed * (1.0 + drift)).toFloat()
+    }
+
+    /** The speed right now, m/s — nought at a platform. */
+    fun speed(): Float = v.toFloat()
+
+    /**
+     * How much of a platform's light is coming in at the window, 0…1: all of it alongside the
+     * platform, fading over its last few metres as the train runs in or pulls away.
+     */
+    val platformLight: Float
+        get() {
+            val ahead = stationAhead
+            if (ahead.isNaN()) return 0f
+            val over = (kotlin.math.abs(ahead) - (NightWindow.PLATFORM_HALF_M - PLATFORM_LIGHT_FADE_M)) /
+                (2f * PLATFORM_LIGHT_FADE_M)
+            val u = over.coerceIn(0f, 1f)
+            return 1f - u * u * (3f - 2f * u)
+        }
+
+    /**
+     * Whether the music is playing. Called every frame; only a change does anything.
+     *
+     * For the train's first [SETTLE_IN_S] seconds a change is taken as where it *is* rather than
+     * something to animate: the room is built before the player has said whether it is playing,
+     * and a train that arrived running only to brake into a station — or stood at one only to
+     * pull away — every time the room was opened would be the room guessing out loud.
+     */
+    fun setRunning(running: Boolean) {
+        val moving = mode == Mode.RUNNING || mode == Mode.DEPARTING
+        if (running == moving) return
+        if (t < SETTLE_IN_S) {
+            placeAt(running)
+            return
+        }
+        if (running) {
+            // Pull away from wherever it is — at rest, or still running into the platform.
+            departFrom = v
+            departFor = (DEPART_S * (1.0 - v / cruise())).coerceAtLeast(1.0)
+            departT = 0.0
+            mode = Mode.DEPARTING
+        } else {
+            brakeFrom = travelled
+            brakeSpeed = v
+            brakeFor = (v / BRAKE_MEAN_M_S2).coerceAtLeast(BRAKE_MIN_S)
+            brakeT = 0.0
+            val stopAt = travelled + v * brakeFor / 2.0
+            val alongside = !station.isNaN() && kotlin.math.abs(station - travelled) < NightWindow.PLATFORM_HALF_M
+            // Still alongside the platform it just left: stop there, as a real train would. Else
+            // the next station, exactly where the brake will bring the train to rest.
+            if (!alongside) station = stopAt
+            mode = Mode.BRAKING
+        }
+    }
+
+    private fun placeAt(running: Boolean) {
+        if (running) {
+            mode = Mode.RUNNING
+            v = cruise().toDouble()
+        } else {
+            mode = Mode.STOPPED
+            v = 0.0
+            station = travelled
+            stoppedAge = SETTLE_GONE_S
+        }
     }
 
     fun advance(dtS: Float) {
         if (dtS <= 0f) return
         val dt = dtS.coerceAtMost(0.1f).toDouble()
-        // Midpoint speed: exact enough, and the same distance whatever the frame rate.
-        travelled += speed(t + dt / 2.0) * dt
+        when (mode) {
+            Mode.RUNNING -> {
+                // Midpoint speed: exact enough, and the same distance whatever the frame rate.
+                v = cruise(t + dt / 2.0).toDouble()
+                travelled += v * dt
+            }
+            Mode.DEPARTING -> {
+                departT += dt
+                val k = smooth((departT - dt / 2.0) / departFor)
+                v = departFrom + (cruise(t + dt / 2.0) - departFrom) * k
+                travelled += v * dt
+                if (departT >= departFor) mode = Mode.RUNNING
+            }
+            Mode.BRAKING -> {
+                // Where the S-curve has the train now: speed 1 − smoothstep, distance its integral.
+                brakeT += dt
+                val u = (brakeT / brakeFor).coerceAtMost(1.0)
+                travelled = brakeFrom + brakeSpeed * brakeFor * (u - u * u * u + u * u * u * u / 2.0)
+                v = brakeSpeed * (1.0 - u * u * (3.0 - 2.0 * u))
+                if (u >= 1.0) {
+                    v = 0.0
+                    mode = Mode.STOPPED
+                    stoppedAge = 0.0
+                }
+            }
+            Mode.STOPPED -> {
+                v = 0.0
+                stoppedAge += dt
+            }
+        }
         t += dt
         jointAge += dt
         val joint = floor(travelled / NightWindow.JOINT_SPACING_M)
         if (joint > lastJoint) {
             lastJoint = joint
             jointAge = 0.0
+            jointSpeed = v
+        }
+        // A station left far enough behind is gone.
+        if (!station.isNaN() && travelled - station > NightWindow.STATION_RANGE_M && mode != Mode.BRAKING) {
+            station = Double.NaN
         }
     }
+
+    private var jointSpeed = 0.0
 
     /**
      * How far layer [layer] of the picture has scrolled, in metres of picture, wrapped at exactly
@@ -113,22 +270,58 @@ class TrainMotion(private val baseSpeed: Float = NightWindow.BASE_SPEED_M_S) {
     }
 
     /**
-     * The carriage's rock, as the outside's offset in metres of picture: a slow sway, a faster
-     * shimmy, and a damped jolt as each rail joint passes under the bogie.
+     * The carriage's rock, as the outside's offset in metres of picture: a slow sway and a faster
+     * shimmy that grow with the speed, a damped jolt as each rail joint passes under the bogie,
+     * and — once, as it comes to rest — the carriage settling back on its springs.
      */
     fun bob(): Pair<Float, Float> {
-        val sway = 0.0011 * sin(0.9 * t + 0.4) + 0.0006 * sin(2.3 * t)
-        val bounce = 0.0009 * sin(1.7 * t + 1.1) + 0.0005 * sin(3.9 * t + 0.3) + 0.0003 * sin(7.1 * t)
-        return sway.toFloat() to (bounce + jolt()).toFloat()
+        val motion = (v / baseSpeed).coerceIn(0.0, 1.2)
+        val sway = (0.0011 * sin(0.9 * t + 0.4) + 0.0006 * sin(2.3 * t)) * motion
+        val bounce = (0.0009 * sin(1.7 * t + 1.1) + 0.0005 * sin(3.9 * t + 0.3) + 0.0003 * sin(7.1 * t)) * motion
+        return (sway + settle()).toFloat() to (bounce + jolt()).toFloat()
     }
 
-    /** The last rail joint's jolt, dying away: a sharp 6Hz shake gone within a quarter second. */
-    fun jolt(): Double = JOLT_M * exp(-jointAge * 9.0) * sin(jointAge * 2.0 * PI * 6.0)
+    /** The last rail joint's jolt, dying away — as hard as the train was going when it crossed. */
+    fun jolt(): Double =
+        JOLT_M * (jointSpeed / baseSpeed).coerceIn(0.0, 1.2) * exp(-jointAge * 9.0) * sin(jointAge * 2.0 * PI * 6.0)
+
+    /** The carriage rocking back on its springs as the train stops: a slow, damped lean along the line. */
+    fun settle(): Double =
+        if (stoppedAge >= SETTLE_GONE_S) 0.0
+        else SETTLE_M * exp(-stoppedAge * 2.2) * sin(stoppedAge * 2.0 * PI * 0.9)
+
+    private fun smooth(x: Double): Double {
+        val u = x.coerceIn(0.0, 1.0)
+        return u * u * (3.0 - 2.0 * u)
+    }
 
     companion object {
         private const val PICTURE_DISTANCE = 0.85
 
         /** The jolt's peak, in metres of picture. */
         const val JOLT_M = 0.0016
+
+        /**
+         * How hard the brakes pull, on average, m/s²: a train at 16m/s stands at the platform ten
+         * seconds after the music paused, 80m on, the deceleration peaking at 2.4 halfway. Calm,
+         * as a stop is; not so long that the pause seems to have gone unnoticed.
+         */
+        const val BRAKE_MEAN_M_S2 = 1.6
+
+        /** However slowly it was going, a stop takes this long at least. */
+        private const val BRAKE_MIN_S = 2.0
+
+        /** How long pulling away from a platform to cruising speed takes, seconds. */
+        const val DEPART_S = 9.0
+
+        /** The settle's lean, metres of picture, and how long it takes to die away. */
+        const val SETTLE_M = 0.0022
+        private const val SETTLE_GONE_S = 4.0
+
+        /** How long after the room opens the player's state is taken as given — see [setRunning]. */
+        const val SETTLE_IN_S = 0.8
+
+        /** Over how many metres either side of the platform's end its light comes and goes. */
+        private const val PLATFORM_LIGHT_FADE_M = 5f
     }
 }

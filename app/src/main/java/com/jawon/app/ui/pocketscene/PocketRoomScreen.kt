@@ -140,6 +140,13 @@ private const val CARRIAGE_MODEL_ASSET = "models/carriage.glb"
  */
 private const val CARRIAGE_GLASS_ASSET = "models/carriage_glass.glb"
 
+/**
+ * Where a platform's light comes in: outside the window, over its top, a little to the left of the
+ * device — aimed down at the table in front of the window, so it crosses the device on the way.
+ */
+private val PLATFORM_LIGHT_POSITION = floatArrayOf(-0.18f, 0.40f, -0.62f)
+private val PLATFORM_LIGHT_TARGET = floatArrayOf(0.05f, -0.30f, -0.12f)
+
 /** The earphone plug in the top edge's jack, in the device's frame (`build_earphone_plug()`). */
 private const val EARPHONE_PLUG_ASSET = "models/earphone_plug.glb"
 
@@ -717,6 +724,25 @@ fun PocketRoomScreen(
                     nodeApply = { device.lampNodes[index] = this }
                 )
             }
+            // **A platform's light**, coming in at the window while the train stands at one: cool,
+            // from outside the window's top, down across the table. Off until then, by intensity.
+            LightNode(
+                type = LightManager.Type.SPOT,
+                position = Position(PLATFORM_LIGHT_POSITION[0], PLATFORM_LIGHT_POSITION[1], PLATFORM_LIGHT_POSITION[2]),
+                direction = Direction(
+                    PLATFORM_LIGHT_TARGET[0] - PLATFORM_LIGHT_POSITION[0],
+                    PLATFORM_LIGHT_TARGET[1] - PLATFORM_LIGHT_POSITION[1],
+                    PLATFORM_LIGHT_TARGET[2] - PLATFORM_LIGHT_POSITION[2]
+                ),
+                apply = {
+                    color(0.74f, 0.90f, 0.94f)
+                    intensityCandela(0f)
+                    spotLightCone(0.6f, 1.2f)
+                    falloff(3f)
+                    castShadows(false)
+                },
+                nodeApply = { device.platformLightNode = this }
+            )
             // **The window**, behind everything: the night going past, out of focus. Its
             // instance is made in this scope because a PlaneNode destroys the one it is handed.
             val outside = remember(windowMaterial) {
@@ -724,6 +750,8 @@ fun PocketRoomScreen(
                     setParameter("size", NightWindow.PLANE_W_M, NightWindow.PLANE_H_M)
                     setParameter("scroll", 0f, 0f, 0f, 0f)
                     setParameter("bob", 0f, 0f)
+                    // No station until the train says so: an unset one would be at the window.
+                    setParameter("station", NO_STATION_M, 0f)
                     // A little under full: the lights outside are the room, and the device in
                     // front of them is the subject — at 1.0 they competed with it.
                     setParameter("gain", WINDOW_GAIN)

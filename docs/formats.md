@@ -350,6 +350,20 @@ One thing at a time, checked on the owner's phone between each (the working agre
    2. **The glass and what passes it** — rain and grime (a hand-written material, `docs/realism.md`
       §3), the carriage and the device's screen reflected in the pane, and events outside:
       tunnels, bridges, a level crossing, showers, and **stations**, tied to pause and play.
+      **Stations built on 2026-09-27, on the AVD**: the train follows the music. Paused, it brakes
+      into a station — placed ahead exactly where the brake ends, so the platform stops at the
+      window — on the S-curve a driver brakes to, speed `1 − smoothstep`: no jolt going in, none
+      as it stands, ten seconds from speed (a critically damped spring was first, and still crept
+      twelve seconds on). Played, it pulls away over nine; paused just after leaving, it stops
+      alongside the same platform, as a real train would. Standing, the carriage is still — the
+      sway and the joints scale with speed — after one settle on its springs. The window draws the
+      platform (`docs/materials.md`), and its cold fluorescent light comes in at the window, a
+      spot over the window's top at 8,000cd that lays a cool cast on the walnut. Opening the room
+      with nothing playing finds the train already standing. The kinematics were checked on the
+      AVD end to end by log (departure 0.4 → 17.4m/s in ~9s, the album ending, a stop 10.3s later
+      with the platform's middle at 0.0); **the look of the stop and the moving platform is still
+      the owner's to judge on his phone**, as is the cost of the platform's shader (A/B on the AVD
+      moved nothing measurable).
    3. **Light, and the small magic** — the screen's glow spilling onto the table in the colour of
       what it shows, a reading lamp that switches off with a tap, dust in its beam, passing
       lights sweeping the whole carriage.

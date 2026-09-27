@@ -16,7 +16,16 @@ additive, drawn from a two-channel mask) — and two in the pocket player's:
   second offset outward by up to 0.7 of its radius, so a light is round in the middle of the
   picture and a cat's eye lying along the top and bottom edges, as a real lens's defocused
   lights are. `frame` — half the frame's height at the window's distance — is the only thing
-  it needs from the room, which works it out from the camera.
+  it needs from the room, which works it out from the camera. **And the stations**: when the
+  music pauses the train stands at a platform (`TrainMotion`), and `station` — how far ahead of
+  the window the platform's middle is, and a clock — draws it: fluorescent tubes as capsules
+  under a canopy, a blue name sign, backlit posters, a waiting room, the concrete pooled under
+  each tube and its yellow edge line, pillars, each part scrolled by its own depth. Only
+  evaluated when a station is within 90m. **Laid out for what the room's views frame, which is
+  very little**: the screen is portrait, so only about ±0.1m of the picture is seen across — at
+  rest x −0.08…+0.15, y −0.27…+0.01; in the hand, the margins round the device. The first two
+  layouts were drawn for the window's 0.8m opening and put everything out of frame; a numpy port
+  of the station, cropped to those two views, is what found where things had to go.
 - `materials/polished_steel.mat` → `assets/materials/polished_steel.filamat`, the device's steel
   shell and the bead round its face, put on that one part in place of the glTF's own material
   when the model loads. It exists for one line of shader: **roughness floored at the pixel's

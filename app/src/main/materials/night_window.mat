@@ -13,6 +13,12 @@
 // warm streak of the carriage's own ceiling light reflected in the glass — the one thing on a
 // train window that does not move.
 //
+// And **the stations**: when the music pauses the train runs into one and stands (TrainMotion),
+// and the window fills with a platform — fluorescent tubes under a canopy, a back wall with the
+// station's name lit on it and a clock, the platform's concrete pooled under each tube and its
+// yellow edge line, pillars — every part out of focus, and each scrolled by its own depth, so it
+// slides in with the right parallax and stops dead at the window.
+//
 // Unlit: it is a picture of light, and nothing in the carriage should darken it.
 //
 // Compiled by hand with a version-matched matc. See docs/materials.md.
@@ -52,6 +58,14 @@ material {
             // cat's eye. The room works it out from the camera.
             type : float,
             name : frame
+        },
+        {
+            // The station: how far ahead of the window its platform's middle is, metres along the
+            // line (negative once passed; far away when there is none), and a clock in seconds
+            // for the one tube that is failing.
+            type : float2,
+            name : station,
+            precision : high
         }
     ]
 }
@@ -155,6 +169,148 @@ fragment {
         return shade;
     }
 
+    // ---- the station -----------------------------------------------------------------------------
+    // Depths in metres from the window, and the picture's own distance, for parallax: a thing at
+    // depth d and `a` metres along the line sits at picture x = a * PICTURE / d. Must agree with
+    // NightWindow (`PLATFORM_HALF_M`, the 0.85 in TrainMotion).
+    const float PICTURE = 0.85;
+    const float PLATFORM_HALF = 24.0;
+    const float TUBE_DEPTH = 3.4;
+    const float TUBE_SPACING = 2.6;
+    const float WALL_DEPTH = 6.5;
+    const float FLOOR_DEPTH = 2.6;
+    const float PILLAR_DEPTH = 2.9;
+    const float PILLAR_SPACING = 7.8;
+    const float PILLAR_PHASE = 1.0;
+
+    // Metres along the line, from the platform's middle, of picture x at depth d.
+    highp float along(highp float x, float d, highp float ahead) {
+        return x * d / PICTURE + 0.0 - ahead;
+    }
+
+    // Whether a place along the line is beside the platform, with its ends ramped off.
+    float onPlatform(highp float a) {
+        return 1.0 - smoothstep(PLATFORM_HALF, PLATFORM_HALF + 3.0, abs(a));
+    }
+
+    // How far a point is from a horizontal segment `halfLength` long each way from c.
+    float capsule(vec2 p, vec2 c, float halfLength) {
+        vec2 d = p - c;
+        d.x = max(abs(d.x) - halfLength, 0.0);
+        return length(d);
+    }
+
+    // A soft rectangle, 1 inside, falling off over `soft` — a lit panel out of focus.
+    float panel(vec2 p, vec2 c, vec2 halfSize, float soft) {
+        vec2 d = abs(p - c) - halfSize;
+        float outside = length(max(d, 0.0)) + min(max(d.x, d.y), 0.0);
+        return 1.0 - smoothstep(-soft, soft, outside);
+    }
+
+    // What is lit along the platform's back wall: backlit posters, as (metres along the line from
+    // the platform's middle, colour).
+    vec3 posterColour(int k) {
+        if (k == 0) return vec3(0.95, 0.42, 0.18);   // a warm orange advertisement
+        if (k == 1) return vec3(0.30, 0.55, 0.95);   // a cool blue one
+        if (k == 2) return vec3(0.92, 0.85, 0.70);   // mostly white
+        return vec3(0.85, 0.22, 0.30);               // red
+    }
+
+    // The station, over [scenery]: what the platform hides of it and what it adds.
+    //
+    // **Laid out for what the room's two views actually frame**, which is very little: the screen
+    // is portrait, so only about ±0.1m of this picture is ever seen across. At rest the camera
+    // looks down at the table and sees x −0.08…+0.15, y −0.27…+0.01 — the platform, its yellow
+    // line, and a band of wall above it, where the station's name hangs. In the hand the device
+    // covers all but a margin: the canopy's tubes above it, the platform and the line below. The
+    // first layout was drawn for the window's whole 0.8m opening and put its posters and its
+    // name metres along the platform, out of every frame; the second put the name where the
+    // platform's own edge covered it.
+    vec3 station(highp vec2 q, highp float ahead, highp float clock, vec3 scenery) {
+        float y = float(q.y);
+
+        // The back wall: everything beyond the platform, hidden. Dark, a little warm, darker
+        // still up under the canopy.
+        highp float aWall = along(q.x, WALL_DEPTH, ahead);
+        float wall = onPlatform(aWall);
+        vec3 wallColour = vec3(0.0062, 0.0056, 0.0050) * (1.0 - 0.45 * smoothstep(0.10, 0.20, y));
+        vec3 colour = mix(scenery, wallColour, wall);
+
+        // The posters, backlit, a little brighter at their top.
+        // One beside the device at the stop; the rest go by as the train pulls in and away.
+        const int POSTERS = 8;
+        float posterAt[8] = float[8](1.45, -1.15, 4.6, -5.2, 9.9, -11.5, 16.2, -17.4);
+        int posterKind[8] = int[8](0, 1, 2, 3, 1, 0, 2, 3);
+        float shade = 0.75 + 0.25 * smoothstep(-0.10, 0.10, y);
+        for (int i = 0; i < POSTERS; i++) {
+            float cx = float((posterAt[i] + ahead) * PICTURE / WALL_DEPTH);
+            float box = panel(vec2(q), vec2(cx, -0.040), vec2(0.078, 0.085), 0.016);
+            colour += posterColour(posterKind[i]) * 0.16 * box * shade * onPlatform(posterAt[i]);
+        }
+
+        // The waiting room: a long warm window in the wall, a little way along.
+        float roomX = float((7.4 + ahead) * PICTURE / WALL_DEPTH);
+        colour += vec3(1.0, 0.70, 0.40) * 0.13 * panel(vec2(q), vec2(roomX, -0.045), vec2(0.20, 0.070), 0.018);
+
+        // The name, lit: a blue sign hung a little proud of the wall, white lettering blurred to a
+        // band — where the view at rest frames it, just above the device, when the train stands.
+        float signDepth = WALL_DEPTH - 0.4;
+        vec2 signAt = vec2(float((0.2 + ahead) * PICTURE / signDepth), -0.050);
+        float sign = panel(vec2(q), signAt, vec2(0.080, 0.021), 0.010);
+        float letters = panel(vec2(q), signAt, vec2(0.060, 0.006), 0.008);
+        colour += (vec3(0.05, 0.13, 0.52) + vec3(0.34, 0.34, 0.36) * letters) * sign;
+
+        // The tubes: long fluorescent fittings under the canopy, end to end along the platform.
+        highp float aTube = along(q.x, TUBE_DEPTH, ahead);
+        float tubeHalf = 0.62 * PICTURE / TUBE_DEPTH;
+        float tubeRad = 0.042;
+        vec3 tubes = vec3(0.0);
+        float pool = 0.0;
+        highp float k = floor(aTube / TUBE_SPACING + 0.5);
+        for (int i = -1; i <= 1; i++) {
+            highp float n = k + float(i);
+            highp float at = n * TUBE_SPACING;
+            if (abs(at) > PLATFORM_HALF) continue;
+            float cx = float((at + ahead) * PICTURE / TUBE_DEPTH);
+            float d = capsule(vec2(q), vec2(cx, 0.172), tubeHalf);
+            float body = 1.0 - smoothstep(tubeRad * 0.86, tubeRad * 1.1, d);
+            float rim = smoothstep(tubeRad * 0.45, tubeRad, d) * body;
+            // One tube on the platform is failing: it stutters, dark for a beat, back, dark again.
+            float h = hash11(float(mod(n, 97.0)) * 3.7 + 1.3);
+            float on = 1.0;
+            if (h < 0.09) {
+                highp float c = clock * 1.7 + h * 40.0;
+                float gate = step(0.62, fract(sin(floor(float(c) * 6.0) * 12.9898) * 43758.5453));
+                on = mix(1.0, 0.18 + 0.2 * gate, step(0.72, fract(float(c) * 0.13)));
+            }
+            tubes += vec3(0.80, 0.94, 0.90) * on * (body * 0.8 + rim * 0.35);
+            // Its light on the platform below, a pool along the line.
+            float under = float(q.x) - cx;
+            pool += on * exp(-(under * under) / (2.0 * 0.12 * 0.12));
+        }
+        colour += tubes * 0.80 * wall;
+
+        // The platform: dark concrete pooled under each tube — the pools fading toward the
+        // window's foot, which is further from any tube — its yellow edge line, and the pillars.
+        highp float aFloor = along(q.x, FLOOR_DEPTH, ahead);
+        float floorMask = onPlatform(aFloor) * (1.0 - smoothstep(-0.150, -0.118, y));
+        float near = smoothstep(-0.30, -0.13, y);
+        vec3 concrete = vec3(0.0075, 0.0072, 0.0068) +
+            vec3(0.024, 0.027, 0.026) * min(pool, 1.3) * (0.35 + 0.65 * near);
+        float edge = exp(-pow((y + 0.203) / 0.011, 2.0));
+        concrete += vec3(0.060, 0.044, 0.006) * edge * (0.45 + 0.55 * min(pool, 1.0));
+        colour = mix(colour, concrete, floorMask);
+
+        // Off the platform's middle, so at the stop one stands at the window's right, not dead centre.
+        highp float aPillar = along(q.x, PILLAR_DEPTH, ahead) - PILLAR_PHASE;
+        highp float m = aPillar - floor(aPillar / PILLAR_SPACING + 0.5) * PILLAR_SPACING;
+        float pillarW = 0.14 * PICTURE / PILLAR_DEPTH;
+        float pillar = 1.0 - smoothstep(pillarW * 0.35, pillarW * 1.6, abs(float(m * PICTURE / PILLAR_DEPTH)));
+        colour *= 1.0 - 0.85 * pillar * onPlatform(aPillar) * smoothstep(-0.32, -0.12, y);
+
+        return colour;
+    }
+
     void material(inout MaterialInputs material) {
         prepareMaterial(material);
         vec2 size = materialParams.size;
@@ -184,6 +340,12 @@ fragment {
 
         // ---- the foreground going past ------------------------------------------------
         colour *= 1.0 - 0.88 * poles(float(q.x), scroll.w);
+
+        // ---- a station, when there is one near ------------------------------------------
+        highp float ahead = materialParams.station.x;
+        if (abs(ahead) < 90.0) {
+            colour = station(q, ahead, materialParams.station.y, colour);
+        }
 
         // ---- the carriage's ceiling light, reflected in the glass: it does not move ----
         float streak = exp(-pow((float(p.y) - 0.165) / 0.030, 2.0));
