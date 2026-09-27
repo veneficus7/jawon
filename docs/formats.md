@@ -356,6 +356,18 @@ One thing at a time, checked on the owner's phone between each (the working agre
    4. **Motion and the bake** — the carriage's sway under the camera at rest, the float on springs
       and noise, wiggles on a track change and a landing, tilt parallax, a drag to look round, and
       Cycles baking the interior's bounce light and shadow into lightmaps.
+5b. **The showroom — the way between formats (planned 2026-09-27, §4).** A scene and a destination
+   of its own (`ui/showroom/`), reached by **pinching out of a room**: in the CD room, pinching on
+   past the camera's far limit (`ZOOM_FAR`) — you pull back out of the room into the gallery — and
+   in the pocket room, a pinch, which nothing else there uses. A dark gallery: a glossy black
+   floor, a row of plinths each under its own shadow-casting spot, and on each the format's object
+   hovering and slowly turning — a jewel case, the pocket player, and for vinyl and cassette an
+   empty plinth under a dim light with its name and *coming*. The camera starts close on the room
+   you left and eases back; a horizontal drag carries it along the row, released it springs to the
+   nearest plinth with a haptic tick per plinth (`ShowroomCarousel`, pure and tested); a tap on a
+   built format pushes the camera in, fades, and opens that room. Back returns to the room you
+   came from. The format's name sits under it in the app's own type. Once it works on the phone it
+   replaces Settings → THE ROOM.
 9. **Vinyl** (§5), then **cassette** (§6), each its own room and built the same way.
 
 Each of 3–8 is about a session's work. **Measure every tier as it lands** (traps 28–30).
