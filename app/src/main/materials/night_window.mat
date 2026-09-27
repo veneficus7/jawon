@@ -46,6 +46,12 @@ material {
             // Overall brightness of the outside, so the room can dim it without a rebuild.
             type : float,
             name : gain
+        },
+        {
+            // Half the frame's height, as metres of this plane: where the lens's edge is, for the
+            // cat's eye. The room works it out from the camera.
+            type : float,
+            name : frame
         }
     ]
 }
@@ -86,11 +92,19 @@ fragment {
     // the nearest layer and nearly two hours for the farthest.
     const highp float PERIOD = 4096.0;
 
+    // How far a light near the frame's edge is cut into a cat's eye: the lens barrel clips the
+    // aperture off-axis, so a defocused light there is the overlap of two circles rather than
+    // one — round in the middle of the picture, a lemon lying along the edge at its top and
+    // bottom. The fraction of a disc's radius the second circle is offset by, at the frame's edge.
+    const float CATS_EYE = 0.7;
+
     // One depth's worth of lights: a grid of cells scrolled sideways, at most one light a cell,
     // each a disc with a soft edge and the slightly brighter rim a real lens gives a defocused
     // point. Discs never reach past one neighbour, so three cells are all a pixel needs to ask.
     vec3 lights(highp vec2 p, highp float scroll, vec2 cell, float radius, float density,
                 float seed, float bright) {
+        highp vec2 q0 = p;
+        float frame = max(materialParams.frame, 0.05);
         p.x += scroll;
         highp vec2 id = floor(p / cell);
         highp vec2 local = p - id * cell;
@@ -103,9 +117,15 @@ fragment {
                 vec2 centre = vec2((float(i) + r.x) * cell.x,
                                    rad + r.y * max(cell.y - 2.0 * rad, 0.0));
                 float d = length(local - centre);
+                // The disc's place in the frame, 1 at its top or bottom edge, measured from its
+                // own centre so the whole disc is cut by one circle.
+                vec2 s = vec2(q0 + (centre - local)) / frame;
+                vec2 off = s * (CATS_EYE * rad * length(s));
+                float d2 = length(local - centre - off);
                 float edge = rad * 0.09;
-                float disc = 1.0 - smoothstep(rad - edge, rad + edge, d);
-                float rim = smoothstep(rad * 0.5, rad, d) * disc;
+                float disc = (1.0 - smoothstep(rad - edge, rad + edge, d)) *
+                             (1.0 - smoothstep(rad - edge, rad + edge, d2));
+                float rim = smoothstep(rad * 0.5, rad, max(d, d2)) * disc;
                 float power = mix(0.18, 1.0, pow(hash12(cid + seed + 9.1), 2.5));
                 // A little flicker on some — a lamp seen through trees, a sign.
                 float flick = hash12(cid + seed + 2.9) < 0.15

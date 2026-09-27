@@ -12,6 +12,11 @@ additive, drawn from a two-channel mask) — and two in the pocket player's:
   scroll in, wrapped at exactly the shader's `PERIOD` of cells so the value stays small and the
   wrap is seamless (`NightWindow`, `TrainMotion`). **SceneView's `PlaneNode` runs V downward**:
   the first build hung the sky under the device, which the luminance boxes caught first.
+  **And the lens clips them toward its edge**: each disc is the overlap of two circles, the
+  second offset outward by up to 0.7 of its radius, so a light is round in the middle of the
+  picture and a cat's eye lying along the top and bottom edges, as a real lens's defocused
+  lights are. `frame` — half the frame's height at the window's distance — is the only thing
+  it needs from the room, which works it out from the camera.
 - `materials/polished_steel.mat` → `assets/materials/polished_steel.filamat`, the device's steel
   shell and the bead round its face, put on that one part in place of the glTF's own material
   when the model loads. It exists for one line of shader: **roughness floored at the pixel's

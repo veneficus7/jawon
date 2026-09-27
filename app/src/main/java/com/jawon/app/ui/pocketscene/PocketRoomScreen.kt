@@ -626,6 +626,12 @@ fun PocketRoomScreen(
                 }
             }
             device.windowMaterial = outside
+            // Where the frame's edge falls on the window, for the lens's cat's eye: half the
+            // frame's height at the plane's distance, for this lens.
+            SideEffect {
+                val toWindow = cameraNode.position.z - NightWindow.PLANE_Z_M
+                outside.setParameter("frame", toWindow * SENSOR_HEIGHT_MM / 2f / FOCAL_LENGTH_MM)
+            }
             PlaneNode(
                 size = Size(NightWindow.PLANE_W_M, NightWindow.PLANE_H_M, 0f),
                 normal = Direction(z = 1f),
