@@ -46,6 +46,7 @@ import com.jawon.app.ui.pocketscene.LCD_PX_H
 import com.jawon.app.ui.pocketscene.LCD_PX_W
 import com.jawon.app.ui.pocketscene.LcdPanel
 import com.jawon.app.ui.pocketscene.POCKET_MODEL_ASSET
+import com.jawon.app.ui.pocketscene.PocketFinish
 import com.jawon.app.ui.pocketscene.PocketLcd
 import com.jawon.app.ui.pocketscene.SCREEN_CENTRE_Y
 import com.jawon.app.ui.pocketscene.SCREEN_W_M
@@ -222,6 +223,7 @@ fun ShowroomScreen(
     }
 
     val format by viewModel.format.collectAsStateWithLifecycle()
+    val pocketFinish by viewModel.pocketFinish.collectAsStateWithLifecycle()
     // The room you came from: where you arrive, and where back goes. Read once — choosing another
     // room changes the preference before this screen has gone.
     val from = remember { Exhibit.of(viewModel.format.value).ordinal }
@@ -466,6 +468,13 @@ fun ShowroomScreen(
                             isShadowReceiver = true
                             (renderableNodes.firstOrNull { it.name == "pocket_back" } as? RenderableNode)
                                 ?.materialInstance = steel
+                            // In the colour its own Settings chose.
+                            fun material(name: String) =
+                                (renderableNodes.firstOrNull { it.name == name } as? RenderableNode)?.materialInstance
+                            PocketFinish.fromName(pocketFinish).applyTo(
+                                material("pocket_front"), material("pocket_wheel"),
+                                material("pocket_button"), material("pocket_print")
+                            )
                         }
                     )
                     // The screen, where the pocket room hangs it: the panel's release declared before

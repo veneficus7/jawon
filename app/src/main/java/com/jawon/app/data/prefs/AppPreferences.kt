@@ -91,6 +91,20 @@ class AppPreferences @Inject constructor(@param:ApplicationContext context: Cont
         _pocketClicker.value = on
     }
 
+    private val _pocketFinish = MutableStateFlow(prefs.getString(KEY_POCKET_FINISH, null))
+
+    /**
+     * The pocket player's colour, by name — `PocketFinish` — chosen in its own Settings. Null until
+     * one has been chosen, which the room reads as silver. By name, like the room scheme, so a
+     * finish added later cannot shift what an old one was stored as.
+     */
+    val pocketFinish: StateFlow<String?> = _pocketFinish.asStateFlow()
+
+    fun setPocketFinish(name: String) {
+        prefs.edit { putString(KEY_POCKET_FINISH, name) }
+        _pocketFinish.value = name
+    }
+
     private val _format =
         MutableStateFlow(Format.fromName(prefs.getString(KEY_FORMAT, null)))
 
@@ -456,6 +470,7 @@ class AppPreferences @Inject constructor(@param:ApplicationContext context: Cont
         const val KEY_FORMAT = "format"
         const val KEY_POCKET_BACKLIGHT_MS = "pocket_backlight_ms"
         const val KEY_POCKET_CLICKER = "pocket_clicker"
+        const val KEY_POCKET_FINISH = "pocket_finish"
         const val KEY_EQ_ENABLED = "equalizer_enabled"
         const val KEY_EQ_BANDS = "equalizer_bands"
         const val KEY_REPLAY_GAIN = "replay_gain_mode"

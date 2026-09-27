@@ -184,6 +184,26 @@ internal class PocketDevice(
     // The model's own moving parts: the ring and its print tip together; the button goes down.
     private var wheelParts: List<Node> = emptyList()
     private var buttonPart: Node? = null
+
+    // The parts a colour is put on (PocketFinish), found by name when the model loads.
+    private var frontMaterial: MaterialInstance? = null
+    private var wheelMaterial: MaterialInstance? = null
+    private var buttonMaterial: MaterialInstance? = null
+    private var printMaterial: MaterialInstance? = null
+    private var finishShown: PocketFinish? = null
+
+    /** Which one you bought: written by the room from the preference, put on the model when it changes. */
+    var finish: PocketFinish = PocketFinish.SILVER
+        set(value) {
+            field = value
+            showFinish()
+        }
+
+    private fun showFinish() {
+        if (finishShown == finish || frontMaterial == null) return
+        finish.applyTo(frontMaterial, wheelMaterial, buttonMaterial, printMaterial)
+        finishShown = finish
+    }
     private var lastFrameAt = 0L
     private var rockWasMoving = false
     private var lastInputAt = 0L
@@ -327,6 +347,12 @@ internal class PocketDevice(
         if (wheelParts.isNotEmpty()) return
         wheelParts = nodes.filter { it.name == "pocket_wheel" || it.name == "pocket_print" }
         buttonPart = nodes.firstOrNull { it.name == "pocket_button" }
+        fun material(name: String) = (nodes.firstOrNull { it.name == name } as? RenderableNode)?.materialInstance
+        frontMaterial = material("pocket_front")
+        wheelMaterial = material("pocket_wheel")
+        buttonMaterial = material("pocket_button")
+        printMaterial = material("pocket_print")
+        showFinish()
         // The steel wears its own material — see `materials/polished_steel.mat` for why.
         (nodes.firstOrNull { it.name == "pocket_back" } as? RenderableNode)?.materialInstance = steel
     }
@@ -905,6 +931,8 @@ internal class PocketDevice(
             PocketSetting.BACKLIGHT -> PocketSettings.BACKLIGHT_OPTIONS_MS.getOrNull(option)
                 ?.let { viewModel.onPocketBacklightChanged(it) }
             PocketSetting.CLICKER -> viewModel.onPocketClickerChanged(option == 0)
+            PocketSetting.FINISH -> PocketFinish.entries.getOrNull(option)
+                ?.let { viewModel.onPocketFinishChanged(it.name) }
             PocketSetting.REVERB -> {
                 if (option > 0) viewModel.engage(com.jawon.app.playback.RackChannel.SPACE)
                 viewModel.onReverbChange(option)

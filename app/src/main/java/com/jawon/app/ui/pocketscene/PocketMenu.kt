@@ -42,7 +42,8 @@ enum class PocketSetting(val title: String) {
     SOUND_CHECK("Sound Check"),
     BACKLIGHT("Backlight"),
     CLICKER("Clicker"),
-    REVERB("Reverb")
+    REVERB("Reverb"),
+    FINISH("Colour")
 }
 
 /** What choosing a row does. */
@@ -95,7 +96,9 @@ data class PocketSettings(
     val sound: Map<SoundControl, Float> = emptyMap(),
     /** Reverb's choices ("Off" first) and which is on. */
     val reverbOptions: List<String> = listOf("Off"),
-    val reverb: Int = 0
+    val reverb: Int = 0,
+    /** Which of `PocketFinish`'s colours the device is — which one you bought. */
+    val finish: Int = 0
 ) {
     companion object {
         /** Sound Check's choices — Jawon's ReplayGain modes, in `ReplayGain.Mode` order of meaning. */
@@ -195,6 +198,11 @@ object PocketMenus {
                 RowAction.Open(MenuKey.Choice(PocketSetting.CLICKER)),
                 value = if (settings.clicker) "On" else "Off"
             ),
+            MenuRow(
+                "Colour",
+                RowAction.Open(MenuKey.Choice(PocketSetting.FINISH)),
+                value = PocketFinish.entries.getOrNull(settings.finish)?.title
+            ),
             MenuRow("All Settings", RowAction.OpenSettings)
         )
         MenuKey.About -> listOf(
@@ -259,6 +267,7 @@ object PocketMenus {
             PocketSetting.BACKLIGHT -> PocketSettings.BACKLIGHT_OPTIONS_MS.map { PocketSettings.backlightLabel(it) }
             PocketSetting.CLICKER -> listOf("On", "Off")
             PocketSetting.REVERB -> settings.reverbOptions
+            PocketSetting.FINISH -> PocketFinish.entries.map { it.title }
         }
         val current = when (setting) {
             PocketSetting.EQ -> settings.eqChosen
@@ -266,6 +275,7 @@ object PocketMenus {
             PocketSetting.BACKLIGHT -> PocketSettings.BACKLIGHT_OPTIONS_MS.indexOf(settings.backlightMs)
             PocketSetting.CLICKER -> if (settings.clicker) 0 else 1
             PocketSetting.REVERB -> settings.reverb
+            PocketSetting.FINISH -> settings.finish
         }
         return labels.mapIndexed { i, label ->
             MenuRow(label, RowAction.Choose(setting, i), checked = i == current)

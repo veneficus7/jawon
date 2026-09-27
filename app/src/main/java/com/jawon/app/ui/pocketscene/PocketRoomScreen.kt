@@ -296,6 +296,8 @@ fun PocketRoomScreen(
     val replayGainMode by viewModel.replayGainMode.collectAsStateWithLifecycle()
     val backlightMs by viewModel.pocketBacklightMs.collectAsStateWithLifecycle()
     val clickerOn by viewModel.pocketClicker.collectAsStateWithLifecycle()
+    val finishName by viewModel.pocketFinish.collectAsStateWithLifecycle()
+    val finish = PocketFinish.fromName(finishName)
     val songCount by viewModel.trackCount.collectAsStateWithLifecycle()
     val filter by viewModel.filterPosition.collectAsStateWithLifecycle()
     val speed by viewModel.speedPosition.collectAsStateWithLifecycle()
@@ -320,6 +322,7 @@ fun PocketRoomScreen(
     device.eqPresets = eqPresets
     device.backlightMs = backlightMs
     device.clickerOn = clickerOn
+    device.finish = finish
     device.settings = PocketSettings(
         eqOptions = listOf("Off") + eqPresets,
         // Off when the equaliser is; otherwise the preset chosen here this session, and
@@ -347,7 +350,8 @@ fun PocketRoomScreen(
             SoundControl.WIDTH to width
         ),
         reverbOptions = PocketSound.reverbOptions(com.jawon.app.data.playback.NativeEffects.REVERB_PRESETS),
-        reverb = reverb
+        reverb = reverb,
+        finish = finish.ordinal
     )
     device.deck = deck
     device.positionMs = positionMs

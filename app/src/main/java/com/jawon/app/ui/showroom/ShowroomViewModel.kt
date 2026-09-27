@@ -23,6 +23,9 @@ class ShowroomViewModel @Inject constructor(
     /** The room the app is in — the one you pinched out of. */
     val format: StateFlow<Format> = preferences.format
 
+    /** The pocket player's colour, as its own Settings chose it — the plinth's wears the same. */
+    val pocketFinish: StateFlow<String?> = preferences.pocketFinish
+
     /** Opens [format]'s room from now on: the same switch Settings' picker throws. */
     fun choose(format: Format) = preferences.setFormat(format)
 

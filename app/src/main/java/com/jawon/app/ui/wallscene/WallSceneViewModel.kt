@@ -839,6 +839,11 @@ class WallSceneViewModel @Inject constructor(
 
     fun onPocketClickerChanged(on: Boolean) = preferences.setPocketClicker(on)
 
+    /** The pocket player's colour, by name — see `PocketFinish`. */
+    val pocketFinish: StateFlow<String?> = preferences.pocketFinish
+
+    fun onPocketFinishChanged(name: String) = preferences.setPocketFinish(name)
+
     /** How many songs the library holds, for the pocket player's About. */
     val trackCount: StateFlow<Int> = trackDao.count()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0)

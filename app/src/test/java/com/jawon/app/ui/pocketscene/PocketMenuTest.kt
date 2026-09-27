@@ -90,6 +90,24 @@ class PocketMenuTest {
     }
 
     @Test
+    fun `its colour is chosen in its own Settings, and silver is what it comes in`() {
+        val rows = PocketMenus.rows(
+            MenuKey.Settings, library, emptyMap(), false,
+            PocketSettings(finish = PocketFinish.RED.ordinal)
+        )
+        assertEquals("Red", rows.first { it.label == "Colour" }.value)
+        val choices = PocketMenus.rows(
+            MenuKey.Choice(PocketSetting.FINISH), library, emptyMap(), false,
+            PocketSettings(finish = PocketFinish.BLACK.ordinal)
+        )
+        assertEquals(listOf("Silver", "Black", "Red"), choices.map { it.label })
+        assertEquals(listOf("Black"), choices.filter { it.checked }.map { it.label })
+        assertEquals(PocketFinish.SILVER, PocketFinish.fromName(null))
+        assertEquals(PocketFinish.SILVER, PocketFinish.fromName("GOLD"))
+        assertEquals(PocketFinish.RED, PocketFinish.fromName("RED"))
+    }
+
+    @Test
     fun `bands set by hand in the rack read as Custom rather than as a preset they are not`() {
         val rows = PocketMenus.rows(
             MenuKey.Settings, library, emptyMap(), false,

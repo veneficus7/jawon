@@ -153,6 +153,14 @@ effect on the way back — no mid-session teardown, and no brush with trap 1.
   spotlight — swipe between them, tap one to fly into its room. Chosen over objects hidden in
   each room and over a menu row, because it scales as the formats arrive and it is a moment, not
   a setting. It replaces Settings → THE ROOM as the way between rooms.
+  **And four from his reference photos, later the same day** — flat lays of iPods on linen, denim
+  and blankets, mostly silver classics with white wheels, EarPods and white cords, soft or warm
+  light. Asked rather than guessed, because they reversed built work: **its colour is chosen in its
+  own Settings** — silver, black and red, white later — "which one you bought" (`PocketFinish`,
+  silver by default); **at rest it lies flat, seen from above**, and lifts off only when picked
+  up — the float is replaced; **it lies on a knitted blanket** on the train table; and **the cord
+  keeps running off-frame**, the earbuds never seen. He offered more references on request, and
+  looking them up is cleared too.
 - **The bar is "as realistic and high quality as possible" — decided.** What that means here:
   - **It is seen closer than anything in the CD room.** At life size, filling the screen, every
     seam, bevel, the wheel's slight recess and the screen's inset glass is on show, so the model
