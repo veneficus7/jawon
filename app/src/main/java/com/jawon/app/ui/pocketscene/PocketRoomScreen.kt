@@ -143,10 +143,12 @@ private val LEVEL = Rotation(0f, 0f, 0f)
 /**
  * The LCD panel, in the device's own frame — these must agree with `build_pocket()`.
  *
- * The panel is `POCKET_SCREEN_W/H` less 1.2mm, centred `POCKET_SCREEN_Y` up the face and
- * `POCKET_SCREEN_SINK` (1.0mm) behind it. The live screen sits **0.1mm in front of that panel**:
- * enough that the depth buffer never has to choose between them, and still 0.45mm under the
- * glass, which is what makes it read as a picture *under* a window rather than a sticker on one.
+ * The live picture is `POCKET_SCREEN_W/H` less 1.2mm, centred `POCKET_SCREEN_Y` up the face, and
+ * sits **0.1mm in front of the panel** — which is `POCKET_SCREEN_SINK` (1.0mm) behind the face and
+ * fills the window as the LCD's black surround, so the picture has a 0.6mm mask all round as a
+ * real LCD's active area does. 0.1mm is enough that the depth buffer never has to choose between
+ * them, and still 0.45mm under the glass, which is what makes it read as a picture *under* a
+ * window rather than a sticker on one.
  *
  * **Why the screen could not be seen for a morning**: the panel was 1.6mm down, *inside* the
  * back shell, which is solid up to the plate's underside. What the window showed was the

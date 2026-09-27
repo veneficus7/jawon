@@ -1329,29 +1329,25 @@ def build_pocket():
     # ---- the screen: panel, then glass over it -----------------------------
     panel = new_mesh_object("pocket_screen")
     bm = bmesh.new()
-    _, e = rounded_rect(bm, POCKET_SCREEN_W - 0.0012, POCKET_SCREEN_H - 0.0012,
-                        POCKET_SCREEN_R, az(front_z - POCKET_SCREEN_SINK),
+    # The LCD's black surround, filling the window to within a hair of its walls. The live
+    # picture is the app's own plane (LcdPanel), 0.6mm inside this all round — an LCD's active
+    # area inside its mask. It used to be the picture's own size, which left a 0.6mm gap round
+    # it down to the shell's polished floor: a pale band inside the window that Cover Flow's
+    # black showed plainly and no real screen has.
+    clear = 0.00002
+    _, e = rounded_rect(bm, POCKET_SCREEN_W - 2.0 * clear, POCKET_SCREEN_H - 2.0 * clear,
+                        POCKET_SCREEN_R - clear, az(front_z - POCKET_SCREEN_SINK),
                         cz=POCKET_SCREEN_Y)
     bmesh.ops.contextual_create(bm, geom=e)
     bm.to_mesh(panel.data)
     bm.free()
-    # Planar UVs over the window, so the app's screen texture lands square on it.
-    mesh = panel.data
-    if not mesh.uv_layers:
-        mesh.uv_layers.new(name="UVMap")
-    uv = mesh.uv_layers.active.data
-    for poly in mesh.polygons:
-        for li in poly.loop_indices:
-            v = mesh.vertices[mesh.loops[li].vertex_index].co
-            uv[li].uv = (v.x / POCKET_SCREEN_W + 0.5,
-                         (v.z - POCKET_SCREEN_Y) / POCKET_SCREEN_H + 0.5)
-    mesh.materials.append(attach_placeholder_basecolor(principled(
-        # The LCD itself. Near-black and matt, because it is a diffuser: the app
-        # binds the live screen to this material's baseColorMap, exactly the way
-        # the disc's artwork is bound (see attach_placeholder_basecolor).
-        "PocketScreen", base_color=(0.020, 0.021, 0.023), metallic=0.0,
-        roughness=0.50,
-    ), "pocket_screen_placeholder"))
+    # Near-black and matt: a mask, not a picture. (It carried a white placeholder texture from
+    # when the app bound the screen to this material; nothing has since, and white is what the
+    # margin would have shown.)
+    panel.data.materials.append(principled(
+        "PocketScreen", base_color=(0.012, 0.012, 0.013), metallic=0.0,
+        roughness=0.55,
+    ))
     finish(panel, bevel=False)
     objects.append(panel)
 
