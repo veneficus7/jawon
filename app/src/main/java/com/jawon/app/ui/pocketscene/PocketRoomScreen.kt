@@ -147,6 +147,12 @@ private const val CARRIAGE_GLASS_ASSET = "models/carriage_glass.glb"
 private val PLATFORM_LIGHT_POSITION = floatArrayOf(-0.18f, 0.40f, -0.62f)
 private val PLATFORM_LIGHT_TARGET = floatArrayOf(0.05f, -0.30f, -0.12f)
 
+/**
+ * **The sheet** the device lies on at rest (`build_sheet()`): linen crumpled over a soft underlay,
+ * the way an iPod is photographed put down on a bed. In the room's own coordinates, over the table.
+ */
+private const val SHEET_MODEL_ASSET = "models/sheet.glb"
+
 /** The earphone plug in the top edge's jack, in the device's frame (`build_earphone_plug()`). */
 private const val EARPHONE_PLUG_ASSET = "models/earphone_plug.glb"
 
@@ -163,21 +169,26 @@ private val CORD_COLOUR = Float4(0.80f, 0.80f, 0.78f, 1f)
 private const val CORD_ROUGHNESS = 0.28f
 
 /**
- * **The reading lamp**, over the window's right-hand corner: warm, shaded downward onto the table,
- * and the room's one shadow caster. At rest it pools on the walnut and throws the floating
- * device's shadow onto it just below and in front — which is what makes the float read as a
- * float. In the hand it is above and behind the device, and lays a line along its top edge.
+ * **The reading lamp**, over the window's right-hand corner: warm, and the room's one shadow
+ * caster. In the hand it is above and behind the device, and lays a line along its top edge; as
+ * the device is set down it moves to hang over it where the carriage's turned softbox is
+ * (`PocketDevice.placeLamp`, `RestLight`), so the shadow on the sheet falls from the same place
+ * the reflections on the device come from. These are its values for the hand.
  *
- * **Placed for the shadow.** Beside the window, where it was first, the float's shadow fell 15cm
- * to the side and out of the frame. **And bright for this exposure**: the room is exposed for the
- * daylight-level values the metal needs (`PocketLighting`), so a lamp that pools visibly on dark
- * walnut is in the tens of thousands of candela, not the hundreds — at 800 the table was black.
+ * **Bright for this exposure**: the room is exposed for the daylight-level values the metal needs
+ * (`PocketLighting`), so a lamp that pools visibly on a surface is in the tens of thousands of
+ * candela, not the hundreds — at 800 the table was black.
  */
-private val LAMP_POSITION = floatArrayOf(0.30f, 0.34f, -0.44f)
-private val LAMP_TARGET = floatArrayOf(0.0f, -0.30f, -0.25f)
-private const val LAMP_CANDELA = 15_000f
-private const val LAMP_CONE_INNER_RAD = 0.5f
-private const val LAMP_CONE_OUTER_RAD = 1.0f
+internal val LAMP_POSITION = floatArrayOf(0.30f, 0.34f, -0.44f)
+internal val LAMP_TARGET = floatArrayOf(0.0f, -0.30f, -0.25f)
+internal val LAMP_COLOUR = floatArrayOf(1.0f, 0.74f, 0.48f)
+internal const val LAMP_CANDELA = 15_000f
+internal const val LAMP_CONE_INNER_RAD = 0.5f
+internal const val LAMP_CONE_OUTER_RAD = 1.0f
+
+/** The lamp's shadow: its map's size, and the radius of the shade it is soft by (PCSS). */
+private const val LAMP_SHADOW_MAP_PX = 2048
+private const val LAMP_SHADOW_BULB_M = 0.04f
 
 /** Where the device's model lives. Eight objects in one file — see `docs/models.md`. */
 const val POCKET_MODEL_ASSET = "models/pocket.glb"
@@ -266,6 +277,9 @@ fun PocketRoomScreen(
     val carriageModel = rememberModelInstance(modelLoader, CARRIAGE_MODEL_ASSET)
     val carriageGlass = rememberModelInstance(modelLoader, CARRIAGE_GLASS_ASSET)
     val earphonePlug = rememberModelInstance(modelLoader, EARPHONE_PLUG_ASSET)
+    val sheetModel = rememberModelInstance(modelLoader, SHEET_MODEL_ASSET)
+    // The sheet's shape, for the cord to lie on — read once, off the main thread.
+    LaunchedEffect(Unit) { withContext(Dispatchers.IO) { SheetSurface.load(context.assets) } }
     val ydpi = remember(context) { max(context.resources.displayMetrics.ydpi, 1f) }
     // How often the room is actually drawn — the CD room's cadence, reused by call. See onFrame.
     val cadence = remember(context) {
@@ -777,6 +791,19 @@ fun PocketRoomScreen(
                     }
                 )
             }
+            // **The sheet**, over the table: it takes the device's shadow and the cord's. It casts
+            // none itself — its folds are too gentle for a lamp this high to shadow, measured the
+            // same either way, and a surface that both casts and receives is where acne comes from.
+            sheetModel?.let { sheet ->
+                ModelNode(
+                    sheet,
+                    apply = {
+                        isTouchable = false
+                        isShadowCaster = false
+                        isShadowReceiver = true
+                    }
+                )
+            }
             carriageGlass?.let { glass ->
                 ModelNode(
                     glass,
@@ -787,21 +814,25 @@ fun PocketRoomScreen(
                     }
                 )
             }
+            // **Its shadow is soft** (PCSS — `PocketAtmosphere`): a lampshade is centimetres
+            // across, and [LAMP_SHADOW_BULB_M] is how the shadow knows. 2048 texels, because at
+            // 1024 the device's shadow on the sheet came out in visible steps.
             LightNode(
                 type = LightManager.Type.SPOT,
                 position = Position(LAMP_POSITION[0], LAMP_POSITION[1], LAMP_POSITION[2]),
-                direction = Direction(
-                    LAMP_TARGET[0] - LAMP_POSITION[0],
-                    LAMP_TARGET[1] - LAMP_POSITION[1],
-                    LAMP_TARGET[2] - LAMP_POSITION[2]
-                ),
                 apply = {
-                    color(1.0f, 0.74f, 0.48f)
+                    color(LAMP_COLOUR[0], LAMP_COLOUR[1], LAMP_COLOUR[2])
                     intensityCandela(LAMP_CANDELA)
                     spotLightCone(LAMP_CONE_INNER_RAD, LAMP_CONE_OUTER_RAD)
                     falloff(3f)
                     castShadows(true)
-                }
+                    shadowOptions(LightManager.ShadowOptions().apply {
+                        mapSize = LAMP_SHADOW_MAP_PX
+                        shadowBulbRadius = LAMP_SHADOW_BULB_M
+                    })
+                },
+                // Placed, aimed, coloured and narrowed by the device each frame, with the flight.
+                nodeApply = { device.lampNode = this }
             )
             PlaneNode(
                 size = Size(NightWindow.PLANE_W_M, NightWindow.PLANE_H_M, 0f),

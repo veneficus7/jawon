@@ -78,4 +78,45 @@ class PocketCordTest {
             assertTrue("node $i flung to ${cord.y[i]}", abs(cord.y[i]) < 1.5f && abs(cord.x[i]) < 1.5f)
         }
     }
+
+    // ---- lying on the sheet -------------------------------------------------------------------
+
+    /** A cord laid from the origin, heading −z, over [top], with the plug [plugY] up. */
+    private fun laid(top: (Float, Float) -> Float, plugY: Float = 0.005f): Triple<FloatArray, FloatArray, FloatArray> {
+        val cord = Cord()
+        val xs = FloatArray(cord.nodes)
+        val ys = FloatArray(cord.nodes)
+        val zs = FloatArray(cord.nodes)
+        RestCord.lay(0f, plugY, 0f, 0f, -1f, cord.linkM, cord.nodes, 1f, top, xs, ys, zs)
+        return Triple(xs, ys, zs)
+    }
+
+    @Test
+    fun `lying over folds, every link keeps its length - it drapes, it does not stretch`() {
+        // A sheet rising and falling by a centimetre and a half every 12cm.
+        val folds = { x: Float, z: Float -> 0.0075f * kotlin.math.sin(z / 0.02f) + 0.004f * kotlin.math.sin(x / 0.03f) }
+        val (xs, ys, zs) = laid(folds)
+        val link = Cord().linkM
+        for (i in 0 until xs.size - 1) {
+            val dx = xs[i + 1] - xs[i]
+            val dy = ys[i + 1] - ys[i]
+            val dz = zs[i + 1] - zs[i]
+            val length = sqrt(dx * dx + dy * dy + dz * dz)
+            assertEquals("link $i", link, length, link * 0.03f)
+        }
+    }
+
+    @Test
+    fun `past the plug it lies on the surface, one radius up, and it leaves the plug at the plug`() {
+        val slope = { x: Float, z: Float -> 0.15f * x - 0.1f * z }
+        val (xs, ys, zs) = laid(slope, plugY = 0.02f)
+        assertEquals(0.02f, ys[0], 1e-6f)
+        var s = 0f
+        for (i in 1 until xs.size) {
+            s += Cord().linkM
+            if (s > RestCord.LEAD_M) {
+                assertEquals("node $i", slope(xs[i], zs[i]) + Cord.RADIUS_M, ys[i], 1e-5f)
+            }
+        }
+    }
 }

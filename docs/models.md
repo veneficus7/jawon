@@ -17,6 +17,7 @@ modelled by hand and not downloaded.
 | `showroom` | the showroom between formats | ~5160 | three objects, one per material: a polished concrete floor, a dark plaster back wall, and four charcoal plinths with moulded caps and feet — in the showroom's own coordinates; ~150KB |
 | `carriage` | the pocket player's compartment | ~3600 | table, panelling boards and their backing, window frame, sill — in the room's own coordinates; ~560KB, most of it two generated wood-grain JPEGs |
 | `pocket` | the iPod mode's device | 8314 | eight objects, one per material; life size, 61.8 × 103.5 × 10.5mm; a polished bead round the face; ~830KB, most of it three wear maps |
+| `sheet` | what the pocket player lies on at rest | 26460 | linen crumpled by a **cloth simulation**, pressed flat under the device; in the room's own coordinates; ~1.25MB, most of it the mesh. Written beside it, from the same mesh: `sheet_height.bin` (69KB), its top every 3mm, which the cord lies on — see "The sheet" below |
 
 **Why the shelf gets its own case.** A shut jewel case shows none of the tray's
 interior, and the wall draws up to ~470 at once — carrying that interior would
@@ -33,6 +34,37 @@ depth-sorted draws became none.
 Both the script and its output are committed, for the same reason
 `dust.filamat` is: nothing in the Gradle build can produce them, and a clone
 should not need Blender installed to build the app.
+
+## The sheet — crumpled by a simulation, not drawn
+
+What the pocket player lies on at rest (`build_sheet()`, `docs/formats.md` §4). **Folds are what
+the eye reads fabric by**, and everything drawn instead of simulated read as a pattern on a board:
+a chunky knit as a normal map on a flat sheet (twice, on the owner's phone — "a woven straw mat",
+then "puffy stickers"), and swells and ridges summed into a height field. So the script runs
+Blender's cloth solver: a linen sheet laid out larger than the table, its hem pinned and pushed
+in from every side over the first part of the run, falls onto a soft underlay and buckles.
+
+**The parameters were chosen by looking**, from nine runs shaded from above (the preview is a
+height map and a light, a few lines of numpy). Pushed a fifth from every side it crumpled like
+foil, creased at the grid's own scale; stuck to the underlay by a high friction it buckled where it
+landed instead of sliding into folds; pushed along one axis it made pleats. What reads as a
+bedsheet is a light push, a little more across than along, a cloth that resists bending and slides,
+and lumps big enough before it falls to seed folds that wander. The run is seeded, so it lands the
+same way each time; **the underlay's faces must look up** — wound the other way, the collider
+pushed the cloth *through* itself and the first run's sheet settled ten centimetres under the table.
+
+Then it is **pressed flat under the device** at `SHEET_DEVICE_T` (14mm over the table) and eases
+back into its folds over 22mm round it — the device's weight — and dressed as linen: a plain weave
+with slubs in the normal map and the colour, a faint sheen, and a vertex colour darkening the
+folds' valleys, which the room's millimetre-scale ambient occlusion cannot reach. The weave's UVs
+are where each point was on the flat sheet, so the threads follow the folds.
+
+**`sheet_height.bin`** is written from the same mesh in the same run: the sheet's top, ray-cast from
+above every 3mm over the table — a 36-byte header (`JWHM`, version, columns, rows, x0, z0, step,
+the height of zero, metres per unit) and unsigned 16-bit heights, a row per z. The app has no
+formula for a simulated sheet to mirror, so it reads this (`SheetSurface`), and the earphone cord's
+resting curve lies on it. Regenerate both together; `PocketSheetTest` reads the map back and holds
+it to `RestPose.SURFACE_T` under the device.
 
 ## Regenerating
 
@@ -162,6 +194,7 @@ they are in final glTF/app coordinates:
 | `disc.glb` | X/Y ±0.060, Z ±0.0006 (1.2mm thick) |
 | `carriage.glb` | **Room coordinates, not object ones**: the table top at Y **−0.300** (to −0.328), its Z −0.500 … −0.050; the panelling's face at Z **−0.500**, its backing to −0.530; the window opening X ±0.400, Y −0.250 … +0.300, the frame standing proud to Z −0.470. **Nothing may come in front of Z −0.05 or above the table's Y −0.30 below the window**: the device is held at the origin and the life-size view must not change. The night picture hangs behind all of it at −0.55. |
 | `showroom.glb` | **Showroom coordinates**: the floor's top at Y **0**; the plinths' caps topping out at Y **+0.968**, their centres at X **0, 0.42, 0.84, 1.26** (caps ±0.085, so X −0.085 … +1.345) and Z ±0.085; the wall's face at Z **−2.20**, 3.5m high. `ShowroomStage` in the app — spacing, cap top — must agree, or every exhibit floats at the wrong height or beside its plinth. |
+| `sheet.glb` | **Room coordinates**: X −0.333 … +0.332, Z −0.489 … −0.063 — on the table, short of the wall at −0.50 and of its front edge at −0.05 — and Y −0.296 … −0.260, 4–40mm over the table top, **and exactly −0.286 under the resting device** (`SHEET_DEVICE_T`, which `RestPose.SURFACE_T` must equal; `PocketSheetTest` reads it back out of `sheet_height.bin`). |
 | `pocket.glb` | X ±0.0309, Y ±0.0518, **Z −0.00525 … +0.00525** (10.5mm), and per part: the wheel's front face at **+0.00465** (0.6mm inside the plate's +0.00525) and the button's at **+0.0047**; `pocket_print` flat at **+0.00467**, 20µm over the wheel. Nothing in `pocket_details` may pass ±0.0518 in Y — the jack, the hold switch and the connector are sunk into those edges, not stuck on them. |
 
 Note `case_closed`'s axes are the odd ones out, and deliberately: it is the only

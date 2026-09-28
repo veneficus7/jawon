@@ -161,6 +161,34 @@ effect on the way back — no mid-session teardown, and no brush with trap 1.
   up — the float is replaced; **it lies on a knitted blanket** on the train table; and **the cord
   keeps running off-frame**, the earbuds never seen. He offered more references on request, and
   looking them up is cleared too.
+  **The blanket became a linen sheet (2026-09-28)**, on his brief the next day — "fix the visual
+  issues … I don't mind if you change the visual look … give the most reasonable and professional
+  looking end product; do research" — after the first flat lay drew three complaints: the cord
+  wiggled, the wood under it shone like no wood does, and the scene was not aesthetic, its lights,
+  reflections and shadows not agreeing. The research was a search for iPods photographed on
+  bedding, and it came back overwhelmingly as **crumpled cream cotton and linen sheets under warm,
+  low light** — the knit was the minority, and drawn as a normal map on a flat sheet it read as a
+  printed pattern however it was drawn. So the sheet is **crumpled by a cloth simulation** in the
+  model script (`build_sheet()`, `docs/models.md`), and what was wrong with the light is fixed at
+  its root rather than tuned round:
+  - **The cord is a shape at rest, not a simulation** (`RestCord`): a simulation settling on
+    cloth froze in zigzags or never stopped moving. It lies on the sheet's own surface
+    (`SheetSurface`, the simulated sheet's height map), dropping from the plug over its first
+    centimetres, and is held still.
+  - **One lamp, everywhere.** The carriage's environment is placed for the hand, so on the table
+    its softbox lit the sheet from the bottom right while the lamp's shadow fell from the top right
+    and the glass reflected a ceiling light neither knew of. Now the environment turns as the device
+    goes down (`RestLight`) — to show the resting device the room it sees in the hand, then swung
+    45° so the softbox sits at the frame's upper right — and the lamp moves to hang where the
+    softbox lands. Measured on the emulator: the face is brighter toward the lamp (192 at its top
+    right, 162 at its bottom left), the glass's sheen sits in its top right corner, and the shadow
+    falls down and to the left.
+  - **Soft shadows** (PCSS), from a lamp whose cone narrows at rest so the shadow map's texels
+    are spent on the frame — at the hand's width the device's shadow came out in steps.
+  - **Three times the fill at rest**: at the hand's level the lamp did nine-tenths of the
+    lighting and the flat lay read as one spotlight in a black room.
+  Depth of field was tried and left off: it softened the sheet beautifully and broke the wheel's
+  hairlines into dots.
 - **The bar is "as realistic and high quality as possible" — decided.** What that means here:
   - **It is seen closer than anything in the CD room.** At life size, filling the screen, every
     seam, bevel, the wheel's slight recess and the screen's inset glass is on show, so the model

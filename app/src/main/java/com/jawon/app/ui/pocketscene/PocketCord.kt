@@ -40,6 +40,14 @@ class Cord(val nodes: Int = NODES, val lengthM: Float = LENGTH_M) {
     private var primed = false
 
     /**
+     * The surface the cord lies on when it comes down to it — the table, or what is on the table
+     * — as a height in metres. A node that reaches it stays on it and barely slides: at rest the
+     * device lies flat and the cord lies across the surface and away, as in the owner's reference
+     * photos, rather than hanging.
+     */
+    var floorY = Float.NEGATIVE_INFINITY
+
+    /**
      * One step of [dt] seconds. The cord leaves the plug at ([sx], [sy], [sz]) heading along the
      * unit ([ax], [ay], [az]); its far end is at ([ex], [ey], [ez]).
      */
@@ -75,6 +83,7 @@ class Cord(val nodes: Int = NODES, val lengthM: Float = LENGTH_M) {
                 z[i] += vz
             }
             pin(sx, sy, sz, ax, ay, az, ex, ey, ez)
+            onFloor()
             // A cord resists folding: each node is eased toward the middle of its neighbours, so it
             // bends in curves rather than kinking where it leaves the plug. Once per sub-step,
             // before the lengths — run inside every sweep it fought them, and links came out short.
@@ -87,9 +96,26 @@ class Cord(val nodes: Int = NODES, val lengthM: Float = LENGTH_M) {
                     for (i in nodes - 2 downTo 0) satisfy(i, i + 1)
                 }
                 pin(sx, sy, sz, ax, ay, az, ex, ey, ez)
+                onFloor()
             }
         }
     }
+
+    /**
+     * Puts the cord exactly where [xs], [ys], [zs] say, at rest — no motion carried in — so it can
+     * be picked up from there with nothing to spring back from. What the flat lay does: the cord
+     * lying still on the surface is a shape, not a simulation settling (see [RestCord]).
+     */
+    fun hold(xs: FloatArray, ys: FloatArray, zs: FloatArray) {
+        for (i in 0 until nodes) {
+            x[i] = xs[i]; y[i] = ys[i]; z[i] = zs[i]
+            px[i] = xs[i]; py[i] = ys[i]; pz[i] = zs[i]
+        }
+        primed = true
+    }
+
+    /** The link length the cord is made of, metres. */
+    val linkM: Float get() = link
 
     private fun lay(sx: Float, sy: Float, sz: Float, ax: Float, ay: Float, az: Float, ex: Float, ey: Float, ez: Float) {
         // Out of the plug, then straight to the far end: gravity settles the sag within a second.
@@ -114,6 +140,19 @@ class Cord(val nodes: Int = NODES, val lengthM: Float = LENGTH_M) {
         x[1] = sx + ax * link; y[1] = sy + ay * link; z[1] = sz + az * link
         val l = nodes - 1
         x[l] = ex; y[l] = ey; z[l] = ez
+    }
+
+    /** Keeps every free node on or above the floor, and a node on it from sliding. */
+    private fun onFloor() {
+        val lo = floorY + RADIUS_M
+        for (i in 2 until nodes - 1) {
+            if (y[i] < lo) {
+                y[i] = lo
+                py[i] = lo
+                px[i] = x[i] - (x[i] - px[i]) * FLOOR_KEEP
+                pz[i] = z[i] - (z[i] - pz[i]) * FLOOR_KEEP
+            }
+        }
     }
 
     private fun unkink(i: Int) {
@@ -141,6 +180,15 @@ class Cord(val nodes: Int = NODES, val lengthM: Float = LENGTH_M) {
     }
 
     companion object {
+        /** The cord's radius, metres — what it rests on the floor by. `CordMesh`'s own. */
+        const val RADIUS_M = 0.001f
+
+        /**
+         * How much of its sliding a node on the floor keeps each sub-step. Grippy at first (0.35),
+         * the cord froze in whatever shape it landed in, zigzags and all; this lets its own
+         * stiffness ease the slack into a curve while it settles.
+         */
+        const val FLOOR_KEEP = 0.85f
         /** Where the cord leaves the plug's strain relief, in the device's frame — `EARPHONE_*` in the model script. */
         const val PLUG_X_M = 0.0155f
         const val PLUG_TIP_Y_M = 0.07995f
@@ -155,6 +203,15 @@ class Cord(val nodes: Int = NODES, val lengthM: Float = LENGTH_M) {
         const val EARS_Y_M = 0.45f
         const val EARS_Z_M = 0.22f
         const val EARS_FOLLOW_OMEGA = 4f
+
+        /**
+         * At rest, where the far end lies: off the flat lay's right edge and up toward the window,
+         * nearly the cord's length from the plug, so it lies across the surface in one easy curve.
+         * With more slack than that — 10cm of it, at the first place tried — a cord pinned at both
+         * ends and resting on cloth buckles, and it lay in zigzags.
+         */
+        const val REST_EARS_X_M = 0.42f
+        const val REST_EARS_Z_M = -0.46f
 
         const val NODES = 40
         /**
@@ -217,8 +274,12 @@ class CordMesh(
                 val b = (i * sides + (j + 1) % sides).toShort()
                 val c = ((i + 1) * sides + j).toShort()
                 val d = ((i + 1) * sides + (j + 1) % sides).toShort()
-                indices.putShort(a); indices.putShort(c); indices.putShort(b)
-                indices.putShort(b); indices.putShort(c); indices.putShort(d)
+                // Counter-clockwise seen from outside, so the outer surface is the front face. The
+                // other way round it was the back face, and a double-sided material turns a back
+                // face's normal inward: the cord was lit from inside — grey in the hand, where the
+                // window behind it lit the inward side, and black lying on the table.
+                indices.putShort(a); indices.putShort(b); indices.putShort(c)
+                indices.putShort(b); indices.putShort(d); indices.putShort(c)
             }
         }
         indices.flip()
@@ -233,7 +294,8 @@ class CordMesh(
             .geometry(0, RenderableManager.PrimitiveType.TRIANGLES, vertexBuffer, indexBuffer)
             .material(0, material)
             .culling(false)
-            .castShadows(false)
+            // Its shadow on what it lies on is half of what says it is lying there.
+            .castShadows(true)
             .receiveShadows(false)
             // The room's lights, and the lamp's light on white plastic — see CORD_LIGHT_CHANNEL.
             .lightChannel(0, true)
@@ -242,7 +304,10 @@ class CordMesh(
     }
 
     /** Rebuilds the tube round [cord]'s current shape. */
-    fun update(cord: Cord) {
+    fun update(cord: Cord) = update(cord.x, cord.y, cord.z)
+
+    /** Rebuilds the tube round the nodes at [xs], [ys], [zs]. */
+    fun update(xs: FloatArray, ys: FloatArray, zs: FloatArray) {
         val pos = positions[slot]
         val tan = tangents[slot]
         pos.clear()
@@ -251,9 +316,9 @@ class CordMesh(
             // Along the cord here: a central difference, one-sided at the ends.
             val i0 = if (i == 0) 0 else i - 1
             val i1 = if (i == nodes - 1) nodes - 1 else i + 1
-            var tx = cord.x[i1] - cord.x[i0]
-            var ty = cord.y[i1] - cord.y[i0]
-            var tz = cord.z[i1] - cord.z[i0]
+            var tx = xs[i1] - xs[i0]
+            var ty = ys[i1] - ys[i0]
+            var tz = zs[i1] - zs[i0]
             val tl = sqrt(tx * tx + ty * ty + tz * tz).coerceAtLeast(1e-7f)
             tx /= tl; ty /= tl; tz /= tl
             if (i == 0) {
@@ -276,9 +341,9 @@ class CordMesh(
                 val rx = nx * c + bx * s
                 val ry = ny * c + by * s
                 val rz = nz * c + bz * s
-                pos.put(cord.x[i] + rx * radiusM)
-                pos.put(cord.y[i] + ry * radiusM)
-                pos.put(cord.z[i] + rz * radiusM)
+                pos.put(xs[i] + rx * radiusM)
+                pos.put(ys[i] + ry * radiusM)
+                pos.put(zs[i] + rz * radiusM)
                 // Tangent along the cord, normal out from it, bitangent across.
                 MathUtils.packTangentFrame(
                     tx, ty, tz,
@@ -320,5 +385,87 @@ class CordMesh(
         /** A 2mm cord. */
         const val RADIUS_M = 0.001f
         const val BUFFERS = 3
+    }
+}
+
+/**
+ * **The cord lying on the surface at rest**, as a shape: out of the jack along the plug, then round
+ * in one broad curve and away across the surface — the way a cord lies in the owner's reference
+ * photos, and the way a simulation settling on cloth never quite did (it froze in zigzags, or never
+ * stopped moving). Built node by node at the cord's own link length, so the simulation can take it
+ * back from here without a jolt.
+ *
+ * In the surface's plane: the heading starts along the plug, stays on it for [LEAD_M], turns
+ * through [TURN_RAD] on a radius of [RADIUS_M] — the turn's start and end eased, so there is no
+ * corner — and runs on straight. Pure.
+ */
+object RestCord {
+    const val LEAD_M = 0.022f
+    const val RADIUS_M = 0.075f
+    const val TURN_RAD = 2.4f
+    /** Over how much of the cord the curvature comes on and goes off. */
+    const val EASE_M = 0.03f
+
+    /**
+     * Lays [nodes] nodes from the plug's tip ([sx], [sy], [sz]), heading along ([ax], [az]) in the
+     * plane — [turnSign] +1 turns clockwise seen from above — over the surface [top] gives the
+     * height of: the cord lies on it, a radius up, dropping to it from the plug's height over the
+     * lead. **Each link keeps its length over the surface's slopes**, not only across the plane, so
+     * the simulation takes the curve back at the length it is made of.
+     */
+    fun lay(
+        sx: Float, sy: Float, sz: Float, ax: Float, az: Float, link: Float, nodes: Int,
+        turnSign: Float, top: (Float, Float) -> Float, xs: FloatArray, ys: FloatArray, zs: FloatArray
+    ) {
+        var heading = kotlin.math.atan2(az, ax)
+        var x = sx
+        var z = sz
+        var y = sy
+        val turnLength = RADIUS_M * TURN_RAD
+        for (i in 0 until nodes) {
+            xs[i] = x; ys[i] = y; zs[i] = z
+            // Curvature over this link, as the average of the eased turn across it.
+            val s0 = i * link
+            val bend = curvatureIntegral(s0 + link, turnLength) - curvatureIntegral(s0, turnLength)
+            heading += turnSign * bend
+            val cx = kotlin.math.cos(heading)
+            val cz = kotlin.math.sin(heading)
+            // Where the next node lies, a link on: across the plane first, then shortened by
+            // however far the surface climbs or falls over it.
+            var step = link
+            var ny = y
+            repeat(2) {
+                ny = height(x + step * cx, z + step * cz, s0 + link, sy, top)
+                val rise = ny - y
+                step = kotlin.math.sqrt((link * link - rise * rise).coerceAtLeast(link * link * 0.25f))
+            }
+            x += step * cx
+            z += step * cz
+            y = height(x, z, s0 + link, sy, top)
+        }
+    }
+
+    /** The cord's height at ([x], [z]), [s] along it: on the surface, eased down from the plug over the lead. */
+    private fun height(x: Float, z: Float, s: Float, plugY: Float, top: (Float, Float) -> Float): Float {
+        val lying = top(x, z) + Cord.RADIUS_M
+        val t = (s / LEAD_M).coerceIn(0f, 1f)
+        val e = t * t * (3f - 2f * t)
+        return plugY + (lying - plugY) * e
+    }
+
+    /** The heading turned by arc length [s]: nothing along the lead, then the eased turn. */
+    private fun curvatureIntegral(s: Float, turnLength: Float): Float {
+        val into = (s - LEAD_M).coerceIn(0f, turnLength + EASE_M)
+        // Curvature ramps up over EASE_M and down over the last EASE_M: integrate the plateau
+        // and the two ramps so the total is exactly TURN_RAD.
+        val k = TURN_RAD / turnLength
+        return when {
+            into <= EASE_M -> k * into * into / (2f * EASE_M)
+            into <= turnLength -> k * (into - EASE_M / 2f)
+            else -> {
+                val over = into - turnLength
+                k * (turnLength - EASE_M / 2f + over - over * over / (2f * EASE_M))
+            }
+        }
     }
 }

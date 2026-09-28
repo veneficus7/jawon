@@ -59,8 +59,8 @@ object PocketLighting {
     private val VOID = floatArrayOf(0.0038f, 0.0042f, 0.0058f)
 
     /** The reading lamp, as a softbox: where it hangs, how large, how soft its edges, how bright. */
-    private const val SOFTBOX_AZ = 1.04f
-    private const val SOFTBOX_EL = 0.52f
+    internal const val SOFTBOX_AZ = 1.04f
+    internal const val SOFTBOX_EL = 0.52f
     private const val SOFTBOX_HALF_AZ = 0.50f
     private const val SOFTBOX_HALF_EL = 0.30f
     private const val SOFTBOX_EDGE = 0.10f
@@ -153,6 +153,14 @@ object PocketLighting {
             .intensity(AMBIENT_INTENSITY)
             .build(engine)
         return Environment(indirectLight = indirectLight, skybox = null)
+    }
+
+    /** The softbox's centre as a unit direction, into [out] — what [RestLight] turns onto the lamp. */
+    fun softboxDirection(out: FloatArray) {
+        val c = kotlin.math.cos(SOFTBOX_EL)
+        out[0] = c * kotlin.math.cos(SOFTBOX_AZ)
+        out[1] = kotlin.math.sin(SOFTBOX_EL)
+        out[2] = c * kotlin.math.sin(SOFTBOX_AZ)
     }
 
     /** The carriage's radiance in one direction — pure, so the placement can be tested. */

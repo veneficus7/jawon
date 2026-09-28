@@ -1703,7 +1703,7 @@ def _uvs_along(obj, axis_u, u0, u1, axis_v, v0, v1):
             uv[li].uv = ((getattr(co, axis_u) - u0) / (u1 - u0), (getattr(co, axis_v) - v0) / (v1 - v0))
 
 
-def wood_grain(w, h, seed, dark, light, rings=140.0, drift=0.12):
+def wood_grain(w, h, seed, dark, light, rings=140.0, drift=0.12, ring_share=0.60):
     """
     Varnished hardwood's colour, generated. Linear RGB in, an h x w x 3 array out; the grain runs
     along the width.
@@ -1724,7 +1724,10 @@ def wood_grain(w, h, seed, dark, light, rings=140.0, drift=0.12):
     ring = ring ** 3.0                                   # thin dark latewood lines, broad earlywood
     figure = _fbm(h, w, 4, 3, rng, aspect=0.35)          # broad bands of the figure
     pores = _fbm(h, w, 64, 2, rng, aspect=0.08)          # fine streaks along the grain
-    t = np.clip(0.60 * (1.0 - ring) + 0.22 * figure + 0.18 * pores, 0.0, 1.0)
+    # [ring_share] is how much of the colour the rings carry. Seen close, at 0.60, they read as
+    # stripes rather than grain; the table is seen from above at arm's length now.
+    rest = 1.0 - ring_share
+    t = np.clip(ring_share * (1.0 - ring) + rest * 0.55 * figure + rest * 0.45 * pores, 0.0, 1.0)
     dark = np.array(dark)[None, None, :]
     light = np.array(light)[None, None, :]
     return dark + (light - dark) * t[..., None]
@@ -1905,6 +1908,404 @@ def build_showroom():
     return objects
 
 
+# ---------------------------------------------------------------------------
+# The sheet — what the pocket player lies on at rest (docs/formats.md §4). A linen sheet crumpled
+# over a soft underlay on the carriage's table, in the room's own coordinates: the way an iPod is
+# photographed, put down on a bed. **Crumpled by a cloth simulation**, not drawn: a sheet's folds
+# are what the eye reads fabric by, and every procedural attempt at them — ridges, swells, a knit
+# in relief — read as a pattern on a board.
+# ---------------------------------------------------------------------------
+
+# Where the sheet ends up: over the table (app x, and app z from the wall to near the front edge).
+SHEET_X0, SHEET_X1 = -0.33, 0.33
+SHEET_Z0, SHEET_Z1 = -0.485, -0.065
+# The simulated cloth: a grid this fine, laid out larger and pushed in from every edge by these
+# fractions over the first part of the run, so it buckles into folds as a sheet bunched on a bed
+# does. The run is seeded, so the folds are the same every time the script is run.
+#
+# **Chosen from nine runs, looked at from above** (2026-09-28). Pushed a fifth from every side it
+# crumpled like foil — creases everywhere, at the grid's own scale; stuck to the underlay by a
+# high friction it buckled where it landed instead of sliding into folds; pushed along one axis it
+# made pleats. What reads as a bedsheet is a light push, a little more across than along, a cloth
+# that resists bending and slides, and lumps big enough to seed folds that wander.
+SHEET_STEP = 0.005
+SHEET_PUSH_X = 0.90
+SHEET_PUSH_Z = 0.93
+SHEET_SEED = 3
+SHEET_BENDING = 6.0
+SHEET_STIFFNESS = 80.0
+SHEET_FRICTION = 0.3
+# How lumpy the sheet is before it falls: the lumps are what the folds grow from.
+SHEET_LUMP = 2.5
+SHEET_FRAMES = 110
+# What it lies on: a soft underlay a centimetre up, in low billows, and pressed flat under the
+# device. Only the sheet is exported.
+SHEET_BED_T = 0.010
+# **Where the device lies**: the sheet is pressed flat under it at this height over the table —
+# `RestPose.SURFACE_T` in the app must agree (`SheetSurfaceTest` reads it back out of the height
+# map) — and eases back into its own folds over [SHEET_FLATTEN_M] round it.
+SHEET_DEVICE_T = 0.014
+SHEET_DEVICE_X = 0.0
+SHEET_DEVICE_Z = -0.26
+SHEET_DEVICE_YAW_DEG = 10.0
+SHEET_FLATTEN_M = 0.022
+# The weave: linen, its threads 0.8mm apart, on an 80mm tile.
+SHEET_TILE_M = 0.08
+SHEET_THREAD_M = 0.0008
+SHEET_RELIEF_M = 0.00025
+# Unbleached linen, linear.
+SHEET_COLOUR = (0.62, 0.58, 0.51)
+# The height map the app lays the earphone cord on (`SheetSurface`): the sheet's top, every 3mm
+# over the table.
+SHEET_MAP_X0, SHEET_MAP_X1 = -0.35, 0.35
+SHEET_MAP_Z0, SHEET_MAP_Z1 = -0.50, -0.05
+SHEET_MAP_STEP = 0.003
+SHEET_MAP_SCALE = 0.08 / 65535.0
+
+
+def _device_outside(x, z):
+    """How far (x, z) is outside the resting device's footprint, metres; negative inside."""
+    np = _np()
+    yaw = math.radians(SHEET_DEVICE_YAW_DEG)
+    dx, dz = x - SHEET_DEVICE_X, z - SHEET_DEVICE_Z
+    lx = dx * math.cos(yaw) - dz * math.sin(yaw)
+    lz = dx * math.sin(yaw) + dz * math.cos(yaw)
+    qx = np.abs(lx) - (POCKET_W / 2.0 - POCKET_R)
+    qz = np.abs(lz) - (POCKET_H / 2.0 - POCKET_R)
+    return np.hypot(np.maximum(qx, 0.0), np.maximum(qz, 0.0)) + np.minimum(np.maximum(qx, qz), 0.0) - POCKET_R
+
+
+def _smooth01(t):
+    np = _np()
+    t = np.clip(t, 0.0, 1.0)
+    return t * t * (3.0 - 2.0 * t)
+
+
+def _sheet_grid(name, x0, x1, z0, z1, step, height):
+    """A grid object over app (x, z), its heights (over the table) from [height](X, Z)."""
+    np = _np()
+    xs = np.linspace(x0, x1, int(round((x1 - x0) / step)) + 1)
+    zs = np.linspace(z0, z1, int(round((z1 - z0) / step)) + 1)
+    X, Z = np.meshgrid(xs, zs)
+    Y = CARRIAGE_TABLE_TOP_Y + height(X, Z)
+    obj = new_mesh_object(name)
+    mesh = obj.data
+    nz, nx = X.shape
+    co = np.stack([X.ravel(), -Z.ravel(), Y.ravel()], axis=1)
+    # Wound so the faces look up: rows run toward +app z, which is −Blender y, and a collider
+    # facing down pushes cloth *through* itself — the first run's sheet fell 10cm under the table.
+    faces = []
+    for j in range(nz - 1):
+        for i in range(nx - 1):
+            a = j * nx + i
+            faces.append((a, a + nx, a + nx + 1, a + 1))
+    mesh.from_pydata(co.tolist(), [], faces)
+    mesh.update()
+    return obj, nx, nz
+
+
+def _simulate_sheet():
+    """
+    Runs the cloth simulation and hands back the settled sheet as (positions, faces, grid size),
+    positions in Blender's coordinates, rows running with app z.
+
+    A grid larger than where it ends up, its edge pinned and pushed in toward the middle over
+    frames 5–50, falls under gravity onto the underlay and buckles; self-collision lets a fold lie
+    over on itself instead of passing through, and the underlay's friction holds the folds where
+    they land. Bending is low — a sheet, not a blanket — so the folds are soft and narrow.
+    """
+    np = _np()
+    rng = np.random.default_rng(SHEET_SEED)
+    scene = bpy.context.scene
+
+    ph = rng.random(6) * 2.0 * math.pi
+
+    def bed(X, Z):
+        billow = 0.006 * np.sin(X / 0.09 + ph[0]) * np.sin(Z / 0.07 + ph[1]) + 0.004 * np.sin((X + Z) / 0.05 + ph[2])
+        # Pressed flat where the device lies, a hair under the sheet's own height there.
+        m = _smooth01(_device_outside(X, Z) / 0.04)
+        flat = SHEET_DEVICE_T - 0.0015
+        return (SHEET_BED_T + billow) * m + flat * (1.0 - m)
+
+    base, _, _ = _sheet_grid("sheet_bed", SHEET_X0 - 0.06, SHEET_X1 + 0.06, SHEET_Z0 - 0.05, SHEET_Z1 + 0.05, 0.01, bed)
+    base.modifiers.new("Collision", "COLLISION")
+    base.collision.thickness_outer = 0.003
+    base.collision.cloth_friction = SHEET_FRICTION
+
+    # Laid out larger, so that pushed in by SHEET_PUSH it ends where it should.
+    cx, cz = (SHEET_X0 + SHEET_X1) / 2.0, (SHEET_Z0 + SHEET_Z1) / 2.0
+    hx = (SHEET_X1 - SHEET_X0) / 2.0 / SHEET_PUSH_X
+    hz = (SHEET_Z1 - SHEET_Z0) / 2.0 / SHEET_PUSH_Z
+    ph2 = rng.random(4) * 2.0 * math.pi
+
+    def start(X, Z):
+        return (bed(X, Z) + 0.014 + SHEET_LUMP * (
+                0.004 * np.sin(X / 0.11 + ph2[0]) * np.sin(Z / 0.08 + ph2[1])
+                + 0.002 * np.sin(X / 0.043 + Z / 0.061 + ph2[2])
+                + 0.0015 * np.sin(-X / 0.031 + Z / 0.027 + ph2[3])))
+
+    sheet, nx, nz = _sheet_grid("sheet_sim", cx - hx, cx + hx, cz - hz, cz + hz, SHEET_STEP, start)
+    edge = [j * nx + i for j in range(nz) for i in range(nx) if i in (0, nx - 1) or j in (0, nz - 1)]
+    pin = sheet.vertex_groups.new(name="pin")
+    pin.add(edge, 1.0, "REPLACE")
+    sheet.shape_key_add(name="Basis")
+    push = sheet.shape_key_add(name="push")
+    for i in edge:
+        v = push.data[i].co
+        v.x = cx + (v.x - cx) * SHEET_PUSH_X
+        v.y = -cz + (v.y + cz) * SHEET_PUSH_Z
+        # And its hem comes down onto the underlay as it goes.
+        v.z = CARRIAGE_TABLE_TOP_Y + float(bed(np.array(v.x), np.array(-v.y))) + 0.002
+    push.value = 0.0
+    push.keyframe_insert("value", frame=5)
+    push.value = 1.0
+    push.keyframe_insert("value", frame=50)
+
+    cloth = sheet.modifiers.new("Cloth", "CLOTH")
+    s = cloth.settings
+    s.quality = 6
+    s.mass = 0.02
+    s.air_damping = 2.0
+    s.tension_stiffness = SHEET_STIFFNESS
+    s.compression_stiffness = SHEET_STIFFNESS
+    s.shear_stiffness = 10.0
+    s.bending_stiffness = SHEET_BENDING
+    s.tension_damping = 5.0
+    s.compression_damping = 5.0
+    s.shear_damping = 5.0
+    s.bending_damping = 0.5
+    s.vertex_group_mass = "pin"
+    c = cloth.collision_settings
+    c.use_collision = True
+    c.distance_min = 0.0015
+    c.use_self_collision = True
+    c.self_distance_min = 0.0015
+    c.collision_quality = 3
+    cloth.point_cache.frame_start = 1
+    cloth.point_cache.frame_end = SHEET_FRAMES
+    scene.frame_start = 1
+    scene.frame_end = SHEET_FRAMES
+    for f in range(1, SHEET_FRAMES + 1):
+        scene.frame_set(f)
+
+    evaluated = sheet.evaluated_get(bpy.context.evaluated_depsgraph_get())
+    mesh = evaluated.to_mesh()
+    positions = np.array([tuple(v.co) for v in mesh.vertices], dtype=np.float64)
+    faces = [tuple(p.vertices) for p in mesh.polygons]
+    evaluated.to_mesh_clear()
+    scene.frame_set(1)
+    for obj in (sheet, base):
+        bpy.data.objects.remove(obj, do_unlink=True)
+    return positions, faces, nx, nz
+
+
+def _linen_tile(px=1024, seed=11):
+    """
+    One tile of plain-weave linen: heights 0..1 and a tone, rows running from the tile's top.
+
+    Warp and weft over and under each other in turn, each thread round in section and rising where
+    it passes over; and linen's character on top — **slubs**, stretches a few millimetres long where
+    a thread runs thicker and a shade lighter, which are what make linen read as linen rather than
+    as a printed grid — and a tone that wanders thread to thread. Everything wraps with the tile.
+    """
+    np = _np()
+    rng = np.random.default_rng(seed)
+    n = int(round(SHEET_TILE_M / SHEET_THREAD_M))
+    pitch = px / n
+    t = (np.arange(px) + 0.5) / pitch
+    idx = np.floor(t).astype(int)
+    frac = t - idx
+
+    def along(count, cells):
+        """Per thread, a periodic 1-D wander along the tile, 0..1, [cells] keys long."""
+        keys = rng.random((count, cells))
+        pos = (np.arange(px) + 0.5) / px * cells
+        i0 = np.floor(pos).astype(int)
+        f = pos - i0
+        f = f * f * (3.0 - 2.0 * f)
+        a = keys[:, i0 % cells]
+        b = keys[:, (i0 + 1) % cells]
+        return a + (b - a) * f[None, :]
+
+    # Slubs: thicker, lighter runs along a thread, and the thread's own tone.
+    warp_slub = np.clip((along(n, 24) - 0.62) / 0.3, 0.0, 1.0)      # [thread, y]
+    weft_slub = np.clip((along(n, 24) - 0.62) / 0.3, 0.0, 1.0)      # [thread, x]
+    warp_tone = rng.random(n) - 0.5
+    weft_tone = rng.random(n) - 0.5
+
+    xi = idx[None, :]
+    yi = idx[:, None]
+    fx = frac[None, :]
+    fy = frac[:, None]
+    # Across a thread: round, a little narrower than its pitch, fatter along a slub.
+    w_slub = warp_slub[idx[None, :], np.arange(px)[:, None]]        # warp thread at x, along y
+    f_slub = weft_slub[idx[:, None], np.arange(px)[None, :]]        # weft thread at y, along x
+    w_width = 0.80 + 0.25 * w_slub
+    f_width = 0.80 + 0.25 * f_slub
+    w_cross = np.sqrt(np.clip(1.0 - ((2.0 * fx - 1.0) / w_width) ** 2, 0.0, 1.0))
+    f_cross = np.sqrt(np.clip(1.0 - ((2.0 * fy - 1.0) / f_width) ** 2, 0.0, 1.0))
+    # Over and under: warp i is over weft j where i + j is even.
+    ty = (np.arange(px)[:, None] + 0.5) / pitch
+    tx = (np.arange(px)[None, :] + 0.5) / pitch
+    w_und = 0.5 + 0.5 * np.cos(math.pi * (ty - 0.5) + math.pi * xi)
+    f_und = 0.5 - 0.5 * np.cos(math.pi * (tx - 0.5) + math.pi * yi)
+    warp_h = w_cross * (0.35 + 0.65 * w_und) * (1.0 + 0.30 * w_slub)
+    weft_h = f_cross * (0.35 + 0.65 * f_und) * (1.0 + 0.30 * f_slub)
+    height = np.maximum(warp_h, weft_h)
+    on_warp = warp_h >= weft_h
+    tone = np.where(on_warp, warp_tone[xi % n] + 0.5 * w_slub, weft_tone[yi % n] + 0.5 * f_slub)
+    return np.clip(height / 1.3, 0.0, 1.0), tone
+
+
+def _sheet_height_map(tree):
+    """The sheet's top every SHEET_MAP_STEP over the table, as the bytes of `sheet_height.bin`."""
+    np = _np()
+    import struct
+    from mathutils import Vector
+    xs = np.arange(SHEET_MAP_X0, SHEET_MAP_X1 + 1e-9, SHEET_MAP_STEP)
+    zs = np.arange(SHEET_MAP_Z0, SHEET_MAP_Z1 + 1e-9, SHEET_MAP_STEP)
+    heights = np.zeros((len(zs), len(xs)))
+    down = Vector((0.0, 0.0, -1.0))
+    for j, z in enumerate(zs):
+        for i, x in enumerate(xs):
+            hit = tree.ray_cast(Vector((float(x), float(-z), CARRIAGE_TABLE_TOP_Y + 0.3)), down)
+            heights[j, i] = (hit[0].z if hit[0] is not None else CARRIAGE_TABLE_TOP_Y) - CARRIAGE_TABLE_TOP_Y
+    values = np.clip(np.round(heights / SHEET_MAP_SCALE), 0, 65535).astype("<u2")
+    header = struct.pack(
+        "<4siiifffff", b"JWHM", 1, len(xs), len(zs),
+        float(SHEET_MAP_X0), float(SHEET_MAP_Z0), float(SHEET_MAP_STEP),
+        float(CARRIAGE_TABLE_TOP_Y), float(SHEET_MAP_SCALE),
+    )
+    return header + values.tobytes(), heights
+
+
+def build_sheet():
+    """
+    The sheet: simulated, pressed flat under the device, and dressed as linen — the weave in a
+    normal map and the colour, a slight sheen, and a vertex colour darkening the folds' valleys,
+    which the millimetre-scale ambient occlusion cannot reach. Also writes `sheet_height.bin`, the
+    top surface the app lays the cord on, from the same mesh, so the two can never disagree.
+    """
+    np = _np()
+    from mathutils.bvhtree import BVHTree
+    positions, faces, nx, nz = _simulate_sheet()
+
+    # Pressed flat where the device lies, easing back into the folds round it.
+    app_x = positions[:, 0]
+    app_z = -positions[:, 1]
+    lift = positions[:, 2] - CARRIAGE_TABLE_TOP_Y
+    m = _smooth01(_device_outside(app_x, app_z) / SHEET_FLATTEN_M)
+    lift = SHEET_DEVICE_T + (lift - SHEET_DEVICE_T) * m
+    positions[:, 2] = CARRIAGE_TABLE_TOP_Y + lift
+
+    tree = BVHTree.FromPolygons([tuple(p) for p in positions], faces)
+    blob, heights = _sheet_height_map(tree)
+    path = os.path.abspath(os.path.join(OUT_DIR, "sheet_height.bin"))
+    with open(path, "wb") as f:
+        f.write(blob)
+    print("JAVON-BUILD wrote %s (%.1f KB)" % (path, len(blob) / 1024.0))
+
+    # The folds' valleys, darker: how far each vertex sits under the sheet round it.
+    step = SHEET_MAP_STEP
+    kernel = 5
+    pad = np.pad(heights, kernel, mode="edge")
+    around = np.zeros_like(heights)
+    taps = range(-kernel, kernel + 1)
+    for dz in taps:
+        for dx in taps:
+            around += pad[kernel + dz: kernel + dz + heights.shape[0], kernel + dx: kernel + dx + heights.shape[1]]
+    around /= len(taps) ** 2
+    valley_map = np.clip((around - heights) / 0.006, 0.0, 1.0)
+    gi = np.clip(np.round((app_x - SHEET_MAP_X0) / step).astype(int), 0, heights.shape[1] - 1)
+    gj = np.clip(np.round((app_z - SHEET_MAP_Z0) / step).astype(int), 0, heights.shape[0] - 1)
+    shade = 1.0 - 0.28 * valley_map[gj, gi]
+
+    obj = new_mesh_object("sheet")
+    mesh = obj.data
+    mesh.from_pydata(positions.tolist(), [], faces)
+    mesh.update()
+    # The weave follows the cloth: UVs from where each point was on the flat sheet.
+    uv = mesh.uv_layers.new(name="UVMap").data
+    colour = mesh.color_attributes.new(name="Col", type="BYTE_COLOR", domain="CORNER")
+    cx, cz = (SHEET_X0 + SHEET_X1) / 2.0, (SHEET_Z0 + SHEET_Z1) / 2.0
+    hx = (SHEET_X1 - SHEET_X0) / 2.0 / SHEET_PUSH_X
+    hz = (SHEET_Z1 - SHEET_Z0) / 2.0 / SHEET_PUSH_Z
+    for poly in mesh.polygons:
+        for li in poly.loop_indices:
+            vi = mesh.loops[li].vertex_index
+            i, j = vi % nx, vi // nx
+            flat_x = (cx - hx) + i * (2.0 * hx) / (nx - 1)
+            flat_z = (cz - hz) + j * (2.0 * hz) / (nz - 1)
+            uv[li].uv = (flat_x / SHEET_TILE_M, -flat_z / SHEET_TILE_M)
+            g = float(shade[vi])
+            colour.data[li].color = (g, g, g, 1.0)
+    for poly in mesh.polygons:
+        poly.use_smooth = True
+
+    height, tone = _linen_tile()
+    linen = principled("SheetLinen", base_color=SHEET_COLOUR, metallic=0.0, roughness=0.86)
+    nt = linen.node_tree
+    bsdf = nt.nodes["Principled BSDF"]
+    # Linen's lustre: a faint sheen at glancing angles, less than wool's.
+    for key, value in (("Sheen Weight", 0.35), ("Sheen Roughness", 0.5)):
+        if key in bsdf.inputs:
+            bsdf.inputs[key].default_value = value
+    if "Sheen Tint" in bsdf.inputs:
+        bsdf.inputs["Sheen Tint"].default_value = (1.0, 0.97, 0.92, 1.0)
+    albedo = np.array(SHEET_COLOUR)[None, None, :] * (0.86 + 0.14 * height[..., None]) * (1.0 + 0.07 * tone[..., None])
+    tex = nt.nodes.new("ShaderNodeTexImage")
+    tex.image = _colour_image("sheet_linen", albedo[::-1].copy())
+    attr = nt.nodes.new("ShaderNodeVertexColor")
+    attr.layer_name = "Col"
+    mix = nt.nodes.new("ShaderNodeMix")
+    mix.data_type = "RGBA"
+    mix.blend_type = "MULTIPLY"
+    mix.inputs["Factor"].default_value = 1.0
+    nt.links.new(tex.outputs["Color"], mix.inputs["A"])
+    nt.links.new(attr.outputs["Color"], mix.inputs["B"])
+    nt.links.new(mix.outputs["Result"], bsdf.inputs["Base Color"])
+    _use_normal_map(linen, _normal_image("sheet_weave", height, SHEET_RELIEF_M, SHEET_TILE_M, SHEET_TILE_M))
+    obj.data.materials.append(linen)
+    obj.modifiers.new(name="Triangulate", type="TRIANGULATE")
+    return [obj]
+
+
+def _normal_image(name, height, relief_m, tile_w, tile_h):
+    """
+    A tangent-space normal map (OpenGL, +Y up the image) from a height field whose rows run from
+    the image's top down.
+    """
+    np = _np()
+    ny, nx = height.shape
+    hm = height * relief_m
+    dx = (np.roll(hm, -1, axis=1) - np.roll(hm, 1, axis=1)) / (2.0 * tile_w / nx)
+    # Rows run down the image, so up the image is −row.
+    dy = -(np.roll(hm, -1, axis=0) - np.roll(hm, 1, axis=0)) / (2.0 * tile_h / ny)
+    nxv, nyv, nzv = -dx, -dy, np.ones_like(dx)
+    length = np.sqrt(nxv * nxv + nyv * nyv + nzv * nzv)
+    rgba = np.ones((ny, nx, 4), dtype=np.float32)
+    rgba[..., 0] = nxv / length * 0.5 + 0.5
+    rgba[..., 1] = nyv / length * 0.5 + 0.5
+    rgba[..., 2] = nzv / length * 0.5 + 0.5
+    img = bpy.data.images.new(name, width=nx, height=ny, alpha=False)
+    img.colorspace_settings.name = "Non-Color"
+    # Blender's pixel buffer runs from the bottom row up.
+    img.pixels.foreach_set(rgba[::-1].ravel())
+    img.file_format = "JPEG"
+    img.pack()
+    return img
+
+
+def _use_normal_map(mat, image, strength=1.0):
+    nt = mat.node_tree
+    tex = nt.nodes.new("ShaderNodeTexImage")
+    tex.image = image
+    nm = nt.nodes.new("ShaderNodeNormalMap")
+    nm.inputs["Strength"].default_value = strength
+    nt.links.new(tex.outputs["Color"], nm.inputs["Color"])
+    nt.links.new(nm.outputs["Normal"], nt.nodes["Principled BSDF"].inputs["Normal"])
+
+
 def build_carriage_glass():
     """
     The carriage window's pane, as a file of its own: its grime needs an alpha channel, so it
@@ -1974,13 +2375,15 @@ def build_carriage():
     bm.to_mesh(table.data)
     bm.free()
     walnut = principled(
-        # Walnut under a varnish: the wood itself a little rough, the varnish over it glossy,
-        # which is what gives a lamp a soft pool on the table and a sharp glint on its edge.
+        # Oiled walnut, satin: a soft pool under a lamp and no mirror in it. It was varnished to a
+        # gloss first (coat 0.65), and seen from above in the flat lay the ceiling's lights rippled
+        # across the grain and the owner read it as "shining too much for a wood".
         "CarriageWalnut", base_color=(0.06, 0.03, 0.017), metallic=0.0,
-        roughness=0.42, coat=0.65, coat_roughness=0.09,
+        roughness=0.62, coat=0.12, coat_roughness=0.38,
     )
     _use_base_colour(walnut, _colour_image(
-        "carriage_walnut", wood_grain(2048, 1024, 21, (0.030, 0.014, 0.007), (0.105, 0.052, 0.026))))
+        "carriage_walnut", wood_grain(2048, 1024, 21, (0.030, 0.014, 0.007), (0.105, 0.052, 0.026),
+                                      ring_share=0.28)))
     table.data.materials.append(walnut)
     _uvs_along(table, "x", -CARRIAGE_TABLE_W / 2.0, CARRIAGE_TABLE_W / 2.0,
                "y", az(CARRIAGE_TABLE_FRONT_Z), az(CARRIAGE_WALL_Z))
@@ -2363,7 +2766,7 @@ def build_disc_shards():
     return objects
 
 
-def export(objects, filename, image_format="AUTO"):
+def export(objects, filename, image_format="AUTO", jpeg_quality=75):
     bpy.ops.object.select_all(action="DESELECT")
     for obj in objects:
         obj.select_set(True)
@@ -2384,6 +2787,7 @@ def export(objects, filename, image_format="AUTO"):
         # JPEG for large colour maps (the carriage's wood): lossy is fine for albedo, and a
         # 2048-wide grain is megabytes as PNG. Everything else keeps its own format.
         export_image_format=image_format,
+        export_jpeg_quality=jpeg_quality,
         export_extras=False,
     )
     return path
@@ -2458,6 +2862,12 @@ def main():
     if not skip("earphone_plug.glb"):
         clear_scene()
         paths.append(export(build_earphone_plug(), "earphone_plug.glb"))
+
+    # The sheet the pocket player lies on at rest, in the room's own coordinates — and beside it
+    # sheet_height.bin, its top surface, which the app lays the earphone cord on.
+    if not skip("sheet.glb"):
+        clear_scene()
+        paths.append(export(build_sheet(), "sheet.glb", image_format="JPEG", jpeg_quality=94))
 
     # The showroom between formats.
     if not skip("showroom.glb"):
