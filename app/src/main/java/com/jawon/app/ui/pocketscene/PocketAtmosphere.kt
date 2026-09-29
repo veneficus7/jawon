@@ -74,9 +74,9 @@ object PocketAtmosphere {
         }
         view.dithering = View.Dithering.TEMPORAL
         // **Soft shadows** (PCSS): the penumbra widens with the distance from what casts it, as a
-        // lampshade's does, so the device's shadow is sharp where it meets the sheet and soft
+        // lampshade's does, so the device's shadow is sharp where it meets the cloth and soft
         // where it leaves it. Plain PCF drew one hard line under the device; DPCF broke the
-        // sheet up in blocks; VSM's blur lost the shadow altogether. Its size is the lamp's
+        // surface up in blocks; VSM's blur lost the shadow altogether. Its size is the lamp's
         // `shadowBulbRadius`.
         view.setShadowType(View.ShadowType.PCSS)
     }

@@ -13,7 +13,7 @@ import kotlin.math.sqrt
  *
  * In the hand it is the device the phone has become — life size, still, the reflections moving
  * with the phone's own tilt. At rest the camera rises over the carriage's table and the device is
- * set down on the sheet there, lying flat, seen from above, the way an iPod is photographed (it
+ * set down on the cloth there, lying flat, seen from above, the way an iPod is photographed (it
  * floated over the table first; the owner's reference photos replaced that). The motion lives in
  * the move between the two, so it never fights the hand holding the phone.
  *
@@ -86,58 +86,90 @@ class RestState(
 }
 
 /**
- * The move between the hand and the table, as one number: how far along it is, 0 in the hand and
- * 1 at rest. A critically damped spring drives it, so it arrives without a bounce and reverses
- * smoothly from wherever it has got to.
+ * The move between the hand and the table: the **camera**'s share of it and the **device**'s, each
+ * 0 in the hand and 1 at rest.
  *
- * **Overlapped beats, as `OpenSequence`'s are**: going out, the camera leads — easing back before
- * the device has left the hand — and the device lands after it. Coming back is quicker and both
- * move at once, the way something is picked up rather than set down.
+ * **Each share runs on a clock of its own, for a fixed time, eased** — the way `OpenSequence`'s
+ * beats do. It was one critically damped spring, and a spring never quite arrives: its last tenth
+ * is an exponential tail. Frame by frame on the owner's phone (2026-09-29) that tail was the
+ * flaw — set down, the device hung two centimetres over the cloth and sank for two more seconds;
+ * picked up, it was home while the camera was still rising, so the window slid in behind it for a
+ * second after. Now each share arrives at a moment you could name, and nothing moves after it.
+ *
+ * **Overlapped beats**: going out, the camera leads — easing back before the device has left the
+ * hand — and the device lands after it. Coming back is quicker and both arrive together, the way
+ * something is picked up rather than set down. Turned round part way, each share turns round where
+ * it is, after its own delay: nothing jumps.
  */
 class RestFlight {
-    var progress = 0f
-        private set
-    private var velocity = 0f
+    /** Where the flight is going: 1 to the table, 0 to the hand. */
     var target = 0f
+        set(value) {
+            if (value != field) sinceTurn = 0f
+            field = value
+        }
+
+    /** Seconds since [target] last changed — each share waits out its own delay from then. */
+    private var sinceTurn = 0f
+    private var cameraClock = 0f
+    private var deviceClock = 0f
+
+    /** Anywhere but in the hand: 0 only when both shares are home. */
+    val progress: Float get() = maxOf(cameraClock, deviceClock)
 
     val isMoving: Boolean
-        get() = abs(target - progress) > SETTLED_AT || abs(velocity) > SETTLED_SPEED
+        get() = cameraClock != target || deviceClock != target
 
     fun step(dt: Float) {
         if (dt <= 0f) return
-        val omega = if (target > progress) OMEGA_OUT else OMEGA_BACK
-        // Sub-stepped so a long frame cannot overshoot a critically damped spring.
-        val steps = maxOf(1, (dt / MAX_STEP).toInt() + 1)
-        val h = dt / steps
-        repeat(steps) {
-            val accel = -2f * omega * velocity - omega * omega * (progress - target)
-            velocity += accel * h
-            progress += velocity * h
-        }
-        if (!isMoving) {
-            progress = target
-            velocity = 0f
-        }
+        sinceTurn += dt
+        val out = target > 0.5f
+        cameraClock = advance(
+            cameraClock, out, dt,
+            delay = if (out) 0f else CAMERA_BACK_DELAY_S,
+            seconds = if (out) CAMERA_OUT_S else CAMERA_BACK_S
+        )
+        deviceClock = advance(
+            deviceClock, out, dt,
+            delay = if (out) DEVICE_OUT_DELAY_S else 0f,
+            seconds = if (out) DEVICE_OUT_S else DEVICE_BACK_S
+        )
+    }
+
+    /** A share's clock, a frame on: still for [delay] after the turn, then at a steady rate, stopped at its end. */
+    private fun advance(clock: Float, out: Boolean, dt: Float, delay: Float, seconds: Float): Float {
+        // Only the part of this frame that falls after the delay moves it.
+        val moving = (sinceTurn - delay).coerceIn(0f, dt)
+        if (moving <= 0f) return clock
+        val by = moving / seconds
+        return if (out) minOf(1f, clock + by) else maxOf(0f, clock - by)
     }
 
     /** How far the camera has gone: it leads going out. */
-    val camera: Float get() = smooth((progress / CAMERA_SPAN).coerceIn(0f, 1f))
+    val camera: Float get() = smootherStep(cameraClock)
 
     /** How far the device has gone: it follows going out, and lands last. */
-    val device: Float get() = smooth(((progress - DEVICE_DELAY) / (1f - DEVICE_DELAY)).coerceIn(0f, 1f))
+    val device: Float get() = smootherStep(deviceClock)
 
-    private fun smooth(t: Float) = t * t * (3f - 2f * t)
+    /** Zero speed *and* acceleration at both ends: a move that starts and stops without a kick. */
+    private fun smootherStep(t: Float) = t * t * t * (t * (t * 6f - 15f) + 10f)
 
     companion object {
-        /** Stiffness out and back, rad/s: out settles in about a second and a half, back in ~0.7s. */
-        const val OMEGA_OUT = 3.2f
-        const val OMEGA_BACK = 6.5f
-        const val CAMERA_SPAN = 0.85f
-        const val DEVICE_DELAY = 0.15f
-        /** Close enough to stop: a twentieth of a percent of the flight, well under a millimetre. */
-        private const val SETTLED_AT = 5e-4f
-        private const val SETTLED_SPEED = 2e-3f
-        private const val MAX_STEP = 1f / 240f
+        /**
+         * Going out, seconds: the camera rises over the table in a second, and the device, setting
+         * off a beat after it, lands at 1.2s — a moment after the camera has come to rest over it.
+         */
+        const val CAMERA_OUT_S = 1.0f
+        const val DEVICE_OUT_DELAY_S = 0.15f
+        const val DEVICE_OUT_S = 1.05f
+        /**
+         * Coming back, seconds: the device leaves the cloth at once and the camera a beat after
+         * it, and both are home at 0.55s — quicker than going out, as a thing is snatched up
+         * quicker than it is put down.
+         */
+        const val DEVICE_BACK_S = 0.55f
+        const val CAMERA_BACK_DELAY_S = 0.03f
+        const val CAMERA_BACK_S = 0.52f
     }
 }
 
@@ -252,34 +284,39 @@ object RestPose {
     const val TABLE_TOP_Y = -0.30f
 
     /**
-     * Where the device lies, over the table: on the sheet, pressed flat under it —
-     * `SHEET_DEVICE_T` in `build_sheet()`, which `SheetSurfaceTest` reads back out of the map.
+     * Where the device lies, over the table: on the tablecloth, pressed flat under it —
+     * `CLOTH_T` in `build_cloth()`, which `PocketClothTest` reads back out of the map.
      */
-    const val SURFACE_T = 0.014f
+    const val SURFACE_T = 0.003f
 
     /** Half the device's thickness — `POCKET_T` in `build_pocket()`. */
     private const val HALF_THICKNESS = 0.00525f
 
     /**
-     * **Lying flat, seen from above** — the owner's call from his reference photos (2026-09-27):
-     * the way an iPod is photographed, put down on a bed or a blanket, in place of the float it
-     * had before. Face up on the middle of the table, its top toward the window so the cord runs
-     * away up the frame, turned a little off square as a thing put down is.
+     * **Lying flat, seen from above** — the owner's call from his reference photos (2026-09-27): the
+     * way an iPod is photographed, put down. **In a still life** since 2026-09-29: on the table's
+     * cloth, right of the frame's middle and toward the window, turned a little off square as a
+     * thing put down is, with the tea and the ticket on the frame's left.
+     * `CLOTH_DEVICE_*` in `build_cloth()` must agree — the cloth is pressed flat under it.
      */
-    const val DEVICE_X = 0.0f
+    const val DEVICE_X = 0.03f
     const val DEVICE_Y = TABLE_TOP_Y + SURFACE_T + HALF_THICKNESS
-    const val DEVICE_Z = -0.26f
+    const val DEVICE_Z = -0.30f
     const val DEVICE_PITCH_DEG = -90f
-    const val DEVICE_YAW_DEG = 10f
+    const val DEVICE_YAW_DEG = -14f
 
     /**
-     * The camera over it, looking down at about 75° from 65cm: the device a third of the frame's
-     * height, as it is in the owner's reference photos, with room round it for the cloth and the
-     * cord. At 44cm it filled half the frame and there was nowhere for either to be.
+     * The camera over the still life, looking down at about 75° from 80cm, and what it looks at: a
+     * point on the cloth left of the device, so the device sits right of the frame's middle and the
+     * window's sill runs along the frame's top. Nearer — 63cm, square on the device — there was no
+     * room round it for anything but cloth.
      */
-    const val CAMERA_X = 0.02f
-    const val CAMERA_Y = DEVICE_Y + 0.63f
-    const val CAMERA_Z = DEVICE_Z + 0.17f
+    const val CAMERA_X = DEVICE_X - 0.035f
+    const val CAMERA_Y = TABLE_TOP_Y + 0.80f
+    const val CAMERA_Z = DEVICE_Z + 0.22f
+    const val AIM_X = DEVICE_X - 0.035f
+    const val AIM_Y = TABLE_TOP_Y + SURFACE_T
+    const val AIM_Z = DEVICE_Z - 0.02f
 }
 
 /**
@@ -298,7 +335,7 @@ object RestPose {
  * the frame round to its upper right while moving what the face sees by only about a quarter as
  * much — the face looks nearly straight up, and a turn about the vertical barely moves a vertical
  * direction. The lamp that casts the shadows hangs where the softbox ends up ([restLamp]). Then
- * the shadow, the light on the sheet and every reflection on the device agree about the lamp.
+ * the shadow, the light on the cloth and every reflection on the device agree about the lamp.
  *
  * **Chosen from previews** of what the face and the glass see, then measured on the emulator.
  * Turned so the softbox sat squarely on the lamp's own direction, the face lit evenly, top and
@@ -336,7 +373,7 @@ object RestLight {
         // In the hand: at the origin, turned, seen straight on down −Z.
         val hand = deviceBasis(DEVICE_PITCH_DEG, DEVICE_YAW_DEG)
         val handMirror = reflect(floatArrayOf(0f, 0f, -1f), column(hand, 2))
-        // At rest: lying on the sheet, seen from the camera over it.
+        // At rest: lying on the cloth, seen from the camera over it.
         val rest = deviceBasis(RestPose.DEVICE_PITCH_DEG, RestPose.DEVICE_YAW_DEG)
         val view = unit(
             floatArrayOf(

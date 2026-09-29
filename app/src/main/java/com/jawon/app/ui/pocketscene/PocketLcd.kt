@@ -1,7 +1,7 @@
 package com.jawon.app.ui.pocketscene
 
 import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.slideInHorizontally
@@ -72,6 +72,10 @@ const val LCD_PX_H = 475
  * How long a page takes to slide across when one opens or closes. The classic's was quick enough
  * never to be waited for and slow enough to be seen — it is what makes a menu feel *deeper*
  * rather than merely different.
+ *
+ * **It leaves at once and slows into place.** It eased in at first (fast-out-slow-in), and frame by
+ * frame on the owner's phone the title had changed while the list sat still for 50ms — the press
+ * looked unanswered for three frames. A page pushed by a button moves the instant it is pushed.
  */
 private const val PAGE_SLIDE_MS = 260
 
@@ -267,7 +271,7 @@ fun PocketLcd(
             targetState = LcdPage(page, depth),
             transitionSpec = {
                 val deeper = targetState.depth >= initialState.depth
-                val spec = tween<IntOffset>(PAGE_SLIDE_MS, easing = FastOutSlowInEasing)
+                val spec = tween<IntOffset>(PAGE_SLIDE_MS, easing = LinearOutSlowInEasing)
                 slideInHorizontally(spec) { w -> if (deeper) w else -w } togetherWith
                     slideOutHorizontally(spec) { w -> if (deeper) -w else w }
             },

@@ -109,7 +109,7 @@ class PocketRestTest {
     }
 
     @Test
-    fun `the flight arrives without overshooting and settles exactly`() {
+    fun `the flight arrives without overshooting and stops exactly`() {
         val flight = RestFlight()
         flight.target = 1f
         var highest = 0f
@@ -152,6 +152,57 @@ class PocketRestTest {
         var backTime = 0
         while (back.isMoving && backTime < 1_000) { back.step(1f / 60f); backTime++ }
         assertTrue("out $outTime frames, back $backTime", backTime < outTime)
+    }
+
+    @Test
+    fun `set down, it lands - it does not hover over the cloth and sink`() {
+        // The spring this replaced left the device two centimetres over the cloth at a second and
+        // took two more to sink the rest of the way. The last two centimetres of the 29cm descent
+        // now take a moment, and then it has landed and nothing moves.
+        val flight = RestFlight().apply { target = 1f }
+        val nearlyDown = 1f - 0.02f / 0.29f
+        var frames = 0
+        while (flight.device < nearlyDown) { flight.step(1f / 60f); frames++ }
+        var landing = 0
+        while (flight.isMoving) { flight.step(1f / 60f); landing++ }
+        assertTrue("the last 2cm took ${landing / 60f}s", landing <= 15)
+        assertTrue("landed after ${(frames + landing) / 60f}s", frames + landing <= 75)
+        assertEquals(1f, flight.device, 0f)
+        assertEquals(1f, flight.camera, 0f)
+    }
+
+    @Test
+    fun `picked up, the camera arrives with the device - the room does not slide in after it`() {
+        val flight = RestFlight().apply { target = 1f; fly(5f); target = 0f }
+        var deviceHome = -1
+        var cameraHome = -1
+        for (frame in 1..120) {
+            flight.step(1f / 60f)
+            if (deviceHome < 0 && flight.device == 0f) deviceHome = frame
+            if (cameraHome < 0 && flight.camera == 0f) cameraHome = frame
+        }
+        assertTrue("device home at frame $deviceHome", deviceHome in 1..40)
+        assertTrue("camera home $cameraHome frames, device $deviceHome", abs(cameraHome - deviceHome) <= 1)
+    }
+
+    @Test
+    fun `turned round anywhere, neither the camera nor the device jumps`() {
+        for (turnAt in listOf(0.1f, 0.3f, 0.6f, 0.9f, 1.15f)) {
+            val flight = RestFlight().apply { target = 1f; fly(turnAt) }
+            var camera = flight.camera
+            var device = flight.device
+            flight.target = 0f
+            repeat(90) {
+                flight.step(1f / 60f)
+                // At the quickest, the camera back to the hand, a share covers 1.875/0.52 of its
+                // way a second at the smootherstep's steepest: 0.060 a frame. A jump is a lot more.
+                assertTrue("camera jumped turning at $turnAt", abs(flight.camera - camera) < 0.065f)
+                assertTrue("device jumped turning at $turnAt", abs(flight.device - device) < 0.065f)
+                camera = flight.camera
+                device = flight.device
+            }
+            assertEquals(0f, flight.progress, 0f)
+        }
     }
 
     // ---- the float, and the camera's aim ------------------------------------------------------------

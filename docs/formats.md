@@ -191,6 +191,46 @@ effect on the way back — no mid-session teardown, and no brush with trap 1.
     lighting and the flat lay read as one spotlight in a black room.
   Depth of field was tried and left off: it softened the sheet beautifully and broke the wheel's
   hairlines into dots.
+  **The sheet became a still life (2026-09-29).** Shown the linen sheet, he found the device lying
+  on it "not aesthetic enough" and asked for a better setting and better animation; offered four
+  directions, he picked **a still life seen from above**: the table's white linen, pressed into
+  creases (`build_cloth()`, `docs/models.md`), the camera over it widened so the device lies right
+  of the frame's middle with the window's sill along the top, and room on the left for what is to
+  come — a glass of tea in a metal holder with its spoon, cropped by the frame's edge, and a paper
+  ticket whose destination is the album playing; then life at rest (steam drifting with the train,
+  the tea trembling, the spoon rattling as the train brakes into a station) and a set-down with
+  weight (a settle, a soft tap, a haptic). The cloth is in; the props are next.
+  **Inspected frame by frame (2026-09-29)**, on his ask — "you will see some animation flaws" —
+  from a 40-second screen recording on his phone: every frame's timing, and every frame of the two
+  flights and the page slides laid out as contact sheets. What it found, and what was done:
+  - **The set-down hovered.** One critically damped spring drove the flight, and a spring's last
+    tenth is an exponential tail: the device hung 2cm over the cloth and sank for two more seconds;
+    picked up, it was home while the camera still rose, so the window slid in behind it for a
+    second after. Now the camera's share and the device's each run on a clock of their own for a
+    fixed time, eased (`RestFlight`) — down in 1.2s, up in 0.55s with both arriving together — and
+    nothing moves after.
+  - **The light pumped.** The lamp, its cone, the ambient fill and the environment's turn were
+    eased with the device, which lags the camera going down: with the cloth already in view the
+    lamp was still widening and brightening, so the table brightened past its resting level and
+    dimmed back for a second after landing, and the shadow slid for reasons of its own. They follow
+    the camera now; the device comes down through a light that has stopped, and its shadow comes
+    to meet it as a real one does.
+  - **The flight stuttered.** Drawn at every vsync, the room over the cloth costs more than 8ms, so
+    frames came 8, 16, 8, 16ms apart — an uneven 60-to-120 where the move is fastest. The flight is
+    drawn at an even 60 now; only a thumb on the wheel draws at 120.
+  - **The cord hooked and swept.** Easing node by node from the hand's shape toward a resting curve
+    laid afresh from the moving plug, it bent into a hook above the plug going down and, coming up,
+    ran down across the device's face. It **drapes** now (`CordRig`): the resting curve laid once,
+    where the device will land, the cord hanging from the plug to where it touches it, and the
+    swing out of the hand's shape over before the camera can see behind the device. The rig was
+    filmed frame by frame off the device, from above and from the side, before it went near the
+    phone.
+  - **Pages hesitated.** The title changed on the press while the list, eased in, sat still for
+    50ms. It leaves at once now and slows into place.
+  - **Every click froze the room for 42–67ms** — the one found and not yet fixed. It follows every
+    step of the wheel and every button alike; the likeliest cause is the click's `AudioTrack`
+    restarting on the main thread, and a system trace on the phone decides it before anything
+    changes.
 - **The bar is "as realistic and high quality as possible" — decided.** What that means here:
   - **It is seen closer than anything in the CD room.** At life size, filling the screen, every
     seam, bevel, the wheel's slight recess and the screen's inset glass is on show, so the model

@@ -79,7 +79,7 @@ class PocketCordTest {
         }
     }
 
-    // ---- lying on the sheet -------------------------------------------------------------------
+    // ---- lying on the cloth -------------------------------------------------------------------
 
     /** A cord laid from the origin, heading −z, over [top], with the plug [plugY] up. */
     private fun laid(top: (Float, Float) -> Float, plugY: Float = 0.005f): Triple<FloatArray, FloatArray, FloatArray> {
@@ -93,7 +93,7 @@ class PocketCordTest {
 
     @Test
     fun `lying over folds, every link keeps its length - it drapes, it does not stretch`() {
-        // A sheet rising and falling by a centimetre and a half every 12cm.
+        // A cloth rising and falling by a centimetre and a half every 12cm.
         val folds = { x: Float, z: Float -> 0.0075f * kotlin.math.sin(z / 0.02f) + 0.004f * kotlin.math.sin(x / 0.03f) }
         val (xs, ys, zs) = laid(folds)
         val link = Cord().linkM
@@ -125,20 +125,24 @@ class PocketCordTest {
         }
     }
 
-    // ---- between the hand and the sheet -------------------------------------------------------
+    // ---- between the hand and the cloth -------------------------------------------------------
 
     /**
-     * The device between the hand and the sheet, as `PocketDevice` poses it — its flight, and its
-     * centre and axes — driving a [CordRig] over a folded sheet, and measuring the drawn cord.
+     * The device between the hand and the cloth, as `PocketDevice` poses it — its flight, and its
+     * centre and axes — driving a [CordRig] over a folded cloth, and measuring the drawn cord.
      */
     private class Handover {
         val rig = CordRig()
         val flight = RestFlight()
-        /** A sheet in folds a centimetre deep, at the height the device lies at. */
+        /** A cloth in folds a centimetre deep, at the height the device lies at. */
         val top = { x: Float, z: Float ->
             RestPose.TABLE_TOP_Y + RestPose.SURFACE_T + 0.006f * (1f + kotlin.math.sin(x / 0.025f) * kotlin.math.sin(z / 0.035f))
         }
-        private val basis = FloatArray(9)
+        /** The device as last posed: its centre, and its axes as a column-major 3×3. */
+        val basis = FloatArray(9)
+        var centreX = 0f
+        var centreY = 0f
+        var centreZ = 0f
         private val lastX = FloatArray(Cord.NODES)
         private val lastY = FloatArray(Cord.NODES)
         private val lastZ = FloatArray(Cord.NODES)
@@ -168,7 +172,10 @@ class PocketCordTest {
             basis[0] = cy; basis[1] = 0f; basis[2] = -sy
             basis[3] = sy * sp; basis[4] = cp; basis[5] = cy * sp
             basis[6] = sy * cp; basis[7] = -sp; basis[8] = cy * cp
-            val changed = rig.step(dt, RestPose.DEVICE_X * d, RestPose.DEVICE_Y * d, RestPose.DEVICE_Z * d, basis, d, top, 1)
+            centreX = RestPose.DEVICE_X * d
+            centreY = RestPose.DEVICE_Y * d
+            centreZ = RestPose.DEVICE_Z * d
+            val changed = rig.step(dt, centreX, centreY, centreZ, basis, d, top, 1)
             moved = 0f
             reversal = 0f
             for (i in 0 until Cord.NODES) {
@@ -194,7 +201,7 @@ class PocketCordTest {
 
         fun run(seconds: Float) = repeat((seconds * 60).toInt()) { frame() }
 
-        /** Laid on the sheet and left there. */
+        /** Laid on the cloth and left there. */
         fun lying(): Handover {
             run(1f)
             flight.target = 1f
@@ -204,13 +211,13 @@ class PocketCordTest {
     }
 
     @Test
-    fun `lying on the sheet, it is still - not even redrawn`() {
+    fun `lying on the cloth, it is still - not even redrawn`() {
         val h = Handover().lying()
         repeat(60) { assertFalse("redrawn while lying still", h.frame()) }
     }
 
     @Test
-    fun `picked up off the sheet, it moves without a shiver`() {
+    fun `picked up off the cloth, it moves without a shiver`() {
         val h = Handover().lying()
         h.flight.target = 0f
         // The whole way back to the hand, frame by frame. What the owner saw was a shiver — a node
@@ -225,7 +232,7 @@ class PocketCordTest {
     }
 
     @Test
-    fun `set down on the sheet, it lands without a shiver either`() {
+    fun `set down on the cloth, it lands without a shiver either`() {
         val h = Handover()
         h.run(1f)
         h.flight.target = 1f
@@ -276,5 +283,116 @@ class PocketCordTest {
         // Hanging from the plug toward the earbuds, above it: the cord rises out of the frame.
         val rig = h.rig
         assertTrue("the far end is up by your ears", rig.shownY[Cord.NODES - 1] > 0.3f)
+    }
+
+    /** The resting curve over [top], laid from where the plug lies at rest — as the rig lays it. */
+    private fun restCurve(top: (Float, Float) -> Float): Triple<FloatArray, FloatArray, FloatArray> {
+        val b = CordRig.restBasis()
+        val sx = RestPose.DEVICE_X + b[0] * Cord.PLUG_X_M + b[3] * Cord.PLUG_TIP_Y_M
+        val sy = RestPose.DEVICE_Y + b[1] * Cord.PLUG_X_M + b[4] * Cord.PLUG_TIP_Y_M
+        val sz = RestPose.DEVICE_Z + b[2] * Cord.PLUG_X_M + b[5] * Cord.PLUG_TIP_Y_M
+        val level = sqrt(b[3] * b[3] + b[5] * b[5])
+        val xs = FloatArray(Cord.NODES)
+        val ys = FloatArray(Cord.NODES)
+        val zs = FloatArray(Cord.NODES)
+        RestCord.lay(sx, sy, sz, b[3] / level, b[5] / level, Cord.LENGTH_M / (Cord.NODES - 1), Cord.NODES,
+            CordRig.TURN, top, xs, ys, zs)
+        return Triple(xs, ys, zs)
+    }
+
+    @Test
+    fun `lying on the cloth, it lies exactly on the resting curve`() {
+        val h = Handover().lying()
+        val (xs, ys, zs) = restCurve(h.top)
+        for (i in 0 until Cord.NODES) {
+            assertEquals("node $i x", xs[i], h.rig.shownX[i], 1e-5f)
+            assertEquals("node $i y", ys[i], h.rig.shownY[i], 1e-5f)
+            assertEquals("node $i z", zs[i], h.rig.shownZ[i], 1e-5f)
+        }
+    }
+
+    @Test
+    fun `what lies on the cloth does not slide on it while the device comes down onto it`() {
+        // The drape's first version kept the cord's length exact by sliding what lay back along its
+        // curve, one way and then the other as the device moved: a cord on a table shivering. What
+        // has touched the cloth stays where it touched — a tenth of a millimetre a frame at most,
+        // for the stretch just settling at the touch-down.
+        val h = Handover()
+        h.run(1f)
+        h.flight.target = 1f
+        val wasOn = BooleanArray(Cord.NODES)
+        val lastX = FloatArray(Cord.NODES)
+        val lastY = FloatArray(Cord.NODES)
+        val lastZ = FloatArray(Cord.NODES)
+        repeat(360) { frame ->
+            h.frame()
+            for (i in 2 until Cord.NODES) {
+                val x = h.rig.shownX[i]; val y = h.rig.shownY[i]; val z = h.rig.shownZ[i]
+                val on = abs(y - (h.top(x, z) + Cord.RADIUS_M)) < 1e-5f
+                if (on && wasOn[i]) {
+                    val moved = sqrt((x - lastX[i]).let { it * it } + (y - lastY[i]).let { it * it } + (z - lastZ[i]).let { it * it })
+                    assertTrue("node $i slid ${moved * 1000}mm on the cloth, frame $frame", moved < 1e-4f)
+                }
+                wasOn[i] = on
+                lastX[i] = x; lastY[i] = y; lastZ[i] = z
+            }
+        }
+    }
+
+    @Test
+    fun `the cord never passes through the device, going down or coming up`() {
+        // The resting curve laid afresh from the plug as the device stood up out of it ran down
+        // across the device's face. Every node, every frame, both ways and turned round half way.
+        val h = Handover()
+        h.run(1f)
+        fun check(label: String) {
+            val b = h.basis
+            for (i in 0 until Cord.NODES) {
+                val px = h.rig.shownX[i] - h.centreX
+                val py = h.rig.shownY[i] - h.centreY
+                val pz = h.rig.shownZ[i] - h.centreZ
+                // Into the device's frame (its axes are orthonormal): across, along, out.
+                val lx = b[0] * px + b[1] * py + b[2] * pz
+                val ly = b[3] * px + b[4] * py + b[5] * pz
+                val lz = b[6] * px + b[7] * py + b[8] * pz
+                val inside = kotlin.math.abs(lx) < HALF_W + Cord.RADIUS_M &&
+                    kotlin.math.abs(ly) < HALF_H + Cord.RADIUS_M &&
+                    kotlin.math.abs(lz) < HALF_T + Cord.RADIUS_M
+                assertFalse("$label: node $i inside the device at ($lx, $ly, $lz)", inside)
+            }
+        }
+        h.flight.target = 1f
+        repeat(360) { h.frame(); check("going down") }
+        h.flight.target = 0f
+        repeat(240) { h.frame(); check("coming up") }
+        h.flight.target = 1f
+        repeat(40) { h.frame(); check("going down again") }
+        h.flight.target = 0f
+        repeat(240) { h.frame(); check("turned round") }
+    }
+
+    @Test
+    fun `the cord is never drawn under the cloth`() {
+        val h = Handover()
+        h.run(1f)
+        fun check(label: String) {
+            // Past the plug: its first two nodes are the plug's, wherever the device holds it.
+            for (i in 2 until Cord.NODES) {
+                val x = h.rig.shownX[i]; val z = h.rig.shownZ[i]
+                val floor = h.top(x, z) + Cord.RADIUS_M
+                assertTrue("$label: node $i ${(floor - h.rig.shownY[i]) * 1000}mm under the cloth", h.rig.shownY[i] >= floor - 1e-5f)
+            }
+        }
+        h.flight.target = 1f
+        repeat(360) { h.frame(); check("going down") }
+        h.flight.target = 0f
+        repeat(240) { h.frame(); check("coming up") }
+    }
+
+    private companion object {
+        /** Half the device's width, height and thickness — `POCKET_*` in `build_pocket()`. */
+        const val HALF_W = 0.0309f
+        const val HALF_H = 0.05175f
+        const val HALF_T = 0.00525f
     }
 }

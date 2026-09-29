@@ -50,7 +50,7 @@ private const val TUNNEL_AMBIENT_DIP = 0.3f
 
 /**
  * The lamp over the resting device (`placeLamp`): its cone, just wider than the frame; its
- * brightness, for hanging nearer the sheet than it does behind the device in the hand; and its
+ * brightness, for hanging nearer the cloth than it does behind the device in the hand; and its
  * colour, a little less orange than the hand's, which on the emulator turned the linen from tan
  * to cream.
  */
@@ -61,7 +61,7 @@ private val REST_LAMP_COLOUR = floatArrayOf(1.0f, 0.80f, 0.60f)
 
 /**
  * **How much harder the carriage fills in round the lamp at rest.** At the hand's level the lamp
- * did nine-tenths of the lighting on the sheet — the ambient at a third moved the lit linen 152 →
+ * did nine-tenths of the lighting on the cloth — the ambient at a third moved the lit linen 152 →
  * 150 while half the lamp moved it to 124 — and the scene read as one spotlight in a black room.
  * Three times the fill softened the shadow from 121 to 132 and gave the face its reflections back
  * without flattening its gradient (192 at the top right to 162 at the bottom left); at six, the
@@ -390,9 +390,15 @@ internal class PocketDevice(
         (nodes.firstOrNull { it.name == "pocket_back" } as? RenderableNode)?.materialInstance = steel
     }
 
-    /** A thumb on the wheel, or the wheel still moving from one: the room draws every vsync. */
+    /**
+     * A thumb on the wheel, or the wheel still moving from one: the room draws every vsync.
+     *
+     * **Not the flight to and from the table**, which is drawn at the idle rate. The room over the
+     * cloth costs more than a vsync at 120Hz, so drawn live it came out every 8ms, then 16, then 8
+     * — an uneven 60-to-120 that stutters where the move is fastest. An even 60 is smoother.
+     */
     val interacting: Boolean
-        get() = gesture.isDown || rock.isMoving || flight.isMoving || pullOut.isMoving
+        get() = gesture.isDown || rock.isMoving || pullOut.isMoving
 
     fun onFrame(now: Long) {
         if (lastInputAt == 0L) lastInputAt = now
@@ -454,9 +460,10 @@ internal class PocketDevice(
             )
         }
         // In a tunnel the window's light is gone from the carriage, and its lamps go by instead.
-        // And on the table the carriage fills in round the lamp (REST_AMBIENT_GAIN).
+        // And on the table the carriage fills in round the lamp (REST_AMBIENT_GAIN) — with the
+        // camera, as all of the light's move is (see placeLamp).
         val deep = train.tunnel
-        val fill = flight.device
+        val fill = flight.camera
         if (deep != tunnelShown || fill != fillShown) {
             indirectLight?.intensity = PocketLighting.AMBIENT_INTENSITY * lerp(1f, REST_AMBIENT_GAIN, fill) *
                 (1f - TUNNEL_AMBIENT_DIP * deep)
@@ -569,12 +576,12 @@ internal class PocketDevice(
         val cy = lerp(0f, RestPose.CAMERA_Y, c)
         // Pinched out of the room, the device goes away from you as the carriage darkens.
         val cz = lerp(handCameraZ, RestPose.CAMERA_Z, c) * (1f + PULL_BACK * pullOut.progress)
-        // Aimed at the device itself, wherever the flight has it — straight ahead in the hand —
-        // so it stays framed through the move. (Aiming at where it would land left the lagging
-        // device high in the frame mid-flight, over the window sill.)
+        // Aimed with the device, wherever the flight has it — straight ahead at it in the hand, at
+        // the still life's middle on the table — so it stays framed through the move. (Aiming at
+        // where it would land left the lagging device high in the frame mid-flight.)
         lookAngles(
             cx, cy, cz,
-            lerp(0f, RestPose.DEVICE_X, d), lerp(0f, RestPose.DEVICE_Y, d), lerp(0f, RestPose.DEVICE_Z, d),
+            lerp(0f, RestPose.AIM_X, d), lerp(0f, RestPose.AIM_Y, d), lerp(0f, RestPose.AIM_Z, d),
             look
         )
         camera.position = Position(cx, cy, cz)
@@ -605,7 +612,7 @@ internal class PocketDevice(
 
     /**
      * The cord, one frame on — the rig's ([CordRig]): hanging from the plug up to the earbuds by
-     * your ears in the hand, lying on the sheet at rest, and eased between the two with the device.
+     * your ears in the hand, lying on the cloth at rest, and eased between the two with the device.
      */
     private fun swingCord(dt: Float) {
         val mesh = cordMesh ?: return
@@ -620,7 +627,7 @@ internal class PocketDevice(
         cordBasis[6] = out.x; cordBasis[7] = out.y; cordBasis[8] = out.z
         val changed = cordRig.step(
             dt, centre.x, centre.y, centre.z, cordBasis,
-            flight.device, SheetSurface::topAt, SheetSurface.version
+            flight.device, ClothSurface::topAt, ClothSurface.version
         )
         if (changed) mesh.update(cordRig.shownX, cordRig.shownY, cordRig.shownZ)
     }
@@ -634,7 +641,8 @@ internal class PocketDevice(
         val t = tilt
         val p = if (t != null) t.pitch * turnWeight else 0f
         val y = if (t != null) t.yaw * turnWeight else 0f
-        val r = flight.device
+        // With the camera, as the lamp is: see placeLamp.
+        val r = flight.camera
         if (p == turnPitch && y == turnYaw && r == turnRest) return
         turnPitch = p
         turnYaw = y
@@ -658,16 +666,23 @@ internal class PocketDevice(
 
     /**
      * The lamp, between the hand and the table: where it hangs, what it is aimed at, how wide its
-     * cone and how bright, each eased with the device's flight — written only when it moves.
+     * cone and how bright, each eased with the flight — written only when it moves.
+     *
+     * **With the camera, not the device.** The light is the room's, and the room changes as the
+     * view does; the device then moves *through* a light that has stopped. Eased with the device,
+     * it was still moving — widening, brightening — while the cloth was in view and the device
+     * came down, so the table brightened past where it rests and dimmed back for a second after
+     * it landed, and the shadow slid for reasons of its own. Now the device descends under a lamp
+     * that is already where it hangs, and its shadow comes to meet it as a real one does.
      *
      * **Narrow at rest, for the shadow.** A spot light's shadow map covers its whole cone, and at
-     * the hand's 1.0 rad the device's shadow on the sheet came out in steps several pixels wide;
+     * the hand's 1.0 rad the device's shadow on the cloth came out in steps several pixels wide;
      * the frame at rest lies within 15° of the lamp's axis, so a cone just wider than that spends
      * the same texels on it at a third of the size.
      */
     private fun placeLamp() {
         val node = lampNode ?: return
-        val t = flight.device
+        val t = flight.camera
         if (t == lampPlacedAt) return
         lampPlacedAt = t
         val rest = RestLight.restLamp

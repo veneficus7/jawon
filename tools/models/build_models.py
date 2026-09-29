@@ -1909,65 +1909,49 @@ def build_showroom():
 
 
 # ---------------------------------------------------------------------------
-# The sheet — what the pocket player lies on at rest (docs/formats.md §4). A linen sheet crumpled
-# over a soft underlay on the carriage's table, in the room's own coordinates: the way an iPod is
-# photographed, put down on a bed. **Crumpled by a cloth simulation**, not drawn: a sheet's folds
-# are what the eye reads fabric by, and every procedural attempt at them — ridges, swells, a knit
-# in relief — read as a pattern on a board.
+# The tablecloth — what the pocket player lies on at rest (docs/formats.md §4): white linen on the
+# compartment's table, pressed into folds and opened out, as a sleeper train lays it. The ground of
+# a still life seen from above — the owner's pick on 2026-09-29, over a crumpled bedsheet.
 # ---------------------------------------------------------------------------
 
-# Where the sheet ends up: over the table (app x, and app z from the wall to near the front edge).
-SHEET_X0, SHEET_X1 = -0.33, 0.33
-SHEET_Z0, SHEET_Z1 = -0.485, -0.065
-# The simulated cloth: a grid this fine, laid out larger and pushed in from every edge by these
-# fractions over the first part of the run, so it buckles into folds as a sheet bunched on a bed
-# does. The run is seeded, so the folds are the same every time the script is run.
-#
-# **Chosen from nine runs, looked at from above** (2026-09-28). Pushed a fifth from every side it
-# crumpled like foil — creases everywhere, at the grid's own scale; stuck to the underlay by a
-# high friction it buckled where it landed instead of sliding into folds; pushed along one axis it
-# made pleats. What reads as a bedsheet is a light push, a little more across than along, a cloth
-# that resists bending and slides, and lumps big enough to seed folds that wander.
-SHEET_STEP = 0.005
-SHEET_PUSH_X = 0.90
-SHEET_PUSH_Z = 0.93
-SHEET_SEED = 3
-SHEET_BENDING = 6.0
-SHEET_STIFFNESS = 80.0
-SHEET_FRICTION = 0.3
-# How lumpy the sheet is before it falls: the lumps are what the folds grow from.
-SHEET_LUMP = 2.5
-SHEET_FRAMES = 110
-# What it lies on: a soft underlay a centimetre up, in low billows, and pressed flat under the
-# device. Only the sheet is exported.
-SHEET_BED_T = 0.010
-# **Where the device lies**: the sheet is pressed flat under it at this height over the table —
-# `RestPose.SURFACE_T` in the app must agree (`SheetSurfaceTest` reads it back out of the height
-# map) — and eases back into its own folds over [SHEET_FLATTEN_M] round it.
-SHEET_DEVICE_T = 0.014
-SHEET_DEVICE_X = 0.0
-SHEET_DEVICE_Z = -0.26
-SHEET_DEVICE_YAW_DEG = 10.0
-SHEET_FLATTEN_M = 0.022
-# The weave: linen, its threads 0.8mm apart, on an 80mm tile.
-SHEET_TILE_M = 0.08
-SHEET_THREAD_M = 0.0008
-SHEET_RELIEF_M = 0.00025
-# Unbleached linen, linear.
-SHEET_COLOUR = (0.62, 0.58, 0.51)
-# The height map the app lays the earphone cord on (`SheetSurface`): the sheet's top, every 3mm
-# over the table.
-SHEET_MAP_X0, SHEET_MAP_X1 = -0.35, 0.35
-SHEET_MAP_Z0, SHEET_MAP_Z1 = -0.50, -0.05
-SHEET_MAP_STEP = 0.003
-SHEET_MAP_SCALE = 0.08 / 65535.0
+CLOTH_X0, CLOTH_X1 = -0.31, 0.31
+CLOTH_Z0, CLOTH_Z1 = -0.49, -0.06
+CLOTH_STEP = 0.004
+# How far over the table it lies where the device is: `RestPose.SURFACE_T` must agree
+# (`PocketClothTest` reads it back out of the height map).
+CLOTH_T = 0.003
+# Pressed into eighths and opened out: a crease down the middle and three across, mountain and
+# valley in turn, as a folded cloth lies — (where, +1 mountain or -1 valley).
+CLOTH_CREASES_X = ((0.0, 1.0),)
+CLOTH_CREASES_Z = ((-0.3825, -1.0), (-0.275, 1.0), (-0.1675, -1.0))
+CLOTH_CREASE_H = 0.0010
+CLOTH_CREASE_W = 0.007
+# And never quite flat: a slow lift and fall across it, under a millimetre.
+CLOTH_WAVE_M = 0.0008
+# Where the device lies (`RestPose`), its weight pressing the cloth flat under it.
+CLOTH_DEVICE_X = 0.03
+CLOTH_DEVICE_Z = -0.30
+CLOTH_DEVICE_YAW_DEG = -14.0
+CLOTH_FLATTEN_M = 0.015
+# The weave: fine linen, its threads 0.55mm apart, on an 80mm tile.
+CLOTH_TILE_M = 0.08
+CLOTH_THREAD_M = 0.00055
+CLOTH_RELIEF_M = 0.00018
+# White linen, a little warm, linear.
+CLOTH_COLOUR = (0.74, 0.72, 0.66)
+# The height map the app lays the cord on (`ClothSurface`): the cloth's top, every 3mm over the
+# table.
+CLOTH_MAP_X0, CLOTH_MAP_X1 = -0.35, 0.35
+CLOTH_MAP_Z0, CLOTH_MAP_Z1 = -0.50, -0.05
+CLOTH_MAP_STEP = 0.003
+CLOTH_MAP_SCALE = 0.02 / 65535.0
 
 
 def _device_outside(x, z):
     """How far (x, z) is outside the resting device's footprint, metres; negative inside."""
     np = _np()
-    yaw = math.radians(SHEET_DEVICE_YAW_DEG)
-    dx, dz = x - SHEET_DEVICE_X, z - SHEET_DEVICE_Z
+    yaw = math.radians(CLOTH_DEVICE_YAW_DEG)
+    dx, dz = x - CLOTH_DEVICE_X, z - CLOTH_DEVICE_Z
     lx = dx * math.cos(yaw) - dz * math.sin(yaw)
     lz = dx * math.sin(yaw) + dz * math.cos(yaw)
     qx = np.abs(lx) - (POCKET_W / 2.0 - POCKET_R)
@@ -1981,8 +1965,22 @@ def _smooth01(t):
     return t * t * (3.0 - 2.0 * t)
 
 
-def _sheet_grid(name, x0, x1, z0, z1, step, height):
-    """A grid object over app (x, z), its heights (over the table) from [height](X, Z)."""
+def cloth_height(X, Z):
+    """The cloth's top over the table at (X, Z), metres: its creases and swells, flat under the device."""
+    np = _np()
+    X = np.asarray(X, dtype=np.float64)
+    Z = np.asarray(Z, dtype=np.float64)
+    h = CLOTH_WAVE_M * (np.sin(X / 0.11 + 0.7) * np.sin(Z / 0.09 + 1.9) + 0.5 * np.sin((X - Z) / 0.05 + 4.0))
+    for x, sign in CLOTH_CREASES_X:
+        h = h + sign * CLOTH_CREASE_H * np.exp(-np.abs(X - x) / CLOTH_CREASE_W)
+    for z, sign in CLOTH_CREASES_Z:
+        h = h + sign * CLOTH_CREASE_H * np.exp(-np.abs(Z - z) / CLOTH_CREASE_W)
+    m = _smooth01(_device_outside(X, Z) / CLOTH_FLATTEN_M)
+    return CLOTH_T + h * m
+
+
+def _cloth_grid(name, x0, x1, z0, z1, step, height):
+    """A grid object over app (x, z), its heights (over the table) from [height](X, Z), faces up."""
     np = _np()
     xs = np.linspace(x0, x1, int(round((x1 - x0) / step)) + 1)
     zs = np.linspace(z0, z1, int(round((z1 - z0) / step)) + 1)
@@ -1992,8 +1990,7 @@ def _sheet_grid(name, x0, x1, z0, z1, step, height):
     mesh = obj.data
     nz, nx = X.shape
     co = np.stack([X.ravel(), -Z.ravel(), Y.ravel()], axis=1)
-    # Wound so the faces look up: rows run toward +app z, which is −Blender y, and a collider
-    # facing down pushes cloth *through* itself — the first run's sheet fell 10cm under the table.
+    # Wound so the faces look up: rows run toward +app z, which is −Blender y.
     faces = []
     for j in range(nz - 1):
         for i in range(nx - 1):
@@ -2001,102 +1998,7 @@ def _sheet_grid(name, x0, x1, z0, z1, step, height):
             faces.append((a, a + nx, a + nx + 1, a + 1))
     mesh.from_pydata(co.tolist(), [], faces)
     mesh.update()
-    return obj, nx, nz
-
-
-def _simulate_sheet():
-    """
-    Runs the cloth simulation and hands back the settled sheet as (positions, faces, grid size),
-    positions in Blender's coordinates, rows running with app z.
-
-    A grid larger than where it ends up, its edge pinned and pushed in toward the middle over
-    frames 5–50, falls under gravity onto the underlay and buckles; self-collision lets a fold lie
-    over on itself instead of passing through, and the underlay's friction holds the folds where
-    they land. Bending is low — a sheet, not a blanket — so the folds are soft and narrow.
-    """
-    np = _np()
-    rng = np.random.default_rng(SHEET_SEED)
-    scene = bpy.context.scene
-
-    ph = rng.random(6) * 2.0 * math.pi
-
-    def bed(X, Z):
-        billow = 0.006 * np.sin(X / 0.09 + ph[0]) * np.sin(Z / 0.07 + ph[1]) + 0.004 * np.sin((X + Z) / 0.05 + ph[2])
-        # Pressed flat where the device lies, a hair under the sheet's own height there.
-        m = _smooth01(_device_outside(X, Z) / 0.04)
-        flat = SHEET_DEVICE_T - 0.0015
-        return (SHEET_BED_T + billow) * m + flat * (1.0 - m)
-
-    base, _, _ = _sheet_grid("sheet_bed", SHEET_X0 - 0.06, SHEET_X1 + 0.06, SHEET_Z0 - 0.05, SHEET_Z1 + 0.05, 0.01, bed)
-    base.modifiers.new("Collision", "COLLISION")
-    base.collision.thickness_outer = 0.003
-    base.collision.cloth_friction = SHEET_FRICTION
-
-    # Laid out larger, so that pushed in by SHEET_PUSH it ends where it should.
-    cx, cz = (SHEET_X0 + SHEET_X1) / 2.0, (SHEET_Z0 + SHEET_Z1) / 2.0
-    hx = (SHEET_X1 - SHEET_X0) / 2.0 / SHEET_PUSH_X
-    hz = (SHEET_Z1 - SHEET_Z0) / 2.0 / SHEET_PUSH_Z
-    ph2 = rng.random(4) * 2.0 * math.pi
-
-    def start(X, Z):
-        return (bed(X, Z) + 0.014 + SHEET_LUMP * (
-                0.004 * np.sin(X / 0.11 + ph2[0]) * np.sin(Z / 0.08 + ph2[1])
-                + 0.002 * np.sin(X / 0.043 + Z / 0.061 + ph2[2])
-                + 0.0015 * np.sin(-X / 0.031 + Z / 0.027 + ph2[3])))
-
-    sheet, nx, nz = _sheet_grid("sheet_sim", cx - hx, cx + hx, cz - hz, cz + hz, SHEET_STEP, start)
-    edge = [j * nx + i for j in range(nz) for i in range(nx) if i in (0, nx - 1) or j in (0, nz - 1)]
-    pin = sheet.vertex_groups.new(name="pin")
-    pin.add(edge, 1.0, "REPLACE")
-    sheet.shape_key_add(name="Basis")
-    push = sheet.shape_key_add(name="push")
-    for i in edge:
-        v = push.data[i].co
-        v.x = cx + (v.x - cx) * SHEET_PUSH_X
-        v.y = -cz + (v.y + cz) * SHEET_PUSH_Z
-        # And its hem comes down onto the underlay as it goes.
-        v.z = CARRIAGE_TABLE_TOP_Y + float(bed(np.array(v.x), np.array(-v.y))) + 0.002
-    push.value = 0.0
-    push.keyframe_insert("value", frame=5)
-    push.value = 1.0
-    push.keyframe_insert("value", frame=50)
-
-    cloth = sheet.modifiers.new("Cloth", "CLOTH")
-    s = cloth.settings
-    s.quality = 6
-    s.mass = 0.02
-    s.air_damping = 2.0
-    s.tension_stiffness = SHEET_STIFFNESS
-    s.compression_stiffness = SHEET_STIFFNESS
-    s.shear_stiffness = 10.0
-    s.bending_stiffness = SHEET_BENDING
-    s.tension_damping = 5.0
-    s.compression_damping = 5.0
-    s.shear_damping = 5.0
-    s.bending_damping = 0.5
-    s.vertex_group_mass = "pin"
-    c = cloth.collision_settings
-    c.use_collision = True
-    c.distance_min = 0.0015
-    c.use_self_collision = True
-    c.self_distance_min = 0.0015
-    c.collision_quality = 3
-    cloth.point_cache.frame_start = 1
-    cloth.point_cache.frame_end = SHEET_FRAMES
-    scene.frame_start = 1
-    scene.frame_end = SHEET_FRAMES
-    for f in range(1, SHEET_FRAMES + 1):
-        scene.frame_set(f)
-
-    evaluated = sheet.evaluated_get(bpy.context.evaluated_depsgraph_get())
-    mesh = evaluated.to_mesh()
-    positions = np.array([tuple(v.co) for v in mesh.vertices], dtype=np.float64)
-    faces = [tuple(p.vertices) for p in mesh.polygons]
-    evaluated.to_mesh_clear()
-    scene.frame_set(1)
-    for obj in (sheet, base):
-        bpy.data.objects.remove(obj, do_unlink=True)
-    return positions, faces, nx, nz
+    return obj
 
 
 def _linen_tile(px=1024, seed=11):
@@ -2110,7 +2012,7 @@ def _linen_tile(px=1024, seed=11):
     """
     np = _np()
     rng = np.random.default_rng(seed)
-    n = int(round(SHEET_TILE_M / SHEET_THREAD_M))
+    n = int(round(CLOTH_TILE_M / CLOTH_THREAD_M))
     pitch = px / n
     t = (np.arange(px) + 0.5) / pitch
     idx = np.floor(t).astype(int)
@@ -2157,114 +2059,60 @@ def _linen_tile(px=1024, seed=11):
     return np.clip(height / 1.3, 0.0, 1.0), tone
 
 
-def _sheet_height_map(tree):
-    """The sheet's top every SHEET_MAP_STEP over the table, as the bytes of `sheet_height.bin`."""
+def _cloth_height_map():
+    """The cloth's top every CLOTH_MAP_STEP over the table, as the bytes of `cloth_height.bin`."""
     np = _np()
     import struct
-    from mathutils import Vector
-    xs = np.arange(SHEET_MAP_X0, SHEET_MAP_X1 + 1e-9, SHEET_MAP_STEP)
-    zs = np.arange(SHEET_MAP_Z0, SHEET_MAP_Z1 + 1e-9, SHEET_MAP_STEP)
-    heights = np.zeros((len(zs), len(xs)))
-    down = Vector((0.0, 0.0, -1.0))
-    for j, z in enumerate(zs):
-        for i, x in enumerate(xs):
-            hit = tree.ray_cast(Vector((float(x), float(-z), CARRIAGE_TABLE_TOP_Y + 0.3)), down)
-            heights[j, i] = (hit[0].z if hit[0] is not None else CARRIAGE_TABLE_TOP_Y) - CARRIAGE_TABLE_TOP_Y
-    values = np.clip(np.round(heights / SHEET_MAP_SCALE), 0, 65535).astype("<u2")
+    xs = np.arange(CLOTH_MAP_X0, CLOTH_MAP_X1 + 1e-9, CLOTH_MAP_STEP)
+    zs = np.arange(CLOTH_MAP_Z0, CLOTH_MAP_Z1 + 1e-9, CLOTH_MAP_STEP)
+    X, Z = np.meshgrid(xs, zs)
+    on = (X >= CLOTH_X0) & (X <= CLOTH_X1) & (Z >= CLOTH_Z0) & (Z <= CLOTH_Z1)
+    heights = np.where(on, cloth_height(X, Z), 0.0)
+    values = np.clip(np.round(heights / CLOTH_MAP_SCALE), 0, 65535).astype("<u2")
     header = struct.pack(
         "<4siiifffff", b"JWHM", 1, len(xs), len(zs),
-        float(SHEET_MAP_X0), float(SHEET_MAP_Z0), float(SHEET_MAP_STEP),
-        float(CARRIAGE_TABLE_TOP_Y), float(SHEET_MAP_SCALE),
+        float(CLOTH_MAP_X0), float(CLOTH_MAP_Z0), float(CLOTH_MAP_STEP),
+        float(CARRIAGE_TABLE_TOP_Y), float(CLOTH_MAP_SCALE),
     )
-    return header + values.tobytes(), heights
+    return header + values.tobytes()
 
 
-def build_sheet():
+def build_cloth():
     """
-    The sheet: simulated, pressed flat under the device, and dressed as linen — the weave in a
-    normal map and the colour, a slight sheen, and a vertex colour darkening the folds' valleys,
-    which the millimetre-scale ambient occlusion cannot reach. Also writes `sheet_height.bin`, the
-    top surface the app lays the cord on, from the same mesh, so the two can never disagree.
+    The tablecloth: a grid lying on the table in its pressed creases, flat under the device, dressed
+    as fine white linen — the weave in a normal map and the colour, and linen's faint sheen. Also
+    writes `cloth_height.bin`, its top, which the app lays the cord on, from the same function the
+    grid is built from, so the two can never disagree.
     """
     np = _np()
-    from mathutils.bvhtree import BVHTree
-    positions, faces, nx, nz = _simulate_sheet()
+    obj = _cloth_grid("cloth", CLOTH_X0, CLOTH_X1, CLOTH_Z0, CLOTH_Z1, CLOTH_STEP, cloth_height)
+    mesh = obj.data
+    uv = mesh.uv_layers.new(name="UVMap").data
+    for poly in mesh.polygons:
+        poly.use_smooth = True
+        for li in poly.loop_indices:
+            co = mesh.vertices[mesh.loops[li].vertex_index].co
+            uv[li].uv = (co.x / CLOTH_TILE_M, co.y / CLOTH_TILE_M)
 
-    # Pressed flat where the device lies, easing back into the folds round it.
-    app_x = positions[:, 0]
-    app_z = -positions[:, 1]
-    lift = positions[:, 2] - CARRIAGE_TABLE_TOP_Y
-    m = _smooth01(_device_outside(app_x, app_z) / SHEET_FLATTEN_M)
-    lift = SHEET_DEVICE_T + (lift - SHEET_DEVICE_T) * m
-    positions[:, 2] = CARRIAGE_TABLE_TOP_Y + lift
-
-    tree = BVHTree.FromPolygons([tuple(p) for p in positions], faces)
-    blob, heights = _sheet_height_map(tree)
-    path = os.path.abspath(os.path.join(OUT_DIR, "sheet_height.bin"))
+    blob = _cloth_height_map()
+    path = os.path.abspath(os.path.join(OUT_DIR, "cloth_height.bin"))
     with open(path, "wb") as f:
         f.write(blob)
     print("JAVON-BUILD wrote %s (%.1f KB)" % (path, len(blob) / 1024.0))
 
-    # The folds' valleys, darker: how far each vertex sits under the sheet round it.
-    step = SHEET_MAP_STEP
-    kernel = 5
-    pad = np.pad(heights, kernel, mode="edge")
-    around = np.zeros_like(heights)
-    taps = range(-kernel, kernel + 1)
-    for dz in taps:
-        for dx in taps:
-            around += pad[kernel + dz: kernel + dz + heights.shape[0], kernel + dx: kernel + dx + heights.shape[1]]
-    around /= len(taps) ** 2
-    valley_map = np.clip((around - heights) / 0.006, 0.0, 1.0)
-    gi = np.clip(np.round((app_x - SHEET_MAP_X0) / step).astype(int), 0, heights.shape[1] - 1)
-    gj = np.clip(np.round((app_z - SHEET_MAP_Z0) / step).astype(int), 0, heights.shape[0] - 1)
-    shade = 1.0 - 0.28 * valley_map[gj, gi]
-
-    obj = new_mesh_object("sheet")
-    mesh = obj.data
-    mesh.from_pydata(positions.tolist(), [], faces)
-    mesh.update()
-    # The weave follows the cloth: UVs from where each point was on the flat sheet.
-    uv = mesh.uv_layers.new(name="UVMap").data
-    colour = mesh.color_attributes.new(name="Col", type="BYTE_COLOR", domain="CORNER")
-    cx, cz = (SHEET_X0 + SHEET_X1) / 2.0, (SHEET_Z0 + SHEET_Z1) / 2.0
-    hx = (SHEET_X1 - SHEET_X0) / 2.0 / SHEET_PUSH_X
-    hz = (SHEET_Z1 - SHEET_Z0) / 2.0 / SHEET_PUSH_Z
-    for poly in mesh.polygons:
-        for li in poly.loop_indices:
-            vi = mesh.loops[li].vertex_index
-            i, j = vi % nx, vi // nx
-            flat_x = (cx - hx) + i * (2.0 * hx) / (nx - 1)
-            flat_z = (cz - hz) + j * (2.0 * hz) / (nz - 1)
-            uv[li].uv = (flat_x / SHEET_TILE_M, -flat_z / SHEET_TILE_M)
-            g = float(shade[vi])
-            colour.data[li].color = (g, g, g, 1.0)
-    for poly in mesh.polygons:
-        poly.use_smooth = True
-
     height, tone = _linen_tile()
-    linen = principled("SheetLinen", base_color=SHEET_COLOUR, metallic=0.0, roughness=0.86)
+    linen = principled("ClothLinen", base_color=CLOTH_COLOUR, metallic=0.0, roughness=0.84)
     nt = linen.node_tree
     bsdf = nt.nodes["Principled BSDF"]
-    # Linen's lustre: a faint sheen at glancing angles, less than wool's.
-    for key, value in (("Sheen Weight", 0.35), ("Sheen Roughness", 0.5)):
+    # Linen's lustre: a faint sheen at glancing angles, pressed a little into the cloth.
+    for key, value in (("Sheen Weight", 0.3), ("Sheen Roughness", 0.45)):
         if key in bsdf.inputs:
             bsdf.inputs[key].default_value = value
     if "Sheen Tint" in bsdf.inputs:
-        bsdf.inputs["Sheen Tint"].default_value = (1.0, 0.97, 0.92, 1.0)
-    albedo = np.array(SHEET_COLOUR)[None, None, :] * (0.86 + 0.14 * height[..., None]) * (1.0 + 0.07 * tone[..., None])
-    tex = nt.nodes.new("ShaderNodeTexImage")
-    tex.image = _colour_image("sheet_linen", albedo[::-1].copy())
-    attr = nt.nodes.new("ShaderNodeVertexColor")
-    attr.layer_name = "Col"
-    mix = nt.nodes.new("ShaderNodeMix")
-    mix.data_type = "RGBA"
-    mix.blend_type = "MULTIPLY"
-    mix.inputs["Factor"].default_value = 1.0
-    nt.links.new(tex.outputs["Color"], mix.inputs["A"])
-    nt.links.new(attr.outputs["Color"], mix.inputs["B"])
-    nt.links.new(mix.outputs["Result"], bsdf.inputs["Base Color"])
-    _use_normal_map(linen, _normal_image("sheet_weave", height, SHEET_RELIEF_M, SHEET_TILE_M, SHEET_TILE_M))
+        bsdf.inputs["Sheen Tint"].default_value = (1.0, 0.98, 0.95, 1.0)
+    albedo = np.array(CLOTH_COLOUR)[None, None, :] * (0.90 + 0.10 * height[..., None]) * (1.0 + 0.05 * tone[..., None])
+    _use_base_colour(linen, _colour_image("cloth_linen", albedo[::-1].copy()))
+    _use_normal_map(linen, _normal_image("cloth_weave", height, CLOTH_RELIEF_M, CLOTH_TILE_M, CLOTH_TILE_M))
     obj.data.materials.append(linen)
     obj.modifiers.new(name="Triangulate", type="TRIANGULATE")
     return [obj]
@@ -2863,11 +2711,11 @@ def main():
         clear_scene()
         paths.append(export(build_earphone_plug(), "earphone_plug.glb"))
 
-    # The sheet the pocket player lies on at rest, in the room's own coordinates — and beside it
-    # sheet_height.bin, its top surface, which the app lays the earphone cord on.
-    if not skip("sheet.glb"):
+    # The tablecloth the pocket player lies on at rest, in the room's own coordinates — and beside
+    # it cloth_height.bin, its top, which the app lays the earphone cord on.
+    if not skip("cloth.glb"):
         clear_scene()
-        paths.append(export(build_sheet(), "sheet.glb", image_format="JPEG", jpeg_quality=94))
+        paths.append(export(build_cloth(), "cloth.glb", image_format="JPEG", jpeg_quality=94))
 
     # The showroom between formats.
     if not skip("showroom.glb"):

@@ -5,17 +5,17 @@ import java.nio.ByteBuffer
 import java.nio.ByteOrder
 
 /**
- * **The sheet's top surface**, as `build_sheet()` left it — so what lies on it lies *on* it. The
- * sheet is crumpled by a cloth simulation in the model script, which has no formula to mirror
- * here, so the script samples the settled sheet from above into `models/sheet_height.bin` and the
- * app reads that: the earphone cord's resting curve follows it over the folds, where a flat floor
- * had it floating over the valleys and sunk into the ridges.
+ * **The tablecloth's top**, as `build_cloth()` laid it — so what lies on it lies *on* it: the
+ * earphone cord's resting curve follows its creases. The script samples the cloth every 3mm into
+ * `models/cloth_height.bin` from the same function it builds the cloth from, and the app reads that,
+ * so no formula has to be kept in step in two languages. (It was first a bedsheet crumpled by a
+ * cloth simulation, which had no formula at all.)
  *
  * Until the map has been read ([load], off the main thread) the surface is flat at the height the
- * device lies at, which is exactly what the sheet is pressed to under it.
+ * device lies at, which is exactly what the cloth is pressed to under it.
  */
-object SheetSurface {
-    const val ASSET = "models/sheet_height.bin"
+object ClothSurface {
+    const val ASSET = "models/cloth_height.bin"
 
     @Volatile private var map: HeightMap? = null
 
@@ -31,13 +31,13 @@ object SheetSurface {
         version++
     }
 
-    /** The sheet's top at ([x], [z]) in the room, metres. */
+    /** The cloth's top at ([x], [z]) in the room, metres. */
     fun topAt(x: Float, z: Float): Float =
         map?.topAt(x, z) ?: (RestPose.TABLE_TOP_Y + RestPose.SURFACE_T)
 }
 
 /**
- * A surface's height every [step] metres over a grid from ([x0], [z0]): `sheet_height.bin`'s
+ * A surface's height every [step] metres over a grid from ([x0], [z0]): `cloth_height.bin`'s
  * contents. Pure, so the reading and the interpolation can be tested without a device.
  *
  * The file, little-endian: `JWHM`, a version (1), the grid's columns and rows, x0, z0, the step,

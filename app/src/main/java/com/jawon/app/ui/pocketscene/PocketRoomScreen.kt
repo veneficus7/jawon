@@ -148,10 +148,10 @@ private val PLATFORM_LIGHT_POSITION = floatArrayOf(-0.18f, 0.40f, -0.62f)
 private val PLATFORM_LIGHT_TARGET = floatArrayOf(0.05f, -0.30f, -0.12f)
 
 /**
- * **The sheet** the device lies on at rest (`build_sheet()`): linen crumpled over a soft underlay,
- * the way an iPod is photographed put down on a bed. In the room's own coordinates, over the table.
+ * **The tablecloth** the device lies on at rest (`build_cloth()`): white linen pressed into folds,
+ * as a sleeper train lays its table — the ground of the still life. In the room's own coordinates.
  */
-private const val SHEET_MODEL_ASSET = "models/sheet.glb"
+private const val CLOTH_MODEL_ASSET = "models/cloth.glb"
 
 /** The earphone plug in the top edge's jack, in the device's frame (`build_earphone_plug()`). */
 private const val EARPHONE_PLUG_ASSET = "models/earphone_plug.glb"
@@ -277,9 +277,9 @@ fun PocketRoomScreen(
     val carriageModel = rememberModelInstance(modelLoader, CARRIAGE_MODEL_ASSET)
     val carriageGlass = rememberModelInstance(modelLoader, CARRIAGE_GLASS_ASSET)
     val earphonePlug = rememberModelInstance(modelLoader, EARPHONE_PLUG_ASSET)
-    val sheetModel = rememberModelInstance(modelLoader, SHEET_MODEL_ASSET)
-    // The sheet's shape, for the cord to lie on — read once, off the main thread.
-    LaunchedEffect(Unit) { withContext(Dispatchers.IO) { SheetSurface.load(context.assets) } }
+    val clothModel = rememberModelInstance(modelLoader, CLOTH_MODEL_ASSET)
+    // The cloth's shape, for the cord to lie on — read once, off the main thread.
+    LaunchedEffect(Unit) { withContext(Dispatchers.IO) { ClothSurface.load(context.assets) } }
     val ydpi = remember(context) { max(context.resources.displayMetrics.ydpi, 1f) }
     // How often the room is actually drawn — the CD room's cadence, reused by call. See onFrame.
     val cadence = remember(context) {
@@ -791,12 +791,12 @@ fun PocketRoomScreen(
                     }
                 )
             }
-            // **The sheet**, over the table: it takes the device's shadow and the cord's. It casts
-            // none itself — its folds are too gentle for a lamp this high to shadow, measured the
-            // same either way, and a surface that both casts and receives is where acne comes from.
-            sheetModel?.let { sheet ->
+            // **The tablecloth**, over the table: it takes the device's shadow and the cord's. It
+            // casts none itself — its creases are far too shallow to shadow, and a surface that both
+            // casts and receives is where shadow acne comes from.
+            clothModel?.let { cloth ->
                 ModelNode(
-                    sheet,
+                    cloth,
                     apply = {
                         isTouchable = false
                         isShadowCaster = false

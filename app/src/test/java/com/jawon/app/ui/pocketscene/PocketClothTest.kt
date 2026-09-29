@@ -11,11 +11,11 @@ import kotlin.math.cos
 import kotlin.math.sin
 
 /**
- * The sheet the device lies on, as the app reads it back out of the model script's height map.
- * What would read as wrong: a cord floating over the folds or sunk into them, or a device lying
- * above or inside the sheet it rests on.
+ * The tablecloth the device lies on, as the app reads it back out of the model script's height map.
+ * What would read as wrong: a cord floating over the creases or sunk into them, or a device lying
+ * above or inside the cloth it rests on.
  */
-class PocketSheetTest {
+class PocketClothTest {
 
     private fun map(
         columns: Int, rows: Int, x0: Float, z0: Float, step: Float, baseY: Float, scale: Float, values: IntArray
@@ -75,7 +75,7 @@ class PocketSheetTest {
     // ---- the committed map --------------------------------------------------------------------
 
     private val committed: HeightMap by lazy {
-        val file = listOf("src/main/assets/${SheetSurface.ASSET}", "app/src/main/assets/${SheetSurface.ASSET}")
+        val file = listOf("src/main/assets/${ClothSurface.ASSET}", "app/src/main/assets/${ClothSurface.ASSET}")
             .map(::File).first { it.exists() }
         HeightMap.parse(file.readBytes())
     }
@@ -89,9 +89,9 @@ class PocketSheetTest {
     }
 
     @Test
-    fun `under the device the sheet is pressed flat at exactly the height the device lies at`() {
-        // `SHEET_DEVICE_T` in the script and `RestPose.SURFACE_T` here must agree, or the device
-        // floats over the sheet or sinks into it.
+    fun `under the device the cloth is pressed flat at exactly the height the device lies at`() {
+        // `CLOTH_T` in the script and `RestPose.SURFACE_T` here must agree, or the device
+        // floats over the cloth or sinks into it.
         for (across in listOf(-0.025f, 0f, 0.025f)) for (along in listOf(-0.045f, 0f, 0.045f)) {
             val (x, z) = onDevice(across, along)
             assertEquals(
@@ -102,15 +102,15 @@ class PocketSheetTest {
     }
 
     @Test
-    fun `round the device the sheet lies in folds, over the table and under the window`() {
-        // Across what the camera sees at rest, the sheet rises and falls by centimetres, and never
-        // goes through the table.
+    fun `round the device the cloth lies in its creases, a few millimetres off flat, on the table`() {
+        // Across what the camera sees at rest the cloth lifts and falls by its pressed creases —
+        // never through the table, and never the centimetres of a crumpled sheet.
         var lo = Float.MAX_VALUE
         var hi = -Float.MAX_VALUE
-        var x = -0.06f
+        var x = -0.10f
         while (x <= 0.10f) {
-            var z = -0.43f
-            while (z <= -0.11f) {
+            var z = -0.48f
+            while (z <= -0.13f) {
                 val y = committed.topAt(x, z)
                 lo = minOf(lo, y)
                 hi = maxOf(hi, y)
@@ -119,7 +119,7 @@ class PocketSheetTest {
             x += 0.003f
         }
         assertTrue("lowest ${lo - RestPose.TABLE_TOP_Y}", lo > RestPose.TABLE_TOP_Y)
-        assertTrue("folds only ${(hi - lo) * 1000}mm deep", hi - lo > 0.008f)
-        assertTrue("folds ${(hi - lo) * 1000}mm deep", hi - lo < 0.05f)
+        assertTrue("creases only ${(hi - lo) * 1000}mm", hi - lo > 0.001f)
+        assertTrue("creases ${(hi - lo) * 1000}mm", hi - lo < 0.006f)
     }
 }
