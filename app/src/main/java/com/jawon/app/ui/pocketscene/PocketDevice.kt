@@ -201,6 +201,13 @@ internal class PocketDevice(
     private var lampPlacedAt = Float.NaN
     val lampNodes = arrayOfNulls<io.github.sceneview.node.LightNode>(PassingLamps.COUNT)
 
+    /** The still life's metal, told where up is in the frame Filament shades in — see [turnWorld]. */
+    var tableMetals: List<com.google.android.filament.MaterialInstance> = emptyList()
+        set(value) {
+            field = value
+            turnRest = Float.NaN
+        }
+
     /** The platform's light coming in at the window, while the train stands at one. */
     var platformLightNode: io.github.sceneview.node.LightNode? = null
     private var platformLightShown = -1f
@@ -662,6 +669,9 @@ internal class PocketDevice(
         RestLight.partial(RestLight.atRest, r, restTurn)
         RestLight.multiplyTransposed(worldTurn, restTurn, iblTurn)
         indirectLight?.setRotation(iblTurn)
+        // And the still life's metal, told where the room's up is in the frame Filament now shades
+        // in — it turns that frame with the light: the told matrix's transpose, applied to up.
+        for (m in tableMetals) m.setParameter("up", iblTurn[1], iblTurn[4], iblTurn[7])
     }
 
     /**

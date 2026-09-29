@@ -199,7 +199,14 @@ effect on the way back — no mid-session teardown, and no brush with trap 1.
   come — a glass of tea in a metal holder with its spoon, cropped by the frame's edge, and a paper
   ticket whose destination is the album playing; then life at rest (steam drifting with the train,
   the tea trembling, the spoon rattling as the train brakes into a station) and a set-down with
-  weight (a settle, a soft tap, a haptic). The cloth is in; the props are next.
+  weight (a settle, a soft tap, a haptic). **The cloth and the props are in** (`build_tea()`,
+  `build_ticket()`, `docs/models.md`): the glass in its holder, placed by a Cycles render from the
+  room's own rest camera before anything reached the app, and the ticket, drawn by the room
+  (`TicketArt`) from the album playing. The holder first rendered as a black mug — the carriage's
+  environment, turned for the table, has the night window where the cloth should be — and wears a
+  material of its own now that reflects the cloth (`table_metal.mat`, `docs/materials.md`), which
+  is also how it came out that Filament turns the whole frame it shades in with the environment.
+  Life at rest and the set-down's weight are next.
   **Inspected frame by frame (2026-09-29)**, on his ask — "you will see some animation flaws" —
   from a 40-second screen recording on his phone: every frame's timing, and every frame of the two
   flights and the page slides laid out as contact sheets. What it found, and what was done:

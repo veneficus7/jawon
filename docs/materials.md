@@ -1,7 +1,7 @@
 # Custom Filament materials
 
-**Jawon ships five.** Three in the CD room — dust, fog and the neon sign (`neon.mat`,
-additive, drawn from a two-channel mask) — and two in the pocket player's:
+**Jawon ships six.** Three in the CD room — dust, fog and the neon sign (`neon.mat`,
+additive, drawn from a two-channel mask) — and three in the pocket player's:
 
 - `materials/night_window.mat` → `assets/materials/night_window.filamat`, the train window
   behind the device: out-of-focus lights at three depths, poles, the sky, and the carriage
@@ -39,6 +39,16 @@ additive, drawn from a two-channel mask) — and two in the pocket player's:
   parameters, and raising it changed nothing — a probe at 1000 left every pixel on the bead as it
   was — so the filtering is done where it can be seen to work. Flat steel keeps its 0.055.
 
+- `materials/table_metal.mat` → `assets/materials/table_metal.filamat`, the still life's metal —
+  the tea holder's nickel silver and the spoon's steel — put on those two parts in place of their
+  glTF materials when the tea loads. **A metal is a picture of what is round it, and the
+  carriage's environment does not hold the white cloth** the tea stands on: it is placed for the
+  device and turned for the table, and that turn puts the night window under the tea, so in the
+  room's own lighting the holder came out a deep navy black — a mug. Below the horizon, where a
+  reflection off these parts meets the cloth, this adds the cloth's lamp-lit luminance (in nits,
+  through the exposure) through the metal's own Fresnel; above it the room does everything.
+  **And where "below" is, it has to be told** — see "The frame Filament shades in" below.
+
 And the CD room's first two:
 
 - `materials/dust.mat` → `assets/materials/dust.filamat`, which animates every
@@ -59,6 +69,21 @@ room uses SceneView's stock materials.
 The `matc` used for both was Filament 1.72.1's, extracted to
 `C:\Users\loh\tools\filament-1.72.1\bin\matc.exe` on the owner's machine (outside
 the repo, as below).
+
+## The frame Filament shades in
+
+**`IndirectLight.setRotation` turns the world the shaders see, not only the light.** Filament turns
+the environment by turning the frame it shades in, so every world-space vector a material reads —
+`getWorldPosition()`, `getWorldNormalVector()`, `getWorldViewVector()`, a normal measured from
+position derivatives — comes out turned with it. The pocket room turns its environment a long way
+at rest (`RestLight`), and `table_metal.mat`'s first version, taking world −Y as the cloth, lit the
+wrong side of everything: probed on the emulator with the cloth painted by its own normal, the
+cloth faced the window — while the device probed in the hand, where the turn is nearly nothing,
+came out right, which is what made it look like a fault in some meshes. The room's up in that frame
+is **the told matrix's transpose applied to up** — its middle *row*, column-major — found by handing
+the material both candidates and seeing which one the cloth agreed with. `PocketDevice.turnWorld`
+sends it as `up` whenever the turn changes. Anything a hand-written material means in the room's
+own axes has to arrive this way.
 
 ## What the stock materials can and cannot do
 

@@ -38,6 +38,9 @@ import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.google.android.filament.LightManager
 import com.google.android.filament.Renderer
+import com.google.android.filament.Texture
+import com.google.android.filament.TextureSampler
+import com.google.android.filament.android.TextureHelper
 import com.jawon.app.BuildConfig
 import com.jawon.app.data.lyrics.LyricsState
 import com.jawon.app.ui.showroom.Exhibit
@@ -152,6 +155,39 @@ private val PLATFORM_LIGHT_TARGET = floatArrayOf(0.05f, -0.30f, -0.12f)
  * as a sleeper train lays its table — the ground of the still life. In the room's own coordinates.
  */
 private const val CLOTH_MODEL_ASSET = "models/cloth.glb"
+
+/**
+ * **The still life's props** (`build_tea()`, `build_ticket()`), standing on the cloth in the room's
+ * own coordinates: a glass of tea in a railway holder at the frame's top left, cut by its edge, and
+ * a ticket at its lower left whose face this room draws ([TicketArt]) — to the album playing.
+ */
+private const val TEA_MODEL_ASSET = "models/tea.glb"
+private const val TICKET_MODEL_ASSET = "models/ticket.glb"
+
+/** The ticket face's mip chain: 1024 across is eleven levels, down to a pixel. */
+private const val TICKET_MIP_LEVELS = 11
+
+/**
+ * **The still life's metal** (`materials/table_metal.mat`): the tea holder and the spoon, which
+ * reflect the cloth they stand on as well as the room — the carriage's environment, turned for the
+ * table, put the night window under them, and the nickel silver came out black.
+ */
+private const val TABLE_METAL_MATERIAL_ASSET = "materials/table_metal.filamat"
+
+/** Nickel silver: a warm, slightly yellow silver, polished once and handled since. Linear. */
+private val HOLDER_BASE_COLOUR = floatArrayOf(0.80f, 0.77f, 0.69f)
+private const val HOLDER_ROUGHNESS = 0.22f
+
+/** The spoon's steel: cooler, and brighter polished. Linear. */
+private val SPOON_BASE_COLOUR = floatArrayOf(0.86f, 0.86f, 0.87f)
+private const val SPOON_ROUGHNESS = 0.14f
+
+/**
+ * The cloth as the metal sees it, in nits: the reading lamp's ~26,000 lux at the table on linen of
+ * albedo ~0.72, over π, warmed by the lamp — a starting point, to be held against the cloth's own
+ * brightness in a screenshot.
+ */
+private val CLOTH_NITS = floatArrayOf(6000f, 5200f, 4200f)
 
 /** The earphone plug in the top edge's jack, in the device's frame (`build_earphone_plug()`). */
 private const val EARPHONE_PLUG_ASSET = "models/earphone_plug.glb"
@@ -268,6 +304,23 @@ fun PocketRoomScreen(
             setParameter("footprint", STEEL_FOOTPRINT)
         }
     }
+    // The still life's metal, put on the tea holder's and the spoon's parts when the tea loads.
+    // The loader owns them, as it does the steel.
+    val tableMetal = remember(materialLoader) { materialLoader.createMaterial(TABLE_METAL_MATERIAL_ASSET) }
+    val holderMetal = remember(tableMetal) {
+        materialLoader.createInstance(tableMetal).apply {
+            setParameter("baseColor", HOLDER_BASE_COLOUR[0], HOLDER_BASE_COLOUR[1], HOLDER_BASE_COLOUR[2])
+            setParameter("roughness", HOLDER_ROUGHNESS)
+            setParameter("cloth", CLOTH_NITS[0], CLOTH_NITS[1], CLOTH_NITS[2])
+        }
+    }
+    val spoonMetal = remember(tableMetal) {
+        materialLoader.createInstance(tableMetal).apply {
+            setParameter("baseColor", SPOON_BASE_COLOUR[0], SPOON_BASE_COLOUR[1], SPOON_BASE_COLOUR[2])
+            setParameter("roughness", SPOON_ROUGHNESS)
+            setParameter("cloth", CLOTH_NITS[0], CLOTH_NITS[1], CLOTH_NITS[2])
+        }
+    }
     // The window behind the device. Created here, handed to its PlaneNode below, which owns it.
     val windowMaterial = remember(materialLoader) {
         materialLoader.createMaterial(NIGHT_WINDOW_MATERIAL_ASSET)
@@ -278,6 +331,37 @@ fun PocketRoomScreen(
     val carriageGlass = rememberModelInstance(modelLoader, CARRIAGE_GLASS_ASSET)
     val earphonePlug = rememberModelInstance(modelLoader, EARPHONE_PLUG_ASSET)
     val clothModel = rememberModelInstance(modelLoader, CLOTH_MODEL_ASSET)
+    // **The ticket's face**: one texture for the room's life, redrawn when the journey changes —
+    // never a new one per album, since a texture destroyed while a material still samples it takes
+    // the process down (trap 1's cause). Declared before the ticket's model so Compose, forgetting
+    // in reverse, takes the model and its material down first and only then this. sRGB, because
+    // it is a picture drawn in sRGB: stored as linear, every tone of it would read paler than drawn.
+    val ticketTexture = remember(engine) {
+        Texture.Builder()
+            .width(TicketArt.W)
+            .height(TicketArt.H)
+            .levels(TICKET_MIP_LEVELS)
+            .format(Texture.InternalFormat.SRGB8_A8)
+            .sampler(Texture.Sampler.SAMPLER_2D)
+            .usage(Texture.Usage.DEFAULT or Texture.Usage.GEN_MIPMAPPABLE)
+            .build(engine)
+    }
+    DisposableEffect(ticketTexture) { onDispose { engine.destroyTexture(ticketTexture) } }
+    // Seen at a slant from above, so filtered along the slant as well as down the mips.
+    val ticketSampler = remember {
+        TextureSampler(
+            TextureSampler.MinFilter.LINEAR_MIPMAP_LINEAR,
+            TextureSampler.MagFilter.LINEAR,
+            TextureSampler.WrapMode.CLAMP_TO_EDGE
+        ).apply { anisotropy = 8f }
+    }
+    val teaModel = rememberModelInstance(modelLoader, TEA_MODEL_ASSET)
+    val ticketModel = rememberModelInstance(modelLoader, TICKET_MODEL_ASSET)
+    // Onto the ticket model's own material — paper, lit by the room — through the placeholder slot
+    // `build_ticket()` gave it (`attach_placeholder_basecolor`: without the slot, nothing samples).
+    LaunchedEffect(ticketModel, ticketTexture) {
+        ticketModel?.materialInstances?.forEach { it.setParameter("baseColorMap", ticketTexture, ticketSampler) }
+    }
     // The cloth's shape, for the cord to lie on — read once, off the main thread.
     LaunchedEffect(Unit) { withContext(Dispatchers.IO) { ClothSurface.load(context.assets) } }
     val ydpi = remember(context) { max(context.resources.displayMetrics.ydpi, 1f) }
@@ -499,6 +583,23 @@ fun PocketRoomScreen(
     SideEffect { if (caughtUp) device.pendingPlay.value = null }
     val pending = asked?.takeIf { !caughtUp }
     val nowPlayingAlbum = (pending?.albumId ?: nowPlayingAlbumId)?.let { library.album(it) }
+    // The ticket's words — to the album playing, the berth its track — and its face redrawn when
+    // they change: drawn off the main thread, uploaded on it.
+    val ticketDay = remember { TicketText.today() }
+    val ticketText = TicketText.of(
+        albumId = nowPlayingAlbum?.id,
+        artist = nowPlayingAlbum?.artist,
+        title = nowPlayingAlbum?.title,
+        trackIndex = if (nowPlayingAlbum != null) deck.currentTrackIndex else -1,
+        trackCount = deck.tracks.size,
+        durationMs = deck.tracks.sumOf { it.durationMs },
+        day = ticketDay
+    )
+    LaunchedEffect(ticketText, ticketTexture) {
+        val face = withContext(Dispatchers.Default) { TicketArt.draw(ticketText) }
+        TextureHelper.setBitmap(engine, ticketTexture, 0, face)
+        ticketTexture.generateMipmaps(engine)
+    }
     val cover by produceState<ImageBitmap?>(initialValue = null, nowPlayingAlbum?.coverPath) {
         val path = nowPlayingAlbum?.coverPath
         value = if (path == null) null else withContext(Dispatchers.IO) {
@@ -614,6 +715,7 @@ fun PocketRoomScreen(
     }
     device.tilt = tilt
     device.indirectLight = environment.indirectLight
+    if (device.tableMetals.isEmpty()) device.tableMetals = listOf(holderMetal, spoonMetal)
 
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
         // **Life size, computed from the scene's own height rather than chosen by eye.**
@@ -800,6 +902,38 @@ fun PocketRoomScreen(
                     apply = {
                         isTouchable = false
                         isShadowCaster = false
+                        isShadowReceiver = true
+                    }
+                )
+            }
+            // **The tea**, top left of the still life. The holder and the spoon throw the lamp's
+            // shadow on the cloth; the glass and the tea in it throw none — clear glass throws a
+            // light rather than a shadow, and Filament has only the shadow to give it.
+            teaModel?.let { tea ->
+                ModelNode(
+                    tea,
+                    apply = {
+                        isTouchable = false
+                        isShadowCaster = true
+                        isShadowReceiver = true
+                        for (part in renderableNodes) {
+                            when (part.name) {
+                                "tea_glass", "tea_liquid" ->
+                                    part.renderableManager.setCastShadows(part.renderableInstance, false)
+                                "tea_holder" -> part.materialInstance = holderMetal
+                                "tea_spoon" -> part.materialInstance = spoonMetal
+                            }
+                        }
+                    }
+                )
+            }
+            // **The ticket**, lower left: card, its lifted edges throwing a hairline of shadow.
+            ticketModel?.let { ticket ->
+                ModelNode(
+                    ticket,
+                    apply = {
+                        isTouchable = false
+                        isShadowCaster = true
                         isShadowReceiver = true
                     }
                 )

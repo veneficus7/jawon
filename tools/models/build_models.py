@@ -2118,6 +2118,371 @@ def build_cloth():
     return [obj]
 
 
+# ---------------------------------------------------------------------------
+# The tea — a glass of it in a railway holder, with its spoon: the still life's first prop
+# (docs/formats.md §4). The sleeper train's own: a thin tea glass in a nickel-silver
+# podstakannik, fluted, with a handle, and a teaspoon standing in it. Top left of the frame at
+# rest, cut by its edge the way a photographer lets a prop run out of the picture.
+# ---------------------------------------------------------------------------
+
+# Where it stands on the cloth, in the room's own coordinates, and which way its handle and the
+# spoon lean — degrees round from +x toward +z (toward you), seen from above.
+TEA_X, TEA_Z = -0.080, -0.425
+TEA_HANDLE_DEG = 40.0
+TEA_SPOON_DEG = -15.0
+# The glass: thin, tapering a little to its foot, with a thick base. 250ml to the brim.
+TEA_GLASS_H = 0.100
+TEA_GLASS_R_TOP = 0.0355
+TEA_GLASS_R_BOTTOM = 0.0300
+TEA_GLASS_WALL = 0.0016
+TEA_GLASS_BASE = 0.0070
+# How full: a finger's width below the rim, as a glass is carried to a compartment.
+TEA_LEVEL = 0.085
+# The holder: sheet nickel silver hugging the glass's lower two thirds, on a foot of its own.
+TEA_HOLDER_FLOOR = 0.0080    # the glass stands this high off the cloth
+TEA_HOLDER_UP = 0.064        # how far up the glass it comes
+TEA_HOLDER_GAP = 0.0004
+TEA_HOLDER_SHEET = 0.0008
+TEA_HOLDER_FLUTES = 18
+TEA_HOLDER_FLUTE_M = 0.0008
+TEA_SEGMENTS = 96
+# The ticket: a card one, 85 × 54mm, lying at the frame's lower left, its long edges lifting
+# where the paper remembers being folded into a pocket.
+TICKET_X, TICKET_Z = -0.050, -0.195
+TICKET_YAW_DEG = 24.0
+TICKET_W = 0.085
+TICKET_D = 0.054
+TICKET_T = 0.00025
+TICKET_CURL_M = 0.0012
+
+
+def _glass_outer_r(h):
+    """The tea glass's outside radius at [h] up it."""
+    t = min(max(h / TEA_GLASS_H, 0.0), 1.0)
+    return TEA_GLASS_R_BOTTOM + (TEA_GLASS_R_TOP - TEA_GLASS_R_BOTTOM) * t
+
+
+def _glass_inner_r(h):
+    return _glass_outer_r(h) - TEA_GLASS_WALL
+
+
+def _lathe(bm, profile, segments, cx, cy, cz, radial=None):
+    """
+    A closed surface of revolution about a vertical axis through Blender (cx, cy), its foot at cz:
+    [profile] is (r, h) pairs in order round the solid's cross-section, an r of 0 closing that end
+    on the axis. [radial](theta, h, index) adds to the radius — for flutes. Normals are left to the
+    caller's recalc.
+    """
+    rings = []
+    for index, (r, h) in enumerate(profile):
+        if r <= 1e-9:
+            rings.append([bm.verts.new((cx, cy, cz + h))])
+            continue
+        ring = []
+        for k in range(segments):
+            t = 2.0 * math.pi * k / segments
+            rr = r + (radial(t, h, index) if radial else 0.0)
+            ring.append(bm.verts.new((cx + rr * math.cos(t), cy + rr * math.sin(t), cz + h)))
+        rings.append(ring)
+    for a, b in zip(rings, rings[1:]):
+        if len(a) == 1 and len(b) == 1:
+            continue
+        for k in range(segments):
+            k1 = (k + 1) % segments
+            if len(a) == 1:
+                bm.faces.new((a[0], b[k1], b[k]))
+            elif len(b) == 1:
+                bm.faces.new((a[k], a[k1], b[0]))
+            else:
+                bm.faces.new((a[k], a[k1], b[k1], b[k]))
+
+
+def _sweep(bm, points, half_w, half_t, up, segments=12):
+    """
+    A closed tube along [points] (Blender Vectors), its cross-section an ellipse [half_w] across
+    the plane of the path and [half_t] in it; [up] is the plane's normal. Capped at both ends.
+    """
+    rings = []
+    n = len(points)
+    for i, p in enumerate(points):
+        a = points[max(i - 1, 0)]
+        b = points[min(i + 1, n - 1)]
+        tangent = (b - a).normalized()
+        side = up.cross(tangent).normalized()
+        ring = []
+        for k in range(segments):
+            t = 2.0 * math.pi * k / segments
+            ring.append(bm.verts.new(p + side * (half_t * math.cos(t)) + up * (half_w * math.sin(t))))
+        rings.append(ring)
+    for a, b in zip(rings, rings[1:]):
+        for k in range(segments):
+            k1 = (k + 1) % segments
+            bm.faces.new((a[k], a[k1], b[k1], b[k]))
+    bm.faces.new(list(reversed(rings[0])))
+    bm.faces.new(rings[-1])
+
+
+def _catmull(points, samples):
+    """A Catmull-Rom curve through [points] (Vectors), [samples] points along it, ends included."""
+    out = []
+    pts = [points[0]] + list(points) + [points[-1]]
+    spans = len(points) - 1
+    for s in range(samples):
+        u = s / (samples - 1) * spans
+        i = min(int(u), spans - 1)
+        f = u - i
+        p0, p1, p2, p3 = pts[i], pts[i + 1], pts[i + 2], pts[i + 3]
+        f2, f3 = f * f, f * f * f
+        out.append(0.5 * ((2.0 * p1) + (-p0 + p2) * f + (2.0 * p0 - 5.0 * p1 + 4.0 * p2 - p3) * f2 +
+                          (-p0 + 3.0 * p1 - 3.0 * p2 + p3) * f3))
+    return out
+
+
+def build_tea():
+    """
+    The glass of tea in its holder, with the spoon: four objects, one per material — the glass,
+    the tea, the nickel silver and the spoon's steel. In the room's own coordinates, standing on
+    the cloth where `TEA_X`/`TEA_Z` put it.
+    """
+    np = _np()
+    base = CARRIAGE_TABLE_TOP_Y + float(cloth_height(np.array(TEA_X), np.array(TEA_Z))) - 0.0004
+    cx, cy = TEA_X, az(TEA_Z)
+    # A tenth of a millimetre off the holder's floor, so the two never fight for the same depth.
+    glass_z = base + TEA_HOLDER_FLOOR + 0.0001
+    objects = []
+
+    # The glass: its outside up from a softened foot, a rounded rim, its inside down to the thick
+    # base — one closed solid, so the refraction has a front and a back to it.
+    glass = new_mesh_object("tea_glass")
+    bm = bmesh.new()
+    rim = TEA_GLASS_WALL / 2.0
+    profile = [(0.0, 0.0), (TEA_GLASS_R_BOTTOM - 0.0006, 0.0), (TEA_GLASS_R_BOTTOM, 0.0008)]
+    for h in (0.02, 0.04, 0.06, 0.08, TEA_GLASS_H - rim):
+        profile.append((_glass_outer_r(h), h))
+    profile += [
+        (_glass_outer_r(TEA_GLASS_H) - rim * 0.3, TEA_GLASS_H - rim * 0.3),
+        (_glass_outer_r(TEA_GLASS_H) - rim, TEA_GLASS_H),
+        (_glass_inner_r(TEA_GLASS_H) + rim * 0.3, TEA_GLASS_H - rim * 0.3),
+        (_glass_inner_r(TEA_GLASS_H - rim), TEA_GLASS_H - rim),
+    ]
+    for h in (0.08, 0.06, 0.04, 0.02, TEA_GLASS_BASE + 0.002):
+        profile.append((_glass_inner_r(h), h))
+    profile += [(_glass_inner_r(TEA_GLASS_BASE) - 0.0015, TEA_GLASS_BASE), (0.0, TEA_GLASS_BASE)]
+    _lathe(bm, profile, TEA_SEGMENTS, cx, cy, glass_z)
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    bm.to_mesh(glass.data)
+    bm.free()
+    # Clear, thin, blended rather than refracting: through a glass this thin nothing bends enough
+    # to see, and what shows it is glass is its specular — the rim's line of light, the walls'
+    # reflections — which a blended surface keeps whole (the pocket player's cover, trap 32).
+    glass.data.materials.append(principled(
+        "TeaGlass", base_color=(0.92, 0.95, 0.94), metallic=0.0, roughness=0.02, alpha=0.10, blend=True,
+    ))
+    finish(glass, bevel=False)
+    objects.append(glass)
+
+    # The tea: a solid of it inside the glass, its top a little meniscus where it climbs the wall.
+    tea = new_mesh_object("tea_liquid")
+    bm = bmesh.new()
+    wall = lambda h: _glass_inner_r(h) - 0.0002
+    top = TEA_LEVEL
+    profile = [
+        (0.0, TEA_GLASS_BASE + 0.0002), (wall(TEA_GLASS_BASE) - 0.0015, TEA_GLASS_BASE + 0.0002),
+        (wall(TEA_GLASS_BASE + 0.002), TEA_GLASS_BASE + 0.002),
+    ]
+    for h in (0.03, 0.05, 0.07, top - 0.0004):
+        profile.append((wall(h), h))
+    profile += [(wall(top + 0.0007), top + 0.0007), (wall(top) - 0.0012, top + 0.0002),
+                (wall(top) - 0.004, top), (0.0, top)]
+    _lathe(bm, profile, TEA_SEGMENTS, cx, cy, glass_z)
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    bm.to_mesh(tea.data)
+    bm.free()
+    # Strong black tea: a deep red-brown, and a surface that mirrors — the lamp and the window
+    # lie on it as two small lights.
+    tea.data.materials.append(principled(
+        "Tea", base_color=(0.085, 0.022, 0.004), metallic=0.0, roughness=0.04,
+    ))
+    finish(tea, bevel=False)
+    objects.append(tea)
+
+    # The holder: a foot, a floor the glass stands on, and a thin fluted cup up the glass's lower
+    # two thirds, rolled over into a bead at the top.
+    holder = new_mesh_object("tea_holder")
+    bm = bmesh.new()
+    gz = TEA_HOLDER_FLOOR
+    out = lambda h: _glass_outer_r(h) + TEA_HOLDER_GAP + TEA_HOLDER_SHEET
+    inn = lambda h: _glass_outer_r(h) + TEA_HOLDER_GAP
+    up = TEA_HOLDER_UP
+    profile = [
+        (0.0, gz - 0.0008), (0.0245, gz - 0.0008), (0.0258, 0.0), (0.0300, 0.0), (0.0304, 0.0012),
+        (0.0292, 0.0055), (out(0.0) + 0.0002, gz), (out(0.004), gz + 0.004),
+    ]
+    fluted_from = len(profile)
+    for h in (0.012, 0.020, 0.028, 0.036, 0.044, 0.052):
+        profile.append((out(h), gz + h))
+    fluted_to = len(profile)
+    profile += [
+        (out(up - 0.002), gz + up - 0.002), (out(up) + 0.0010, gz + up - 0.0006), (out(up) + 0.0010, gz + up + 0.0006),
+        (inn(up) + 0.0004, gz + up + 0.0010), (inn(up), gz + up),
+    ]
+    for h in (0.05, 0.035, 0.02, 0.005):
+        profile.append((inn(h), gz + h))
+    profile += [(inn(0.0), gz), (0.0, gz)]
+
+    def flutes(theta, h, index):
+        if not (fluted_from <= index < fluted_to):
+            return 0.0
+        # Brought in and out of the band smoothly, so the flutes rise from the plain sheet.
+        u = (h - gz - 0.012) / 0.040
+        window = math.sin(math.pi * min(max(u, 0.0), 1.0))
+        return TEA_HOLDER_FLUTE_M * window * (0.5 + 0.5 * math.cos(TEA_HOLDER_FLUTES * theta))
+
+    _lathe(bm, profile, TEA_SEGMENTS * 2, cx, cy, base, radial=flutes)
+    # The handle: a flat band in a D from under the bead down to the waist, on the side the
+    # handle faces.
+    heading = math.radians(TEA_HANDLE_DEG)
+    radial = Vector((math.cos(heading), -math.sin(heading), 0.0))   # app +z is Blender -y
+    plane_normal = Vector((0.0, 0.0, 1.0)).cross(radial).normalized()
+    centre = Vector((cx, cy, base))
+    def at(r, h):
+        return centre + radial * r + Vector((0.0, 0.0, h))
+    r0 = out(up - 0.004)
+    path = _catmull([
+        at(r0 - 0.0010, gz + up - 0.004), at(r0 + 0.010, gz + up + 0.001), at(r0 + 0.019, gz + up - 0.008),
+        at(r0 + 0.021, gz + up - 0.024), at(r0 + 0.015, gz + up - 0.040), at(r0 + 0.004, gz + up - 0.046),
+        at(out(0.018) - 0.0010, gz + 0.018),
+    ], 40)
+    _sweep(bm, path, half_w=0.0028, half_t=0.0011, up=plane_normal)
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    bm.to_mesh(holder.data)
+    bm.free()
+    # Nickel silver: a warm, slightly yellow silver, polished once and handled since.
+    holder.data.materials.append(principled(
+        "TeaHolder", base_color=(0.80, 0.77, 0.69), metallic=1.0, roughness=0.24,
+    ))
+    finish(holder, bevel=False)
+    objects.append(holder)
+
+    # The spoon, standing in the tea and leaning on the rim: its stem out over the rim and on up,
+    # widening to the handle's blade. Only what is above the tea is made — the rest is under it.
+    spoon = new_mesh_object("tea_spoon")
+    bm = bmesh.new()
+    lean = math.radians(TEA_SPOON_DEG)
+    toward = Vector((math.cos(lean), -math.sin(lean), 0.0))
+    rim_top = glass_z + TEA_GLASS_H
+    # From its bowl down by the glass's far wall, over the rim on the near side and on up — about
+    # 35° from upright, as a spoon left in a glass leans.
+    contact = centre + toward * (_glass_inner_r(TEA_GLASS_H) - 0.0012) + Vector((0.0, 0.0, rim_top - base + 0.0012))
+    bottom = centre - toward * (_glass_inner_r(0.01) - 0.004) + Vector((0.0, 0.0, glass_z - base + 0.012))
+    axis = (contact - bottom).normalized()
+    length_above = 0.045
+    stations = 36
+    side = Vector((0.0, 0.0, 1.0)).cross(toward).normalized()
+    rings = []
+    total = (contact - bottom).length + length_above
+    for s in range(stations + 1):
+        u = s / stations
+        p = bottom + axis * (total * u)
+        # A narrow stem, widening into the handle's blade over its last 30mm, rounded at the tip.
+        from_top = total * (1.0 - u)
+        blade = min(max((0.040 - from_top) / 0.030, 0.0), 1.0)
+        half_w = 0.0016 + 0.0034 * (blade * blade * (3.0 - 2.0 * blade))
+        if from_top < 0.005:
+            half_w *= math.sqrt(max(1.0 - ((0.005 - from_top) / 0.005) ** 2, 0.04))
+        half_t = 0.0008 - 0.0002 * blade
+        normal = axis.cross(side).normalized()
+        ring = []
+        for k in range(12):
+            t = 2.0 * math.pi * k / 12
+            ring.append(bm.verts.new(p + side * (half_w * math.cos(t)) + normal * (half_t * math.sin(t))))
+        rings.append(ring)
+    for a, b in zip(rings, rings[1:]):
+        for k in range(12):
+            k1 = (k + 1) % 12
+            bm.faces.new((a[k], a[k1], b[k1], b[k]))
+    bm.faces.new(list(reversed(rings[0])))
+    bm.faces.new(rings[-1])
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    bm.to_mesh(spoon.data)
+    bm.free()
+    spoon.data.materials.append(principled(
+        "TeaSpoon", base_color=(0.86, 0.86, 0.87), metallic=1.0, roughness=0.14,
+    ))
+    finish(spoon, bevel=False)
+    objects.append(spoon)
+    return objects
+
+
+def build_ticket():
+    """
+    The ticket: a thin card lying on the cloth, its long edges lifting a little. Its face carries a
+    placeholder texture the app replaces with the ticket it draws — the destination is the album
+    playing — so the face's UVs run 0..1 across it.
+    """
+    np = _np()
+    obj = new_mesh_object("ticket")
+    bm = bmesh.new()
+    nu, nv = 34, 22
+    yaw = math.radians(TICKET_YAW_DEG)
+    cu = Vector((math.cos(yaw), -math.sin(yaw), 0.0))   # along the long side, app +x turned toward +z
+    cv = Vector((math.sin(yaw), math.cos(yaw), 0.0))
+    # Card is stiff: it lies on the crowns of the cloth's creases and bridges their valleys, so it
+    # rests flat at the highest point of the cloth under it.
+    xs, zs = [], []
+    for j in range(9):
+        for i in range(13):
+            p = Vector((TICKET_X, az(TICKET_Z), 0.0)) + cu * ((i / 12 - 0.5) * TICKET_W) + cv * ((j / 8 - 0.5) * TICKET_D)
+            xs.append(p.x)
+            zs.append(-p.y)
+    rest_y = CARRIAGE_TABLE_TOP_Y + float(np.max(cloth_height(np.array(xs), np.array(zs))))
+    top = []
+    bottom = []
+    for j in range(nv + 1):
+        v = j / nv
+        row_t, row_b = [], []
+        for i in range(nu + 1):
+            u = i / nu
+            p = Vector((TICKET_X, az(TICKET_Z), 0.0)) + cu * ((u - 0.5) * TICKET_W) + cv * ((v - 0.5) * TICKET_D)
+            lift = TICKET_CURL_M * abs(2.0 * v - 1.0) ** 2.2 + 0.0004 * math.sin(math.pi * u)
+            y = rest_y + 0.0001 + lift
+            row_t.append(bm.verts.new((p.x, p.y, y + TICKET_T)))
+            row_b.append(bm.verts.new((p.x, p.y, y)))
+        top.append(row_t)
+        bottom.append(row_b)
+    bm.verts.ensure_lookup_table()
+    uv_layer = bm.loops.layers.uv.new("UVMap")
+    faces_top = []
+    for j in range(nv):
+        for i in range(nu):
+            f = bm.faces.new((top[j][i], top[j][i + 1], top[j + 1][i + 1], top[j + 1][i]))
+            faces_top.append((f, i, j))
+            bm.faces.new((bottom[j][i], bottom[j + 1][i], bottom[j + 1][i + 1], bottom[j][i + 1]))
+    # The edges round it.
+    ring_t = [top[0][i] for i in range(nu + 1)] + [top[j][nu] for j in range(1, nv + 1)] + \
+             [top[nv][i] for i in range(nu - 1, -1, -1)] + [top[j][0] for j in range(nv - 1, 0, -1)]
+    ring_b = [bottom[0][i] for i in range(nu + 1)] + [bottom[j][nu] for j in range(1, nv + 1)] + \
+             [bottom[nv][i] for i in range(nu - 1, -1, -1)] + [bottom[j][0] for j in range(nv - 1, 0, -1)]
+    for k in range(len(ring_t)):
+        k1 = (k + 1) % len(ring_t)
+        bm.faces.new((ring_b[k], ring_b[k1], ring_t[k1], ring_t[k]))
+    for f, i, j in faces_top:
+        for loop, (du, dv) in zip(f.loops, ((0, 0), (1, 0), (1, 1), (0, 1))):
+            # The image's top at the ticket's far edge, so it reads upright from the camera above.
+            loop[uv_layer].uv = ((i + du) / nu, (j + dv) / nv)
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    bm.to_mesh(obj.data)
+    bm.free()
+    face = attach_placeholder_basecolor(principled(
+        "TicketFace", base_color=(1.0, 1.0, 1.0), metallic=0.0, roughness=0.78,
+    ), "ticket_face")
+    obj.data.materials.append(face)
+    for poly in obj.data.polygons:
+        poly.use_smooth = True
+    obj.modifiers.new(name="Triangulate", type="TRIANGULATE")
+    return [obj]
+
+
 def _normal_image(name, height, relief_m, tile_w, tile_h):
     """
     A tangent-space normal map (OpenGL, +Y up the image) from a height field whose rows run from
@@ -2716,6 +3081,15 @@ def main():
     if not skip("cloth.glb"):
         clear_scene()
         paths.append(export(build_cloth(), "cloth.glb", image_format="JPEG", jpeg_quality=94))
+
+    # The still life's props, standing on the cloth in the room's own coordinates: the tea, and the
+    # ticket whose face the app draws.
+    if not skip("tea.glb"):
+        clear_scene()
+        paths.append(export(build_tea(), "tea.glb"))
+    if not skip("ticket.glb"):
+        clear_scene()
+        paths.append(export(build_ticket(), "ticket.glb"))
 
     # The showroom between formats.
     if not skip("showroom.glb"):

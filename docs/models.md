@@ -18,6 +18,8 @@ modelled by hand and not downloaded.
 | `carriage` | the pocket player's compartment | ~3600 | table, panelling boards and their backing, window frame, sill — in the room's own coordinates; ~560KB, most of it two generated wood-grain JPEGs |
 | `pocket` | the iPod mode's device | 8314 | eight objects, one per material; life size, 61.8 × 103.5 × 10.5mm; a polished bead round the face; ~830KB, most of it three wear maps |
 | `cloth` | what the pocket player lies on at rest | 33480 | white linen **pressed into creases and opened out**, flat under the device, from a formula rather than a simulation; in the room's own coordinates; ~1.3MB, the mesh and two JPEGs (the weave's colour and its normal). Written beside it, from the same formula: `cloth_height.bin` (69KB), its top every 3mm, which the cord lies on — see "The tablecloth" below |
+| `tea` | the still life's glass of tea | 15664 | four objects, one per material — a thin tea glass, the tea in it, a fluted nickel-silver holder with a D handle, and a teaspoon leaning on the rim — standing on the cloth at the frame's top left, in the room's own coordinates; ~350KB — see "The still life's props" below |
+| `ticket` | the still life's ticket | 3216 | an 85 × 54mm card lying on the cloth, its long edges lifting 1.2mm; its face a placeholder the app replaces with the ticket it draws (`TicketArt`), its UVs running 0..1 across it; ~100KB |
 
 **Why the shelf gets its own case.** A shut jewel case shows none of the tray's
 interior, and the wall draws up to ~470 at once — carrying that interior would
@@ -60,6 +62,29 @@ by looking at runs shaded from above — pushed hard it crumpled like foil, stuc
 it buckled where it landed, pushed along one axis it pleated; and **a collider's faces must look
 up**, or it pushes the cloth through itself (the first run's sheet settled ten centimetres under the
 table).
+
+## The still life's props
+
+What stands on the cloth at rest (`build_tea()`, `build_ticket()`; `docs/formats.md` §4). **The
+frame at rest is only about 18cm of cloth across** — a portrait phone's narrow horizontal field at
+80cm — so the props are placed by what that frame holds: the tea at its top left, **cut by the
+frame's edge** the way a photographer lets a prop run out of the picture, the ticket at its lower
+left, the device right of middle, and room between them. A Cycles render from the app's own rest
+camera (the composition check before anything went near the app) is what placed them.
+
+**The tea is the sleeper train's own**: a thin 250ml glass tapering to its foot, in a
+nickel-silver podstakannik with a fluted band and a D handle, a teaspoon leaning on the rim — all
+at real size, the glass 100mm tall and 71mm across, which is larger than the device and reads so.
+The glass is **blended, not refracting**: a wall this thin bends nothing visible, and what shows it
+is glass is its specular, which a blended surface keeps (trap 32's lesson on the pocket player's
+cover). The tea is **a solid**, not a disc at its level: seen through the glass wall, a disc left
+the glass empty below the surface. Its top climbs the wall in a millimetre of meniscus, which is
+where it catches light. The holder and the spoon wear `materials/table_metal.mat` in the app, not
+their glTF materials — see `docs/materials.md`.
+
+**The ticket's face is the app's**: the card carries `attach_placeholder_basecolor`'s slot, and
+the room binds its own texture there, drawn by `TicketArt` — to the album playing. It lies flat at
+the highest point of the cloth under it rather than following the creases, as card does.
 
 ## Regenerating
 
@@ -190,6 +215,8 @@ they are in final glTF/app coordinates:
 | `carriage.glb` | **Room coordinates, not object ones**: the table top at Y **−0.300** (to −0.328), its Z −0.500 … −0.050; the panelling's face at Z **−0.500**, its backing to −0.530; the window opening X ±0.400, Y −0.250 … +0.300, the frame standing proud to Z −0.470. **Nothing may come in front of Z −0.05 or above the table's Y −0.30 below the window**: the device is held at the origin and the life-size view must not change. The night picture hangs behind all of it at −0.55. |
 | `showroom.glb` | **Showroom coordinates**: the floor's top at Y **0**; the plinths' caps topping out at Y **+0.968**, their centres at X **0, 0.42, 0.84, 1.26** (caps ±0.085, so X −0.085 … +1.345) and Z ±0.085; the wall's face at Z **−2.20**, 3.5m high. `ShowroomStage` in the app — spacing, cap top — must agree, or every exhibit floats at the wrong height or beside its plinth. |
 | `cloth.glb` | **Room coordinates**: X −0.31 … +0.31, Z −0.49 … −0.06 — on the table, short of the wall at −0.50 and of its front edge at −0.05 — and Y −0.2986 … −0.2954, 1.4–4.6mm over the table top, **and exactly −0.297 under the resting device** (`CLOTH_T`, which `RestPose.SURFACE_T` must equal; `PocketClothTest` reads it back out of `cloth_height.bin`). `CLOTH_DEVICE_*` must agree with `RestPose.DEVICE_*`, or the cloth is pressed flat where the device is not. |
+| `tea.glb` | **Room coordinates**: X −0.116 … −0.024, Z −0.461 … −0.387, Y −0.298 … −0.150 — standing on the cloth at `TEA_X`/`TEA_Z` with the holder's foot 0.4mm into it, the glass 100mm tall and the spoon's handle 45mm over its rim. Its parts by name — `tea_glass`, `tea_liquid`, `tea_holder`, `tea_spoon` — are how the app puts `table_metal.mat` on the last two and takes the shadows off the first two. |
+| `ticket.glb` | **Room coordinates**: X −0.100 … 0.000, Z −0.237 … −0.153, Y −0.296 … −0.294 — lying flat on the highest crease under it (card bridges a crease's valley), a hair short of the resting device's lower edge. |
 | `pocket.glb` | X ±0.0309, Y ±0.0518, **Z −0.00525 … +0.00525** (10.5mm), and per part: the wheel's front face at **+0.00465** (0.6mm inside the plate's +0.00525) and the button's at **+0.0047**; `pocket_print` flat at **+0.00467**, 20µm over the wheel. Nothing in `pocket_details` may pass ±0.0518 in Y — the jack, the hold switch and the connector are sunk into those edges, not stuck on them. |
 
 Note `case_closed`'s axes are the odd ones out, and deliberately: it is the only

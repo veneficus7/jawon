@@ -1,0 +1,73 @@
+// The still life's metal: the tea holder's nickel silver and the spoon's steel (build_tea() in
+// tools/models/build_models.py). It replaces the glTF's own material on those two parts, at load
+// (PocketRoomScreen).
+//
+// **Why it is hand-written.** A metal is a picture of what is round it, and what is round the tea
+// is a white tablecloth — which the carriage's environment does not hold. The environment is
+// placed for the device and turned for the table (RestLight), and what that turn puts under the
+// glass is the night window: in the room's own lighting the nickel silver came out a deep navy
+// black, a mug rather than a holder. So below the horizon, where a reflection off these parts
+// meets the cloth, this adds the cloth — its lamp-lit brightness, through the metal's own Fresnel,
+// fading in over the horizon as widely as the surface's roughness blurs it. Above the horizon the
+// room's own environment and the lamp do everything, as for any metal in the room.
+//
+// **Where "below" is has to be told** (`up`). Filament turns the environment by turning the frame
+// it shades in (IndirectLight.setRotation), so every world-space vector a shader sees — position,
+// normal, view — comes out turned with it, and at rest the environment is turned a long way
+// (RestLight). Measured with the cloth: with `below` taken as world −Y, the cloth read as facing
+// the window. PocketDevice hands the room's up over in that frame whenever the turn changes.
+//
+// Compiled by hand with a version-matched matc. See docs/materials.md.
+
+material {
+    name : TableMetal,
+    shadingModel : lit,
+    blending : opaque,
+    parameters : [
+        {
+            // Linear. A metal's colour is its reflectance.
+            type : float3,
+            name : baseColor
+        },
+        {
+            type : float,
+            name : roughness
+        },
+        {
+            // The cloth as the metal sees it: its luminance under the lamp, linear, in nits — it
+            // goes through the camera's exposure like any light in the room.
+            type : float3,
+            name : cloth
+        },
+        {
+            // The room's up, in the frame Filament shades in — see above.
+            type : float3,
+            name : up
+        }
+    ]
+}
+
+fragment {
+    void material(inout MaterialInputs material) {
+        prepareMaterial(material);
+        material.baseColor = vec4(materialParams.baseColor, 1.0);
+        material.metallic = 1.0;
+        material.roughness = materialParams.roughness;
+
+        // Where the view reflects to off this point, in the world. Below the horizon is the cloth,
+        // brought in over a band as wide as the roughness spreads a reflection.
+        highp vec3 v = getWorldViewVector();
+        highp vec3 n = getWorldNormalVector();
+        highp vec3 r = reflect(-v, n);
+        float blur = 0.08 + 0.6 * materialParams.roughness;
+        float below = 1.0 - smoothstep(-blur, blur, dot(r, materialParams.up) + 0.05);
+
+        // A metal's Fresnel: its own colour face on, white at a graze.
+        float nov = clamp(dot(n, v), 0.0, 1.0);
+        vec3 f0 = materialParams.baseColor;
+        vec3 fresnel = f0 + (1.0 - f0) * pow(1.0 - nov, 5.0);
+
+        // In nits, through the exposure (w = 1), as the room's lights are.
+        material.emissive = vec4(materialParams.cloth * fresnel * below, 1.0);
+    }
+}
