@@ -69,10 +69,6 @@ private val REST_LAMP_COLOUR = floatArrayOf(1.0f, 0.80f, 0.60f)
  */
 private const val REST_AMBIENT_GAIN = 3f
 
-/** Over the last of the landing the cord eases into its resting shape (RestCord), turning this way. */
-private const val REST_CORD_FROM = 0.8f
-private const val REST_CORD_TURN = 1f
-
 /** What the window is told when there is no station about: far past anything it draws. */
 internal const val NO_STATION_M = 10_000f
 
@@ -170,21 +166,12 @@ internal class PocketDevice(
     private var consumingTouch = false
     private val look = FloatArray(2)
 
-    // **The earphone cord** (PocketCord): its simulation, what draws it, and where its far end is.
-    private val cord = Cord()
+    // **The earphone cord** (PocketCord): its rig — the simulation, the resting shape and the
+    // handover between them — and what draws it.
+    private val cordRig = CordRig()
+    private val cordBasis = FloatArray(9)
     var cordMesh: CordMesh? = null
     private var cordInScene = false
-    private val ears = FloatArray(3)
-    /** The sheet's version the cord was last laid on, −1 while it is not lying still. */
-    private var cordLying = -1
-    private val restX = FloatArray(Cord.NODES)
-    private val restY = FloatArray(Cord.NODES)
-    private val restZ = FloatArray(Cord.NODES)
-    private val shownX = FloatArray(Cord.NODES)
-    private val shownY = FloatArray(Cord.NODES)
-    private val shownZ = FloatArray(Cord.NODES)
-    private val earsVelocity = FloatArray(3)
-    private var earsPrimed = false
     /** How much of the phone's tilt turns the world: all of it in the hand, none on the table. */
     private var turnWeight = 1f
     var windowMaterial: MaterialInstance? = null
@@ -617,69 +604,25 @@ internal class PocketDevice(
     }
 
     /**
-     * The cord, one frame on: its start carried by the device — out of the plug's strain relief,
-     * along the plug's axis — and its far end, the earbuds, following the device on a spring, so
-     * the cord hangs, sways as the device floats and trails when it flies.
+     * The cord, one frame on — the rig's ([CordRig]): hanging from the plug up to the earbuds by
+     * your ears in the hand, lying on the sheet at rest, and eased between the two with the device.
      */
     private fun swingCord(dt: Float) {
         val mesh = cordMesh ?: return
         val node = deviceNode ?: return
         val m = node.worldTransform
-        val start = m * Float4(Cord.PLUG_X_M, Cord.PLUG_TIP_Y_M, 0f, 1f)
-        val axis = m * Float4(0f, 1f, 0f, 0f)
-        val al = kotlin.math.sqrt(axis.x * axis.x + axis.y * axis.y + axis.z * axis.z).coerceAtLeast(1e-6f)
         val centre = m * Float4(0f, 0f, 0f, 1f)
-        // Up by your ears in the hand; at rest, lying on the table off the frame's right edge, so
-        // the cord runs across the surface and away as the device goes down.
-        cord.floorY = RestPose.TABLE_TOP_Y + RestPose.SURFACE_T
-        val d = flight.device
-        val tx = lerp(centre.x + Cord.EARS_X_M, Cord.REST_EARS_X_M, d)
-        val ty = lerp(centre.y + Cord.EARS_Y_M, cord.floorY + Cord.RADIUS_M, d)
-        val tz = lerp(centre.z + Cord.EARS_Z_M, Cord.REST_EARS_Z_M, d)
-        if (!earsPrimed) {
-            ears[0] = tx; ears[1] = ty; ears[2] = tz
-            earsPrimed = true
-        } else if (dt > 0f) {
-            // Critically damped: the far end catches up without overshooting.
-            val w = Cord.EARS_FOLLOW_OMEGA
-            val h = kotlin.math.min(dt, Cord.MAX_STEP_S)
-            val target = floatArrayOf(tx, ty, tz)
-            for (k in 0..2) {
-                val accel = -2f * w * earsVelocity[k] - w * w * (ears[k] - target[k])
-                earsVelocity[k] += accel * h
-                ears[k] += earsVelocity[k] * h
-            }
-        }
-        // **At rest the cord is a shape, not a simulation**: lying on the surface it froze in
-        // zigzags or never stopped moving. It eases into its resting curve over the end of the
-        // landing, is held there — still — and is picked up from it with nothing to spring back.
-        val w = ((d - REST_CORD_FROM) / (1f - REST_CORD_FROM)).coerceIn(0f, 1f)
-        val settle = w * w * (3f - 2f * w)
-        // Lying still, it has nothing to do until the device is picked up again — or until the
-        // sheet's shape has been read, when it lies down again on the folds.
-        if (settle >= 1f && cordLying == SheetSurface.version) return
-        cordLying = -1
-        RestCord.lay(
-            start.x, start.y, start.z, axis.x / al, axis.z / al,
-            cord.linkM, cord.nodes, REST_CORD_TURN, SheetSurface::topAt, restX, restY, restZ
+        val across = m * Float4(1f, 0f, 0f, 0f)
+        val along = m * Float4(0f, 1f, 0f, 0f)
+        val out = m * Float4(0f, 0f, 1f, 0f)
+        cordBasis[0] = across.x; cordBasis[1] = across.y; cordBasis[2] = across.z
+        cordBasis[3] = along.x; cordBasis[4] = along.y; cordBasis[5] = along.z
+        cordBasis[6] = out.x; cordBasis[7] = out.y; cordBasis[8] = out.z
+        val changed = cordRig.step(
+            dt, centre.x, centre.y, centre.z, cordBasis,
+            flight.device, SheetSurface::topAt, SheetSurface.version
         )
-        if (settle >= 1f) {
-            cord.hold(restX, restY, restZ)
-            mesh.update(cord)
-            cordLying = SheetSurface.version
-            return
-        }
-        cord.step(dt, start.x, start.y, start.z, axis.x / al, axis.y / al, axis.z / al, ears[0], ears[1], ears[2])
-        if (settle <= 0f) {
-            mesh.update(cord)
-        } else {
-            for (i in 0 until cord.nodes) {
-                shownX[i] = cord.x[i] + (restX[i] - cord.x[i]) * settle
-                shownY[i] = cord.y[i] + (restY[i] - cord.y[i]) * settle
-                shownZ[i] = cord.z[i] + (restZ[i] - cord.z[i]) * settle
-            }
-            mesh.update(shownX, shownY, shownZ)
-        }
+        if (changed) mesh.update(cordRig.shownX, cordRig.shownY, cordRig.shownZ)
     }
 
     /**

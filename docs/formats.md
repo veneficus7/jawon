@@ -171,10 +171,12 @@ effect on the way back — no mid-session teardown, and no brush with trap 1.
   printed pattern however it was drawn. So the sheet is **crumpled by a cloth simulation** in the
   model script (`build_sheet()`, `docs/models.md`), and what was wrong with the light is fixed at
   its root rather than tuned round:
-  - **The cord is a shape at rest, not a simulation** (`RestCord`): a simulation settling on
-    cloth froze in zigzags or never stopped moving. It lies on the sheet's own surface
-    (`SheetSurface`, the simulated sheet's height map), dropping from the plug over its first
-    centimetres, and is held still.
+  - **The cord is never simulated in the move** (`CordRig`): a simulation settling on cloth froze in
+    zigzags or never stopped moving, and dragged from the sheet to your ears as the device was picked
+    up it shivered for a second and a half — the owner saw it the same day. It lies on the sheet's own
+    surface (`SheetSurface`, the simulated sheet's height map) in one eased curve, hangs in the hand in
+    the chain's own settled shape, and eases between the two, the end at the plug first and the far end
+    trailing, on springs that cannot overshoot.
   - **One lamp, everywhere.** The carriage's environment is placed for the hand, so on the table
     its softbox lit the sheet from the bottom right while the lamp's shadow fell from the top right
     and the glass reflected a ceiling light neither knew of. Now the environment turns as the device

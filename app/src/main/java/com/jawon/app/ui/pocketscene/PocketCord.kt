@@ -20,8 +20,9 @@ import kotlin.math.sqrt
 /**
  * The earphone cord, as the owner asked for it — "if its pocket player it should be connected to
  * a wire … just to make it more realistic" (`docs/formats.md` §4): a chain of short links under
- * gravity, stepped by position (Verlet), so it hangs with its own weight, sways as the device
- * floats and trails behind it when it flies between the hand and the table.
+ * gravity, stepped by position (Verlet), so it hangs with its own weight. **It is run to rest once,
+ * for the shape it hangs in with the device in the hand** ([CordRig]) — not through the move between
+ * the hand and the sheet, where it rang for seconds however it was tuned.
  *
  * Three nodes are pinned: the first two to the plug — where the cord leaves the strain relief and
  * the direction it leaves in, so it comes out of the plug straight rather than kinked — and the
@@ -38,14 +39,6 @@ class Cord(val nodes: Int = NODES, val lengthM: Float = LENGTH_M) {
     private val pz = FloatArray(nodes)
     private val link = lengthM / (nodes - 1)
     private var primed = false
-
-    /**
-     * The surface the cord lies on when it comes down to it — the table, or what is on the table
-     * — as a height in metres. A node that reaches it stays on it and barely slides: at rest the
-     * device lies flat and the cord lies across the surface and away, as in the owner's reference
-     * photos, rather than hanging.
-     */
-    var floorY = Float.NEGATIVE_INFINITY
 
     /**
      * One step of [dt] seconds. The cord leaves the plug at ([sx], [sy], [sz]) heading along the
@@ -83,35 +76,20 @@ class Cord(val nodes: Int = NODES, val lengthM: Float = LENGTH_M) {
                 z[i] += vz
             }
             pin(sx, sy, sz, ax, ay, az, ex, ey, ez)
-            onFloor()
             // A cord resists folding: each node is eased toward the middle of its neighbours, so it
             // bends in curves rather than kinking where it leaves the plug. Once per sub-step,
             // before the lengths — run inside every sweep it fought them, and links came out short.
             for (i in 2 until nodes - 1) unkink(i)
             // Sweeping one way only converges slowly, so the sweep alternates direction.
-            repeat(ITERATIONS) { k ->
-                if (k % 2 == 0) {
+            repeat(ITERATIONS) { sweep ->
+                if (sweep % 2 == 0) {
                     for (i in 0 until nodes - 1) satisfy(i, i + 1)
                 } else {
                     for (i in nodes - 2 downTo 0) satisfy(i, i + 1)
                 }
                 pin(sx, sy, sz, ax, ay, az, ex, ey, ez)
-                onFloor()
             }
         }
-    }
-
-    /**
-     * Puts the cord exactly where [xs], [ys], [zs] say, at rest — no motion carried in — so it can
-     * be picked up from there with nothing to spring back from. What the flat lay does: the cord
-     * lying still on the surface is a shape, not a simulation settling (see [RestCord]).
-     */
-    fun hold(xs: FloatArray, ys: FloatArray, zs: FloatArray) {
-        for (i in 0 until nodes) {
-            x[i] = xs[i]; y[i] = ys[i]; z[i] = zs[i]
-            px[i] = xs[i]; py[i] = ys[i]; pz[i] = zs[i]
-        }
-        primed = true
     }
 
     /** The link length the cord is made of, metres. */
@@ -142,19 +120,6 @@ class Cord(val nodes: Int = NODES, val lengthM: Float = LENGTH_M) {
         x[l] = ex; y[l] = ey; z[l] = ez
     }
 
-    /** Keeps every free node on or above the floor, and a node on it from sliding. */
-    private fun onFloor() {
-        val lo = floorY + RADIUS_M
-        for (i in 2 until nodes - 1) {
-            if (y[i] < lo) {
-                y[i] = lo
-                py[i] = lo
-                px[i] = x[i] - (x[i] - px[i]) * FLOOR_KEEP
-                pz[i] = z[i] - (z[i] - pz[i]) * FLOOR_KEEP
-            }
-        }
-    }
-
     private fun unkink(i: Int) {
         val mx = (x[i - 1] + x[i + 1]) * 0.5f
         val my = (y[i - 1] + y[i + 1]) * 0.5f
@@ -180,38 +145,20 @@ class Cord(val nodes: Int = NODES, val lengthM: Float = LENGTH_M) {
     }
 
     companion object {
-        /** The cord's radius, metres — what it rests on the floor by. `CordMesh`'s own. */
+        /** The cord's radius, metres — what it lies on the sheet by. `CordMesh`'s own. */
         const val RADIUS_M = 0.001f
-
-        /**
-         * How much of its sliding a node on the floor keeps each sub-step. Grippy at first (0.35),
-         * the cord froze in whatever shape it landed in, zigzags and all; this lets its own
-         * stiffness ease the slack into a curve while it settles.
-         */
-        const val FLOOR_KEEP = 0.85f
         /** Where the cord leaves the plug's strain relief, in the device's frame — `EARPHONE_*` in the model script. */
         const val PLUG_X_M = 0.0155f
         const val PLUG_TIP_Y_M = 0.07995f
 
         /**
-         * Where the far end — the earbuds — is kept, relative to the device: up, toward you and to
-         * the side, where ears are, off the frame. Held there on a lagging spring, so the cord
-         * trails when the device moves. **High enough that the cord rises out of the frame**: level
-         * with the device and nearer, the slack hung in a loop across the screen.
+         * Where the far end — the earbuds — is, with the device in the hand: up, toward you and to
+         * the side, where ears are, off the frame. **High enough that the cord rises out of the
+         * frame**: level with the device and nearer, the slack hung in a loop across the screen.
          */
         const val EARS_X_M = 0.06f
         const val EARS_Y_M = 0.45f
         const val EARS_Z_M = 0.22f
-        const val EARS_FOLLOW_OMEGA = 4f
-
-        /**
-         * At rest, where the far end lies: off the flat lay's right edge and up toward the window,
-         * nearly the cord's length from the plug, so it lies across the surface in one easy curve.
-         * With more slack than that — 10cm of it, at the first place tried — a cord pinned at both
-         * ends and resting on cloth buckles, and it lay in zigzags.
-         */
-        const val REST_EARS_X_M = 0.42f
-        const val REST_EARS_Z_M = -0.46f
 
         const val NODES = 40
         /**
@@ -430,25 +377,35 @@ object RestCord {
             heading += turnSign * bend
             val cx = kotlin.math.cos(heading)
             val cz = kotlin.math.sin(heading)
+            if (i == 0) {
+                // The first link straight out of the plug and level, exactly where the simulation
+                // pins it — so taking the cord back from here moves nothing.
+                x += link * cx
+                z += link * cz
+                continue
+            }
             // Where the next node lies, a link on: across the plane first, then shortened by
             // however far the surface climbs or falls over it.
             var step = link
             var ny = y
             repeat(2) {
-                ny = height(x + step * cx, z + step * cz, s0 + link, sy, top)
+                ny = height(x + step * cx, z + step * cz, s0 + link, link, sy, top)
                 val rise = ny - y
                 step = kotlin.math.sqrt((link * link - rise * rise).coerceAtLeast(link * link * 0.25f))
             }
             x += step * cx
             z += step * cz
-            y = height(x, z, s0 + link, sy, top)
+            y = height(x, z, s0 + link, link, sy, top)
         }
     }
 
-    /** The cord's height at ([x], [z]), [s] along it: on the surface, eased down from the plug over the lead. */
-    private fun height(x: Float, z: Float, s: Float, plugY: Float, top: (Float, Float) -> Float): Float {
+    /**
+     * The cord's height at ([x], [z]), [s] along it: on the surface, eased down from the plug's
+     * height over the lead that follows its first, level link.
+     */
+    private fun height(x: Float, z: Float, s: Float, link: Float, plugY: Float, top: (Float, Float) -> Float): Float {
         val lying = top(x, z) + Cord.RADIUS_M
-        val t = (s / LEAD_M).coerceIn(0f, 1f)
+        val t = ((s - link) / LEAD_M).coerceIn(0f, 1f)
         val e = t * t * (3f - 2f * t)
         return plugY + (lying - plugY) * e
     }
@@ -466,6 +423,207 @@ object RestCord {
                 val over = into - turnLength
                 k * (turnLength - EASE_M / 2f + over - over * over / (2f * EASE_M))
             }
+        }
+    }
+}
+
+/**
+ * **The cord between the hand and the sheet, without a simulation in the move.** In the hand it
+ * hangs from the plug up to the earbuds by your ears — the chain's own settled shape ([Cord], run
+ * once to rest when the rig is made, then held); lying on the sheet it is the resting curve
+ * ([RestCord]); and between the two every node eases from one shape to the other, the nodes near the
+ * plug first and the far end trailing, on a critically damped lag that cannot overshoot.
+ *
+ * **Why not the simulation, for the move.** The owner saw the cord wiggle every time the device was
+ * picked up off the sheet, and it did: dragging a 40-link chain from lying on the sheet to hanging
+ * by your ears in 0.7s — its plug swinging through 90° and moving 17mm a frame, its far end a metre
+ * — left it ringing, 25–40mm a frame of jitter at the peak and still a millimetre a frame two and a
+ * half seconds later, and no tuning of the solver took that out (more sub-steps made it worse). A
+ * move between two shapes that are both known has nothing to ring: by construction nothing here
+ * overshoots, and the hand's shape is the very one the simulation settles to, so the look in the
+ * hand is what it was.
+ *
+ * Pure: the device's pose in, the cord to draw out.
+ */
+class CordRig(private val nodes: Int = Cord.NODES) {
+    /** What to draw, after each [step] that returned true. */
+    val shownX = FloatArray(nodes)
+    val shownY = FloatArray(nodes)
+    val shownZ = FloatArray(nodes)
+    private val restX = FloatArray(nodes)
+    private val restY = FloatArray(nodes)
+    private val restZ = FloatArray(nodes)
+    private val link = Cord.LENGTH_M / (nodes - 1)
+
+    /** The hanging shape in the hand, in the device's own frame: settled once, then held. */
+    private val hand: Array<FloatArray> by lazy { settleInHand() }
+
+    /**
+     * How far the cord's two ends have got between the shapes: the device's own share of the way
+     * down, each trailed on a critically damped spring — the end at the plug closely, the far end
+     * well behind — and every node between them on its share of the two.
+     */
+    private val near = Trail(NEAR_OMEGA)
+    private val far = Trail(FAR_OMEGA)
+    private var shownNear = Float.NaN
+    private var shownFar = Float.NaN
+    private var shownSurface = -1
+
+    /**
+     * One frame of [dt] seconds. The device's centre ([cx], [cy], [cz]) and its axes as a
+     * column-major 3×3 ([basis] — across, along, out of the face); how far it has come down onto
+     * the sheet, [down] — 0 in the hand, 1 lying on it; and the sheet, [top], with its [surface]
+     * version — a new one lays the cord down again. Returns whether the drawn shape changed.
+     */
+    fun step(
+        dt: Float,
+        cx: Float, cy: Float, cz: Float,
+        basis: FloatArray,
+        down: Float,
+        top: (Float, Float) -> Float,
+        surface: Int
+    ): Boolean {
+        near.follow(down, dt)
+        far.follow(down, dt)
+        val nearDown = near.value
+        val farDown = far.value
+        // Still in the hand, or lying still on the same sheet: nothing has moved.
+        val settled = nearDown == farDown && (nearDown == 0f || (nearDown == 1f && surface == shownSurface))
+        if (settled && nearDown == shownNear && farDown == shownFar) return false
+
+        val hand = hand
+        // The resting shape, for the plug where it is now — only while any of it is on the sheet.
+        val plugX = cx + basis[0] * Cord.PLUG_X_M + basis[3] * Cord.PLUG_TIP_Y_M
+        val plugY = cy + basis[1] * Cord.PLUG_X_M + basis[4] * Cord.PLUG_TIP_Y_M
+        val plugZ = cz + basis[2] * Cord.PLUG_X_M + basis[5] * Cord.PLUG_TIP_Y_M
+        val anyDown = nearDown > 0f || farDown > 0f
+        if (anyDown) {
+            val level = sqrt(basis[3] * basis[3] + basis[5] * basis[5]).coerceAtLeast(1e-6f)
+            RestCord.lay(
+                plugX, plugY, plugZ, basis[3] / level, basis[5] / level,
+                link, nodes, TURN, top, restX, restY, restZ
+            )
+        }
+        for (i in 0 until nodes) {
+            // The hand's shape, carried with the device wherever it is.
+            val lx = hand[0][i]
+            val ly = hand[1][i]
+            val lz = hand[2][i]
+            val hx = cx + basis[0] * lx + basis[3] * ly + basis[6] * lz
+            val hy = cy + basis[1] * lx + basis[4] * ly + basis[7] * lz
+            val hz = cz + basis[2] * lx + basis[5] * ly + basis[8] * lz
+            if (!anyDown) {
+                shownX[i] = hx; shownY[i] = hy; shownZ[i] = hz
+                continue
+            }
+            val w = weight(i, nearDown, farDown)
+            shownX[i] = hx + (restX[i] - hx) * w
+            shownY[i] = hy + (restY[i] - hy) * w
+            shownZ[i] = hz + (restZ[i] - hz) * w
+        }
+        shownNear = nearDown
+        shownFar = farDown
+        shownSurface = surface
+        return true
+    }
+
+    /** How far node [i] has got from the hanging shape to the lying one, 0..1, as last drawn. */
+    fun morph(i: Int): Float = if (shownNear.isNaN()) 0f else weight(i, shownNear, shownFar)
+
+    /**
+     * How far node [i] has gone from the hand's shape to the resting one. Near the plug it goes
+     * last on the way down and first on the way up — it is carried by the device — and the far end
+     * the other way round, on its trailing share of the way; each over a window of its own, eased.
+     */
+    private fun weight(i: Int, near: Float, far: Float): Float {
+        val u = i / (nodes - 1f)
+        val d = near + (far - near) * u
+        val from = NEAR_FROM + (FAR_FROM - NEAR_FROM) * u
+        val span = NEAR_SPAN + (FAR_SPAN - NEAR_SPAN) * u
+        val t = ((d - from) / span).coerceIn(0f, 1f)
+        return t * t * (3f - 2f * t)
+    }
+
+    /**
+     * The chain hanging from the plug to the earbuds with the device in the hand — life size at the
+     * origin, turned as the room holds it — settled, and taken into the device's own frame.
+     */
+    private fun settleInHand(): Array<FloatArray> {
+        val b = handBasis()
+        val cord = Cord(nodes)
+        val sx = b[0] * Cord.PLUG_X_M + b[3] * Cord.PLUG_TIP_Y_M
+        val sy = b[1] * Cord.PLUG_X_M + b[4] * Cord.PLUG_TIP_Y_M
+        val sz = b[2] * Cord.PLUG_X_M + b[5] * Cord.PLUG_TIP_Y_M
+        repeat(SETTLE_FRAMES) {
+            cord.step(1f / 60f, sx, sy, sz, b[3], b[4], b[5], Cord.EARS_X_M, Cord.EARS_Y_M, Cord.EARS_Z_M)
+        }
+        val out = Array(3) { FloatArray(nodes) }
+        for (i in 0 until nodes) {
+            // Bᵀ · p: the device's frame is orthonormal.
+            out[0][i] = b[0] * cord.x[i] + b[1] * cord.y[i] + b[2] * cord.z[i]
+            out[1][i] = b[3] * cord.x[i] + b[4] * cord.y[i] + b[5] * cord.z[i]
+            out[2][i] = b[6] * cord.x[i] + b[7] * cord.y[i] + b[8] * cord.z[i]
+        }
+        return out
+    }
+
+    /** A share of the way down, trailed on a critically damped spring and snapped when it arrives. */
+    private class Trail(private val omega: Float) {
+        var value = Float.NaN
+            private set
+        private var velocity = 0f
+
+        fun follow(target: Float, dt: Float) {
+            if (value.isNaN()) {
+                value = target
+                return
+            }
+            if (dt <= 0f) return
+            val h = min(dt, Cord.MAX_STEP_S)
+            velocity += (-2f * omega * velocity - omega * omega * (value - target)) * h
+            value = (value + velocity * h).coerceIn(0f, 1f)
+            if (kotlin.math.abs(value - target) < ARRIVED && kotlin.math.abs(velocity) < ARRIVED) {
+                value = target
+                velocity = 0f
+            }
+        }
+
+        private companion object {
+            const val ARRIVED = 1e-3f
+        }
+    }
+
+    companion object {
+        /**
+         * Where each node's move between the shapes starts, as a share of the way down, and over
+         * how much of it: near the plug over the last third, the far end over most of the way.
+         */
+        const val NEAR_FROM = 0.55f
+        const val NEAR_SPAN = 0.45f
+        const val FAR_FROM = 0.0f
+        const val FAR_SPAN = 0.85f
+        /** How closely each end of the cord follows the device: both trail, neither overshoots. */
+        const val NEAR_OMEGA = 9f
+        const val FAR_OMEGA = 5f
+        /** The resting curve turns this way: clockwise seen from above, off the frame's top right. */
+        const val TURN = 1f
+        /** Eight seconds of hanging — settled to well under a millimetre (`PocketCordTest`). */
+        const val SETTLE_FRAMES = 480
+
+        /** The device's axes in the hand, as `PocketDevice` holds it: `Ry(yaw) · Rx(pitch)`. */
+        fun handBasis(): FloatArray {
+            val p = Math.toRadians(DEVICE_PITCH_DEG.toDouble())
+            val y = Math.toRadians(DEVICE_YAW_DEG.toDouble())
+            val cp = kotlin.math.cos(p).toFloat()
+            val sp = kotlin.math.sin(p).toFloat()
+            val cy = kotlin.math.cos(y).toFloat()
+            val sy = kotlin.math.sin(y).toFloat()
+            // Columns: Ry·Rx applied to x, y and z.
+            return floatArrayOf(
+                cy, 0f, -sy,
+                sy * sp, cp, cy * sp,
+                sy * cp, -sp, cy * cp
+            )
         }
     }
 }

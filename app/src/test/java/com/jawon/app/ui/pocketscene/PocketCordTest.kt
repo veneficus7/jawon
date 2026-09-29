@@ -110,13 +110,171 @@ class PocketCordTest {
     fun `past the plug it lies on the surface, one radius up, and it leaves the plug at the plug`() {
         val slope = { x: Float, z: Float -> 0.15f * x - 0.1f * z }
         val (xs, ys, zs) = laid(slope, plugY = 0.02f)
+        val link = Cord().linkM
         assertEquals(0.02f, ys[0], 1e-6f)
-        var s = 0f
-        for (i in 1 until xs.size) {
-            s += Cord().linkM
-            if (s > RestCord.LEAD_M) {
+        // Its first link straight out of the plug, level — where the simulation pins it.
+        assertEquals(0f, xs[1], 1e-6f)
+        assertEquals(0.02f, ys[1], 1e-6f)
+        assertEquals(-link, zs[1], 1e-6f)
+        var s = link
+        for (i in 2 until xs.size) {
+            s += link
+            if (s >= link + RestCord.LEAD_M) {
                 assertEquals("node $i", slope(xs[i], zs[i]) + Cord.RADIUS_M, ys[i], 1e-5f)
             }
         }
+    }
+
+    // ---- between the hand and the sheet -------------------------------------------------------
+
+    /**
+     * The device between the hand and the sheet, as `PocketDevice` poses it — its flight, and its
+     * centre and axes — driving a [CordRig] over a folded sheet, and measuring the drawn cord.
+     */
+    private class Handover {
+        val rig = CordRig()
+        val flight = RestFlight()
+        /** A sheet in folds a centimetre deep, at the height the device lies at. */
+        val top = { x: Float, z: Float ->
+            RestPose.TABLE_TOP_Y + RestPose.SURFACE_T + 0.006f * (1f + kotlin.math.sin(x / 0.025f) * kotlin.math.sin(z / 0.035f))
+        }
+        private val basis = FloatArray(9)
+        private val lastX = FloatArray(Cord.NODES)
+        private val lastY = FloatArray(Cord.NODES)
+        private val lastZ = FloatArray(Cord.NODES)
+        private val velX = FloatArray(Cord.NODES)
+        private val velY = FloatArray(Cord.NODES)
+        private val velZ = FloatArray(Cord.NODES)
+        private var first = true
+        /**
+         * In the last frame: the most any drawn node moved; and the largest **reversal** — a node
+         * that moved one way last frame and back the other way this one, by the smaller of the two
+         * moves. A move that eases passes through stillness to turn round, so it reverses by
+         * nothing; a shiver reverses by millimetres, every frame.
+         */
+        var moved = 0f
+        var reversal = 0f
+
+        fun frame(dt: Float = 1f / 60f): Boolean {
+            flight.step(dt)
+            val d = flight.device
+            val pitch = Math.toRadians((DEVICE_PITCH_DEG + (RestPose.DEVICE_PITCH_DEG - DEVICE_PITCH_DEG) * d).toDouble())
+            val yaw = Math.toRadians((DEVICE_YAW_DEG + (RestPose.DEVICE_YAW_DEG - DEVICE_YAW_DEG) * d).toDouble())
+            val cp = kotlin.math.cos(pitch).toFloat()
+            val sp = kotlin.math.sin(pitch).toFloat()
+            val cy = kotlin.math.cos(yaw).toFloat()
+            val sy = kotlin.math.sin(yaw).toFloat()
+            // Ry(yaw) · Rx(pitch), column by column — SceneView's order.
+            basis[0] = cy; basis[1] = 0f; basis[2] = -sy
+            basis[3] = sy * sp; basis[4] = cp; basis[5] = cy * sp
+            basis[6] = sy * cp; basis[7] = -sp; basis[8] = cy * cp
+            val changed = rig.step(dt, RestPose.DEVICE_X * d, RestPose.DEVICE_Y * d, RestPose.DEVICE_Z * d, basis, d, top, 1)
+            moved = 0f
+            reversal = 0f
+            for (i in 0 until Cord.NODES) {
+                val dx = rig.shownX[i] - lastX[i]
+                val dy = rig.shownY[i] - lastY[i]
+                val dz = rig.shownZ[i] - lastZ[i]
+                if (!first) {
+                    val m = sqrt(dx * dx + dy * dy + dz * dz)
+                    moved = maxOf(moved, m)
+                    val before = sqrt(velX[i] * velX[i] + velY[i] * velY[i] + velZ[i] * velZ[i])
+                    val dot = dx * velX[i] + dy * velY[i] + dz * velZ[i]
+                    // Turned back by more than 120°.
+                    if (dot < -0.5f * m * before) reversal = maxOf(reversal, minOf(m, before))
+                }
+                velX[i] = if (first) 0f else dx
+                velY[i] = if (first) 0f else dy
+                velZ[i] = if (first) 0f else dz
+            }
+            first = false
+            rig.shownX.copyInto(lastX); rig.shownY.copyInto(lastY); rig.shownZ.copyInto(lastZ)
+            return changed
+        }
+
+        fun run(seconds: Float) = repeat((seconds * 60).toInt()) { frame() }
+
+        /** Laid on the sheet and left there. */
+        fun lying(): Handover {
+            run(1f)
+            flight.target = 1f
+            run(6f)
+            return this
+        }
+    }
+
+    @Test
+    fun `lying on the sheet, it is still - not even redrawn`() {
+        val h = Handover().lying()
+        repeat(60) { assertFalse("redrawn while lying still", h.frame()) }
+    }
+
+    @Test
+    fun `picked up off the sheet, it moves without a shiver`() {
+        val h = Handover().lying()
+        h.flight.target = 0f
+        // The whole way back to the hand, frame by frame. What the owner saw was a shiver — a node
+        // moving one way a frame and back the next, 25–40mm of it at the peak, for a second and a
+        // half after the device was picked up.
+        var worst = 0f
+        repeat(240) {
+            h.frame()
+            worst = maxOf(worst, h.reversal)
+        }
+        assertTrue("a node turned back ${worst * 1000}mm in a frame", worst < 0.001f)
+    }
+
+    @Test
+    fun `set down on the sheet, it lands without a shiver either`() {
+        val h = Handover()
+        h.run(1f)
+        h.flight.target = 1f
+        var worst = 0f
+        repeat(360) {
+            h.frame()
+            worst = maxOf(worst, h.reversal)
+        }
+        assertTrue("a node turned back ${worst * 1000}mm in a frame", worst < 0.001f)
+    }
+
+    @Test
+    fun `every point of it goes one way between the shapes - it never swings back`() {
+        // A slow wobble reverses no faster than it moves, so no single frame shows it: a spring
+        // that overshoots was invisible to the shiver tests. Each node's way between the hanging
+        // and the lying shape must only ever go one way — down on the way down, up on the way up.
+        val h = Handover()
+        h.run(1f)
+        h.flight.target = 1f
+        val before = FloatArray(Cord.NODES)
+        repeat(Cord.NODES) { before[it] = h.rig.morph(it) }
+        repeat(360) {
+            h.frame()
+            for (i in 0 until Cord.NODES) {
+                val now = h.rig.morph(i)
+                assertTrue("node $i went back up the way on the way down", now >= before[i] - 1e-5f)
+                before[i] = now
+            }
+        }
+        h.flight.target = 0f
+        repeat(360) {
+            h.frame()
+            for (i in 0 until Cord.NODES) {
+                val now = h.rig.morph(i)
+                assertTrue("node $i went back down the way on the way up", now <= before[i] + 1e-5f)
+                before[i] = now
+            }
+        }
+    }
+
+    @Test
+    fun `back in the hand, it comes to a stop - and hangs where it did`() {
+        val h = Handover().lying()
+        h.flight.target = 0f
+        h.run(4f)
+        // In the hand and arrived: not redrawn, and nothing moving.
+        repeat(30) { assertFalse("redrawn in the hand", h.frame()) }
+        // Hanging from the plug toward the earbuds, above it: the cord rises out of the frame.
+        val rig = h.rig
+        assertTrue("the far end is up by your ears", rig.shownY[Cord.NODES - 1] > 0.3f)
     }
 }
