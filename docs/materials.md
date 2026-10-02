@@ -1,22 +1,17 @@
 # Custom Filament materials
 
-**Jawon ships four.** Three in the CD room — dust, fog and the neon sign (`neon.mat`,
-additive, drawn from a two-channel mask) — and one in the pocket player's:
+**Jawon ships three**, all in the CD room — dust, fog and the neon sign (`neon.mat`, additive,
+drawn from a two-channel mask).
 
-- `materials/night_window.mat` → `assets/materials/night_window.filamat`, the train window
-  behind the device: a horizon high in the frame (a player is looked *down* at), distant towns
-  along it as a fine glitter that comes and goes, their glow on the haze above, fewer and larger
-  lights below, poles, and the window's own sill across the bottom, warm where the reading lamp
-  catches it — **drawn as a lens renders them** rather than as scenery to be blurred. It was an
-  even field of discs over the whole window until 2026-10-02, which read as a bokeh wallpaper on
-  the phone; `tools/pocket-preview/` is how the rework was judged, and how to judge the next. A depth-of-field pass cannot reach the circle of confusion a 50mm lens focused at
-  30cm throws on a light at infinity — about a fifth of the frame — and this is a handful of
-  discs per pixel. The room integrates the train's speed on the CPU and hands each layer's
-  scroll in, wrapped at exactly the shader's `PERIOD` of cells so the value stays small and the
-  wrap is seamless (`NightWindow`, `TrainMotion`). **SceneView's `PlaneNode` runs V downward**:
-  the first build hung the sky under the device, which the luminance boxes caught first.
+**The pocket player's room has none, on purpose.** It had one — `night_window.mat`, the night
+going past a train window, out of focus — until the room was rebuilt as a desk at night on
+2026-10-02 (`docs/formats.md` §7). The desk that replaced it needs no shader: its light is
+path-traced in Cycles and baked into its texture (`build_pocket_desk()`, `docs/models.md`), and
+glTF's `KHR_materials_unlit` draws a texture exactly as it is, which is the whole job. A baked
+plate looks better than any live material this renderer could run on that surface, and costs a
+texture fetch. Reach for that before writing a `.mat` for anything that does not move.
 
-And the CD room's first two:
+The first two:
 
 - `materials/dust.mat` → `assets/materials/dust.filamat`, which animates every
   dust mote in the vertex shader from a single `time` uniform — and, since
@@ -36,8 +31,8 @@ room uses SceneView's stock materials.
 The `matc` used for both was Filament 1.72.1's, extracted to
 `C:\Users\loh\tools\filament-1.72.1\bin\matc.exe` on the owner's machine (outside
 the repo, as below). The Linux build of the same release compiles byte-identical shaders —
-checked on 2026-10-02 by recompiling the committed `night_window.mat`: only the material's
-random UUID and the trailing checksum differed.
+checked on 2026-10-02 by recompiling the pocket room's `night_window.mat` (since removed): only
+the material's random UUID and the trailing checksum differed.
 
 **Filament's shader library already defines `sq()`** (and the rest of `common_math`), and a
 material that defines its own fails with *"'sq' : function already has a body"*. Use it — and use

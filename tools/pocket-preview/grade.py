@@ -1,9 +1,9 @@
 """
-The device over the window, graded as the pocket room grades it.
+The pocket room's frame, graded as the pocket room grades it.
 
-    python grade.py <window.f32> <device.npy> <out.png>
+    python grade.py <frame.npy> <out.png>
 
-In linear light, then Filament's chain as `PocketAtmosphere` sets it up: bloom over the HDR
+From linear light through Filament's chain as `PocketAtmosphere` sets it up: bloom over the HDR
 threshold only (strength 0.085, added), the tonemapper Filament uses when nothing sets one —
 **`ACESLegacy`, which scales by 1/0.6 before the curve** — then a light vignette and sRGB. Approximations of Filament's own passes — close
 enough to judge a composition and a palette, not to settle a luminance argument; that is still
@@ -57,10 +57,7 @@ def grade(lin, vig_mid=0.68):
 
 
 if __name__ == "__main__":
-    win, dev, out = sys.argv[1:4]
-    d = np.load(dev)
-    h, w = d.shape[:2]
-    bg = np.fromfile(win, dtype=np.float32).reshape(h, w, 4)[::-1, :, :3]
-    lin = d[..., :3] + bg * (1 - d[..., 3:4])
+    frame, out = sys.argv[1:3]
+    lin = np.load(frame)[..., :3]
     Image.fromarray((grade(lin) * 255 + 0.5).astype(np.uint8)).save(out)
     print("graded", out)

@@ -1855,6 +1855,284 @@ def build_disc_shards():
     return objects
 
 
+# ---------------------------------------------------------------------------
+# The pocket player's room: a walnut desk at night, under a desk lamp.
+# ---------------------------------------------------------------------------
+#
+# **The desk is a photograph, path-traced here and carried as a texture.** Nothing in the room
+# moves relative to the lamp — the device lies still on the desk and the lamp does not swing —
+# so the desk's lighting can be computed once, by Cycles, with everything a real-time renderer
+# gets wrong at this scale done right: the soft shadow the device and its cable throw, the
+# contact darkness where the device meets the wood, the warm bounce. It ships as an unlit plane
+# (KHR_materials_unlit): its texels are the radiance the app's own grade expects, so it costs one
+# textured quad at runtime and looks exactly as it does here.
+#
+# The lighting is baked at half a millimetre a texel, because light is smooth; the wood is
+# generated at a tenth of one, because grain is not; the two are multiplied in numpy. Only the
+# cable is real geometry, so it is lit live with the device.
+#
+# The room itself — the lamp, the light the device reflects, the wood — is `pocket_room.py`,
+# shared with `tools/pocket-preview/` and mirrored in `PocketLighting.kt`.
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import pocket_room  # noqa: E402
+
+# SceneView's sunny-16 camera: a light of I candela is 4*pi*I*EXPOSURE Cycles watts, and the
+# world's strength is AMBIENT_INTENSITY * EXPOSURE, so a texel baked here is the value the app's
+# tonemapper receives.
+POCKET_EXPOSURE = 1.0 / (1.2 * 32000.0)
+POCKET_AMBIENT = 2600.0
+DESK_BAKE_PX_PER_MM = 2.0
+DESK_BAKE_SAMPLES = 256
+DESK_PX_PER_MM = 14.0
+# The plate's outer edge fades to black over this much, so a big screen that sees past it sees
+# the room fall away, not a cut.
+DESK_EDGE_FADE_MM = 14.0
+
+
+def _app(x, y, z):
+    """App/device axes, metres -> Blender."""
+    return Vector((x, az(z), y))
+
+
+def _pocket_cable_parts():
+    """The plug, its strain relief and the cable, as meshes in the device's frame."""
+    rubber = principled("PocketCable", base_color=(0.030, 0.030, 0.032), metallic=0.0,
+                        roughness=0.42, coat=0.30, coat_roughness=0.30)
+    body = principled("PocketPlug", base_color=(0.025, 0.025, 0.027), metallic=0.0,
+                      roughness=0.30, coat=0.50, coat_roughness=0.20)
+    chrome = principled("PocketPlugRing", base_color=(0.80, 0.80, 0.82), metallic=1.0,
+                        roughness=0.12)
+    jx, jy, pl = pocket_room.JACK_X / 1000.0, pocket_room.JACK_Y / 1000.0, pocket_room.PLUG_LEN / 1000.0
+    parts = []
+
+    def cylinder_y(name, y0, y1, radius, material):
+        obj = new_mesh_object(name)
+        bm = bmesh.new()
+        # Along app Y, which is Blender Z: a cylinder's own axis, no turning needed.
+        cylinder(bm, jx, az(0.0), (y0 + y1) / 2.0, radius, y1 - y0, segments=48, axis="Z")
+        bm.to_mesh(obj.data)
+        bm.free()
+        obj.data.materials.append(material)
+        finish(obj, bevel_width=0.00015)
+        parts.append(obj)
+
+    cylinder_y("pocket_plug_ring", jy - 0.0005, jy + 0.0016, 0.0027, chrome)
+    cylinder_y("pocket_plug", jy + 0.0016, jy + pl, 0.0031, body)
+
+    def tube(name, points_mm, radius_mm, material):
+        curve = bpy.data.curves.new(name, "CURVE")
+        curve.dimensions = "3D"
+        curve.bevel_depth = radius_mm / 1000.0
+        curve.bevel_resolution = 6
+        curve.resolution_u = 24
+        curve.use_fill_caps = True
+        spline = curve.splines.new("BEZIER")
+        spline.bezier_points.add(len(points_mm) - 1)
+        for bp, (x, y, z) in zip(spline.bezier_points, points_mm):
+            bp.co = _app(x / 1000.0, y / 1000.0, z / 1000.0)
+            bp.handle_left_type = bp.handle_right_type = "AUTO"
+        obj = bpy.data.objects.new(name, curve)
+        bpy.context.collection.objects.link(obj)
+        curve.materials.append(material)
+        bpy.ops.object.select_all(action="DESELECT")
+        obj.select_set(True)
+        bpy.context.view_layer.objects.active = obj
+        bpy.ops.object.convert(target="MESH")
+        obj = bpy.context.view_layer.objects.active
+        bpy.ops.object.shade_auto_smooth(angle=SMOOTH_ANGLE)
+        obj.select_set(False)
+        parts.append(obj)
+
+    jxm, jym, plm = pocket_room.JACK_X, pocket_room.JACK_Y, pocket_room.PLUG_LEN
+    tube("pocket_relief", [(jxm, jym + plm - 0.5, 0.0), (jxm, jym + plm + 5.0, -0.1),
+                           (jxm - 0.3, jym + plm + 8.0, -0.4)], 1.7, body)
+    tube("pocket_cable", pocket_room.CABLE_PATH, pocket_room.CABLE_R, rubber)
+    return parts
+
+
+def _float_image(name, rgb, colourspace):
+    """A float image from an (h, w, 3) or (h, w) array whose row 0 is the top."""
+    h, w = rgb.shape[:2]
+    img = bpy.data.images.new(name, width=w, height=h, alpha=False, float_buffer=True)
+    # **Colourspace first.** Changing it after the pixels are written regenerates the image —
+    # black — which cost the first prototype a desk that rendered as nothing.
+    img.colorspace_settings.name = colourspace
+    rgba = _np().ones((h, w, 4), dtype=_np().float32)
+    if rgb.ndim == 3:
+        rgba[..., :3] = rgb
+    else:
+        rgba[..., 0] = rgba[..., 1] = rgba[..., 2] = rgb
+    img.pixels.foreach_set(rgba[::-1].ravel())
+    img.pack()
+    return img
+
+
+def _bake(obj, kind, passes, w, h):
+    """Bake [kind] on [obj] into a new w x h float image; returns (h, w, 3), row 0 at the top."""
+    np = _np()
+    img = bpy.data.images.new("bake_" + kind.lower(), width=w, height=h, alpha=False, float_buffer=True)
+    nt = obj.data.materials[0].node_tree
+    node = nt.nodes.new("ShaderNodeTexImage")
+    node.image = img
+    nt.nodes.active = node
+    bpy.ops.object.select_all(action="DESELECT")
+    obj.select_set(True)
+    bpy.context.view_layer.objects.active = obj
+    bpy.ops.object.bake(type=kind, pass_filter=passes, width=w, height=h, margin=8,
+                        use_clear=True, target="IMAGE_TEXTURES")
+    px = np.empty(w * h * 4, dtype=np.float32)
+    img.pixels.foreach_get(px)
+    nt.nodes.remove(node)
+    return px.reshape(h, w, 4)[::-1, :, :3].copy()
+
+
+def build_pocket_desk():
+    """
+    The desk with its lighting baked in, and the headphone cable — `pocket_desk.glb`.
+
+    Needs `pocket.glb` built first: the device is imported only to throw its shadow and its
+    contact darkness onto the wood, and is not exported here.
+    """
+    np = _np()
+    scene = bpy.context.scene
+
+    # The device, as an occluder.
+    bpy.ops.import_scene.gltf(filepath=os.path.abspath(os.path.join(OUT_DIR, "pocket.glb")))
+    device = [o for o in scene.objects if o.type == "MESH"]
+
+    cable = _pocket_cable_parts()
+
+    # The desk, as Cycles needs it to bake: walnut at a few pixels a millimetre (the bake
+    # resolves light, not grain), oiled, under a whisper of coat.
+    col_lo, rough_lo = pocket_room.walnut(px_per_mm=4.0)
+    desk = new_mesh_object("pocket_desk")
+    bm = bmesh.new()
+    w2, h2 = pocket_room.DESK_W / 2.0, pocket_room.DESK_H / 2.0
+    z = az(pocket_room.DESK_Z)
+    verts = [bm.verts.new((x, z, y)) for (x, y) in ((-w2, -h2), (w2, -h2), (w2, h2), (-w2, h2))]
+    bm.faces.new(verts)
+    bm.to_mesh(desk.data)
+    bm.free()
+    uv = desk.data.uv_layers.new(name="UVMap").data
+    for poly in desk.data.polygons:
+        for li in poly.loop_indices:
+            v = desk.data.vertices[desk.data.loops[li].vertex_index].co
+            uv[li].uv = ((v.x + w2) / (2 * w2), (v.z + h2) / (2 * h2))
+    wood = bpy.data.materials.new("PocketDeskBake")
+    wood.use_nodes = True
+    nt = wood.node_tree
+    bsdf = nt.nodes["Principled BSDF"]
+    tex = nt.nodes.new("ShaderNodeTexImage")
+    tex.image = _float_image("desk_albedo_lo", col_lo, "Linear Rec.709")
+    nt.links.new(tex.outputs["Color"], bsdf.inputs["Base Color"])
+    rtex = nt.nodes.new("ShaderNodeTexImage")
+    rtex.image = _float_image("desk_rough_lo", rough_lo, "Non-Color")
+    nt.links.new(rtex.outputs["Color"], bsdf.inputs["Roughness"])
+    bsdf.inputs["Coat Weight"].default_value = 0.15
+    bsdf.inputs["Coat Roughness"].default_value = 0.25
+    desk.data.materials.append(wood)
+
+    # The lamp.
+    bpy.ops.object.light_add(type="SPOT", location=_app(*pocket_room.LAMP_POSITION))
+    lamp = bpy.context.active_object
+    lamp.data.energy = 4.0 * math.pi * pocket_room.LAMP_CANDELA * POCKET_EXPOSURE
+    lamp.data.color = pocket_room.LAMP_COLOUR
+    lamp.data.spot_size = math.radians(pocket_room.LAMP_CONE_DEG)
+    lamp.data.spot_blend = pocket_room.LAMP_BLEND
+    lamp.data.shadow_soft_size = pocket_room.LAMP_RADIUS
+    lamp.rotation_euler = (_app(*pocket_room.LAMP_AIM) - _app(*pocket_room.LAMP_POSITION)) \
+        .to_track_quat("-Z", "Y").to_euler()
+
+    # The room, as the world: the same light the app's IBL carries.
+    env = pocket_room.equirect_blender(1024, 512)
+    world = bpy.data.worlds.new("PocketRoom")
+    scene.world = world
+    world.use_nodes = True
+    eimg = bpy.data.images.new("pocket_room_env", 1024, 512, alpha=False, float_buffer=True)
+    eimg.pixels.foreach_set(np.concatenate([env, np.ones(env.shape[:2] + (1,))], axis=2)
+                            .astype(np.float32).ravel())
+    etex = world.node_tree.nodes.new("ShaderNodeTexEnvironment")
+    etex.image = eimg
+    background = world.node_tree.nodes["Background"]
+    world.node_tree.links.new(etex.outputs["Color"], background.inputs["Color"])
+    background.inputs["Strength"].default_value = POCKET_AMBIENT * POCKET_EXPOSURE
+
+    scene.render.engine = "CYCLES"
+    scene.cycles.device = "CPU"
+    scene.cycles.samples = DESK_BAKE_SAMPLES
+    scene.cycles.seed = 7
+    bw = int(round(pocket_room.DESK_W * 1000.0 * DESK_BAKE_PX_PER_MM))
+    bh = int(round(pocket_room.DESK_H * 1000.0 * DESK_BAKE_PX_PER_MM))
+    light = _bake(desk, "DIFFUSE", {"DIRECT", "INDIRECT"}, bw, bh)
+    sheen = _bake(desk, "GLOSSY", {"DIRECT", "INDIRECT", "COLOR"}, bw, bh)
+
+    # The plate: fine walnut times the baked light, plus the oiled sheen.
+    col_hi, _ = pocket_room.walnut(px_per_mm=DESK_PX_PER_MM)
+    H, W = col_hi.shape[:2]
+
+    def up(a):
+        """Bilinear up to the plate's size."""
+        h, w = a.shape[:2]
+        ys = (np.arange(H) + 0.5) * h / H - 0.5
+        xs = (np.arange(W) + 0.5) * w / W - 0.5
+        y0 = np.clip(np.floor(ys).astype(int), 0, h - 1)
+        x0 = np.clip(np.floor(xs).astype(int), 0, w - 1)
+        y1 = np.clip(y0 + 1, 0, h - 1)
+        x1 = np.clip(x0 + 1, 0, w - 1)
+        ty = np.clip(ys - y0, 0, 1)[:, None, None]
+        tx = np.clip(xs - x0, 0, 1)[None, :, None]
+        top = a[y0][:, x0] * (1 - tx) + a[y0][:, x1] * tx
+        bottom = a[y1][:, x0] * (1 - tx) + a[y1][:, x1] * tx
+        return top * (1 - ty) + bottom * ty
+
+    plate = col_hi * up(light) + up(sheen)
+    yy, xx = np.mgrid[0:H, 0:W]
+    edge_px = DESK_EDGE_FADE_MM * DESK_PX_PER_MM
+    dist = np.minimum(np.minimum(xx, W - 1 - xx), np.minimum(yy, H - 1 - yy)) / edge_px
+    plate *= np.clip(dist, 0.0, 1.0)[..., None] ** 1.5
+    plate = np.clip(plate, 0.0, 1.0)
+    srgb = np.where(plate <= 0.0031308, 12.92 * plate, 1.055 * np.power(plate, 1.0 / 2.4) - 0.055)
+    print("JAVON-BUILD desk plate %dx%d, linear mean %s, max %.3f"
+          % (W, H, np.round(plate.reshape(-1, 3).mean(0), 4), float(plate.max())))
+
+    # As a JPEG, so the plate is a couple of megabytes and not ten.
+    out = bpy.data.images.new("pocket_desk_plate", width=W, height=H, alpha=False)
+    rgba = np.ones((H, W, 4), dtype=np.float32)
+    rgba[..., :3] = srgb
+    out.pixels.foreach_set(rgba[::-1].ravel())
+    import tempfile
+    path = os.path.join(tempfile.mkdtemp(prefix="javon_desk_"), "pocket_desk_plate.jpg")
+    # Saved as-is: `save_render` would put the scene's view transform (AgX by default) on it.
+    out.filepath_raw = path
+    out.file_format = "JPEG"
+    scene.render.image_settings.quality = 88
+    out.save(quality=88)
+    plate_img = bpy.data.images.load(path)
+    plate_img.pack()
+
+    # The desk as it ships: the plate, unlit. A Background shader is what the exporter writes
+    # as KHR_materials_unlit; an Emission shader would come out as an emissive surface, which
+    # Filament scales by exposure.
+    unlit = bpy.data.materials.new("PocketDesk")
+    unlit.use_nodes = True
+    nt = unlit.node_tree
+    nt.nodes.clear()
+    ptex = nt.nodes.new("ShaderNodeTexImage")
+    ptex.image = plate_img
+    bg = nt.nodes.new("ShaderNodeBackground")
+    output = nt.nodes.new("ShaderNodeOutputMaterial")
+    nt.links.new(ptex.outputs["Color"], bg.inputs["Color"])
+    nt.links.new(bg.outputs["Background"], output.inputs["Surface"])
+    desk.data.materials.clear()
+    desk.data.materials.append(unlit)
+
+    for obj in device:
+        bpy.data.objects.remove(obj, do_unlink=True)
+    bpy.data.objects.remove(lamp, do_unlink=True)
+    return [desk] + cable
+
+
 def export(objects, filename):
     bpy.ops.object.select_all(action="DESELECT")
     for obj in objects:
@@ -1942,6 +2220,11 @@ def main():
     if not skip("pocket.glb"):
         clear_scene()
         paths.append(export(build_pocket(), "pocket.glb"))
+
+    # The desk under it, and the cable out of its jack. After pocket.glb, which it imports.
+    if not skip("pocket_desk.glb"):
+        clear_scene()
+        paths.append(export(build_pocket_desk(), "pocket_desk.glb"))
 
     # Exported together, unlike the case parts: these eight are one object that
     # has come apart, the app wants them all or none, and it addresses them by

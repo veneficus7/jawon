@@ -70,15 +70,6 @@ import kotlinx.coroutines.withContext
 import kotlin.math.max
 
 /**
- * The key light: where the carriage's ceiling lamp hangs relative to the device, and how hard it
- * shines. Aimed back at the device from there.
- */
-private val KEY_POSITION = floatArrayOf(-0.12f, 0.50f, 0.42f)
-private const val KEY_CANDELA = 1_300f
-private const val KEY_CONE_INNER_RAD = 0.35f
-private const val KEY_CONE_OUTER_RAD = 0.80f
-
-/**
  * How the device is turned toward you: a few degrees off square, because an object photographed
  * dead-on shows none of its thickness, and the thickness is where the polished back and the
  * chamfer live.
@@ -91,9 +82,6 @@ private const val KEY_CONE_OUTER_RAD = 0.80f
 private const val DEVICE_PITCH_DEG = -6f
 private const val DEVICE_YAW_DEG = 15f
 
-/** How bright the night outside is drawn, relative to the material's own tuning. */
-private const val WINDOW_GAIN = 0.8f
-
 /** The rate the room is drawn at when nobody is touching it — see the note in onFrame. */
 private const val POCKET_IDLE_FPS = 60f
 
@@ -104,14 +92,15 @@ private const val SLIDE_TICK_MS = 50L
 private const val COVER_WINDOW = 4
 private const val COVER_CACHE_MAX = 40
 
-/** How far a passing lamp reaches — past the device from either window, with room to spare. */
-private const val LAMP_FALLOFF_M = 6f
-
-/** The window's picture — see `materials/night_window.mat` and `NightWindow`. */
-private const val NIGHT_WINDOW_MATERIAL_ASSET = "materials/night_window.filamat"
-
 /** Where the device's model lives. Eight objects in one file — see `docs/models.md`. */
 const val POCKET_MODEL_ASSET = "models/pocket.glb"
+
+/**
+ * The desk it lies on, and the headphone cable in its jack: the wood with its light baked in,
+ * drawn unlit (`build_pocket_desk()`, `PocketLighting`). In the device's own frame, so a child
+ * of the device's node — the desk was baked at this pose and has to keep it.
+ */
+const val POCKET_DESK_ASSET = "models/pocket_desk.glb"
 
 /**
  * The lens, in millimetres against Filament's 24mm sensor height.
@@ -147,8 +136,9 @@ private const val SCREEN_CENTRE_Y = 0.0255f
 private const val SCREEN_Z = 0.00525f - 0.0010f + 0.0001f
 
 /**
- * The iPod mode's room: a pocket player at life size, lit by a carriage at night — and now
- * working. The wheel turns through real menus built from the library, and plays from them.
+ * The iPod mode's room: a pocket player at life size, lying on a walnut desk at night under a
+ * desk lamp, headphones in — and working. The wheel turns through real menus built from the
+ * library, and plays from them.
  *
  * A sibling of `WallSceneScreen`, never a branch inside it — `ENGINEERING.md`'s standard for a new
  * format room. What it shares, it shares by calling: the same [WallSceneViewModel] (so a record
@@ -168,8 +158,13 @@ fun PocketRoomScreen(
     val filamentView = rememberView(engine)
     val renderer = rememberRenderer(engine)
 
+    // The room the device reflects, turned to the device's pose: the same room the desk under it
+    // was baked in (PocketLighting).
     val environment = remember(engine, environmentLoader) {
-        PocketLighting.createEnvironment(engine) { cubemap ->
+        PocketLighting.createEnvironment(
+            engine,
+            PocketLighting.devicePose(DEVICE_PITCH_DEG, DEVICE_YAW_DEG)
+        ) { cubemap ->
             environmentLoader.iblPrefilter.specularFilter(cubemap)
         }
     }
@@ -178,12 +173,8 @@ fun PocketRoomScreen(
         focalLength = FOCAL_LENGTH_MM.toDouble()
     }
 
-    // The window behind the device. Created here, handed to its PlaneNode below, which owns it.
-    val windowMaterial = remember(materialLoader) {
-        materialLoader.createMaterial(NIGHT_WINDOW_MATERIAL_ASSET)
-    }
-
     val deviceModel = rememberModelInstance(modelLoader, POCKET_MODEL_ASSET)
+    val deskModel = rememberModelInstance(modelLoader, POCKET_DESK_ASSET)
     val ydpi = remember(context) { max(context.resources.displayMetrics.ydpi, 1f) }
     // How often the room is actually drawn — the CD room's cadence, reused by call. See onFrame.
     val cadence = remember(context) {
@@ -458,9 +449,10 @@ fun PocketRoomScreen(
 
     BackHandler(enabled = nav.stack.size > 1) { device.back() }
 
-    // **The phone is the device**, so tilting it turns the device against the world: the
-    // carriage's reflections slide across the glass and the polished edge — first-order, twice
-    // the tilt, as a turned mirror's do. Only the change from how it is held counts (TiltFilter).
+    // **The phone is the device**, so tilting it turns the device against the world: the room's
+    // reflections slide across the glass and the polished edge — first-order, twice the tilt, as
+    // a turned mirror's do, and as they would if you leant over the desk to look. The desk's baked
+    // light and the lamp stay put. Only the change from how it is held counts (TiltFilter).
     // Listening only while the room is on screen: a sensor left running in the background is
     // battery for nothing.
     val tilt = remember { TiltFilter() }
@@ -533,8 +525,8 @@ fun PocketRoomScreen(
                 device.onFrame(SystemClock.uptimeMillis())
                 // **Drawn at 60 unless a thumb is on the wheel.** SceneView renders every vsync —
                 // 120 a second on the owner's phone — and nothing in this room moves fast enough
-                // to need it except the device answering a touch: the night outside drifts, the
-                // lamps take a second or more to pass. So the clocks all advance every vsync as
+                // to need it except the device answering a touch: the screen's slideshow and the
+                // tilt's reflections are both slow. So the clocks all advance every vsync as
                 // before and only the rasterising drops to 60, which is half the GPU work on a
                 // 120Hz panel (traps 28-30: the CD room's problem is heat, not jank). A finger
                 // down or the wheel still rocking is back to every vsync on the next frame.
@@ -552,63 +544,6 @@ fun PocketRoomScreen(
                 if (!cadence.shouldDraw(divisor)) renderer.skipNextFrames(1)
             }
         ) {
-            // **The carriage's ceiling lamp: the key light.** Warm, above and just behind you, aimed
-            // at the device, so the anodised face has a sheen running down it and the wheel's
-            // coat a highlight. At SceneView's default exposure a light has to be in the
-            // thousand-candela range to register against the carriage's ambient at all: the two
-            // lamps this replaced were 2.6 and 3.4cd, about one per cent of the ambient on the
-            // device's face, and tuning them moved nothing (see docs/models.md, the print's note).
-            LightNode(
-                type = LightManager.Type.SPOT,
-                position = Position(KEY_POSITION[0], KEY_POSITION[1], KEY_POSITION[2]),
-                direction = Direction(-KEY_POSITION[0], -KEY_POSITION[1], -KEY_POSITION[2]),
-                apply = {
-                    color(1.0f, 0.86f, 0.70f)
-                    intensityCandela(KEY_CANDELA)
-                    spotLightCone(KEY_CONE_INNER_RAD, KEY_CONE_OUTER_RAD)
-                    falloff(3f)
-                    castShadows(false)
-                }
-            )
-            // **The lights going past**, as light: a fixed pool the frame loop moves and dims —
-            // see PassingLamps. Off by intensity, never by hiding (trap 24).
-            repeat(PassingLamps.COUNT) { index ->
-                LightNode(
-                    type = LightManager.Type.POINT,
-                    position = Position(0f, 0f, 2f),
-                    apply = {
-                        color(1f, 0.6f, 0.3f)
-                        intensityCandela(0f)
-                        falloff(LAMP_FALLOFF_M)
-                        castShadows(false)
-                    },
-                    nodeApply = { device.lampNodes[index] = this }
-                )
-            }
-            // **The window**, behind everything: the night going past, out of focus. Its
-            // instance is made in this scope because a PlaneNode destroys the one it is handed.
-            val outside = remember(windowMaterial) {
-                materialLoader.createInstance(windowMaterial).apply {
-                    setParameter("size", NightWindow.PLANE_W_M, NightWindow.PLANE_H_M)
-                    setParameter("scroll", 0f, 0f, 0f, 0f)
-                    setParameter("bob", 0f, 0f)
-                    // A little under full: the lights outside are the room, and the device in
-                    // front of them is the subject — at 1.0 they competed with it.
-                    setParameter("gain", WINDOW_GAIN)
-                }
-            }
-            device.windowMaterial = outside
-            PlaneNode(
-                size = Size(NightWindow.PLANE_W_M, NightWindow.PLANE_H_M, 0f),
-                normal = Direction(z = 1f),
-                materialInstance = outside,
-                position = Position(0f, 0f, NightWindow.PLANE_Z_M),
-                apply = {
-                    isTouchable = false
-                    isShadowCaster = false
-                    isShadowReceiver = false
-                }
-            )
             deviceModel?.let { instance ->
                 // Turned a few degrees off square: an object photographed dead-on shows none
                 // of its thickness, and the thickness is where the polished back and the
@@ -626,9 +561,47 @@ fun PocketRoomScreen(
                             device.bindParts(renderableNodes)
                         }
                     )
-                    // The screen, as a child of the device so it turns with it. Unlit because
-                    // an LCD is its own light: nothing in the carriage should be able to
-                    // darken what the backlight is putting out.
+                    // **The desk and the headphone cable.** The wood's light — the lamp's pool, the
+                    // device's soft shadow and the dark where it touches — is baked into it and
+                    // drawn unlit, so nothing here may cast onto it or light it again; the cable
+                    // and its plug are ordinary lit materials, and catch the lamp below.
+                    deskModel?.let { desk ->
+                        ModelNode(
+                            desk,
+                            apply = {
+                                isTouchable = false
+                                isShadowCaster = false
+                                isShadowReceiver = false
+                            }
+                        )
+                    }
+                    // **The desk lamp**, in the device's frame like the desk it was baked over:
+                    // up and to the left, aimed past the device so the device lies in its
+                    // falloff. Every number is `PocketLighting`'s, and `pocket_room.py`'s.
+                    LightNode(
+                        type = LightManager.Type.SPOT,
+                        position = Position(
+                            PocketLighting.LAMP_POSITION[0],
+                            PocketLighting.LAMP_POSITION[1],
+                            PocketLighting.LAMP_POSITION[2]
+                        ),
+                        direction = Direction(
+                            PocketLighting.LAMP_AIM[0] - PocketLighting.LAMP_POSITION[0],
+                            PocketLighting.LAMP_AIM[1] - PocketLighting.LAMP_POSITION[1],
+                            PocketLighting.LAMP_AIM[2] - PocketLighting.LAMP_POSITION[2]
+                        ),
+                        apply = {
+                            color(
+                                PocketLighting.LAMP_COLOUR[0],
+                                PocketLighting.LAMP_COLOUR[1],
+                                PocketLighting.LAMP_COLOUR[2]
+                            )
+                            intensityCandela(PocketLighting.LAMP_CANDELA)
+                            spotLightCone(PocketLighting.LAMP_CONE_INNER_RAD, PocketLighting.LAMP_CONE_OUTER_RAD)
+                            falloff(PocketLighting.LAMP_FALLOFF_M)
+                            castShadows(false)
+                        }
+                    )
                     // **The screen**: LcdPanel's texture on a plane 0.1mm over the panel, a child of
                     // the device so it turns with it. Unlit because an LCD is its own light. The
                     // panel's release is declared *before* the plane, so Compose — forgetting in
@@ -865,7 +838,6 @@ private class PocketDevice(
 
     var deviceNode: Node? = null
     var cameraNode: CameraNode? = null
-    var windowMaterial: com.google.android.filament.MaterialInstance? = null
     var tilt: TiltFilter? = null
     var indirectLight: com.google.android.filament.IndirectLight? = null
 
@@ -873,10 +845,6 @@ private class PocketDevice(
     private val worldTurn = FloatArray(9).also { it[0] = 1f; it[4] = 1f; it[8] = 1f }
     private var turnPitch = Float.NaN
     private var turnYaw = Float.NaN
-    val lampNodes = arrayOfNulls<io.github.sceneview.node.LightNode>(PassingLamps.COUNT)
-
-    private val train = TrainMotion()
-    private val passing = PassingLamps()
 
     private val gesture = WheelGesture()
     private val rock = WheelRock()
@@ -974,32 +942,8 @@ private class PocketDevice(
         }
         rockWasMoving = rock.isMoving
 
-        // The night going past: the train's distance, split into each layer's parallax.
-        train.advance(dt)
-        windowMaterial?.let { outside ->
-            outside.setParameter("scroll", train.scroll(0), train.scroll(1), train.scroll(2), train.scroll(3))
-            val (bobX, bobY) = train.bob()
-            outside.setParameter("bob", bobX, bobY)
-        }
-
-        // The world turned against the phone's tilt: the environment, and the lamps in it.
+        // The world turned against the phone's tilt.
         turnWorld()
-
-        // And the lamps out there that land on the device, keeping pace with the train.
-        passing.advance(dt, pace = train.speed() / NightWindow.BASE_SPEED_M_S)
-        val m = worldTurn
-        passing.lamps.forEachIndexed { i, lamp ->
-            val node = lampNodes[i] ?: return@forEachIndexed
-            if (lamp.active) {
-                node.position = Position(
-                    m[0] * lamp.x + m[3] * lamp.y + m[6] * lamp.z,
-                    m[1] * lamp.x + m[4] * lamp.y + m[7] * lamp.z,
-                    m[2] * lamp.x + m[5] * lamp.y + m[8] * lamp.z
-                )
-                node.color = Float4(lamp.r, lamp.g, lamp.b, 1f)
-            }
-            node.setIntensityCandela(lamp.intensity)
-        }
 
         // The backlight timer, as set in the device's own Settings; 0 is Always On.
         if (backlight.value && backlightMs > 0L && now - lastInputAt > backlightMs) backlight.value = false

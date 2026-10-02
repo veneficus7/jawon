@@ -139,6 +139,13 @@ the object.
 
 ## 3. The train window, technique by technique
 
+**Superseded on 2026-10-02**: the pocket player's room is a desk at night now, rebuilt from
+scratch on the owner's call (`docs/formats.md` §7 step 5). Kept for its techniques — moving
+lights across polish, a picture as a stream texture — which are still how a room with motion
+in it would be done. The desk took the other road from this section's: **a static room baked in
+Cycles and drawn unlit** (`docs/models.md`, `pocket_desk.glb`), which buys a path-traced shadow
+and contact for the cost of a texture, and is the better trade wherever the room holds still.
+
 Prioritised for this scene. Costs are estimates until measured per traps 28–30.
 
 **The room's light is the lights going past.** Two or three moving `POINT`/`SPOT` lights

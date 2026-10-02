@@ -33,7 +33,7 @@ cassette. A **mode** stays the light.
 | How is vinyl browsed? | **Crate-digging, from the start** | Records upright in bins, flicked through — not face-out on a wall. §5. |
 | The same shop, or a room per format? | **A room of its own for each format** | **Reverses the locked "one room" decision** (`ENGINEERING.md`). The CD room stays exactly as it is; each new format gets its own. |
 | Do the four light modes reach the new rooms? | **No** — "other rooms are separate" | Vesper · Glacies · Vigilia · Officina are the CD room's own. Each new room is lit its own way. |
-| The pocket player's room? | **A train window** | §4. |
+| The pocket player's room? | **A desk at night** — a train window until 2026-10-02 | Rebuilt from scratch on his call that day, idea and all. §4, §7 step 5. |
 | Its controls? | **The iPod's, as closely as a touchscreen allows** | He has never used one; the point is the experience people remember as satisfying. §4 sets out what that experience was. |
 | Its name? | **Later** | Not "iPod" either way (§4). |
 | The visual bar? | **"Dont hold back at all … hyper realism and beauty … the highest quality of 3d graphics and animation"** | For every new room, and for animation as much as for stills. §4 sets out what that means for this one. |
@@ -123,12 +123,13 @@ effect on the way back — no mid-session teardown, and no brush with trap 1.
   product's look is Apple's. Its own name, proportions and face, with no Apple marks, keep
   the interaction without borrowing the brand. Not legal advice — check before shipping, the
   way `docs/server.md` treats what may be served. **Open:** the name.
-- **Its room: a train window — decided.** The device fills the screen, so the room is what
-  lies behind and around it. Proposed: **at night**, like the rest of Jawon — the dark window,
-  lights outside streaking past as out-of-focus bokeh, and **their reflections sliding across
-  the device's glass and its polished back**. That last part is the room: the passing lights
-  are its lighting, and a glossy object under moving light is the most convincing thing a
-  renderer can show. Day or night is the owner's call.
+- **Its room: a desk at night — decided 2026-10-02.** The device fills the screen, so the room
+  is what it lies on and what lights it: a walnut desk under a desk lamp, headphones plugged
+  in, looked down on. It was **a train window** until then — the night streaking past as bokeh,
+  its lights sliding across the glass — and the owner asked for it rebuilt "from the start …
+  even the idea": however good the picture behind it, a device in front of a backdrop is a
+  product shot, and nothing in the frame said where it was. A desk does, with a shadow and a
+  contact the eye reads before anything else (§7 step 5).
 - **The bar is "as realistic and high quality as possible" — decided.** What that means here:
   - **It is seen closer than anything in the CD room.** At life size, filling the screen, every
     seam, bevel, the wheel's slight recess and the screen's inset glass is on show, so the model
@@ -226,7 +227,37 @@ One thing at a time, checked on the owner's phone between each (the working agre
    not a project, and every later model benefits (`docs/realism.md` §1.5).
 4. **The device model** — body, wheel, centre button, glass and bezel, at real size — in
    `build_models.py`, with bounds checks added to `docs/models.md` the way the case's are.
-5. **Its room** — the train window (§4), lit by the lights going past
+5. **Its room — a desk at night, rebuilt from scratch on 2026-10-02** on the owner's call: "I dont
+   like the background and 3d environment itself around ipod … completely rebuild it from the
+   start … even the idea." The train (below) put the device *in front of* a picture, and a device
+   filling the screen against a window is a product shot against a backdrop, however good the
+   backdrop. **The room is now the thing the device lies on**: a walnut desk at night under a
+   desk lamp, a pair of headphones plugged into its top and the cable running off across the
+   wood, looked down on as a player on a desk is. What makes it read as real is what the train
+   could never have had — the soft shadow under the device, the contact darkness where it
+   touches, the lamp's pool spilling over the grain — and those are **path-traced in Cycles and
+   baked into the desk's texture** (`pocket_desk.glb`, `docs/models.md`), so they cost a
+   texture fetch. The device is lit live by the same room: the lamp as a spot, and an
+   environment (`PocketLighting`) holding the lamp's shade, the ceiling its open top lights, the
+   desk and a window across the room, built already turned to the device's pose.
+   **The lamp is aimed past the device**, so the device lies in its falloff rather than its pool.
+   The wheel is black plastic at 7% albedo and walnut is 6%: any light that makes the wood a
+   readable brown made the wheel the grey the owner turned down on 2026-09-22, and in the pool's
+   centre it read lighter than the anodised body. In the falloff the face takes its gradient
+   from the ceiling instead, which the metal reflects far more strongly than the black wheel
+   diffuses. **One copy of the room is `tools/models/pocket_room.py`** (the bake and the preview
+   read it) **and one is `PocketLighting.kt`**; `PocketLightingTest` pins the second to the
+   first's numbers. The pose they share is SceneView's own — `Ry(yaw) · Rx(pitch)`, pinned too —
+   which the preview had backwards until this rebuild. Removed with the train: `night_window.mat`,
+   `NightWindow`/`TrainMotion`, `PassingLamps` and the carriage's key light. Nothing in the room
+   animates on its own any more, so at rest it costs the device and one textured quad.
+   **Judged in the calibrated preview (`tools/pocket-preview/`), not yet on the phone** — and the
+   lamp's falloff is the first thing to check there: Filament's spot is a different curve from
+   Cycles', fitted to it across the device (`PocketLighting.LAMP_CONE_*`).
+
+   **The train window, 2026-09-26 to 2026-10-02 — removed.** Kept here because what it
+   taught about lighting this device carries over:
+   Lit by the lights going past
    (`docs/realism.md` §3). **The window is up (2026-09-26)**: `night_window.mat`, the night
    out of focus at three depths with poles and a rocking carriage, behind the device.
    **Recomposed on 2026-10-02**, because it read as a bokeh wallpaper: its discs were spread
@@ -263,7 +294,7 @@ One thing at a time, checked on the owner's phone between each (the working agre
    had no edge against the night (the face at its foot 12 of 255). The front reflects azimuth ~60°
    from elevation 3° at the foot to 20° at the top, and the softbox only reached down to 12.6° —
    so the softbox now has a **skirt**, its light on the panelling below it, fading downward
-   (`PocketLighting.SKIRT_*`, held in place by `PocketLightingTest`). In the calibrated preview:
+   (`PocketLighting.SKIRT_*` — gone with the train). In the calibrated preview:
    the foot 13 -> 23, beside the screen 39 -> 45, the wheel 13 -> 16, the gradient kept and the
    face a shade less bronze. Nothing else was added: four other fixtures aimed at the edges
    measured nothing, because at this pose the top, right and bottom walls face away. **Not yet
@@ -277,12 +308,11 @@ One thing at a time, checked on the owner's phone between each (the working agre
    **one lit-glass treatment** (bright top edge, a crease at the waist); times use **tabular
    figures** and a true minus; covers carry a hairline so a pale sleeve keeps its edge; and a
    record with no art gets drawn quavers where a fallback-font "♪" was.
-   **And the phone's tilt turns the world** (`TiltFilter`): the environment and the passing
-   lamps rotate against how far the phone has just been tilted, so reflections slide across
-   the glass and the edge — first-order, twice the tilt, as a turned mirror's do. The window
-   behind is left still on purpose: for a phone turning about its own middle, a world-fixed
-   picture behind it barely moves, and making it swing would be the stylised parallax of a
-   wallpaper, not a device in the hand.
+   **And the phone's tilt turns the world** (`TiltFilter`): the environment rotates against how
+   far the phone has just been tilted, so reflections slide across the glass and the edge —
+   first-order, twice the tilt, as a turned mirror's do, and as they would if you leant over the
+   desk. The desk's baked light and the lamp stay where they are: a tilt is a change of view,
+   and the light on wood does not move with the viewer.
 6. **Browsing on its screen — done (2026-09-26).** Cover Flow first on the main menu — the
    covers in perspective on a glossy black floor, eased to the wheel, a cover turned over by
    the centre to list its tracks on the back — then Albums (filed as iTunes filed them, "The"
