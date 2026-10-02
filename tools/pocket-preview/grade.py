@@ -4,8 +4,8 @@ The device over the window, graded as the pocket room grades it.
     python grade.py <window.f32> <device.npy> <out.png>
 
 In linear light, then Filament's chain as `PocketAtmosphere` sets it up: bloom over the HDR
-threshold only (strength 0.085, added), the tonemapper Filament uses when nothing sets one
-(ACES, Narkowicz's fit), a light vignette, sRGB. Approximations of Filament's own passes — close
+threshold only (strength 0.085, added), the tonemapper Filament uses when nothing sets one —
+**`ACESLegacy`, which scales by 1/0.6 before the curve** — then a light vignette and sRGB. Approximations of Filament's own passes — close
 enough to judge a composition and a palette, not to settle a luminance argument; that is still
 the phone's (`tools/emulator/README.md`).
 """
@@ -14,6 +14,12 @@ import numpy as np
 from PIL import Image
 
 BLOOM_STRENGTH = 0.085
+
+# Filament's ACESLegacy tone mapper is ACES with a brightness of 1/0.6 applied first. Leaving it
+# out read every surface about 40% darker than the phone; with it, the device's boxes landed
+# within a few levels of the owner's S25 Ultra measurements of 2026-09-27 (front beside the
+# screen 39 against 40, front at the foot 13 against 12, polished side 41 against 35).
+ACES_LEGACY_BRIGHTNESS = 1.0 / 0.6
 
 
 def blur(img, sigma):
@@ -38,6 +44,7 @@ def srgb(x):
 
 def grade(lin, vig_mid=0.68):
     h, w, _ = lin.shape
+    lin = lin * ACES_LEGACY_BRIGHTNESS
     bright = np.maximum(lin - 1.0, 0.0)
     halo = sum(blur(bright, s * w / 720.0) for s in (2, 4, 8, 16, 32, 64)) / 6.0
     lin = lin + BLOOM_STRENGTH * halo * 3.0

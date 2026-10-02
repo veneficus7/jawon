@@ -22,7 +22,7 @@ the window is only judged fairly across several. Set `BPY_PYTHON` if bpy lives i
 | `render_window.js` + `window.html` | Runs **`night_window.mat`'s own fragment block**, unchanged, in WebGL2, over exactly the patch of the plane the phone frames (`framing.json`), with each layer's scroll computed as `TrainMotion.scroll` computes it | Yes — the same code, in linear light, before the tonemapper |
 | `frame_device.py` | The device in Cycles from the room's camera: 50mm on Filament's 24mm sensor, life-size distance, the 15° / −6° pose; lit by the carriage IBL at `AMBIENT_INTENSITY` and the key spot at its candela, at SceneView's sunny-16 exposure | Close — Cycles, not Filament; no passing lamps |
 | `carriage_env.py` | `PocketLighting.radiance`, ported to numpy | **A copy — it drifts if `PocketLighting.kt` changes and this does not** |
-| `grade.py` | Device over window in linear light, then bloom over the threshold, ACES, a light vignette, sRGB | An approximation of `PocketAtmosphere`'s passes |
+| `grade.py` | Device over window in linear light, then bloom over the threshold, `ACESLegacy` (1/0.6, then ACES), a light vignette, sRGB | An approximation of `PocketAtmosphere`'s passes, calibrated against the phone (below) |
 
 ## What it is for, and what it is not
 
@@ -31,8 +31,12 @@ strips above and below it hold anything, whether the window reads as a place or 
 The 2026-10-02 rework of the window was designed against it — the first frame it produced is
 what showed the original discs spread evenly over the whole window, sky included.
 
-It does **not** settle a brightness argument. That is the phone's, with fixed luminance boxes
-(`tools/emulator/README.md`), and the phone has lost every argument to them before.
+**And it is calibrated against the phone.** With `grade.py` applying `ACESLegacy`'s 1/0.6 first,
+the device's boxes landed within a few levels of the owner's S25 Ultra measurements of 2026-09-27:
+front beside the screen 39 against 40, front at the foot 13 against 12, polished side 41 against
+35. Without that factor everything read about 40% dark — which is worth knowing about any
+preview of a Filament scene. So it is good for brightness *relative to that day*; the phone,
+with fixed luminance boxes (`tools/emulator/README.md`), is still what settles it.
 
 Framing is the S25 Ultra's (1440×3120 at ~498ppi). A smaller phone frames a slightly taller patch
 of the plane, so the horizon sits nearer its top edge; change `framing.json` to look.
