@@ -9,6 +9,8 @@ PI = np.pi
 VOID = np.array([0.0038, 0.0042, 0.0058])
 SOFTBOX_AZ, SOFTBOX_EL, SOFTBOX_HALF_AZ, SOFTBOX_HALF_EL, SOFTBOX_EDGE = 1.04, 0.52, 0.50, 0.30, 0.10
 SOFTBOX_COLOUR = np.array([3.10, 2.62, 2.05])
+SKIRT_GAIN, SKIRT_LOW_EL = 0.42, -0.20
+SKIRT_COLOUR = np.array([1.0, 0.93, 0.84])
 WINDOW_AZ, WINDOW_HALF_AZ, WINDOW_LOW_EL, WINDOW_HIGH_EL = -PI / 2, 1.05, -0.22, 0.55
 WINDOW_COLOUR = np.array([0.24, 0.30, 0.42]); CITY_GLOW = np.array([0.20, 0.13, 0.075])
 WINDOW_LIGHTS = [(-2.30, 0.06, 2.6, 1.6, 0.7), (-1.95, 0.12, 1.4, 1.3, 1.2), (-1.62, 0.03, 2.8, 1.9, 0.9),
@@ -36,6 +38,13 @@ def radiance(dx, dy, dz, P=None):
     box = soft_rect(ad(az, sb_az), SOFTBOX_HALF_AZ, SOFTBOX_EDGE) * soft_rect(el - sb_el, SOFTBOX_HALF_EL, SOFTBOX_EDGE)
     fall = 0.75 + 0.25 * (1 - np.clip(np.abs(ad(az, sb_az)) / SOFTBOX_HALF_AZ, 0, 1))
     out += P.get('SOFTBOX_COLOUR', SOFTBOX_COLOUR) * (box * fall)[..., None]
+    # The softbox's skirt, below it, starting softly under its edge (PocketLighting.SKIRT_*).
+    top = sb_el - SOFTBOX_HALF_EL
+    across = soft_rect(ad(az, sb_az), SOFTBOX_HALF_AZ * 1.1, 0.25)
+    onset = 1 - ss(top - SOFTBOX_EDGE * 0.5, top + SOFTBOX_EDGE * 0.5, el)
+    left = 1 - np.clip((top - el) / (top - SKIRT_LOW_EL), 0, 1)
+    skirt = P.get('SKIRT_GAIN', SKIRT_GAIN) * SOFTBOX_COLOUR[0] * across * onset * left ** 1.5
+    out += SKIRT_COLOUR * skirt[..., None]
     inw = soft_rect(ad(az, WINDOW_AZ), WINDOW_HALF_AZ, 0.12) * ss(WINDOW_LOW_EL - 0.05, WINDOW_LOW_EL + 0.05, el) * \
         (1 - ss(WINDOW_HIGH_EL - 0.08, WINDOW_HIGH_EL + 0.08, el))
     glow = np.exp(-((el - 0.02) / 0.10) ** 2)

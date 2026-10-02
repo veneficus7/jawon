@@ -21,6 +21,7 @@ the window is only judged fairly across several. Set `BPY_PYTHON` if bpy lives i
 |---|---|---|
 | `render_window.js` + `window.html` | Runs **`night_window.mat`'s own fragment block**, unchanged, in WebGL2, over exactly the patch of the plane the phone frames (`framing.json`), with each layer's scroll computed as `TrainMotion.scroll` computes it | Yes — the same code, in linear light, before the tonemapper |
 | `frame_device.py` | The device in Cycles from the room's camera: 50mm on Filament's 24mm sensor, life-size distance, the 15° / −6° pose; lit by the carriage IBL at `AMBIENT_INTENSITY` and the key spot at its candela, at SceneView's sunny-16 exposure | Close — Cycles, not Filament; no passing lamps |
+| `frame_device.py --probe` | The device as a perfect mirror in an environment coloured by direction: prints the azimuth and elevation each part of it reflects, in `PocketLighting`'s terms | Exact — it is geometry |
 | `carriage_env.py` | `PocketLighting.radiance`, ported to numpy | **A copy — it drifts if `PocketLighting.kt` changes and this does not** |
 | `grade.py` | Device over window in linear light, then bloom over the threshold, `ACESLegacy` (1/0.6, then ACES), a light vignette, sRGB | An approximation of `PocketAtmosphere`'s passes, calibrated against the phone (below) |
 
@@ -37,6 +38,12 @@ front beside the screen 39 against 40, front at the foot 13 against 12, polished
 35. Without that factor everything read about 40% dark — which is worth knowing about any
 preview of a Filament scene. So it is good for brightness *relative to that day*; the phone,
 with fixed luminance boxes (`tools/emulator/README.md`), is still what settles it.
+
+**Before moving a light, probe.** `python frame_device.py --probe` says what each part of the
+device actually reflects. The 2026-10-02 lift spent one round on four fixtures aimed at the
+device's top, right and bottom edges, by hand-worked reflection angles, before the probe showed
+those walls face away at this pose and the bevels are 3–4 pixels on the phone: the outline is the
+face's own brightness, and the face looks at azimuth ~60°, elevation 3–20°.
 
 Framing is the S25 Ultra's (1440×3120 at ~498ppi). A smaller phone frames a slightly taller patch
 of the plane, so the horizon sits nearer its top edge; change `framing.json` to look.

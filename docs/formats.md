@@ -259,6 +259,15 @@ One thing at a time, checked on the owner's phone between each (the working agre
    vignette, and ambient occlusion at a 3.5mm radius for the wheel's recess and the screen's
    inset. The screen itself reads as a backlit panel now: a cool never-quite-white, a falloff to
    its corners, and the window lip's shadow along its top and left edges.
+   **Lifted on 2026-10-02**, on the owner's go-ahead: the lower half of the device and its base
+   had no edge against the night (the face at its foot 12 of 255). The front reflects azimuth ~60°
+   from elevation 3° at the foot to 20° at the top, and the softbox only reached down to 12.6° —
+   so the softbox now has a **skirt**, its light on the panelling below it, fading downward
+   (`PocketLighting.SKIRT_*`, held in place by `PocketLightingTest`). In the calibrated preview:
+   the foot 13 -> 23, beside the screen 39 -> 45, the wheel 13 -> 16, the gradient kept and the
+   face a shade less bronze. Nothing else was added: four other fixtures aimed at the edges
+   measured nothing, because at this pose the top, right and bottom walls face away. **Not yet
+   on the phone.**
    **Refined on 2026-10-02**, judged in a DOM mock of the screen and Cycles renders of the model, not
    yet on the phone: the window grew a 1.8mm **black surround** round the unchanged picture (the
    lip shadow drawn on the screen went with it — it now falls on the surround, as on a real one);

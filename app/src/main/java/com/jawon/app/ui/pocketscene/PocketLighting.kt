@@ -64,6 +64,29 @@ object PocketLighting {
     private const val SOFTBOX_EDGE = 0.10f
     private val SOFTBOX_COLOUR = floatArrayOf(3.10f, 2.62f, 2.05f)
 
+    /**
+     * **The softbox's skirt: its light on the panelling below the lamp, falling away downward.**
+     *
+     * The front reflects the softbox only down to elevation ~0.2 rad — its top third or so — and
+     * below that it reflected nothing at all: the foot of the face sat at 12 of 255 on the owner's
+     * phone, against a window that is black there too, so the lower half of the device and its
+     * base had no edge and sank into the night. A softbox lights the wall under it; this is that,
+     * from the softbox's own lower edge down to [SKIRT_LOW_EL], fading as `(1 - t)^1.5`.
+     *
+     * **Measured in `tools/pocket-preview/`**, whose boxes matched the phone's of 2026-09-27 to a
+     * few levels: the foot 13 -> 24, the face beside the screen 39 -> 45, the wheel 13 -> 16 —
+     * the gradient kept, top to foot, and the face a shade *less* bronze than before (red over
+     * blue 1.42 -> 1.31), because the skirt is a paler warm than the lamp. Four other fixtures
+     * were tried with it — a strip over the luggage rack for the top edge, the window pillar for
+     * the right, the lap and the sill for the base — and measured nothing: at this pose the
+     * device's top, right and bottom walls face away, and its bevels are 3–4 pixels on the phone,
+     * so the outline *is* the face's brightness. A mirror probe (the device rendered as a mirror
+     * in an environment coloured by direction) is what showed it.
+     */
+    private const val SKIRT_GAIN = 0.42f
+    private const val SKIRT_LOW_EL = -0.20f
+    private val SKIRT_COLOUR = floatArrayOf(1.0f, 0.93f, 0.84f)
+
     // **No glare on the screen's glass, on purpose.** A thin tube thirty times the softbox's
     // brightness, placed exactly where the glass reflects, left no visible streak over the lit
     // screen — and a probe at ten times that showed why: the glass *does* reflect it, but a rough
@@ -146,6 +169,17 @@ object PocketLighting {
         // Brighter toward its middle, as a diffuser is.
         val falloff = 0.75f + 0.25f * (1f - (abs(angleDelta(az, SOFTBOX_AZ)) / SOFTBOX_HALF_AZ).coerceIn(0f, 1f))
         for (c in 0..2) out[c] += SOFTBOX_COLOUR[c] * box * falloff
+
+        // Its skirt, below it: starting softly under the softbox's own edge, so nothing as smooth
+        // as the screen's glass can find a line where one ends and the other begins.
+        val skirtTop = SOFTBOX_EL - SOFTBOX_HALF_EL
+        if (el < skirtTop + SOFTBOX_EDGE * 0.5f) {
+            val across = softRect(angleDelta(az, SOFTBOX_AZ), SOFTBOX_HALF_AZ * 1.1f, 0.25f)
+            val onset = 1f - softStep(skirtTop - SOFTBOX_EDGE * 0.5f, skirtTop + SOFTBOX_EDGE * 0.5f, el)
+            val left = 1f - ((skirtTop - el) / (skirtTop - SKIRT_LOW_EL)).coerceIn(0f, 1f)
+            val skirt = SKIRT_GAIN * SOFTBOX_COLOUR[0] * across * onset * left * sqrt(left)
+            for (c in 0..2) out[c] += SKIRT_COLOUR[c] * skirt
+        }
 
         // The window, and the city low in it.
         val inWindow = softRect(angleDelta(az, WINDOW_AZ), WINDOW_HALF_AZ, 0.12f) *
