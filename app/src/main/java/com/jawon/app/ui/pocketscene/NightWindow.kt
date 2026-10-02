@@ -8,10 +8,12 @@ import kotlin.math.sin
 /**
  * The window behind the pocket player: where it is in the room, and how the night outside moves.
  *
- * The picture itself is `materials/night_window.mat` — lights as the out-of-focus discs a lens
- * makes of them, poles as soft sweeps, the sky as a gradient. What lives here is everything the
- * shader is told: how far each depth has travelled, and how the carriage rocks. Pure, so the
- * motion can be reasoned about without a device.
+ * The picture itself is `materials/night_window.mat` — a horizon in the strip above the device
+ * with towns glittering along it, fewer and larger lights below, poles going past, the window's
+ * sill across the bottom, all as the out-of-focus shapes a lens makes of them. What lives here is
+ * everything the shader is told: how far each depth has travelled, and how the carriage rocks.
+ * Pure, so the motion can be reasoned about without a device. To look at the result without
+ * one, `tools/pocket-preview/`.
  */
 object NightWindow {
 

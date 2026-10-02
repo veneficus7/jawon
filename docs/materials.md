@@ -4,9 +4,12 @@
 additive, drawn from a two-channel mask) — and one in the pocket player's:
 
 - `materials/night_window.mat` → `assets/materials/night_window.filamat`, the train window
-  behind the device: out-of-focus lights at three depths, poles, the sky, and the carriage
-  light's reflection on the glass, **drawn as a lens renders them** rather than as scenery to be
-  blurred. A depth-of-field pass cannot reach the circle of confusion a 50mm lens focused at
+  behind the device: a horizon high in the frame (a player is looked *down* at), distant towns
+  along it as a fine glitter that comes and goes, their glow on the haze above, fewer and larger
+  lights below, poles, and the window's own sill across the bottom, warm where the reading lamp
+  catches it — **drawn as a lens renders them** rather than as scenery to be blurred. It was an
+  even field of discs over the whole window until 2026-10-02, which read as a bokeh wallpaper on
+  the phone; `tools/pocket-preview/` is how the rework was judged, and how to judge the next. A depth-of-field pass cannot reach the circle of confusion a 50mm lens focused at
   30cm throws on a light at infinity — about a fifth of the frame — and this is a handful of
   discs per pixel. The room integrates the train's speed on the CPU and hands each layer's
   scroll in, wrapped at exactly the shader's `PERIOD` of cells so the value stays small and the
@@ -32,7 +35,14 @@ room uses SceneView's stock materials.
 
 The `matc` used for both was Filament 1.72.1's, extracted to
 `C:\Users\loh\tools\filament-1.72.1\bin\matc.exe` on the owner's machine (outside
-the repo, as below).
+the repo, as below). The Linux build of the same release compiles byte-identical shaders —
+checked on 2026-10-02 by recompiling the committed `night_window.mat`: only the material's
+random UUID and the trailing checksum differed.
+
+**Filament's shader library already defines `sq()`** (and the rest of `common_math`), and a
+material that defines its own fails with *"'sq' : function already has a body"*. Use it — and use
+it rather than `pow(x, 2.0)` in a gaussian, because GLSL leaves `pow` undefined for a negative
+base.
 
 ## What the stock materials can and cannot do
 

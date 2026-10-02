@@ -228,7 +228,16 @@ One thing at a time, checked on the owner's phone between each (the working agre
    `build_models.py`, with bounds checks added to `docs/models.md` the way the case's are.
 5. **Its room** — the train window (§4), lit by the lights going past
    (`docs/realism.md` §3). **The window is up (2026-09-26)**: `night_window.mat`, the night
-   out of focus at three depths with poles and a rocking carriage, behind the device. **And
+   out of focus at three depths with poles and a rocking carriage, behind the device.
+   **Recomposed on 2026-10-02**, because it read as a bokeh wallpaper: its discs were spread
+   evenly over the whole window, sky included, and the device floated in front of them with
+   nothing to say where it was. A player is looked down at, so the window behind it now shows a
+   **horizon in the strip above the device** — towns along it as a fine glitter that comes and
+   goes, their sodium glow on the haze, a navy sky going teal low down — fewer, larger lights
+   below, and **the window's sill across the bottom strip**, warm where the reading lamp catches
+   it and still while the night slides past. Cool outside, warm inside. Designed against a
+   full-frame preview (`tools/pocket-preview/`: the shader itself in WebGL, the device in Cycles
+   at the app's camera and exposure, Filament's grade) — **not yet seen on the phone**. **And
    the lights going past are light**: a key spot for the carriage's ceiling lamp, and a pool of
    lamps on an irregular schedule whose glints slide across the glass and whose light rims the
    edge (`PassingLamps`). First tuning on the AVD: a lamp behind you at 900–2600cd washed the

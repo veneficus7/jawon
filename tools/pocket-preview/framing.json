@@ -1,0 +1,23 @@
+{
+  "_": "The phone's frame onto the pocket room. Every number mirrors the app; keep them in step.",
+  "screen_w_px": 1440,
+  "screen_h_px": 3120,
+  "ydpi": 498,
+  "focal_mm": 50,
+  "sensor_h_mm": 24,
+  "device_pitch_deg": -6,
+  "device_yaw_deg": 15,
+  "plane_z_m": -0.55,
+  "plane_m": [0.50, 0.70],
+  "visible_w_m": 0.1953,
+  "visible_h_m": 0.4231,
+  "picture_distance_m": 0.85,
+  "layer_depth_m": [420, 85, 26, 4.2],
+  "layer_cell_m": [0.050, 0.072, 0.110, 0.95],
+  "window_gain": 0.8,
+  "ambient_intensity": 2600,
+  "key_position_m": [-0.12, 0.50, 0.42],
+  "key_candela": 1300,
+  "key_cone_rad": [0.35, 0.80],
+  "key_colour": [1.0, 0.86, 0.70]
+}
