@@ -1,3 +1,5 @@
+@file:OptIn(ExperimentalTextApi::class)
+
 package com.jawon.app.ui.pocketscene
 
 import androidx.compose.foundation.Canvas
@@ -16,12 +18,15 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -30,18 +35,30 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.Shadow
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
+import androidx.compose.ui.graphics.drawscope.rotate
+import androidx.compose.ui.graphics.drawscope.scale
+import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.ExperimentalTextApi
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.Font
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontVariation
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
-import com.jawon.app.ui.theme.InterFamily
+import com.jawon.app.R
 
 /**
  * The LCD's resolution, in pixels.
@@ -63,14 +80,47 @@ private const val TITLE_PX = 52
 private const val ROW_PX = 50
 private const val SCROLLBAR_PX = 14
 
+/**
+ * The screen's type: Inter, at **every weight the screen actually sets**, each a real instance
+ * of the variable font.
+ *
+ * The screen used the app's `InterFamily`, which declares only 400 and 500 — so every SemiBold
+ * here (the title, the highlighted row, the times) quietly drew Medium, and every Bold (the song
+ * on Now Playing, a slider's reading) drew Medium thickened by the rasteriser, Android's fake
+ * bold, which smears counters shut at exactly the sizes this screen uses. Nothing in a build or
+ * a test says so; only the letters do. The font file has the whole weight axis, so the screen
+ * asks for what it means.
+ */
+internal val LcdFace = FontFamily(
+    Font(R.font.inter_variable, weight = FontWeight.Normal, variationSettings = FontVariation.Settings(FontVariation.weight(400))),
+    Font(R.font.inter_variable, weight = FontWeight.Medium, variationSettings = FontVariation.Settings(FontVariation.weight(500))),
+    Font(R.font.inter_variable, weight = FontWeight.SemiBold, variationSettings = FontVariation.Settings(FontVariation.weight(600))),
+    Font(R.font.inter_variable, weight = FontWeight.Bold, variationSettings = FontVariation.Settings(FontVariation.weight(700)))
+)
+
 private val LcdWhite = Color(0xFFF3F5F7)
 private val LcdInk = Color(0xFF15181B)
 private val LcdDim = Color(0xFF5B636B)
-private val TitleTop = Color(0xFFEEF1F4)
-private val TitleBottom = Color(0xFFD3D9DF)
 private val TitleRule = Color(0xFFA9B2BB)
-private val TrackTop = Color(0xFFD9DEE3)
-private val TrackBottom = Color(0xFFF1F3F5)
+private val TrackTop = Color(0xFFC9CFD6)
+private val TrackBottom = Color(0xFFF0F2F4)
+/** The outline every bar's trough is drawn with. */
+private val BarEdge = Color(0xFF9FA9B3)
+
+/**
+ * The title bar, as a backlit panel draws one: a bright hairline along its top, a light upper
+ * half, and a crease at the waist into a slightly deeper lower half. Under it, a rule that is
+ * one dark line and one light — engraved, not drawn.
+ */
+internal val TitleGloss = Brush.verticalGradient(
+    0f to Color(0xFFF1F3F6),
+    0.5f to Color(0xFFE3E7EB),
+    0.5f to Color(0xFFD9DEE3),
+    1f to Color(0xFFCDD3D9)
+)
+private val TitleShine = Color(0xFFFDFEFE)
+private val RuleDark = Color(0xFF949EA8)
+private val RuleLight = Color(0xFFE2E6EA)
 
 /** A screen with its backlight off and nothing to show — what "switched off" looks like. */
 private val LcdOff = Color(0xFF0C0E10)
@@ -80,9 +130,44 @@ private val LcdOff = Color(0xFF0C0E10)
  * screen is the iPod's on purpose (the owner wants that experience back), but its exact look
  * is Apple's, and a teal drawn from the app's own palette keeps the one without borrowing
  * the other.
+ *
+ * **Lit from inside, the way the classic's bar was**: a bright hairline along the top where the
+ * backlight catches its edge, a light upper half, a crease at the waist, a deeper lower half and
+ * a dark lip under it. A plain two-stop gradient, which this was, reads as a flat stripe of
+ * paint; the crease is what makes it read as light behind a panel. The same treatment carries to
+ * everything that wears the colour — the scrollbar's thumb, the progress and volume fills, the
+ * scrubber's diamond, the play glyph — so the screen has one material for "lit", not five fills.
  */
-private val SelectTop = Color(0xFF4FA597)
-private val SelectBottom = Color(0xFF276A5F)
+private val SelectShine = Color(0xFF7FD0C3)
+private val SelectTop = Color(0xFF4FB2A3)
+private val SelectUpper = Color(0xFF33998A)
+private val SelectLower = Color(0xFF25867A)
+private val SelectBottom = Color(0xFF1A6A5F)
+private val SelectEdge = Color(0xFF13544B)
+
+/** The gloss, top to bottom across whatever height it is drawn at. */
+private fun selectGloss(top: Float = 0f, bottom: Float = Float.POSITIVE_INFINITY): Brush =
+    Brush.verticalGradient(
+        0f to SelectTop, 0.5f to SelectUpper, 0.5f to SelectLower, 1f to SelectBottom,
+        startY = top, endY = bottom
+    )
+
+/** White type on the bar, with the faint dark edge above it that keeps it crisp on the light half. */
+internal val OnSelectShadow = Shadow(color = Color(0x59002822), offset = Offset(0f, -1f), blurRadius = 0.5f)
+
+/** The highlighted row's background — see [SelectShine]. */
+internal fun Modifier.selectionBar(): Modifier = drawBehind {
+    drawRect(selectGloss(0f, size.height))
+    drawRect(SelectShine, size = Size(size.width, HAIRLINE_PX))
+    drawRect(SelectEdge, topLeft = Offset(0f, size.height - HAIRLINE_PX), size = Size(size.width, HAIRLINE_PX))
+}
+
+/**
+ * The finest line the screen draws, in LCD pixels. One and a half rather than one: the screen
+ * reaches the eye through a texture sampled on a plane turned 15° away, and a single pixel line
+ * comes through that as a grey smear.
+ */
+private const val HAIRLINE_PX = 1.5f
 
 /**
  * One row as the screen draws it: a label, and at its right either a chevron (it leads on), a
@@ -255,9 +340,13 @@ fun PocketLcd(
 
 /**
  * What makes the picture an LCD rather than an image of one: a backlit panel is not a perfect
- * white, it falls off toward its corners, and it sits a millimetre under the plate's window —
- * whose lip, lit from above, leaves a thin shadow along the panel's top and left edges.
- * Multiplied over the content, so blacks stay black and only light is tinted.
+ * white, and it falls off toward its corners. Multiplied over the content, so blacks stay black
+ * and only light is tinted.
+ *
+ * **No window-lip shadow any more.** This used to darken the picture's top and left edges as
+ * the plate's window lip would. The window now has a black surround between its edge and the
+ * picture (`POCKET_SCREEN_MASK` in the model script), so the lip's shadow falls on that, as on
+ * a real one — and drawn here it only read as grime down the left of every row.
  */
 @Composable
 private fun LcdGlass() {
@@ -272,16 +361,6 @@ private fun LcdGlass() {
                 radius = size.maxDimension * 0.62f
             ),
             blendMode = BlendMode.Multiply
-        )
-        // The window's lip, casting down onto the panel from the lamp above and to the left.
-        val lip = size.height * 0.045f
-        drawRect(
-            brush = Brush.verticalGradient(listOf(Color(0x66000000), Color.Transparent), startY = 0f, endY = lip),
-            size = Size(size.width, lip)
-        )
-        drawRect(
-            brush = Brush.horizontalGradient(listOf(Color(0x44000000), Color.Transparent), startX = 0f, endX = lip * 0.8f),
-            size = Size(lip * 0.8f, size.height)
         )
     }
 }
@@ -300,29 +379,48 @@ private fun TitleBar(title: String, playing: Boolean) {
         modifier = Modifier
             .fillMaxWidth()
             .height(px(TITLE_PX))
-            .background(Brush.verticalGradient(listOf(TitleTop, TitleBottom)))
+            .titleBar()
     ) {
         if (playing) PlayGlyph(Modifier.align(Alignment.CenterStart).padding(start = px(18)))
         Text(
             text = title,
-            fontFamily = InterFamily,
+            fontFamily = LcdFace,
             fontWeight = FontWeight.SemiBold,
             fontSize = lcdSp(25),
             color = LcdInk,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
+            // Pressed into the bar rather than printed on it: a white line under each letter.
+            style = LocalTextStyle.current.copy(shadow = TitleEmboss),
             modifier = Modifier
                 .align(Alignment.Center)
                 .padding(horizontal = px(84))
         )
         BatteryGlyph(Modifier.align(Alignment.CenterEnd).padding(end = px(16)))
     }
-    Box(
+    TitleRuleLine()
+}
+
+private val TitleEmboss = Shadow(color = Color(0xB3FFFFFF), offset = Offset(0f, 1f), blurRadius = 0.5f)
+
+/** The title bar's background — see [TitleGloss]. Shared with the back of a turned cover. */
+internal fun Modifier.titleBar(): Modifier = drawBehind {
+    drawRect(TitleGloss)
+    drawRect(TitleShine, size = Size(size.width, HAIRLINE_PX))
+}
+
+/** The rule under a title bar: one dark line over one light one. */
+@Composable
+internal fun TitleRuleLine() {
+    val density = LocalDensity.current
+    Canvas(
         modifier = Modifier
             .fillMaxWidth()
-            .height(px(2))
-            .background(TitleRule)
-    )
+            .height(with(density) { 2.toDp() })
+    ) {
+        drawRect(RuleDark, size = Size(size.width, size.height / 2f))
+        drawRect(RuleLight, topLeft = Offset(0f, size.height / 2f), size = Size(size.width, size.height / 2f))
+    }
 }
 
 @Composable
@@ -336,7 +434,7 @@ private fun MenuBody(menu: LcdScreen.Menu, slide: Float) {
         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             Text(
                 text = menu.emptyText,
-                fontFamily = InterFamily,
+                fontFamily = LcdFace,
                 fontWeight = FontWeight.Medium,
                 fontSize = lcdSp(24),
                 color = LcdDim
@@ -351,30 +449,31 @@ private fun MenuBody(menu: LcdScreen.Menu, slide: Float) {
         ) {
             menu.rows.forEachIndexed { index, row ->
                 val isSelected = index == menu.selected
+                val onBar = if (isSelected) LocalTextStyle.current.copy(shadow = OnSelectShadow) else LocalTextStyle.current
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(px(ROW_PX))
-                        .then(
-                            if (isSelected) {
-                                Modifier.background(Brush.verticalGradient(listOf(SelectTop, SelectBottom)))
-                            } else {
-                                Modifier
-                            }
-                        )
+                        .then(if (isSelected) Modifier.selectionBar() else Modifier)
                         .padding(start = px(18), end = px(if (scrolls) 10 else 18)),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
                         text = row.label,
-                        fontFamily = InterFamily,
-                        fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Medium,
+                        fontFamily = LcdFace,
+                        // **One weight, highlighted or not.** It was Medium, going SemiBold under
+                        // the bar — so every turn of the wheel re-set two rows at new widths and the
+                        // words shuffled sideways as the highlight passed. The classic changed only
+                        // the colour. SemiBold, because type this small reaches the eye through a
+                        // texture, a cover glass and a lens, and Medium came through thin.
+                        fontWeight = FontWeight.SemiBold,
                         fontSize = lcdSp(27),
                         color = if (isSelected) Color.White else LcdInk,
                         maxLines = 1,
                         // The highlighted row scrolls what does not fit, as the classic's did;
                         // the rest keep the ellipsis.
                         overflow = if (isSelected) TextOverflow.Clip else TextOverflow.Ellipsis,
+                        style = onBar,
                         modifier = Modifier
                             .weight(1f)
                             .then(if (isSelected) Modifier.lcdMarquee() else Modifier)
@@ -382,16 +481,17 @@ private fun MenuBody(menu: LcdScreen.Menu, slide: Float) {
                     if (row.value != null) {
                         Text(
                             text = row.value,
-                            fontFamily = InterFamily,
+                            fontFamily = LcdFace,
                             fontWeight = FontWeight.Medium,
                             fontSize = lcdSp(24),
                             color = if (isSelected) Color.White.copy(alpha = 0.86f) else LcdDim,
                             maxLines = 1,
+                            style = onBar,
                             modifier = Modifier.padding(start = px(12), end = px(if (row.leadsOn) 12 else 0))
                         )
                     }
                     if (row.checked) Tick(if (isSelected) Color.White else SelectBottom)
-                    if (row.leadsOn) Chevron(if (isSelected) Color.White else LcdInk.copy(alpha = 0.55f))
+                    if (row.leadsOn) Chevron(if (isSelected) Color.White else LcdInk.copy(alpha = 0.42f))
                 }
             }
         }
@@ -486,14 +586,19 @@ private fun Scrollbar(top: Int, total: Int) {
     val w = with(density) { SCROLLBAR_PX.toDp() }
     Canvas(modifier = Modifier.width(w).fillMaxHeight()) {
         val trackH = size.height
-        drawRect(Brush.horizontalGradient(listOf(TrackTop, TrackBottom)))
+        // A trough, shaded from its left wall as an inset is.
+        drawRect(Brush.horizontalGradient(0f to TrackTop, 0.45f to Color(0xFFE9ECEF), 1f to LcdWhite))
         drawLine(TitleRule, Offset(0f, 0f), Offset(0f, trackH), strokeWidth = 1.5f)
         val visible = PocketMenus.VISIBLE_ROWS
         val thumbH = (trackH * visible / total).coerceAtLeast(size.width * 1.5f)
         val span = (total - visible).coerceAtLeast(1)
         val y = (trackH - thumbH) * (top.toFloat() / span)
+        // The thumb wears the selection's gloss, turned on its side.
         drawRoundRect(
-            brush = Brush.horizontalGradient(listOf(SelectTop, SelectBottom)),
+            brush = Brush.horizontalGradient(
+                0f to SelectTop, 0.5f to SelectUpper, 0.5f to SelectLower, 1f to SelectBottom,
+                startX = 2.5f, endX = size.width - 2f
+            ),
             topLeft = Offset(2.5f, y + 2f),
             size = Size(size.width - 4.5f, thumbH - 4f),
             cornerRadius = CornerRadius(size.width / 2f, size.width / 2f)
@@ -532,7 +637,12 @@ private fun NowPlayingBody(np: LcdScreen.NowPlaying) {
     }
 }
 
-/** The words, a few lines at a time: the one being sung bold and in the selection's colour. */
+/**
+ * The words, a few lines at a time: the one being sung in the selection's colour, a weight up.
+ *
+ * **The same size as the rest.** It used to grow two pixels as well, which re-set the whole line
+ * wider every time the singing moved on; the weight and the colour are enough to find it by.
+ */
 @Composable
 private fun LyricsPage(words: LcdScreen.LyricsView, modifier: Modifier) {
     val density = LocalDensity.current
@@ -545,7 +655,7 @@ private fun LyricsPage(words: LcdScreen.LyricsView, modifier: Modifier) {
         if (words.note != null) {
             Text(
                 text = words.note,
-                fontFamily = InterFamily,
+                fontFamily = LcdFace,
                 fontWeight = FontWeight.Medium,
                 fontSize = lcdSp(23),
                 color = LcdDim,
@@ -557,9 +667,9 @@ private fun LyricsPage(words: LcdScreen.LyricsView, modifier: Modifier) {
             val sung = i == words.current
             Text(
                 text = line.ifBlank { "·" },
-                fontFamily = InterFamily,
-                fontWeight = if (sung) FontWeight.Bold else FontWeight.Medium,
-                fontSize = lcdSp(if (sung) 25 else 23),
+                fontFamily = LcdFace,
+                fontWeight = if (sung) FontWeight.SemiBold else FontWeight.Medium,
+                fontSize = lcdSp(23),
                 lineHeight = lcdSp(29),
                 color = if (sung) SelectBottom else LcdInk.copy(alpha = 0.62f),
                 maxLines = 1,
@@ -608,7 +718,7 @@ private fun CoverAndNames(np: LcdScreen.NowPlaying, art: Int) {
         ) {
             Text(
                 text = np.trackTitle,
-                fontFamily = InterFamily,
+                fontFamily = LcdFace,
                 fontWeight = FontWeight.Bold,
                 fontSize = lcdSp(27),
                 lineHeight = lcdSp(32),
@@ -619,7 +729,7 @@ private fun CoverAndNames(np: LcdScreen.NowPlaying, art: Int) {
             Spacer(Modifier.height(px(8)))
             Text(
                 text = np.artist,
-                fontFamily = InterFamily,
+                fontFamily = LcdFace,
                 fontWeight = FontWeight.Medium,
                 fontSize = lcdSp(23),
                 color = LcdInk,
@@ -630,7 +740,7 @@ private fun CoverAndNames(np: LcdScreen.NowPlaying, art: Int) {
             Spacer(Modifier.height(px(4)))
             Text(
                 text = np.album,
-                fontFamily = InterFamily,
+                fontFamily = LcdFace,
                 fontWeight = FontWeight.Medium,
                 fontSize = lcdSp(23),
                 color = LcdDim,
@@ -641,30 +751,118 @@ private fun CoverAndNames(np: LcdScreen.NowPlaying, art: Int) {
             Spacer(Modifier.height(px(14)))
             Text(
                 text = "${np.trackNumber} of ${np.trackCount}",
-                fontFamily = InterFamily,
+                fontFamily = LcdFace,
                 fontWeight = FontWeight.Medium,
                 fontSize = lcdSp(20),
                 color = LcdDim,
-                maxLines = 1
+                maxLines = 1,
+                style = tabular()
             )
         }
     }
 }
 
+/**
+ * A cover, with a hairline round it. **The hairline is for the pale ones**: a sleeve that is
+ * mostly white on a screen that is mostly white had no edge at all, and its reflection below it
+ * read as a smudge rather than a reflection of anything.
+ */
 @Composable
 private fun Cover(cover: ImageBitmap?, modifier: Modifier) {
     if (cover != null) {
-        Image(bitmap = cover, contentDescription = null, contentScale = ContentScale.Crop, modifier = modifier)
+        Image(
+            bitmap = cover,
+            contentDescription = null,
+            contentScale = ContentScale.Crop,
+            modifier = modifier.drawWithContent {
+                drawContent()
+                coverEdge(CoverEdge)
+            }
+        )
     } else {
-        // No artwork: a plain sleeve with a note on it, the way the classic drew a record
-        // without art — never an empty hole in the layout.
-        Box(
-            modifier = modifier.background(Brush.verticalGradient(listOf(Color(0xFFD5DADF), Color(0xFFB9C0C7)))),
-            contentAlignment = Alignment.Center
-        ) {
-            Text(text = "♪", fontSize = lcdSp(90), color = Color(0xFF8A939C))
+        // No artwork: a plain sleeve with two quavers on it, the way the classic drew a record
+        // without art — never an empty hole in the layout. **Drawn, not typed**: this was a "♪",
+        // which Inter does not have, so the one glyph on the screen came out of whatever face
+        // the phone fell back to.
+        Canvas(modifier = modifier) {
+            drawRect(Brush.verticalGradient(listOf(Color(0xFFE3E7EA), Color(0xFFC3CAD0))))
+            val s = size.minDimension * 0.42f
+            translate(left = (size.width - s) / 2f, top = (size.height - s) / 2f) {
+                scale(s / 100f, s / 100f, pivot = Offset.Zero) {
+                    drawQuavers(Color(0xFF98A1AA))
+                }
+            }
+            coverEdge(Color(0x1A000000))
         }
     }
+}
+
+private val CoverEdge = Color(0x24000000)
+
+/** A hairline just inside a cover's edge — inside, so it is never clipped half away. */
+private fun DrawScope.coverEdge(color: Color) {
+    val half = HAIRLINE_PX / 2f
+    drawRect(
+        color,
+        topLeft = Offset(half, half),
+        size = Size(size.width - HAIRLINE_PX, size.height - HAIRLINE_PX),
+        style = Stroke(width = HAIRLINE_PX)
+    )
+}
+
+/** Two beamed quavers in a 100-unit box: heads tipped as printed ones are, stems, and the beam. */
+private fun DrawScope.drawQuavers(color: Color) {
+    for ((cx, cy) in listOf(27f to 78f, 77f to 68f)) {
+        rotate(-22f, pivot = Offset(cx, cy)) {
+            drawOval(color, topLeft = Offset(cx - 15f, cy - 11f), size = Size(30f, 22f))
+        }
+    }
+    drawRect(color, topLeft = Offset(37.5f, 16f), size = Size(6f, 62f))
+    drawRect(color, topLeft = Offset(87.5f, 6f), size = Size(6f, 62f))
+    val beam = Path().apply {
+        moveTo(37.5f, 16f)
+        lineTo(93.5f, 6f)
+        lineTo(93.5f, 20f)
+        lineTo(37.5f, 30f)
+        close()
+    }
+    drawPath(beam, color)
+}
+
+/**
+ * A bar as every one on the screen is drawn: an inset trough across the canvas, lit fill from
+ * [from] to [to], and an outline. [heightFraction] is the bar's share of the canvas's height.
+ */
+private fun DrawScope.drawBar(heightFraction: Float, from: Float, to: Float) {
+    val h = size.height * heightFraction
+    val top = (size.height - h) / 2f
+    val corner = CornerRadius(h / 2f, h / 2f)
+    drawRoundRect(
+        brush = Brush.verticalGradient(listOf(TrackTop, TrackBottom), startY = top, endY = top + h),
+        topLeft = Offset(0f, top),
+        size = Size(size.width, h),
+        cornerRadius = corner
+    )
+    if (to - from > 0.5f) {
+        drawRoundRect(
+            brush = selectGloss(top, top + h),
+            topLeft = Offset(from, top),
+            size = Size(to - from, h),
+            cornerRadius = corner
+        )
+        // The fill's lit top edge, kept clear of its rounded ends.
+        val shine = to - from - h
+        if (shine > 0f) {
+            drawRect(SelectShine, topLeft = Offset(from + h / 2f, top + 1f), size = Size(shine, HAIRLINE_PX))
+        }
+    }
+    drawRoundRect(
+        color = BarEdge,
+        topLeft = Offset(0f, top),
+        size = Size(size.width, h),
+        cornerRadius = corner,
+        style = Stroke(width = 1.5f)
+    )
 }
 
 /** Progress, or the scrubber: a bar, and the time gone and the time left beneath it. */
@@ -680,28 +878,7 @@ private fun TimeBar(positionMs: Long, durationMs: Long, diamond: Boolean) {
                 .height(px(30))
         ) {
             val h = size.height * 0.5f
-            val top = (size.height - h) / 2f
-            drawRoundRect(
-                brush = Brush.verticalGradient(listOf(TrackTop, TrackBottom), startY = top, endY = top + h),
-                topLeft = Offset(0f, top),
-                size = Size(size.width, h),
-                cornerRadius = CornerRadius(h / 2f, h / 2f)
-            )
-            if (!diamond) {
-                drawRoundRect(
-                    brush = Brush.verticalGradient(listOf(SelectTop, SelectBottom), startY = top, endY = top + h),
-                    topLeft = Offset(0f, top),
-                    size = Size((size.width * fraction).coerceAtLeast(h), h),
-                    cornerRadius = CornerRadius(h / 2f, h / 2f)
-                )
-            }
-            drawRoundRect(
-                color = TitleRule,
-                topLeft = Offset(0f, top),
-                size = Size(size.width, h),
-                cornerRadius = CornerRadius(h / 2f, h / 2f),
-                style = Stroke(width = 1.5f)
-            )
+            drawBar(0.5f, 0f, if (diamond) 0f else (size.width * fraction).coerceAtLeast(h))
             if (diamond) {
                 // The scrubber's playhead: the classic drew a diamond riding on the bar.
                 val x = size.width * fraction
@@ -714,25 +891,29 @@ private fun TimeBar(positionMs: Long, durationMs: Long, diamond: Boolean) {
                     lineTo(x - r * 0.8f, cy)
                     close()
                 }
-                drawPath(path, Brush.verticalGradient(listOf(SelectTop, SelectBottom), startY = cy - r, endY = cy + r))
-                drawPath(path, LcdInk.copy(alpha = 0.6f), style = Stroke(width = 1.5f))
+                drawPath(path, selectGloss(cy - r, cy + r))
+                drawPath(path, SelectEdge, style = Stroke(width = 1.5f, join = StrokeJoin.Round))
             }
         }
         Row(modifier = Modifier.fillMaxWidth().padding(top = px(4))) {
+            // Figures of one width, so the time does not twitch sideways as it counts — and a
+            // true minus on the time left, the length of the figures, where a hyphen sat short.
             Text(
                 text = formatTime(positionMs),
-                fontFamily = InterFamily,
+                fontFamily = LcdFace,
                 fontWeight = FontWeight.SemiBold,
                 fontSize = lcdSp(21),
-                color = LcdInk
+                color = LcdInk,
+                style = tabular()
             )
             Spacer(Modifier.weight(1f))
             Text(
-                text = "-" + formatTime((durationMs - positionMs).coerceAtLeast(0L)),
-                fontFamily = InterFamily,
+                text = "−" + formatTime((durationMs - positionMs).coerceAtLeast(0L)),
+                fontFamily = LcdFace,
                 fontWeight = FontWeight.SemiBold,
                 fontSize = lcdSp(21),
-                color = LcdInk
+                color = LcdInk,
+                style = tabular()
             )
         }
     }
@@ -751,10 +932,11 @@ private fun SliderBody(slider: LcdScreen.Slider) {
         Spacer(Modifier.height(px(92)))
         Text(
             text = slider.valueText,
-            fontFamily = InterFamily,
+            fontFamily = LcdFace,
             fontWeight = FontWeight.Bold,
             fontSize = lcdSp(44),
-            color = LcdInk
+            color = LcdInk,
+            style = tabular()
         )
         Spacer(Modifier.height(px(40)))
         Canvas(
@@ -762,41 +944,19 @@ private fun SliderBody(slider: LcdScreen.Slider) {
                 .fillMaxWidth()
                 .height(px(30))
         ) {
-            val h = size.height * 0.56f
-            val top = (size.height - h) / 2f
-            drawRoundRect(
-                brush = Brush.verticalGradient(listOf(TrackTop, TrackBottom), startY = top, endY = top + h),
-                topLeft = Offset(0f, top),
-                size = Size(size.width, h),
-                cornerRadius = CornerRadius(h / 2f, h / 2f)
-            )
             val p = slider.position
             // A centred control fills from the middle outward, so "off" reads as nothing lit.
             val from = if (slider.bipolar) size.width / 2f + minOf(p, 0f) * size.width / 2f else 0f
             val to = if (slider.bipolar) size.width / 2f + maxOf(p, 0f) * size.width / 2f else size.width * p
-            if (to - from > 0.5f) {
-                drawRoundRect(
-                    brush = Brush.verticalGradient(listOf(SelectTop, SelectBottom), startY = top, endY = top + h),
-                    topLeft = Offset(from, top),
-                    size = Size(to - from, h),
-                    cornerRadius = CornerRadius(h / 2f, h / 2f)
-                )
-            }
+            drawBar(0.56f, from, to)
             if (slider.bipolar) {
                 drawLine(LcdInk.copy(alpha = 0.45f), Offset(size.width / 2f, 0f), Offset(size.width / 2f, size.height), strokeWidth = 2f)
             }
-            drawRoundRect(
-                color = TitleRule,
-                topLeft = Offset(0f, top),
-                size = Size(size.width, h),
-                cornerRadius = CornerRadius(h / 2f, h / 2f),
-                style = Stroke(width = 1.5f)
-            )
         }
         Row(modifier = Modifier.fillMaxWidth().padding(top = px(8))) {
-            Text(slider.lowEnd, fontFamily = InterFamily, fontSize = lcdSp(20), color = LcdDim)
+            Text(slider.lowEnd, fontFamily = LcdFace, fontSize = lcdSp(20), color = LcdDim)
             Spacer(Modifier.weight(1f))
-            Text(slider.highEnd, fontFamily = InterFamily, fontSize = lcdSp(20), color = LcdDim)
+            Text(slider.highEnd, fontFamily = LcdFace, fontSize = lcdSp(20), color = LcdDim)
         }
     }
 }
@@ -819,27 +979,7 @@ private fun VolumeBar(volume: Float) {
                 .weight(1f)
                 .height(px(30))
         ) {
-            val h = size.height * 0.5f
-            val top = (size.height - h) / 2f
-            drawRoundRect(
-                brush = Brush.verticalGradient(listOf(TrackTop, TrackBottom), startY = top, endY = top + h),
-                topLeft = Offset(0f, top),
-                size = Size(size.width, h),
-                cornerRadius = CornerRadius(h / 2f, h / 2f)
-            )
-            drawRoundRect(
-                brush = Brush.verticalGradient(listOf(SelectTop, SelectBottom), startY = top, endY = top + h),
-                topLeft = Offset(0f, top),
-                size = Size((size.width * volume.coerceIn(0f, 1f)).coerceAtLeast(h), h),
-                cornerRadius = CornerRadius(h / 2f, h / 2f)
-            )
-            drawRoundRect(
-                color = TitleRule,
-                topLeft = Offset(0f, top),
-                size = Size(size.width, h),
-                cornerRadius = CornerRadius(h / 2f, h / 2f),
-                style = Stroke(width = 1.5f)
-            )
+            drawBar(0.5f, 0f, (size.width * volume.coerceIn(0f, 1f)).coerceAtLeast(size.height * 0.5f))
         }
         Spacer(Modifier.width(px(14)))
         SpeakerGlyph(waves = 2)
@@ -872,7 +1012,7 @@ private fun SpeakerGlyph(waves: Int) {
                 useCenter = false,
                 topLeft = Offset(w * 0.46f - r, h / 2f - r),
                 size = Size(r * 2f, r * 2f),
-                style = Stroke(width = w * 0.07f)
+                style = Stroke(width = w * 0.07f, cap = StrokeCap.Round)
             )
         }
     }
@@ -902,6 +1042,10 @@ internal fun Modifier.lcdMarquee(): Modifier {
 @Composable
 private fun lcdSp(px: Int): TextUnit = with(LocalDensity.current) { px.toSp() }
 
+/** Figures all of one width — for anything that counts, so it does not shift as it changes. */
+@Composable
+internal fun tabular(): TextStyle = LocalTextStyle.current.copy(fontFeatureSettings = "tnum")
+
 internal fun formatTime(ms: Long): String {
     val total = (ms / 1000L).coerceAtLeast(0L)
     return "%d:%02d".format(total / 60L, total % 60L)
@@ -918,11 +1062,14 @@ private fun Tick(color: Color) {
             lineTo(size.width * 0.40f, size.height * 0.82f)
             lineTo(size.width * 0.90f, size.height * 0.20f)
         }
-        drawPath(path, color, style = Stroke(width = size.width * 0.13f))
+        drawPath(path, color, style = Stroke(width = size.width * 0.13f, cap = StrokeCap.Round, join = StrokeJoin.Round))
     }
 }
 
-/** The ">" at the end of a row that leads somewhere. Drawn, so it is not a font's idea of one. */
+/**
+ * The ">" at the end of a row that leads somewhere. Drawn, so it is not a font's idea of one —
+ * with rounded ends, because a mitred point at this size comes through the texture as a spike.
+ */
 @Composable
 private fun Chevron(color: Color) {
     val density = LocalDensity.current
@@ -934,49 +1081,68 @@ private fun Chevron(color: Color) {
             lineTo(size.width * 0.85f, size.height * 0.5f)
             lineTo(size.width * 0.15f, size.height * 0.88f)
         }
-        drawPath(path, color, style = Stroke(width = size.width * 0.26f))
+        drawPath(path, color, style = Stroke(width = size.width * 0.26f, cap = StrokeCap.Round, join = StrokeJoin.Round))
     }
 }
 
+/** The title bar's "playing" mark, in the selection's lit teal with its dark edge. */
 @Composable
 private fun PlayGlyph(modifier: Modifier) {
     val density = LocalDensity.current
     val s = with(density) { 18.toDp() }
     Canvas(modifier = modifier.size(s, s)) {
+        val u = size.width / 18f
         val path = Path().apply {
-            moveTo(0f, 0f)
-            lineTo(size.width, size.height / 2f)
-            lineTo(0f, size.height)
+            moveTo(1.5f * u, 1.2f * u)
+            lineTo(17f * u, 9f * u)
+            lineTo(1.5f * u, 16.8f * u)
             close()
         }
-        drawPath(path, Color(0xFF2B6F64))
+        drawPath(path, selectGloss(0f, size.height))
+        drawPath(path, SelectEdge, style = Stroke(width = u, join = StrokeJoin.Round))
     }
 }
 
-/** A battery, three-quarters full — not live yet; the phone's own level can drive it later. */
+/**
+ * A battery, three-quarters full — not live yet; the phone's own level can drive it later. A
+ * pale cell in a dark outline, its charge the same lit glass as the selection, in green.
+ */
 @Composable
 private fun BatteryGlyph(modifier: Modifier) {
     val density = LocalDensity.current
     val w = with(density) { 40.toDp() }
     val h = with(density) { 20.toDp() }
     Canvas(modifier = modifier.size(w, h)) {
-        val body = Size(size.width * 0.9f, size.height)
+        val u = size.width / 40f
+        val ink = Color(0xFF3A4148)
         drawRoundRect(
-            color = LcdInk,
-            size = body,
-            cornerRadius = CornerRadius(3f, 3f),
-            style = Stroke(width = 2.5f)
+            color = Color(0xFFF7F9FA),
+            topLeft = Offset(u, u),
+            size = Size(34f * u, 18f * u),
+            cornerRadius = CornerRadius(4f * u, 4f * u)
         )
         drawRoundRect(
-            color = Color(0xFF3E9A55),
-            topLeft = Offset(4f, 4f),
-            size = Size((body.width - 8f) * 0.75f, body.height - 8f),
-            cornerRadius = CornerRadius(1.5f, 1.5f)
+            color = ink,
+            topLeft = Offset(u, u),
+            size = Size(34f * u, 18f * u),
+            cornerRadius = CornerRadius(4f * u, 4f * u),
+            style = Stroke(width = 2f * u)
         )
-        drawRect(
-            color = LcdInk,
-            topLeft = Offset(body.width + 1f, size.height * 0.3f),
-            size = Size(size.width * 0.08f, size.height * 0.4f)
+        drawRoundRect(
+            brush = Brush.verticalGradient(
+                0f to Color(0xFF8FDCA6), 0.5f to Color(0xFF5DBE79),
+                0.5f to Color(0xFF3FA25B), 1f to Color(0xFF2E8A49),
+                startY = 4f * u, endY = 16f * u
+            ),
+            topLeft = Offset(4f * u, 4f * u),
+            size = Size(28f * u * 0.75f, 12f * u),
+            cornerRadius = CornerRadius(2f * u, 2f * u)
+        )
+        drawRoundRect(
+            color = ink,
+            topLeft = Offset(36f * u, 6.5f * u),
+            size = Size(3.4f * u, 7f * u),
+            cornerRadius = CornerRadius(1.2f * u, 1.2f * u)
         )
     }
 }

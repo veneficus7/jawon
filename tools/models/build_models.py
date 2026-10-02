@@ -958,10 +958,26 @@ POCKET_T = 0.0105       # thick
 POCKET_R = 0.0065       # corner radius
 POCKET_FRONT_T = 0.0011  # the anodised front plate
 
-POCKET_SCREEN_W = 0.0455
-POCKET_SCREEN_H = 0.0341
+# The picture: the LCD's active area, which the app draws its live screen across.
+# **Must agree with `SCREEN_W_M` in PocketRoomScreen.kt**, and its aspect with
+# `LCD_PX_W` x `LCD_PX_H` (640 x 475) in PocketLcd.kt.
+POCKET_LCD_W = 0.0443
+POCKET_LCD_H = POCKET_LCD_W * 475.0 / 640.0
+# **The black surround between the picture and the window's edge** — the printed mask
+# every screen of this era had under its cover. Without it the lit picture ran to
+# within 0.6mm of the metal, and read as a pale rectangle laid on the plate rather
+# than a display seen through a window: there was nowhere for the glass to be seen,
+# because a cover glass shows its reflections over black and loses them over a
+# backlit white. The window grew around the picture to make room; the picture itself
+# did not move or change size, so nothing in the app's screen arithmetic changed.
+POCKET_SCREEN_MASK = 0.0018
+POCKET_SCREEN_W = POCKET_LCD_W + 2.0 * POCKET_SCREEN_MASK   # 47.9mm
+POCKET_SCREEN_H = POCKET_LCD_H + 2.0 * POCKET_SCREEN_MASK   # 36.5mm
 POCKET_SCREEN_Y = 0.0255     # centre of the window, above the device's middle
-POCKET_SCREEN_R = 0.0016
+POCKET_SCREEN_R = 0.0020
+# How far the black panel runs on under the plate past the window's edge, so no
+# line of the back shell's polished top can show between the two.
+POCKET_SCREEN_TUCK = 0.0008
 # How far the LCD panel sits behind the front surface. **It must stay above the back
 # shell's top face**, which is solid and rises to the underside of the front plate
 # (front_z - POCKET_FRONT_T): at 1.6mm the panel was *inside* the shell, and what showed
@@ -1309,29 +1325,27 @@ def build_pocket():
     # ---- the screen: panel, then glass over it -----------------------------
     panel = new_mesh_object("pocket_screen")
     bm = bmesh.new()
-    _, e = rounded_rect(bm, POCKET_SCREEN_W - 0.0012, POCKET_SCREEN_H - 0.0012,
-                        POCKET_SCREEN_R, az(front_z - POCKET_SCREEN_SINK),
-                        cz=POCKET_SCREEN_Y)
+    # The whole window and a little more, tucked under the plate: what shows through
+    # the window round the picture is this, and only this.
+    _, e = rounded_rect(bm, POCKET_SCREEN_W + 2.0 * POCKET_SCREEN_TUCK,
+                        POCKET_SCREEN_H + 2.0 * POCKET_SCREEN_TUCK,
+                        POCKET_SCREEN_R + POCKET_SCREEN_TUCK,
+                        az(front_z - POCKET_SCREEN_SINK), cz=POCKET_SCREEN_Y)
     bmesh.ops.contextual_create(bm, geom=e)
     bm.to_mesh(panel.data)
     bm.free()
-    # Planar UVs over the window, so the app's screen texture lands square on it.
-    mesh = panel.data
-    if not mesh.uv_layers:
-        mesh.uv_layers.new(name="UVMap")
-    uv = mesh.uv_layers.active.data
-    for poly in mesh.polygons:
-        for li in poly.loop_indices:
-            v = mesh.vertices[mesh.loops[li].vertex_index].co
-            uv[li].uv = (v.x / POCKET_SCREEN_W + 0.5,
-                         (v.z - POCKET_SCREEN_Y) / POCKET_SCREEN_H + 0.5)
-    mesh.materials.append(attach_placeholder_basecolor(principled(
-        # The LCD itself. Near-black and matt, because it is a diffuser: the app
-        # binds the live screen to this material's baseColorMap, exactly the way
-        # the disc's artwork is bound (see attach_placeholder_basecolor).
-        "PocketScreen", base_color=(0.020, 0.021, 0.023), metallic=0.0,
-        roughness=0.50,
-    ), "pocket_screen_placeholder"))
+    panel.data.materials.append(principled(
+        # The display's black surround: a printed mask, seen through the cover. Not
+        # quite black, because nothing printed is, and a touch glossy, because ink
+        # under a cover glass has a sheen of its own beneath the glass's.
+        #
+        # **No texture slot any more.** This panel used to carry a white placeholder
+        # for the app to bind the live screen into; the live screen has been its own
+        # plane since `LcdPanel`, nothing bound it, and the white placeholder made the
+        # "near-black" panel white wherever it showed round the picture's edge.
+        "PocketScreen", base_color=(0.011, 0.011, 0.012), metallic=0.0,
+        roughness=0.32,
+    ))
     finish(panel, bevel=False)
     objects.append(panel)
 

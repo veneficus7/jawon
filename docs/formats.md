@@ -250,6 +250,15 @@ One thing at a time, checked on the owner's phone between each (the working agre
    vignette, and ambient occlusion at a 3.5mm radius for the wheel's recess and the screen's
    inset. The screen itself reads as a backlit panel now: a cool never-quite-white, a falloff to
    its corners, and the window lip's shadow along its top and left edges.
+   **Refined on 2026-10-02**, judged in a DOM mock of the screen and Cycles renders of the model, not
+   yet on the phone: the window grew a 1.8mm **black surround** round the unchanged picture (the
+   lip shadow drawn on the screen went with it — it now falls on the surround, as on a real one);
+   the screen sets type in **real SemiBold and Bold** where it had been drawing Medium and a
+   rasterised fake bold; rows keep **one weight** whether highlighted or not, so text no longer
+   shuffles as the highlight passes; the selection, the bars, the scrollbar and the play mark share
+   **one lit-glass treatment** (bright top edge, a crease at the waist); times use **tabular
+   figures** and a true minus; covers carry a hairline so a pale sleeve keeps its edge; and a
+   record with no art gets drawn quavers where a fallback-font "♪" was.
    **And the phone's tilt turns the world** (`TiltFilter`): the environment and the passing
    lamps rotate against how far the phone has just been tilted, so reflections slide across
    the glass and the edge — first-order, twice the tilt, as a turned mirror's do. The window

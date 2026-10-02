@@ -12,7 +12,7 @@ modelled by hand and not downloaded.
 | `case_lid` | the held case | 708 | origin on the hinge axis |
 | `case_closed` | the wall | 768 | shelved frame, opaque |
 | `disc` | the held case | 4608 | 1.2mm thick, radial UVs |
-| `pocket` | the iPod mode's device | 7522 | eight objects, one per material; life size, 61.8 × 103.5 × 10.5mm; ~820KB, most of it three wear maps |
+| `pocket` | the iPod mode's device | 7522 | eight objects, one per material; life size, 61.8 × 103.5 × 10.5mm; ~840KB, most of it three wear maps |
 
 **Why the shelf gets its own case.** A shut jewel case shows none of the tray's
 interior, and the wall draws up to ~470 at once — carrying that interior would
@@ -156,7 +156,7 @@ they are in final glTF/app coordinates:
 | `case_lid.glb` | **X 0 … +0.125** (hinge origin), Y ±0.071, Z −0.0022 … +0.0040 |
 | `case_closed.glb` | **X ±0.005** (thickness), Y ±0.071, **Z ±0.0625** (depth) |
 | `disc.glb` | X/Y ±0.060, Z ±0.0006 (1.2mm thick) |
-| `pocket.glb` | X ±0.0309, Y ±0.0518, **Z −0.00525 … +0.00525** (10.5mm), and per part: the wheel's front face at **+0.00465** (0.6mm inside the plate's +0.00525) and the button's at **+0.0047**; `pocket_print` flat at **+0.00467**, 20µm over the wheel. Nothing in `pocket_details` may pass ±0.0518 in Y — the jack, the hold switch and the connector are sunk into those edges, not stuck on them. |
+| `pocket.glb` | X ±0.0309, Y ±0.0518, **Z −0.00525 … +0.00525** (10.5mm), and per part: the wheel's front face at **+0.00465** (0.6mm inside the plate's +0.00525) and the button's at **+0.0047**; `pocket_print` flat at **+0.00467**, 20µm over the wheel. Nothing in `pocket_details` may pass ±0.0518 in Y — the jack, the hold switch and the connector are sunk into those edges, not stuck on them. The window: `pocket_glass` X **±0.02395**, Y **+0.00726 … +0.04374** (47.9 × 36.5mm), and `pocket_screen` wider than it on every side — X **±0.02475**, Y **+0.00646 … +0.04454** — or the back shell's polished top shows in the gap. |
 
 Note `case_closed`'s axes are the odd ones out, and deliberately: it is the only
 model in the shelved frame, so its X is the 10mm edge rather than the 125mm
@@ -196,6 +196,42 @@ of the pocket player's first-pass faults were found that way in seconds.
 
 This is Cycles, not Filament: no room IBL, no Filament tonemapper, no post. It answers
 *is the object right*, never *is the shot right*.
+
+### The window has a black surround
+
+The live screen is 44.3 × 32.9mm (`POCKET_LCD_W`, which must agree with `SCREEN_W_M` in
+`PocketRoomScreen.kt`), and the window round it is 1.8mm larger on every side
+(`POCKET_SCREEN_MASK`). What shows in that margin is `pocket_screen`: a near-black, slightly
+glossy panel — the printed mask every screen of this era carried — tucked 0.8mm under the plate
+so nothing behind it can show. It was added on 2026-10-02. Before it, the lit picture ran to
+within 0.6mm of the metal and read as a pale card laid on the plate rather than a display seen
+through a window; a cover glass shows its reflections over black and loses them over a backlit
+white, so there was also nowhere for the glass to be seen. **The picture did not move or change
+size** — the window grew round it — so nothing in the app's screen arithmetic changed.
+
+That panel used to carry a white placeholder texture, from when the app bound the live screen
+into its material. Nothing has bound it since the screen became its own plane (`LcdPanel`), and
+the placeholder made the "near-black" panel white wherever it showed. It has no texture now.
+
+### Blender 5.0 breaks the M
+
+Built with Blender 5.0, `pocket_print`'s caption loses triangles from the **M** of MENU — its
+curve-to-mesh fill drops part of the letter, so it renders with a notch out of it (564
+triangles become 376, and the bounds do not change, so only a close render shows it). 5.1 fills
+it correctly. The 2026-10-02 rebuild had only 5.0 to hand (`pip install bpy==5.0.1`, the newest
+on PyPI) and carried the committed print mesh across unchanged rather than ship the broken
+one. **Build with 5.1 or later**, and if a rebuild's print is not 564 triangles, look at the M
+before anything else.
+
+### Lines Cycles draws that Filament will not
+
+A preview of the pocket player shows faint lines fanning from the window's lower corners down
+toward the plate's bottom corners, in `--clay` as well. They are not the model: the front face
+is exactly planar, its exported normals are exact, and the mesh is closed and manifold — all
+three checked. They follow the long sliver triangles `triangle_fill` makes between the holes and
+the outline, and they survive flat shading, which makes them Cycles' ray-precision trouble on
+long coplanar triangles at millimetre scale. A rasteriser has no such step. Do not chase them
+in the script.
 
 ### Hardening normals on a flat panel
 

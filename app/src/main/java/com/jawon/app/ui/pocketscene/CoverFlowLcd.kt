@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
@@ -34,7 +35,6 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
-import com.jawon.app.ui.theme.InterFamily
 import kotlin.math.abs
 import kotlin.math.sign
 
@@ -94,7 +94,7 @@ internal fun CoverFlowBody(screen: LcdScreen.CoverFlow, flow: Float, flip: Float
             ) {
                 Text(
                     text = screen.albumTitle,
-                    fontFamily = InterFamily,
+                    fontFamily = LcdFace,
                     fontWeight = FontWeight.Bold,
                     fontSize = coverSp(25),
                     color = Color.White,
@@ -107,10 +107,10 @@ internal fun CoverFlowBody(screen: LcdScreen.CoverFlow, flow: Float, flip: Float
                 )
                 Text(
                     text = screen.albumArtist,
-                    fontFamily = InterFamily,
+                    fontFamily = LcdFace,
                     fontWeight = FontWeight.Medium,
                     fontSize = coverSp(21),
-                    color = Color(0xFFA7AEB5),
+                    color = Color(0xFF9AA3AC),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     textAlign = TextAlign.Center,
@@ -145,12 +145,12 @@ private fun TrackBack(tracks: LcdScreen.Menu) {
             modifier = Modifier
                 .fillMaxWidth()
                 .height(px(52))
-                .background(Brush.verticalGradient(listOf(Color(0xFFEEF1F4), Color(0xFFD3D9DF)))),
+                .titleBar(),
             contentAlignment = Alignment.Center
         ) {
             Text(
                 text = tracks.title,
-                fontFamily = InterFamily,
+                fontFamily = LcdFace,
                 fontWeight = FontWeight.SemiBold,
                 fontSize = coverSp(23),
                 color = Color(0xFF15181B),
@@ -159,9 +159,10 @@ private fun TrackBack(tracks: LcdScreen.Menu) {
                 modifier = Modifier.padding(horizontal = px(20))
             )
         }
+        TitleRuleLine()
         if (tracks.rows.isEmpty()) {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text(tracks.emptyText, fontFamily = InterFamily, fontSize = coverSp(21), color = Color(0xFF5B636B))
+                Text(tracks.emptyText, fontFamily = LcdFace, fontSize = coverSp(21), color = Color(0xFF5B636B))
             }
             return@Column
         }
@@ -171,34 +172,30 @@ private fun TrackBack(tracks: LcdScreen.Menu) {
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(px(45))
-                    .then(
-                        if (selected) {
-                            Modifier.background(
-                                Brush.verticalGradient(listOf(Color(0xFF4FA597), Color(0xFF276A5F)))
-                            )
-                        } else {
-                            Modifier
-                        }
-                    )
+                    .then(if (selected) Modifier.selectionBar() else Modifier)
                     .padding(horizontal = px(18)),
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                val onBar = if (selected) LocalTextStyle.current.copy(shadow = OnSelectShadow) else LocalTextStyle.current
                 Text(
                     text = "${tracks.top + i + 1}",
-                    fontFamily = InterFamily,
+                    fontFamily = LcdFace,
                     fontWeight = FontWeight.Medium,
                     fontSize = coverSp(20),
                     color = if (selected) Color.White else Color(0xFF7A838C),
+                    style = onBar.copy(fontFeatureSettings = "tnum"),
                     modifier = Modifier.size(px(40), px(28))
                 )
                 Text(
                     text = row.label,
-                    fontFamily = InterFamily,
-                    fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
+                    fontFamily = LcdFace,
+                    // One weight under the bar or not — see the main list in PocketLcd.
+                    fontWeight = FontWeight.SemiBold,
                     fontSize = coverSp(23),
                     color = if (selected) Color.White else Color(0xFF15181B),
                     maxLines = 1,
                     overflow = if (selected) TextOverflow.Clip else TextOverflow.Ellipsis,
+                    style = onBar,
                     modifier = if (selected) Modifier.lcdMarquee() else Modifier
                 )
             }
