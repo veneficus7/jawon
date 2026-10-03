@@ -1,5 +1,6 @@
 package com.jawon.app.ui.listening
 
+import com.jawon.app.ui.common.EmptyNote
 import com.jawon.app.ui.theme.JawonType
 import com.jawon.app.ui.common.ScreenBar
 import androidx.compose.foundation.background
@@ -83,7 +84,13 @@ fun ListeningScreen(
         ScreenBar(title = "LISTENING", onBack = onBack)
 
         if (state.loaded && state.rows.isEmpty()) {
-            EmptyNote()
+            EmptyNote(
+                title = "NOTHING PLAYED YET",
+                body = "Put a record on. Jawon keeps a note of what you actually listen to, " +
+                    "including while the app is closed, and the cases on the shelf wear in " +
+                    "to match.",
+                modifier = Modifier.fillMaxSize()
+            )
             return@Column
         }
 
@@ -467,34 +474,6 @@ private fun ListeningRowView(rank: Int, row: ListeningRow, onClick: () -> Unit) 
                     )
             )
         }
-    }
-}
-
-@Composable
-private fun EmptyNote() {
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(horizontal = 32.dp),
-        verticalArrangement = Arrangement.Center,
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Text(
-            text = "NOTHING PLAYED YET",
-            fontFamily = JetBrainsMonoFamily,
-            fontWeight = FontWeight.Bold,
-            fontSize = JawonType.Title,
-            letterSpacing = 2.5.sp,
-            color = LabelCream
-        )
-        Text(
-            text = "Put a record on. Jawon keeps a note of what you actually listen to, " +
-                "including while the app is closed, and the cases on the shelf wear in to match.",
-            fontFamily = JetBrainsMonoFamily,
-            fontSize = JawonType.Title,
-            color = LabelDim,
-            modifier = Modifier.padding(top = 14.dp)
-        )
     }
 }
 
