@@ -12,10 +12,11 @@ import com.google.android.filament.View
  * - **4× MSAA**, not FXAA. The device is all hard, thin, bright edges — the chamfer, the wheel's
  *   rim, the print — which is exactly where FXAA smears, and trap 30 measured MSAA as close to
  *   free where resolution is not.
- * - **A restrained bloom** over the HDR threshold only: the lamps' highlights and the brightest of
- *   the lights outside glow a little, as they do through a lens; the screen, below the
- *   threshold, stays crisp.
- * - **A vignette**, because the eye should come to rest on the device, not on the window's edge.
+ * - **A restrained bloom** over the HDR threshold only: the overhead light along the bevels and
+ *   the wheel's rim glows a little, as it does through a lens; the screen, below the threshold,
+ *   stays crisp.
+ * - **A vignette**, a hint at the phone's corners, so the face reads as lit from above you rather
+ *   than evenly from everywhere.
  *
  * **Re-applied whenever it has been undone.** SceneView applies a `RenderQuality` preset of its own
  * to the View it is handed, after the first frame, overwriting whatever was set before it — the
@@ -26,8 +27,8 @@ object PocketAtmosphere {
 
     const val BLOOM_STRENGTH = 0.085f
     private const val BLOOM_LEVELS = 6
-    // Light: at a midpoint of 0.42 the top of the window fell from 23 to 3 of 255 and the wheel
-    // went into the dark with it. The vignette is a hint at the corners, not a spotlight.
+    // Light: at a midpoint of 0.42 (in the carriage) the top of the frame fell from 23 to 3 of 255
+    // and the wheel went into the dark with it. A hint at the corners, not a spotlight.
     private const val VIGNETTE_MID = 0.68f
     private const val VIGNETTE_ROUNDNESS = 0.5f
     private const val VIGNETTE_FEATHER = 0.85f
@@ -73,12 +74,10 @@ object PocketAtmosphere {
             lowPassFilter = View.QualityLevel.MEDIUM
         }
         view.dithering = View.Dithering.TEMPORAL
-        // **Soft shadows** (PCSS): the penumbra widens with the distance from what casts it, as a
-        // lampshade's does, so the device's shadow is sharp where it meets the cloth and soft
-        // where it leaves it. Plain PCF drew one hard line under the device; DPCF broke the
-        // surface up in blocks; VSM's blur lost the shadow altogether. Its size is the lamp's
-        // `shadowBulbRadius`.
-        view.setShadowType(View.ShadowType.PCSS)
+        // No shadows to set: the face is lit by the room it reflects and a key that casts none.
+        // (The carriage's lamp used PCSS — plain PCF drew one hard line under the device, DPCF
+        // broke the cloth up in blocks, VSM's blur lost the shadow altogether — if a shadow ever
+        // comes back, that is where to start.)
     }
 
     private const val AO_RADIUS_M = 0.0035f

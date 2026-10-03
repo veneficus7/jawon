@@ -13,7 +13,7 @@ import com.jawon.app.Format
  */
 enum class Exhibit(val format: Format?, val title: String, val line: String) {
     CD(Format.CD, "CD", "A wall of records"),
-    POCKET(Format.POCKET, "Pocket player", "A night train"),
+    POCKET(Format.POCKET, "Pocket player", "A click wheel in your hand"),
     VINYL(null, "Vinyl", "Coming"),
     CASSETTE(null, "Cassette", "Coming");
 

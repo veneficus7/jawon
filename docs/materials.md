@@ -1,53 +1,24 @@
 # Custom Filament materials
 
-**Jawon ships six.** Three in the CD room — dust, fog and the neon sign (`neon.mat`,
-additive, drawn from a two-channel mask) — and three in the pocket player's:
+**Jawon ships four.** Three in the CD room — dust, fog and the neon sign (`neon.mat`,
+additive, drawn from a two-channel mask) — and the pocket player's steel:
 
-- `materials/night_window.mat` → `assets/materials/night_window.filamat`, the train window
-  behind the device: out-of-focus lights at three depths, poles, the sky, and the carriage
-  light's reflection on the glass, **drawn as a lens renders them** rather than as scenery to be
-  blurred. A depth-of-field pass cannot reach the circle of confusion a 50mm lens focused at
-  30cm throws on a light at infinity — about a fifth of the frame — and this is a handful of
-  discs per pixel. The room integrates the train's speed on the CPU and hands each layer's
-  scroll in, wrapped at exactly the shader's `PERIOD` of cells so the value stays small and the
-  wrap is seamless (`NightWindow`, `TrainMotion`). **SceneView's `PlaneNode` runs V downward**:
-  the first build hung the sky under the device, which the luminance boxes caught first.
-  **And the lens clips them toward its edge**: each disc is the overlap of two circles, the
-  second offset outward by up to 0.7 of its radius, so a light is round in the middle of the
-  picture and a cat's eye lying along the top and bottom edges, as a real lens's defocused
-  lights are. `frame` — half the frame's height at the window's distance — is the only thing
-  it needs from the room, which works it out from the camera. **And the stations**: when the
-  music pauses the train stands at a platform (`TrainMotion`), and `station` — how far ahead of
-  the window the platform's middle is, and a clock — draws it: fluorescent tubes as capsules
-  under a canopy, a blue name sign, backlit posters, a waiting room, the concrete pooled under
-  each tube and its yellow edge line, pillars, each part scrolled by its own depth. Only
-  evaluated when a station is within 90m. **Laid out for what the room's views frame, which is
-  very little**: the screen is portrait, so only about ±0.1m of the picture is seen across — at
-  rest x −0.08…+0.15, y −0.27…+0.01; in the hand, the margins round the device. The first two
-  layouts were drawn for the window's 0.8m opening and put everything out of frame; a numpy port
-  of the station, cropped to those two views, is what found where things had to go. **And the
-  tunnels** (`tunnel`: the mouth and the exit ahead of the window, and the speed): the wall close
-  outside, near black, two cable runs, and its sodium lamps — drawn as the streak a 1/60s shutter
-  makes of each at speed, the same light spread along the distance it moved, and as a disc at a
-  crawl. At 16m/s a lamp crosses the frame in about a frame, which is what a tunnel's lights do.
 - `materials/polished_steel.mat` → `assets/materials/polished_steel.filamat`, the device's steel
-  shell and the bead round its face, put on that one part in place of the glTF's own material
-  when the model loads. It exists for one line of shader: **roughness floored at the pixel's
-  footprint on the curve**, `footprint × length(fwidth(normal))`. The bead turns 90° in ~16px, so
+  shell and the bead round its face — seen now only on the showroom's plinth, the room itself
+  being the face — put on that one part in place of the glTF's own material when the model
+  loads. It exists for one line of shader: **roughness floored at the pixel's footprint on the
+  curve**, `footprint × length(fwidth(normal))`. The bead turns 90° in ~16px, so
   a ceiling run reflected in it is thinner than a pixel and rasterises as a dashed line that
   crawls. gltfio's own `base_lit_opaque` lists `_specularAntiAliasingVariance` among its
   parameters, and raising it changed nothing — a probe at 1000 left every pixel on the bead as it
   was — so the filtering is done where it can be seen to work. Flat steel keeps its 0.055.
 
-- `materials/table_metal.mat` → `assets/materials/table_metal.filamat`, the still life's metal —
-  the tea holder's nickel silver and the spoon's steel — put on those two parts in place of their
-  glTF materials when the tea loads. **A metal is a picture of what is round it, and the
-  carriage's environment does not hold the white cloth** the tea stands on: it is placed for the
-  device and turned for the table, and that turn puts the night window under the tea, so in the
-  room's own lighting the holder came out a deep navy black — a mug. Below the horizon, where a
-  reflection off these parts meets the cloth, this adds the cloth's lamp-lit luminance (in nits,
-  through the exposure) through the metal's own Fresnel; above it the room does everything.
-  **And where "below" is, it has to be told** — see "The frame Filament shades in" below.
+**Two more were retired with the carriage on 2026-10-03**, when the pocket player's room became
+the face (`docs/formats.md` §7, step 5c): `night_window.mat` — the night going past a train window,
+drawn as a lens renders out-of-focus lights, with its stations and tunnels — and `table_metal.mat`,
+the still life's nickel silver, which added the cloth's light below the horizon that the carriage's
+environment did not hold. Both are in the history before that date, with their notes; the one on
+the frame Filament shades in, below, outlived them.
 
 And the CD room's first two:
 
@@ -75,15 +46,16 @@ the repo, as below).
 **`IndirectLight.setRotation` turns the world the shaders see, not only the light.** Filament turns
 the environment by turning the frame it shades in, so every world-space vector a material reads —
 `getWorldPosition()`, `getWorldNormalVector()`, `getWorldViewVector()`, a normal measured from
-position derivatives — comes out turned with it. The pocket room turns its environment a long way
-at rest (`RestLight`), and `table_metal.mat`'s first version, taking world −Y as the cloth, lit the
+position derivatives — comes out turned with it. The pocket room turned its environment a long way
+at rest (`RestLight`, retired with the carriage), and `table_metal.mat`'s first version, taking world −Y as the cloth, lit the
 wrong side of everything: probed on the emulator with the cloth painted by its own normal, the
 cloth faced the window — while the device probed in the hand, where the turn is nearly nothing,
 came out right, which is what made it look like a fault in some meshes. The room's up in that frame
 is **the told matrix's transpose applied to up** — its middle *row*, column-major — found by handing
 the material both candidates and seeing which one the cloth agreed with. `PocketDevice.turnWorld`
 sends it as `up` whenever the turn changes. Anything a hand-written material means in the room's
-own axes has to arrive this way.
+own axes has to arrive this way. (The face turns its environment only by the phone's tilt, and
+`PocketDevice.turnWorld` still tells the light the transpose, for the same reason.)
 
 ## What the stock materials can and cannot do
 

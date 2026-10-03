@@ -26,7 +26,7 @@ import kotlin.math.sqrt
  *   grey veil over the cover, and put nothing on the black anodising that moved.
  * - **the ceiling's diffuser slots**, two long runs over the row, one in front of the plinths and
  *   one behind — for the bright lines along a bead, a case's edge and a plinth's lacquered top.
- *   Traced onto a ceiling, as the carriage's runs are, so they narrow and converge with distance.
+ *   Traced onto a ceiling, as the carriage's runs were, so they narrow and converge with distance.
  * - **the walls all round**, washed low and warm by the gallery's other lights, far off — what the
  *   polished side of the pocket player and the lacquer's rounded edges show.
  *

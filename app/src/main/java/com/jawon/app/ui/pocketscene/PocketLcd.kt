@@ -221,7 +221,7 @@ sealed interface LcdScreen {
  *
  * [awake] false is the player switched off: a real LCD is then a dark, dead rectangle under the
  * glass, and that is what is drawn. [unlit] is how far the backlight has faded, 0..1 — with the
- * lamp out the picture is still there, lit by nothing but the carriage, the way a transflective
+ * lamp out the picture is still there, lit by nothing but the room, the way a transflective
  * panel reads.
  *
  * **Pages slide**, as the classic's did: a new one ([page] changing, [depth] deeper) comes in from

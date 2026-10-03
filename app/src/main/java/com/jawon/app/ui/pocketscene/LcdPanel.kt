@@ -44,11 +44,19 @@ class LcdPanel(
     context: Context,
     engine: Engine,
     private val widthPx: Int,
-    private val heightPx: Int
+    private val heightPx: Int,
+    /**
+     * Texture pixels per layout pixel. The content is laid out at [widthPx] × [heightPx] whatever
+     * this is, and drawn [supersample] times finer: the hardware canvas replays its display lists
+     * scaled, so text and shapes are rasterised at the finer size rather than magnified after.
+     * The pocket player's face shows its picture larger than the 640 it is laid out at, and needs
+     * it; the showroom's exhibit does not.
+     */
+    private val supersample: Float = 1f
 ) {
     private val surfaceTexture = SurfaceTexture(0).apply {
         detachFromGLContext()
-        setDefaultBufferSize(widthPx, heightPx)
+        setDefaultBufferSize((widthPx * supersample).toInt(), (heightPx * supersample).toInt())
     }
     private val surface = Surface(surfaceTexture)
     private var stream: Stream? = Stream.Builder().stream(surfaceTexture).build(engine)
@@ -95,6 +103,7 @@ class LcdPanel(
             val target = runCatching { surface.lockHardwareCanvas() }.getOrNull() ?: return
             try {
                 target.drawColor(Color.TRANSPARENT, PorterDuff.Mode.CLEAR)
+                if (supersample != 1f) target.scale(supersample, supersample)
                 super.dispatchDraw(target)
             } finally {
                 surface.unlockCanvasAndPost(target)

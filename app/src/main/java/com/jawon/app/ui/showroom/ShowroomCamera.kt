@@ -78,3 +78,25 @@ object ShowroomCamera {
 
     private fun mix(a: Float, b: Float, t: Float): Float = a + (b - a) * t
 }
+
+/**
+ * The camera's rotation for looking from [from] toward [to], as SceneView's Euler angles in
+ * degrees (x pitch, y yaw) — its rotation order puts the lens down −Z, turned by yaw and then
+ * pitched. Written into [out] as (pitch, yaw).
+ *
+ * The pocket player's rest pose used it first; its room is a face square on to you now, and this
+ * stayed with the camera that still moves.
+ */
+fun lookAngles(fromX: Float, fromY: Float, fromZ: Float, toX: Float, toY: Float, toZ: Float, out: FloatArray) {
+    val dx = toX - fromX
+    val dy = toY - fromY
+    val dz = toZ - fromZ
+    val len = kotlin.math.sqrt(dx * dx + dy * dy + dz * dz)
+    if (len < 1e-6f) {
+        out[0] = 0f
+        out[1] = 0f
+        return
+    }
+    out[0] = Math.toDegrees(kotlin.math.asin((dy / len).coerceIn(-1f, 1f)).toDouble()).toFloat()
+    out[1] = Math.toDegrees(kotlin.math.atan2(-dx, -dz).toDouble()).toFloat()
+}

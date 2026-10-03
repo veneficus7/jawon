@@ -18,10 +18,8 @@ import io.github.sceneview.collision.Vector3
 import io.github.sceneview.math.Position
 import io.github.sceneview.math.Rotation
 import io.github.sceneview.node.CameraNode
-import io.github.sceneview.node.LightNode
 import io.github.sceneview.node.Node
 import io.github.sceneview.node.RenderableNode
-import kotlin.math.max
 
 /** A song asked for — see `PocketDevice.pendingPlay`. [at] is `SystemClock.uptimeMillis()`. */
 internal data class PendingPlay(val albumId: String, val index: Int?, val at: Long)
@@ -32,48 +30,9 @@ private const val PENDING_PLAY_MS = 3_000L
 /** How far the camera backs away as the room is pinched away, as a share of where it stands. */
 private const val PULL_BACK = 0.8f
 
-/**
- * **The platform's light, in at the window**: the fluorescent tubes outside, as one cool light over
- * the window's top, aimed down across the table and the device — a rim on the device's edges and a
- * cold cast on the walnut against the reading lamp's warmth. Measured on the AVD, laid flat: at
- * 2,400cd it moved nothing that could be measured, a probe at a hundred times that in pure red
- * flooded the table and rimmed the cord and the wheel (so it reaches what it should), and 12,000
- * lifted the table by 40% with its blue rising most — a cold cast, but more than a fill.
- */
-internal const val PLATFORM_LIGHT_CANDELA = 8_000f
+/** The lens held square on — see `pose`. A value, so it is not reallocated per frame. */
+private val LEVEL = Rotation(0f, 0f, 0f)
 
-/**
- * How much of the carriage's ambient goes in a tunnel: the window is a good part of what lights
- * the device — its polished side is a picture of it — and in a tunnel there is only the wall.
- */
-private const val TUNNEL_AMBIENT_DIP = 0.3f
-
-/**
- * The lamp over the resting device (`placeLamp`): its cone, just wider than the frame; its
- * brightness, for hanging nearer the cloth than it does behind the device in the hand; and its
- * colour, a little less orange than the hand's, which on the emulator turned the linen from tan
- * to cream.
- */
-private const val REST_LAMP_CONE_INNER_RAD = 0.18f
-private const val REST_LAMP_CONE_OUTER_RAD = 0.40f
-private const val REST_LAMP_CANDELA = 10_500f
-private val REST_LAMP_COLOUR = floatArrayOf(1.0f, 0.80f, 0.60f)
-
-/**
- * **How much harder the carriage fills in round the lamp at rest.** At the hand's level the lamp
- * did nine-tenths of the lighting on the cloth — the ambient at a third moved the lit linen 152 →
- * 150 while half the lamp moved it to 124 — and the scene read as one spotlight in a black room.
- * Three times the fill softened the shadow from 121 to 132 and gave the face its reflections back
- * without flattening its gradient (192 at the top right to 162 at the bottom left); at six, the
- * folds' ridges came up with a satin sheen linen does not have.
- */
-private const val REST_AMBIENT_GAIN = 3f
-
-/** What the window is told when there is no station about: far past anything it draws. */
-internal const val NO_STATION_M = 10_000f
-
-/** The failing tube's clock is wrapped, so a long night does not wear its precision away. */
-private const val STATION_CLOCK_WRAP_S = 3_600.0
 
 /**
  * The device's behaviour: what each touch of the wheel does, given where the menus are and
@@ -151,72 +110,20 @@ internal class PocketDevice(
     private var pinching = false
     private var pinchSpan = 0f
 
+    /** The face's node — scaled to the display by the room (`PocketFace.fit`) — and the camera. */
     var deviceNode: Node? = null
     var cameraNode: CameraNode? = null
-
-    // **In the hand and at rest** (PocketRest): the state, the move between, and the float.
-    private val rest = RestState()
-    private val flight = RestFlight()
-    /** The phone face up and still, from the room's sensor listener (FlatDetector). */
-    var lyingFlat = false
     /** Where the camera stands for life size — worked out by the room from the screen's height. */
-    var handCameraZ = 0.33f
-    /** Half the frame's height per metre of distance, for this lens — the window's cat's eye. */
-    var frameScale = 0.24f
-    private var consumingTouch = false
-    private val look = FloatArray(2)
-
-    // **The earphone cord** (PocketCord): its rig — the simulation, the resting shape and the
-    // handover between them — and what draws it.
-    private val cordRig = CordRig()
-    private val cordBasis = FloatArray(9)
-    var cordMesh: CordMesh? = null
-    private var cordInScene = false
-    /** How much of the phone's tilt turns the world: all of it in the hand, none on the table. */
-    private var turnWeight = 1f
-    var windowMaterial: MaterialInstance? = null
+    var cameraZ = 0.33f
     var tilt: TiltFilter? = null
     var indirectLight: com.google.android.filament.IndirectLight? = null
 
-    // The world's turn against the device, as a column-major 3×3 — written only when it changes.
+    // The world's turn against the phone's tilt, column-major — and the light is told its
+    // transpose (see turnWorld). Written only when the tilt changes.
     private val worldTurn = FloatArray(9).also { it[0] = 1f; it[4] = 1f; it[8] = 1f }
+    private val iblTurn = FloatArray(9).also { it[0] = 1f; it[4] = 1f; it[8] = 1f }
     private var turnPitch = Float.NaN
     private var turnYaw = Float.NaN
-    // And the environment's turn for the table (RestLight): [restTurn] is the share of it the
-    // flight has reached, and [iblTurn] what the light is told.
-    private val restTurn = FloatArray(9)
-    private val iblTurn = FloatArray(9)
-    private var turnRest = Float.NaN
-    /**
-     * **The reading lamp**, the room's one shadow caster: it moves with the flight from where it
-     * hangs for the hand to where the turned softbox is over the resting device, narrowing its cone
-     * as it goes, so the shadow map's texels are spent on the frame — see [placeLamp].
-     */
-    var lampNode: io.github.sceneview.node.LightNode? = null
-        set(value) {
-            // A new node arrives where the builder put it, which is not where the flight has it.
-            if (value !== field) lampPlacedAt = Float.NaN
-            field = value
-        }
-    private var lampPlacedAt = Float.NaN
-    val lampNodes = arrayOfNulls<io.github.sceneview.node.LightNode>(PassingLamps.COUNT)
-
-    /** The still life's metal, told where up is in the frame Filament shades in — see [turnWorld]. */
-    var tableMetals: List<com.google.android.filament.MaterialInstance> = emptyList()
-        set(value) {
-            field = value
-            turnRest = Float.NaN
-        }
-
-    /** The platform's light coming in at the window, while the train stands at one. */
-    var platformLightNode: io.github.sceneview.node.LightNode? = null
-    private var platformLightShown = -1f
-    private var tunnelShown = -1f
-    private var fillShown = -1f
-    private var tunnelLampsSeen = 0L
-
-    private val train = TrainMotion()
-    private val passing = PassingLamps()
 
     private val gesture = WheelGesture()
     private val rock = WheelRock()
@@ -276,24 +183,6 @@ internal class PocketDevice(
     fun onTouch(event: MotionEvent): Boolean {
         if (pinch(event)) return true
         val now = event.eventTime
-        if (event.actionMasked == MotionEvent.ACTION_DOWN) {
-            rest.touched(now)
-            // At rest, or on its way to or from the table, a touch only brings the device back —
-            // the wheel is not under the finger until the device is in the hand again. It lights
-            // the screen as any touch of the classic's did.
-            consumingTouch = flight.progress > 0f || flight.target > 0f
-            if (consumingTouch) {
-                flight.target = 0f
-                lastInputAt = now
-                backlight.value = true
-                return true
-            }
-        }
-        if (consumingTouch) {
-            val action = event.actionMasked
-            if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) consumingTouch = false
-            return true
-        }
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
                 if (!toWheel(event.x, event.y)) return false
@@ -380,10 +269,10 @@ internal class PocketDevice(
         kotlin.math.hypot(event.getX(0) - event.getX(1), event.getY(0) - event.getY(1))
 
     /**
-     * Finds the parts that move, by the names `build_pocket()` gives them, and puts the steel's
-     * own material on the shell. Once.
+     * Finds the parts that move, and the parts a finish colours, by the names `build_pocket_face()`
+     * gives them — the device's own names. Once.
      */
-    fun bindParts(nodes: List<Node>, steel: MaterialInstance) {
+    fun bindParts(nodes: List<Node>) {
         if (wheelParts.isNotEmpty()) return
         wheelParts = nodes.filter { it.name == "pocket_wheel" || it.name == "pocket_print" }
         buttonPart = nodes.firstOrNull { it.name == "pocket_button" }
@@ -393,17 +282,9 @@ internal class PocketDevice(
         buttonMaterial = material("pocket_button")
         printMaterial = material("pocket_print")
         showFinish()
-        // The steel wears its own material — see `materials/polished_steel.mat` for why.
-        (nodes.firstOrNull { it.name == "pocket_back" } as? RenderableNode)?.materialInstance = steel
     }
 
-    /**
-     * A thumb on the wheel, or the wheel still moving from one: the room draws every vsync.
-     *
-     * **Not the flight to and from the table**, which is drawn at the idle rate. The room over the
-     * cloth costs more than a vsync at 120Hz, so drawn live it came out every 8ms, then 16, then 8
-     * — an uneven 60-to-120 that stutters where the move is fastest. An even 60 is smoother.
-     */
+    /** A thumb on the wheel, the wheel still moving from one, or a pinch: drawn every vsync. */
     val interacting: Boolean
         get() = gesture.isDown || rock.isMoving || pullOut.isMoving
 
@@ -416,26 +297,10 @@ internal class PocketDevice(
         val dt = if (lastFrameAt == 0L) 0f else (now - lastFrameAt) / 1000f
         lastFrameAt = now
 
-        // In the hand or at rest, and the move between.
-        if (gesture.isDown) rest.touched(now)
-        val wasResting = flight.target > 0f
-        flight.target = if (rest.update(now, lyingFlat)) 1f else 0f
-        // Picked up off the table: the screen lights as it comes back to the hand, the way a
-        // phone raised to the face wakes — a touch already did.
-        if (wasResting && flight.target == 0f) {
-            lastInputAt = now
-            backlight.value = true
-        }
-        // The phone's tilt turns the world only while the device is in the hand: on the table it
-        // is not the phone any more, and a phone being put down swings the reflections round.
-        val turnTarget = if (lyingFlat) 0f else 1f - flight.camera
-        turnWeight += (turnTarget - turnWeight) * approach(TURN_FADE_RATE, dt)
-        flight.step(dt)
         pullOut.step(dt)
         pullDim.floatValue = pullOut.progress
         if (pulling.value != pullOut.engaged) pulling.value = pullOut.engaged
-        pose(dt)
-        swingCord(dt)
+        pose()
         // Written only while something moves, and once more to leave it exactly at rest.
         if (rock.isMoving || rockWasMoving) {
             rock.step(dt)
@@ -443,75 +308,8 @@ internal class PocketDevice(
         }
         rockWasMoving = rock.isMoving
 
-        // The night going past: the train's distance, split into each layer's parallax — and the
-        // train follows the music, running while it plays and standing at a platform when it stops.
-        train.setRunning(playingNow.value)
-        train.advance(dt)
-        windowMaterial?.let { outside ->
-            outside.setParameter("scroll", train.scroll(0), train.scroll(1), train.scroll(2), train.scroll(3))
-            val (bobX, bobY) = train.bob()
-            outside.setParameter("bob", bobX, bobY)
-            val ahead = train.stationAhead
-            outside.setParameter(
-                "station",
-                if (ahead.isNaN()) NO_STATION_M else ahead,
-                (train.time % STATION_CLOCK_WRAP_S).toFloat()
-            )
-            val entry = train.tunnelEntryAhead
-            val exit = train.tunnelExitAhead
-            outside.setParameter(
-                "tunnel",
-                if (entry.isNaN()) NO_STATION_M else entry,
-                if (exit.isNaN()) NO_STATION_M else exit,
-                train.speed()
-            )
-        }
-        // In a tunnel the window's light is gone from the carriage, and its lamps go by instead.
-        // And on the table the carriage fills in round the lamp (REST_AMBIENT_GAIN) — with the
-        // camera, as all of the light's move is (see placeLamp).
-        val deep = train.tunnel
-        val fill = flight.camera
-        if (deep != tunnelShown || fill != fillShown) {
-            indirectLight?.intensity = PocketLighting.AMBIENT_INTENSITY * lerp(1f, REST_AMBIENT_GAIN, fill) *
-                (1f - TUNNEL_AMBIENT_DIP * deep)
-            tunnelShown = deep
-            fillShown = fill
-        }
-        if (train.tunnelLampsPassed != tunnelLampsSeen) {
-            repeat((train.tunnelLampsPassed - tunnelLampsSeen).coerceAtMost(2L).toInt()) {
-                passing.startTunnelLamp(train.speed())
-            }
-            tunnelLampsSeen = train.tunnelLampsPassed
-        }
-        // And the platform's cold light, in at the window while the train is alongside one —
-        // written only when it changes, and off by intensity (trap 24).
-        val platform = train.platformLight
-        if (platform != platformLightShown) {
-            platformLightNode?.let {
-                it.setIntensityCandela(PLATFORM_LIGHT_CANDELA * platform)
-                platformLightShown = platform
-            }
-        }
-
-        // The world turned against the phone's tilt: the environment, and the lamps in it.
+        // The room turned against the phone's tilt: its reflections slide across the face.
         turnWorld()
-        placeLamp()
-
-        // And the lamps out there that land on the device, keeping pace with the train.
-        passing.advance(dt, pace = train.speed() / NightWindow.BASE_SPEED_M_S, quiet = deep > 0.5f)
-        val m = worldTurn
-        passing.lamps.forEachIndexed { i, lamp ->
-            val node = lampNodes[i] ?: return@forEachIndexed
-            if (lamp.active) {
-                node.position = Position(
-                    m[0] * lamp.x + m[3] * lamp.y + m[6] * lamp.z,
-                    m[1] * lamp.x + m[4] * lamp.y + m[7] * lamp.z,
-                    m[2] * lamp.x + m[5] * lamp.y + m[8] * lamp.z
-                )
-                node.color = Float4(lamp.r, lamp.g, lamp.b, 1f)
-            }
-            node.setIntensityCandela(lamp.intensity)
-        }
 
         // The backlight timer, as set in the device's own Settings; 0 is Always On.
         if (backlight.value && backlightMs > 0L && now - lastInputAt > backlightMs) backlight.value = false
@@ -548,112 +346,54 @@ internal class PocketDevice(
     }
 
     /**
-     * A point on the glass, onto the wheel: millimetres in the wheel's plane, into [wheelPoint].
-     * Projects the wheel's centre and two points on its axes through the device's current pose,
-     * so it stays right however the device is turned.
+     * A point on the glass, onto the wheel: into [wheelPoint], in **the classic's millimetres**.
+     * Projects the face's wheel — its centre and a radius along each axis — through the face's
+     * node, scale and all; `unproject` measures against `ClickWheel.WHEEL_R_MM`, so the face's
+     * 25.5mm radius reads as the classic's 19.5mm and every rule of the gesture (the button, the
+     * rim, the dead zone, the tap's slop) holds on the bigger wheel in proportion.
      */
     private fun toWheel(x: Float, y: Float): Boolean {
         val node = deviceNode ?: return false
         val camera = cameraNode ?: return false
         val m = node.worldTransform
         fun screen(lx: Float, ly: Float): Vector3 {
-            val w = m * Float4(lx, ly, ClickWheel.FACE_Z_M, 1f)
+            val w = m * Float4(lx, ly, PocketFace.WHEEL_FACE_Z_M, 1f)
             return camera.worldToScreenPoint(Vector3(w.x, w.y, w.z))
         }
-        val r = ClickWheel.WHEEL_R_MM / 1000f
-        val c = screen(0f, ClickWheel.CENTRE_Y_M)
-        val ex = screen(r, ClickWheel.CENTRE_Y_M)
-        val ey = screen(0f, ClickWheel.CENTRE_Y_M + r)
+        val r = PocketFace.WHEEL_R_M
+        val c = screen(0f, PocketFace.WHEEL_Y_M)
+        val ex = screen(r, PocketFace.WHEEL_Y_M)
+        val ey = screen(0f, PocketFace.WHEEL_Y_M + r)
         return ClickWheel.unproject(c.x, c.y, ex.x, ex.y, ey.x, ey.y, x, y, wheelPoint)
     }
 
     /**
-     * The camera and the device, between the hand and the table. **In the hand this is exactly the
-     * life-size pose** — the camera at [handCameraZ] looking straight ahead, the device at the
-     * origin turned by [DEVICE_PITCH_DEG] and [DEVICE_YAW_DEG] — and it is written every frame,
-     * which is also what trap 8 needs: SceneView's camera re-aims itself at the origin otherwise.
+     * The camera, square on to the face at life size — written every frame, which trap 8 needs:
+     * SceneView's camera re-aims itself at the origin otherwise. Pinched, it backs away as the
+     * room darkens, which is the one move it makes.
      */
-    private fun pose(dt: Float) {
+    private fun pose() {
         val camera = cameraNode ?: return
-        val node = deviceNode ?: return
-        val c = flight.camera
-        val d = flight.device
-
-        val cx = lerp(0f, RestPose.CAMERA_X, c)
-        val cy = lerp(0f, RestPose.CAMERA_Y, c)
-        // Pinched out of the room, the device goes away from you as the carriage darkens.
-        val cz = lerp(handCameraZ, RestPose.CAMERA_Z, c) * (1f + PULL_BACK * pullOut.progress)
-        // Aimed with the device, wherever the flight has it — straight ahead at it in the hand, at
-        // the still life's middle on the table — so it stays framed through the move. (Aiming at
-        // where it would land left the lagging device high in the frame mid-flight.)
-        lookAngles(
-            cx, cy, cz,
-            lerp(0f, RestPose.AIM_X, d), lerp(0f, RestPose.AIM_Y, d), lerp(0f, RestPose.AIM_Z, d),
-            look
-        )
-        camera.position = Position(cx, cy, cz)
-        camera.rotation = Rotation(look[0], look[1], 0f)
-        windowMaterial?.setParameter("frame", (cz - NightWindow.PLANE_Z_M) * frameScale)
-
-        // Tipped back and set down: from held square to lying face up on the table, and back up
-        // into the hand the same way.
-        node.position = Position(
-            lerp(0f, RestPose.DEVICE_X, d),
-            lerp(0f, RestPose.DEVICE_Y, d),
-            lerp(0f, RestPose.DEVICE_Z, d)
-        )
-        node.rotation = Rotation(
-            lerp(DEVICE_PITCH_DEG, RestPose.DEVICE_PITCH_DEG, d),
-            lerp(DEVICE_YAW_DEG, RestPose.DEVICE_YAW_DEG, d),
-            0f
-        )
-    }
-
-    /** Puts the cord's renderable into [scene], once. */
-    fun addCordTo(scene: com.google.android.filament.Scene?) {
-        val mesh = cordMesh ?: return
-        if (cordInScene || scene == null) return
-        scene.addEntity(mesh.entity)
-        cordInScene = true
+        camera.position = Position(0f, 0f, cameraZ * (1f + PULL_BACK * pullOut.progress))
+        camera.rotation = LEVEL
     }
 
     /**
-     * The cord, one frame on — the rig's ([CordRig]): hanging from the plug up to the earbuds by
-     * your ears in the hand, lying on the cloth at rest, and eased between the two with the device.
-     */
-    private fun swingCord(dt: Float) {
-        val mesh = cordMesh ?: return
-        val node = deviceNode ?: return
-        val m = node.worldTransform
-        val centre = m * Float4(0f, 0f, 0f, 1f)
-        val across = m * Float4(1f, 0f, 0f, 0f)
-        val along = m * Float4(0f, 1f, 0f, 0f)
-        val out = m * Float4(0f, 0f, 1f, 0f)
-        cordBasis[0] = across.x; cordBasis[1] = across.y; cordBasis[2] = across.z
-        cordBasis[3] = along.x; cordBasis[4] = along.y; cordBasis[5] = along.z
-        cordBasis[6] = out.x; cordBasis[7] = out.y; cordBasis[8] = out.z
-        val changed = cordRig.step(
-            dt, centre.x, centre.y, centre.z, cordBasis,
-            flight.device, ClothSurface::topAt, ClothSurface.version
-        )
-        if (changed) mesh.update(cordRig.shownX, cordRig.shownY, cordRig.shownZ)
-    }
-
-    /**
-     * The inverse of the phone's tilt, applied to the world: `Ry(-yaw) · Rx(-pitch)`. Rotating the
-     * environment the other way is the same, to the eye, as the device turning inside a still
-     * room — which is what the phone in the hand is doing.
+     * The inverse of the phone's tilt, applied to the room: `Ry(-yaw) · Rx(-pitch)`. Turning the
+     * room the other way is the same, to the eye, as the face turning inside a still one — which is
+     * what the phone in the hand is doing — so its reflections slide across the face and the glass.
+     *
+     * **Filament turns where the environment is looked up, not the picture**: it folds the rotation
+     * into the whole scene's frame, so to see the room turned by A the light is told Aᵀ. Measured on
+     * the carriage, not assumed: told A, the face's gradient ran the wrong way.
      */
     private fun turnWorld() {
-        val t = tilt
-        val p = if (t != null) t.pitch * turnWeight else 0f
-        val y = if (t != null) t.yaw * turnWeight else 0f
-        // With the camera, as the lamp is: see placeLamp.
-        val r = flight.camera
-        if (p == turnPitch && y == turnYaw && r == turnRest) return
+        val t = tilt ?: return
+        val p = t.pitch
+        val y = t.yaw
+        if (p == turnPitch && y == turnYaw) return
         turnPitch = p
         turnYaw = y
-        turnRest = r
         val cp = kotlin.math.cos(-p)
         val sp = kotlin.math.sin(-p)
         val cy = kotlin.math.cos(-y)
@@ -662,63 +402,8 @@ internal class PocketDevice(
         worldTurn[0] = cy; worldTurn[1] = 0f; worldTurn[2] = -sy
         worldTurn[3] = sy * sp; worldTurn[4] = cp; worldTurn[5] = cy * sp
         worldTurn[6] = sy * cp; worldTurn[7] = -sp; worldTurn[8] = cy * cp
-        // The environment on the table: turned by the share of the flight the device has made.
-        // **Filament turns where the environment is looked up, not the picture** — it folds the
-        // rotation into the whole scene's frame — so to see the room turned by A the light is told
-        // Aᵀ. Measured, not assumed: told A, the face's gradient ran the wrong way.
-        RestLight.partial(RestLight.atRest, r, restTurn)
-        RestLight.multiplyTransposed(worldTurn, restTurn, iblTurn)
+        for (r in 0..2) for (c in 0..2) iblTurn[c * 3 + r] = worldTurn[r * 3 + c]
         indirectLight?.setRotation(iblTurn)
-        // And the still life's metal, told where the room's up is in the frame Filament now shades
-        // in — it turns that frame with the light: the told matrix's transpose, applied to up.
-        for (m in tableMetals) m.setParameter("up", iblTurn[1], iblTurn[4], iblTurn[7])
-    }
-
-    /**
-     * The lamp, between the hand and the table: where it hangs, what it is aimed at, how wide its
-     * cone and how bright, each eased with the flight — written only when it moves.
-     *
-     * **With the camera, not the device.** The light is the room's, and the room changes as the
-     * view does; the device then moves *through* a light that has stopped. Eased with the device,
-     * it was still moving — widening, brightening — while the cloth was in view and the device
-     * came down, so the table brightened past where it rests and dimmed back for a second after
-     * it landed, and the shadow slid for reasons of its own. Now the device descends under a lamp
-     * that is already where it hangs, and its shadow comes to meet it as a real one does.
-     *
-     * **Narrow at rest, for the shadow.** A spot light's shadow map covers its whole cone, and at
-     * the hand's 1.0 rad the device's shadow on the cloth came out in steps several pixels wide;
-     * the frame at rest lies within 15° of the lamp's axis, so a cone just wider than that spends
-     * the same texels on it at a third of the size.
-     */
-    private fun placeLamp() {
-        val node = lampNode ?: return
-        val t = flight.camera
-        if (t == lampPlacedAt) return
-        lampPlacedAt = t
-        val rest = RestLight.restLamp
-        val px = lerp(LAMP_POSITION[0], rest[0], t)
-        val py = lerp(LAMP_POSITION[1], rest[1], t)
-        val pz = lerp(LAMP_POSITION[2], rest[2], t)
-        val dx = lerp(LAMP_TARGET[0], RestPose.DEVICE_X, t) - px
-        val dy = lerp(LAMP_TARGET[1], RestPose.DEVICE_Y, t) - py
-        val dz = lerp(LAMP_TARGET[2], RestPose.DEVICE_Z, t) - pz
-        val dl = kotlin.math.sqrt(dx * dx + dy * dy + dz * dz).coerceAtLeast(1e-6f)
-        node.position = Position(px, py, pz)
-        node.lightDirection = Float3(dx / dl, dy / dl, dz / dl)
-        val lm = node.lightManager
-        val light = node.lightInstance
-        lm.setSpotLightCone(
-            light,
-            lerp(LAMP_CONE_INNER_RAD, REST_LAMP_CONE_INNER_RAD, t),
-            lerp(LAMP_CONE_OUTER_RAD, REST_LAMP_CONE_OUTER_RAD, t)
-        )
-        lm.setColor(
-            light,
-            lerp(LAMP_COLOUR[0], REST_LAMP_COLOUR[0], t),
-            lerp(LAMP_COLOUR[1], REST_LAMP_COLOUR[1], t),
-            lerp(LAMP_COLOUR[2], REST_LAMP_COLOUR[2], t)
-        )
-        node.setIntensityCandela(lerp(LAMP_CANDELA, REST_LAMP_CANDELA, t))
     }
 
     /**
@@ -728,8 +413,9 @@ internal class PocketDevice(
     private fun poseParts() {
         // Spelled out rather than `centre + …`: kotlin-math's vector operators are inline and
         // built for a newer JVM target than this module, so they will not compile here.
-        val y = ClickWheel.CENTRE_Y_M
-        val z = ClickWheel.FACE_Z_M
+        // About the face's wheel, in the face's own frame — the parts' parent's.
+        val y = PocketFace.WHEEL_Y_M
+        val z = PocketFace.WHEEL_FACE_Z_M
         val ring = translation(Float3(0f, y, z - rock.sinkMm / 1000f)) *
             rotation(X_AXIS, rock.tiltXDeg) *
             rotation(Y_AXIS, rock.tiltYDeg) *
@@ -1116,7 +802,5 @@ internal class PocketDevice(
         const val SEEK_RATE_FAST = 16f
         const val SCRUB_SEEK_MS = 150L
         const val SCRUB_STEPS_PER_TRACK = 96L
-        /** How quickly the tilt's turn of the world fades out on the table and back in the hand, 1/s. */
-        const val TURN_FADE_RATE = 3f
     }
 }

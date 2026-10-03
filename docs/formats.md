@@ -33,7 +33,7 @@ cassette. A **mode** stays the light.
 | How is vinyl browsed? | **Crate-digging, from the start** | Records upright in bins, flicked through — not face-out on a wall. §5. |
 | The same shop, or a room per format? | **A room of its own for each format** | **Reverses the locked "one room" decision** (`ENGINEERING.md`). The CD room stays exactly as it is; each new format gets its own. |
 | Do the four light modes reach the new rooms? | **No** — "other rooms are separate" | Vesper · Glacies · Vigilia · Officina are the CD room's own. Each new room is lit its own way. |
-| The pocket player's room? | **A train window** | §4. |
+| The pocket player's room? | **A train window** — and then **none** (2026-10-03): the phone's display is the device's face | §4; §7, step 5c. |
 | Its controls? | **The iPod's, as closely as a touchscreen allows** | He has never used one; the point is the experience people remember as satisfying. §4 sets out what that experience was. |
 | Its name? | **Later** | Not "iPod" either way (§4). |
 | The visual bar? | **"Dont hold back at all … hyper realism and beauty … the highest quality of 3d graphics and animation"** | For every new room, and for animation as much as for stills. §4 sets out what that means for this one. |
@@ -123,8 +123,10 @@ effect on the way back — no mid-session teardown, and no brush with trap 1.
   product's look is Apple's. Its own name, proportions and face, with no Apple marks, keep
   the interaction without borrowing the brand. Not legal advice — check before shipping, the
   way `docs/server.md` treats what may be served. **Open:** the name.
-- **Its room: a train window — decided.** The device fills the screen, so the room is what
-  lies behind and around it. Proposed: **at night**, like the rest of Jawon — the dark window,
+- **Its room: a train window — decided, and retired on 2026-10-03** for the face (§7, step 5c):
+  the phone's whole display is the player now, and there is nowhere left to stand it. What
+  follows is the record of the room it had, kept for what it learned. The device fills the
+  screen, so the room is what lies behind and around it. Proposed: **at night**, like the rest of Jawon — the dark window,
   lights outside streaking past as out-of-focus bokeh, and **their reflections sliding across
   the device's glass and its polished back**. That last part is the room: the passing lights
   are its lighting, and a glossy object under moving light is the most convincing thing a
@@ -517,6 +519,36 @@ One thing at a time, checked on the owner's phone between each (the working agre
    room rebuilds Filament from nothing, which is also the black the NavHost's return fade masks.
    **Not yet**: checked on the phone, its cost measured, floor reflections, and Settings → THE ROOM
    retired.
+5c. **The phone is the player (2026-10-03).** Asked to "rethink the mode's UI completely … research
+   and choose the best one", with prototypes to choose between: every iPod-style app that shipped
+   (Rewound, ClassiPod, RetroPod, Elvin Hu's) fills the phone with the face, and the one that drew a
+   small device drew reviews asking for the full width. The device in its room put a 44mm screen and
+   a 39mm wheel on a 73mm display. Four prototypes went to the owner, from that to the face alone,
+   and **he chose the face**: the device's front, running past every edge of the display, the window
+   across the top and the wheel where a thumb rests.
+   - **What it is**: `pocket_face.glb` (`build_pocket_face()`, `docs/models.md`), the device's
+     parts under their own names so the finish, the wheel's rock and the screen bind as they did,
+     laid out at life size on the owner's S25 Ultra and scaled uniformly to any other display
+     (`PocketFace.fit` — by the width, or the height on a wide one). The screen is 58.9 × 43.7mm
+     and the wheel 51mm, against the device's 44.3 × 32.9 and 39. The camera looks straight at it;
+     the wheel's touch maps through the face's own centre and radius onto `ClickWheel`'s.
+   - **The room is the studio the face reflects**, and nothing else is drawn
+     (`tools/models/pocket_light.py` and `PocketLighting.kt`, pinned together by
+     `PocketLightingTest`): a softbox overhead and a brighter zenith, a warm lamp low on the left, a
+     cool window on the right, a dim floor, and a band of lit room behind the viewer — and **nothing
+     bright between 3.3° and 11° above level**, the band the screen's glass looks back at straight
+     on, which is why the menu carries no glare. The phone's tilt turns it (`TiltFilter`), so a
+     turned hand slides the sheen across the face. Designed and measured in Cycles at the app's
+     camera and exposure (`tools/pocket-preview/`): the silver face 137 at its foot to 160, black
+     24–37, red 31–38, the wheel 167–181 on silver and red, 48–67 on black.
+   - **What went**: the carriage and its window, the train and its stations and tunnels, the rest
+     state and its flight, the earphones and their cord, the tablecloth, the tea and the ticket —
+     with `night_window.mat`, `table_metal.mat` and the soft shadows they needed. **What stayed is
+     everything a thumb touches**: the wheel and its clicks, the menus, Cover Flow, Now Playing and
+     its lyrics, the device's Settings and Sound, the three finishes, the backlight, and the pinch
+     out to the showroom, where the whole device still stands (`pocket.glb`, `PocketObject`).
+   **Not yet**: on the phone — the look, the wheel's size under a real thumb, and the cost, which
+   should be well under the train's.
 9. **Vinyl** (§5), then **cassette** (§6), each its own room and built the same way.
 
 Each of 3–8 is about a session's work. **Measure every tier as it lands** (traps 28–30).
@@ -532,5 +564,5 @@ on this Android, BLAST or not.
 The lowest tier has never been the one anybody needed, but every new room is a new scene to
 pay for.
 
-**Still open, across all of it:** the pocket player's name, and night or day at its window;
+**Still open, across all of it:** the pocket player's name;
 how the rack and the lyrics are reached from it; vinyl's room and its sides; cassette's player.

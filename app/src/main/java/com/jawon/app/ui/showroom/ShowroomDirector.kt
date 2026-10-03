@@ -4,8 +4,6 @@ import android.view.MotionEvent
 import android.view.VelocityTracker
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
-import com.jawon.app.ui.pocketscene.Wander
-import com.jawon.app.ui.pocketscene.lookAngles
 import com.jawon.app.ui.wallscene.RoomHaptics
 import io.github.sceneview.math.Position
 import io.github.sceneview.math.Rotation

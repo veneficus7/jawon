@@ -1149,15 +1149,18 @@ def _planar_uvs(obj, x0, x1, z0, z1):
             uv[li].uv = ((v.x - x0) / (x1 - x0), (v.z - z0) / (z1 - z0))
 
 
-def pocket_glass_wear(w=512, h=384, seed=11):
+def pocket_glass_wear(w=512, h=384, seed=11, width_m=None):
     """
     The screen's cover as it is after a week in a pocket: a faint haze, wiped
     unevenly; two fingerprints, one partial; and a few hairline scratches. Base
     roughness 0.03 — what the glass is when clean — rising to ~0.2 on a ridge.
+
+    [width_m] is the glass's width, so a fingerprint is a finger's size on any cover:
+    the device's by default, the face's (`build_pocket_face`) when it says.
     """
     np = _np()
     rng = np.random.default_rng(seed)
-    mm_per_px = POCKET_SCREEN_W * 1000.0 / w
+    mm_per_px = (width_m or POCKET_SCREEN_W) * 1000.0 / w
     rough = np.full((h, w), 0.03)
     haze = _fbm(h, w, 3, 4, rng, aspect=w / h)
     rough += np.clip(haze - 0.48, 0.0, 1.0) * 0.10
@@ -1210,27 +1213,31 @@ def pocket_front_wear(w=512, h=860, seed=12):
     return rough
 
 
-def pocket_wheel_wear(size=512, seed=13):
+def pocket_wheel_wear(size=512, seed=13, radius_m=None):
     """
     The ring polished by a thumb going round it: a band a few millimetres wide at
     the thumb's radius, smoother by a good margin, with the fine circular marks a
     thumb leaves — the one piece of wear that says how the thing is used.
+
+    [radius_m] is the wheel's radius: the device's by default, the face's bigger one
+    (`build_pocket_face`) when it says — and the thumb's band moves out with it.
     """
     np = _np()
     rng = np.random.default_rng(seed)
-    mm_per_px = POCKET_WHEEL_R * 2000.0 / size
+    wheel_r = radius_m or POCKET_WHEEL_R
+    mm_per_px = wheel_r * 2000.0 / size
     yy, xx = np.mgrid[0:size, 0:size]
     cx = cy = (size - 1) / 2.0
     r_mm = np.hypot(xx - cx, yy - cy) * mm_per_px
     theta = np.arctan2(yy - cy, xx - cx)
-    band = np.exp(-((r_mm - 14.2) / 3.2) ** 2)
+    band = np.exp(-((r_mm - 14.2 * wheel_r / POCKET_WHEEL_R) / 3.2) ** 2)
     rough = np.full((size, size), 0.54)
     rough -= band * 0.15
     # Circular marks: noise stretched round the ring, not across it — and periodic round it,
     # or the marks would stop dead in a seam at nine o'clock.
     streaks = _smooth_noise(size, size, 3, 120, rng, wrap_x=True)
     ang = ((theta + math.pi) / (2.0 * math.pi) * (size - 1)).astype(int)
-    rad = np.clip((r_mm / (POCKET_WHEEL_R * 1000.0)) * (size - 1), 0, size - 1).astype(int)
+    rad = np.clip((r_mm / (wheel_r * 1000.0)) * (size - 1), 0, size - 1).astype(int)
     rough += (streaks[rad, ang] - 0.5) * 0.08 * band
     rough += (_fbm(size, size, 6, 3, rng) - 0.5) * 0.03
     return rough
@@ -1469,62 +1476,6 @@ def build_pocket():
     return objects
 
 
-# The earphone plug, seated in the jack on the top edge (build_pocket()'s details), in the device's
-# own frame so the app parents it to the device and it rides along. The cord leaves the tip of the
-# strain relief, at EARPHONE_CORD_Y, straight up; `PocketCord` takes it from there.
-EARPHONE_X = 0.0155
-EARPHONE_COLLAR_R = 0.0024
-EARPHONE_COLLAR_H = 0.0017
-EARPHONE_BODY_R = 0.0030
-EARPHONE_BODY_H = 0.0150
-EARPHONE_RELIEF_R0 = 0.0019
-EARPHONE_RELIEF_R1 = 0.00115
-EARPHONE_RELIEF_H = 0.0115
-EARPHONE_CORD_Y = POCKET_H / 2.0 + EARPHONE_COLLAR_H + EARPHONE_BODY_H + EARPHONE_RELIEF_H
-
-
-def build_earphone_plug():
-    """
-    A 3.5mm plug in the device's jack, white like the cord, with a chrome collar where it meets the
-    steel. Two objects, one per material.
-    """
-    top = POCKET_H / 2.0
-    objects = []
-
-    collar = new_mesh_object("earphone_collar")
-    bm = bmesh.new()
-    cylinder(bm, EARPHONE_X, az(0.0), top + EARPHONE_COLLAR_H / 2.0,
-             EARPHONE_COLLAR_R, EARPHONE_COLLAR_H, segments=32, axis="Z")
-    bm.to_mesh(collar.data)
-    bm.free()
-    collar.data.materials.append(principled(
-        "EarphoneChrome", base_color=(0.85, 0.86, 0.88), metallic=1.0, roughness=0.14,
-    ))
-    finish(collar, bevel_width=0.0002)
-    objects.append(collar)
-
-    body = new_mesh_object("earphone_body")
-    bm = bmesh.new()
-    body_y0 = top + EARPHONE_COLLAR_H
-    cylinder(bm, EARPHONE_X, az(0.0), body_y0 + EARPHONE_BODY_H / 2.0,
-             EARPHONE_BODY_R, EARPHONE_BODY_H, segments=32, axis="Z")
-    relief_y0 = body_y0 + EARPHONE_BODY_H
-    bmesh.ops.create_cone(
-        bm, cap_ends=True, cap_tris=False, segments=24,
-        radius1=EARPHONE_RELIEF_R0, radius2=EARPHONE_RELIEF_R1, depth=EARPHONE_RELIEF_H,
-        matrix=Matrix.Translation((EARPHONE_X, az(0.0), relief_y0 + EARPHONE_RELIEF_H / 2.0)),
-    )
-    bm.to_mesh(body.data)
-    bm.free()
-    body.data.materials.append(principled(
-        # Glossy white plastic, the cord's own: a moulding, so a little shine and no coat.
-        "EarphoneWhite", base_color=(0.80, 0.80, 0.78), metallic=0.0, roughness=0.28,
-    ))
-    finish(body, bevel_width=0.0006)
-    objects.append(body)
-    return objects
-
-
 # Where the wheel's print sits: halfway across the ring, a shade outward of the
 # arithmetic middle ((8.55 + 19.5) / 2 = 14.0mm), which is where a thumb's pad
 # covers it least while pressing.
@@ -1643,40 +1594,250 @@ def build_pocket_print(wheel_z):
 
 
 # ---------------------------------------------------------------------------
-# The pocket player's carriage — the room around the device (docs/formats.md §4).
+# The pocket player's FACE — the phone *is* the player (docs/formats.md §7, step 5c).
 # ---------------------------------------------------------------------------
 
-# A classic night train's compartment, on the owner's call (2026-09-27): a varnished walnut
-# table under the window, mahogany panelling, a rounded window frame and its sill.
+# Chosen by the owner on 2026-10-03 from four prototypes: the device as an object in a room put its
+# screen at 44mm and its wheel at 39mm on a 73mm-wide phone, and every iPod-style app that shipped
+# (Rewound, ClassiPod, RetroPod, Elvin Hu's) fills the phone instead — the one that showed a small
+# device drew reviews asking for the full width. So the face is the phone's whole display: a plate
+# running past every edge of it, the window across the top and the wheel where a thumb rests.
 #
-# **Built in the room's own coordinates, not the object's**: app Y up, +Z toward the viewer,
-# the device held at the origin. Everything is placed so the life-size view does not change —
-# the table top is 30cm under the hand and the window opening stands wider than anything the
-# life-size frame can see through it — and only the view at rest, pulled back, reveals it.
-# `PocketRoomScreen` agrees with these numbers; the exported bounds in docs/models.md are the
-# check.
-CARRIAGE_TABLE_TOP_Y = -0.30
-CARRIAGE_TABLE_W = 0.70
-CARRIAGE_TABLE_FRONT_Z = -0.05
-CARRIAGE_TABLE_T = 0.028
-CARRIAGE_TABLE_R = 0.025
-CARRIAGE_WALL_Z = -0.50          # the panelling's face; the night outside is drawn behind it
-CARRIAGE_WALL_T = 0.02
-CARRIAGE_BOARD_W = 0.20          # panelling boards; the window's edges fall on board edges
-CARRIAGE_BOARD_GAP = 0.003
-CARRIAGE_BACKING_T = 0.01
-CARRIAGE_WALL_HALF_W = 1.2
-CARRIAGE_WALL_BOTTOM_Y = -0.95
-CARRIAGE_WALL_TOP_Y = 0.95
-CARRIAGE_WINDOW_HALF_W = 0.40
-CARRIAGE_WINDOW_BOTTOM_Y = -0.25
-CARRIAGE_WINDOW_TOP_Y = 0.30
-CARRIAGE_FRAME_W = 0.04          # the frame's face, all round the opening
-CARRIAGE_FRAME_DEPTH = 0.03      # how far it stands proud of the panelling
-CARRIAGE_FRAME_R = 0.07          # the opening's rounded corners
-CARRIAGE_SILL_DEPTH = 0.06
-CARRIAGE_SILL_T = 0.015
-CARRIAGE_PANE_Z = -0.515         # the glass, in the frame, just in front of the night picture
+# **Laid out for the owner's S25 Ultra's display** (1440 x 3120 at 498ppi) and drawn at life size
+# on it. The app scales the whole face uniformly to any other display — by its width, or by its
+# height on one wider than this — and centres it, so a phone of another shape gets the same face a
+# little larger or smaller (`PocketFace.kt` agrees with every number here).
+#
+# In the face's own frame, app axes: X right, Y up, **Z = 0 at the front surface** (the device's
+# was at +T/2), origin at the reference display's centre. Everything a thumb touches keeps the
+# device's real tolerances — the 0.4mm hairline, the 0.6mm recess, the button's step — and only
+# the parts that scale with a hand grow: the window, the wheel, the button and its print.
+FACE_DISPLAY_W = 1440.0 / 498.0 * 0.0254     # 73.45mm
+FACE_DISPLAY_H = 3120.0 / 498.0 * 0.0254     # 159.13mm
+# The plate, far past the display on every side: wide enough for a square display scaled to fit
+# its height, tall enough for a 21:9 one scaled to fit its width.
+FACE_PLATE_W = 0.180
+FACE_PLATE_H = 0.240
+FACE_FRONT_T = POCKET_FRONT_T
+# The window: 6.5mm of plate either side, its top 15mm under the display's top (clear of the
+# status bar), and the picture inside it 0.8mm all round — the device's mask, grown with it.
+FACE_SCREEN_MARGIN = 0.0065
+FACE_SCREEN_W = FACE_DISPLAY_W - 2.0 * FACE_SCREEN_MARGIN
+FACE_LCD_INSET = 0.0008
+FACE_LCD_W = FACE_SCREEN_W - 2.0 * FACE_LCD_INSET
+FACE_LCD_H = FACE_LCD_W * 475.0 / 640.0
+FACE_SCREEN_H = FACE_LCD_H + 2.0 * FACE_LCD_INSET
+FACE_SCREEN_TOP = 0.015
+FACE_SCREEN_Y = FACE_DISPLAY_H / 2.0 - FACE_SCREEN_TOP - FACE_SCREEN_H / 2.0
+FACE_SCREEN_R = 0.0022
+# The wheel: 51mm across, its centre 54mm above the display's bottom — where a thumb rests with
+# the phone in one hand, and well clear of the gesture bar under it.
+FACE_WHEEL_R = 0.0255
+FACE_WHEEL_Y = -FACE_DISPLAY_H / 2.0 + 0.054
+FACE_SCALE = FACE_WHEEL_R / POCKET_WHEEL_R          # the device's wheel to the face's: 1.31
+FACE_BUTTON_R = POCKET_BUTTON_R * FACE_SCALE
+# The hairlines round the wheel and the button, a shade finer than the device's: seen straight on
+# and life size across a whole phone, 0.4mm read as a ring drawn round the wheel, not a gap.
+FACE_WHEEL_GAP = 0.00025
+FACE_BUTTON_GAP = 0.0002
+# The wear maps' density: the device's own, about 8 pixels a millimetre.
+FACE_WEAR_PX_PER_MM = 8.0
+
+
+def build_pocket_face():
+    """
+    `pocket_face.glb`: the device's parts under the device's own names — `pocket_front`,
+    `pocket_screen`, `pocket_glass`, `pocket_wheel`, `pocket_button`, `pocket_print` — so the app
+    binds the finish and rocks the wheel exactly as it did the device's, and `pocket_floor` under
+    them for the hairlines to look down to. No back, no bead, no edges: they are past the
+    display, and nothing draws what no one can see.
+
+    **Needs `pocket.glb` built first**: the print is the device's own, scaled to the bigger wheel.
+    Blender 5.0 drops triangles from the M of MENU (`docs/models.md`), so the caption is taken
+    from the committed mesh rather than set again — the same letters, in any Blender.
+    """
+    np = _np()
+    front_z = 0.0
+    objects = []
+
+    def tex_extend(mat):
+        # The wear maps cover the display, not the plate: past it they hold their edge.
+        for node in mat.node_tree.nodes:
+            if node.type == "TEX_IMAGE":
+                node.extension = "EXTEND"
+
+    # ---- the plate: one face with two holes, filled and extruded, as the device's is ---------
+    front = new_mesh_object("pocket_front")
+    bm = bmesh.new()
+    _, outer_e = rounded_rect(bm, FACE_PLATE_W, FACE_PLATE_H, 0.01, az(front_z))
+    _, screen_e = rounded_rect(bm, FACE_SCREEN_W, FACE_SCREEN_H, FACE_SCREEN_R, az(front_z),
+                               cz=FACE_SCREEN_Y)
+    _, wheel_e = circle_loop(bm, FACE_WHEEL_R + FACE_WHEEL_GAP, az(front_z), FACE_WHEEL_Y,
+                             segments=128)
+    bmesh.ops.triangle_fill(bm, use_beauty=True, use_dissolve=False,
+                            edges=outer_e + screen_e + wheel_e)
+    ex = bmesh.ops.extrude_face_region(bm, geom=[f for f in bm.faces])
+    moved = [v for v in ex["geom"] if isinstance(v, bmesh.types.BMVert)]
+    bmesh.ops.translate(bm, verts=moved, vec=(0.0, -az(FACE_FRONT_T), 0.0))
+    bm.to_mesh(front.data)
+    bm.free()
+    # The device's anodising, the same numbers: the app's finish (`PocketFinish`) puts its own
+    # colour, roughness and metalness on these factors, over the same wear.
+    front_mat = principled(
+        "PocketFront", base_color=(0.205, 0.200, 0.196), metallic=1.0,
+        roughness=0.34, coat=0.12, coat_roughness=0.26, anisotropic=0.15,
+    )
+    _planar_uvs(front, -FACE_DISPLAY_W / 2.0, FACE_DISPLAY_W / 2.0,
+                -FACE_DISPLAY_H / 2.0, FACE_DISPLAY_H / 2.0)
+    wear_w = int(round(FACE_DISPLAY_W * 1000.0 * FACE_WEAR_PX_PER_MM))
+    wear_h = int(round(FACE_DISPLAY_H * 1000.0 * FACE_WEAR_PX_PER_MM))
+    _use_metal_rough(front_mat, _metal_rough_image("pocket_face_front_mr",
+                                                   pocket_front_wear(wear_w, wear_h, seed=22), 1.0))
+    tex_extend(front_mat)
+    front.data.materials.append(front_mat)
+    finish(front, bevel_width=0.00018, harden=True)
+    objects.append(front)
+
+    # ---- the screen: the black surround, then the glass over it ------------------------------
+    panel = new_mesh_object("pocket_screen")
+    bm = bmesh.new()
+    clear = 0.00002
+    _, e = rounded_rect(bm, FACE_SCREEN_W - 2.0 * clear, FACE_SCREEN_H - 2.0 * clear,
+                        FACE_SCREEN_R - clear, az(front_z - POCKET_SCREEN_SINK), cz=FACE_SCREEN_Y)
+    bmesh.ops.contextual_create(bm, geom=e)
+    bm.to_mesh(panel.data)
+    bm.free()
+    panel.data.materials.append(principled(
+        "PocketScreen", base_color=(0.012, 0.012, 0.013), metallic=0.0, roughness=0.55,
+    ))
+    finish(panel, bevel=False)
+    objects.append(panel)
+
+    glass = new_mesh_object("pocket_glass")
+    bm = bmesh.new()
+    _, e = rounded_rect(bm, FACE_SCREEN_W, FACE_SCREEN_H, FACE_SCREEN_R,
+                        az(front_z - 0.00005), cz=FACE_SCREEN_Y)
+    bmesh.ops.contextual_create(bm, geom=e)
+    ex = bmesh.ops.extrude_face_region(bm, geom=[f for f in bm.faces])
+    moved = [v for v in ex["geom"] if isinstance(v, bmesh.types.BMVert)]
+    bmesh.ops.translate(bm, verts=moved, vec=(0.0, -az(0.0004), 0.0))
+    bm.to_mesh(glass.data)
+    bm.free()
+    # Blended at a few percent, not transmissive — `build_pocket()`'s glass says why.
+    glass.data.materials.append(principled(
+        "PocketGlass", base_color=(0.015, 0.016, 0.018), metallic=0.0,
+        roughness=0.03, alpha=0.06, blend=True,
+    ))
+    _planar_uvs(glass, -FACE_SCREEN_W / 2.0, FACE_SCREEN_W / 2.0,
+                FACE_SCREEN_Y - FACE_SCREEN_H / 2.0, FACE_SCREEN_Y + FACE_SCREEN_H / 2.0)
+    glass_w = int(round(FACE_SCREEN_W * 1000.0 * FACE_WEAR_PX_PER_MM * 1.4))
+    glass_h = int(round(glass_w * FACE_SCREEN_H / FACE_SCREEN_W))
+    _use_metal_rough(glass.data.materials[0], _metal_rough_image(
+        "pocket_face_glass_mr", pocket_glass_wear(glass_w, glass_h, seed=21, width_m=FACE_SCREEN_W), 0.0))
+    finish(glass, bevel_width=0.00008, harden=True)
+    objects.append(glass)
+
+    # ---- the wheel and its button --------------------------------------------------------------
+    wheel = new_mesh_object("pocket_wheel")
+    bm = bmesh.new()
+    wheel_z = front_z - POCKET_WHEEL_SINK
+    for radius in (FACE_WHEEL_R, FACE_BUTTON_R + FACE_BUTTON_GAP):
+        bmesh.ops.create_circle(
+            bm, cap_ends=False, segments=128, radius=radius,
+            matrix=(Matrix.Translation((0.0, az(wheel_z), FACE_WHEEL_Y))
+                    @ Matrix.Rotation(math.radians(90.0), 4, "X")))
+    bmesh.ops.bridge_loops(bm, edges=[e for e in bm.edges])
+    # **Facing out of the plate, whatever the bridge chose.** The solidify below thickens against
+    # the faces' normals, and which way a bridged ring faces depends on its loops' order — with
+    # this button's radius it came out facing in, and the wheel stood 0.7mm proud of the plate
+    # with the print buried under it. The exported bounds caught it, as they did the device's.
+    for f in bm.faces:
+        f.normal_update()
+        if f.normal.y > 0.0:            # Blender +Y is app -Z: into the phone
+            f.normal_flip()
+    bm.to_mesh(wheel.data)
+    bm.free()
+    solid = wheel.modifiers.new(name="Thickness", type="SOLIDIFY")
+    solid.thickness = 0.0013
+    solid.offset = -1.0          # backwards, into the recess — see build_pocket()
+    wheel.data.materials.append(principled(
+        "PocketWheel", base_color=(0.072, 0.071, 0.070), metallic=0.0,
+        roughness=0.54, coat=0.28, coat_roughness=0.30,
+    ))
+    _planar_uvs(wheel, -FACE_WHEEL_R, FACE_WHEEL_R,
+                FACE_WHEEL_Y - FACE_WHEEL_R, FACE_WHEEL_Y + FACE_WHEEL_R)
+    _use_metal_rough(wheel.data.materials[0], _metal_rough_image(
+        "pocket_face_wheel_mr", pocket_wheel_wear(640, seed=23, radius_m=FACE_WHEEL_R), 0.0))
+    finish(wheel, bevel_width=0.00010, harden=True)
+    objects.append(wheel)
+
+    button = new_mesh_object("pocket_button")
+    bm = bmesh.new()
+    cylinder(bm, 0.0, az(wheel_z - 0.0007), FACE_WHEEL_Y,
+             FACE_BUTTON_R, 0.0015, segments=128, axis="Y")
+    bm.to_mesh(button.data)
+    bm.free()
+    button.data.materials.append(principled(
+        "PocketButton", base_color=(0.062, 0.061, 0.060), metallic=0.0,
+        roughness=0.47, coat=0.32, coat_roughness=0.26,
+    ))
+    finish(button, bevel_width=0.00012, harden=True)
+    objects.append(button)
+
+    # ---- the floor under it all -------------------------------------------------------------
+    # What the hairlines round the wheel and the button look down to. With nothing there they
+    # showed the void, and a 0.4mm gap read as a heavy black ring drawn round the wheel; a real
+    # one shows the dark moulding inside, lit a little through the gap itself.
+    floor = new_mesh_object("pocket_floor")
+    bm = bmesh.new()
+    _, e = rounded_rect(bm, FACE_PLATE_W, FACE_PLATE_H, 0.01, az(front_z - 0.0024))
+    bmesh.ops.contextual_create(bm, geom=e)
+    bm.to_mesh(floor.data)
+    bm.free()
+    floor.data.materials.append(principled(
+        "PocketFloor", base_color=(0.12, 0.12, 0.125), metallic=0.0, roughness=0.6,
+    ))
+    finish(floor, bevel=False)
+    objects.append(floor)
+
+    # ---- the print: the device's, scaled about the wheel's centre onto the face's ------------
+    before = set(bpy.context.scene.objects)
+    bpy.ops.import_scene.gltf(filepath=os.path.abspath(os.path.join(OUT_DIR, "pocket.glb")))
+    imported = set(bpy.context.scene.objects) - before
+    print_obj = None
+    for obj in imported:
+        if obj.name.startswith("pocket_print") and obj.type == "MESH":
+            print_obj = obj
+    for obj in imported:
+        if obj is not print_obj:
+            bpy.data.objects.remove(obj, do_unlink=True)
+    if print_obj is None:
+        raise RuntimeError("pocket.glb has no pocket_print to scale: build pocket.glb first")
+    print_obj.parent = None
+    device_print_z = POCKET_T / 2.0 - POCKET_WHEEL_SINK + POCKET_PRINT_LIFT
+    k = FACE_SCALE
+    # Its vertices sit at the device's wheel (centre y -22.5mm, face z +4.67mm): scaled by k about
+    # the origin, then moved so that centre lands on the face's wheel, 20µm over its face.
+    bpy.context.view_layer.update()
+    mesh = print_obj.data
+    world = print_obj.matrix_world.copy()
+    for v in mesh.vertices:
+        co = world @ v.co                      # Blender: (x, -app_z, app_y)
+        app_x, app_y, app_z = co.x, co.z, -co.y
+        nx = app_x * k
+        ny = (app_y - POCKET_WHEEL_Y) * k + FACE_WHEEL_Y
+        nz = wheel_z + POCKET_PRINT_LIFT + (app_z - device_print_z)
+        v.co = Vector((nx, az(nz), ny))
+    print_obj.matrix_world = Matrix.Identity(4)
+    print_obj.name = "pocket_print"
+    print_obj.data.name = "pocket_print"
+    objects.append(print_obj)
+
+    # Pixels and bounds, for the log and docs/models.md.
+    print("JAVON-BUILD face: screen %.2f x %.2fmm at y %.2f, picture %.2f x %.2fmm, wheel %.1fmm at y %.2f"
+          % (FACE_SCREEN_W * 1000, FACE_SCREEN_H * 1000, FACE_SCREEN_Y * 1000,
+             FACE_LCD_W * 1000, FACE_LCD_H * 1000, FACE_WHEEL_R * 2000, FACE_WHEEL_Y * 1000))
+    return objects
 
 
 def rounded_rect_xy(bm, w, d, r, z, cx=0.0, cy=0.0, arc=8):
@@ -1689,131 +1850,6 @@ def rounded_rect_xy(bm, w, d, r, z, cx=0.0, cy=0.0, arc=8):
             verts.append(bm.verts.new((cx + ccx + r * math.cos(a), cy + ccy + r * math.sin(a), z)))
     edges = [bm.edges.new((verts[i], verts[(i + 1) % len(verts)])) for i in range(len(verts))]
     return verts, edges
-
-
-def _uvs_along(obj, axis_u, u0, u1, axis_v, v0, v1):
-    """Planar UVs from two Blender axes ("x", "y" or "z"), normalised over a rectangle."""
-    mesh = obj.data
-    if not mesh.uv_layers:
-        mesh.uv_layers.new(name="UVMap")
-    uv = mesh.uv_layers.active.data
-    for poly in mesh.polygons:
-        for li in poly.loop_indices:
-            co = mesh.vertices[mesh.loops[li].vertex_index].co
-            uv[li].uv = ((getattr(co, axis_u) - u0) / (u1 - u0), (getattr(co, axis_v) - v0) / (v1 - v0))
-
-
-def wood_grain(w, h, seed, dark, light, rings=140.0, drift=0.12, ring_share=0.60):
-    """
-    Varnished hardwood's colour, generated. Linear RGB in, an h x w x 3 array out; the grain runs
-    along the width.
-
-    **Fine and nearly straight, because that is what sawn hardwood is.** The first version bent
-    the rings by most of the texture's height and drew a ring every centimetre: in a render it
-    read as a cartoon of wood, swirls the size of a hand. Rings here are a few millimetres apart
-    at the sizes these are mapped to, and drift across the board by [drift] of its width over its
-    length — the gentle arches of a flat-sawn board — with a finer wander on top.
-    """
-    np = _np()
-    rng = np.random.default_rng(seed)
-    v = np.linspace(0.0, 1.0, h, endpoint=False)[:, None]
-    warp = (_fbm(h, w, 2, 3, rng, aspect=1.5) - 0.5) * drift
-    wander = (_fbm(h, w, 8, 2, rng, aspect=4.0) - 0.5) * (1.5 / rings)
-    phase = (v + warp + wander) * rings
-    ring = 0.5 + 0.5 * np.cos(2.0 * math.pi * phase)
-    ring = ring ** 3.0                                   # thin dark latewood lines, broad earlywood
-    figure = _fbm(h, w, 4, 3, rng, aspect=0.35)          # broad bands of the figure
-    pores = _fbm(h, w, 64, 2, rng, aspect=0.08)          # fine streaks along the grain
-    # [ring_share] is how much of the colour the rings carry. Seen close, at 0.60, they read as
-    # stripes rather than grain; the table is seen from above at arm's length now.
-    rest = 1.0 - ring_share
-    t = np.clip(ring_share * (1.0 - ring) + rest * 0.55 * figure + rest * 0.45 * pores, 0.0, 1.0)
-    dark = np.array(dark)[None, None, :]
-    light = np.array(light)[None, None, :]
-    return dark + (light - dark) * t[..., None]
-
-
-def _colour_image(name, rgb):
-    """A packed sRGB colour image from a linear h x w x 3 array."""
-    np = _np()
-    h, w, _ = rgb.shape
-    srgb = np.where(rgb <= 0.0031308, rgb * 12.92, 1.055 * np.power(np.clip(rgb, 0.0, 1.0), 1.0 / 2.4) - 0.055)
-    rgba = np.ones((h, w, 4), dtype=np.float32)
-    rgba[..., :3] = np.clip(srgb, 0.0, 1.0)
-    img = bpy.data.images.new(name, width=w, height=h, alpha=False)
-    img.pixels.foreach_set(rgba.ravel())
-    img.file_format = "JPEG"
-    img.pack()
-    return img
-
-
-def _use_base_colour(mat, image):
-    nt = mat.node_tree
-    tex = nt.nodes.new("ShaderNodeTexImage")
-    tex.image = image
-    nt.links.new(tex.outputs["Color"], nt.nodes["Principled BSDF"].inputs["Base Color"])
-
-
-def carriage_pane_grime(w=1024, h=704, seed=31):
-    """
-    The window's glass as a night train's is: never clean. Returned as (grime, 0..1) over the pane,
-    bottom row first as Blender's pixel buffer runs.
-
-    A haze thickening toward the bottom and into the corners, where condensation dries and dust
-    settles; a wiped arc through it at shoulder height, where a sleeve cleared a patch to see out;
-    and a few drip streaks down from the top. **Grime is what reads as glass**: a perfectly clean
-    pane is invisible, and invisible is what the window was.
-    """
-    np = _np()
-    rng = np.random.default_rng(seed)
-    y = np.linspace(0.0, 1.0, h)[:, None]          # 0 at the bottom edge
-    x = np.linspace(0.0, 1.0, w)[None, :]
-    bottom = np.exp(-y / 0.10)
-    corner = np.exp(-(np.minimum(x, 1.0 - x) / 0.07)) * np.exp(-(np.minimum(y, 1.0 - y) / 0.12))
-    mottle = _fbm(h, w, 6, 4, rng, aspect=1.45)
-    grime = 0.25 + 0.45 * bottom + 0.35 * corner
-    grime = grime * (0.55 + 0.9 * mottle)
-    # The wiped arc: a sleeve's sweep across the middle, cleaner inside, streaky at its edge.
-    cx, cy, r = 0.42, 0.18, 0.46
-    d = np.hypot((x - cx) * 1.45, y - cy)
-    band = np.exp(-((d - r) / 0.09) ** 2) * (y > 0.08)
-    streak = _fbm(h, w, 40, 2, rng, aspect=0.2)
-    grime = grime * (1.0 - 0.75 * band * (0.6 + 0.4 * streak))
-    # Drip streaks from the top: thin, wandering, fading as they fall.
-    for _ in range(9):
-        x0 = rng.random()
-        length = 0.2 + 0.5 * rng.random()
-        wobble = (_fbm(h, 1, 5, 2, rng)[:, 0] - 0.5) * 0.02
-        xs = x0 + wobble
-        top = 1.0 - y[:, 0]
-        on = (top < length) * (1.0 - top / length)
-        dist = np.abs(x - xs[:, None])
-        grime += 0.35 * on[:, None] * np.exp(-(dist / 0.0025) ** 2)
-    return np.clip(grime, 0.0, 1.0)
-
-
-def _colour_alpha_image(name, rgb, alpha):
-    """A packed PNG from a linear h x w x 3 colour and an h x w alpha."""
-    np = _np()
-    h, w, _ = rgb.shape
-    srgb = np.where(rgb <= 0.0031308, rgb * 12.92, 1.055 * np.power(np.clip(rgb, 0.0, 1.0), 1.0 / 2.4) - 0.055)
-    rgba = np.ones((h, w, 4), dtype=np.float32)
-    rgba[..., :3] = np.clip(srgb, 0.0, 1.0)
-    rgba[..., 3] = np.clip(alpha, 0.0, 1.0)
-    img = bpy.data.images.new(name, width=w, height=h, alpha=True)
-    img.pixels.foreach_set(rgba.ravel())
-    img.file_format = "PNG"
-    img.pack()
-    return img
-
-
-def _use_colour_alpha(mat, image):
-    nt = mat.node_tree
-    bsdf = nt.nodes["Principled BSDF"]
-    tex = nt.nodes.new("ShaderNodeTexImage")
-    tex.image = image
-    nt.links.new(tex.outputs["Color"], bsdf.inputs["Base Color"])
-    nt.links.new(tex.outputs["Alpha"], bsdf.inputs["Alpha"])
 
 
 # ---------------------------------------------------------------------------
@@ -1905,806 +1941,6 @@ def build_showroom():
     ))
     finish(plinths, bevel_width=0.002, harden=True)
     objects.append(plinths)
-    return objects
-
-
-# ---------------------------------------------------------------------------
-# The tablecloth — what the pocket player lies on at rest (docs/formats.md §4): white linen on the
-# compartment's table, pressed into folds and opened out, as a sleeper train lays it. The ground of
-# a still life seen from above — the owner's pick on 2026-09-29, over a crumpled bedsheet.
-# ---------------------------------------------------------------------------
-
-CLOTH_X0, CLOTH_X1 = -0.31, 0.31
-CLOTH_Z0, CLOTH_Z1 = -0.49, -0.06
-CLOTH_STEP = 0.004
-# How far over the table it lies where the device is: `RestPose.SURFACE_T` must agree
-# (`PocketClothTest` reads it back out of the height map).
-CLOTH_T = 0.003
-# Pressed into eighths and opened out: a crease down the middle and three across, mountain and
-# valley in turn, as a folded cloth lies — (where, +1 mountain or -1 valley).
-CLOTH_CREASES_X = ((0.0, 1.0),)
-CLOTH_CREASES_Z = ((-0.3825, -1.0), (-0.275, 1.0), (-0.1675, -1.0))
-CLOTH_CREASE_H = 0.0010
-CLOTH_CREASE_W = 0.007
-# And never quite flat: a slow lift and fall across it, under a millimetre.
-CLOTH_WAVE_M = 0.0008
-# Where the device lies (`RestPose`), its weight pressing the cloth flat under it.
-CLOTH_DEVICE_X = 0.03
-CLOTH_DEVICE_Z = -0.30
-CLOTH_DEVICE_YAW_DEG = -14.0
-CLOTH_FLATTEN_M = 0.015
-# The weave: fine linen, its threads 0.55mm apart, on an 80mm tile.
-CLOTH_TILE_M = 0.08
-CLOTH_THREAD_M = 0.00055
-CLOTH_RELIEF_M = 0.00018
-# White linen, a little warm, linear.
-CLOTH_COLOUR = (0.74, 0.72, 0.66)
-# The height map the app lays the cord on (`ClothSurface`): the cloth's top, every 3mm over the
-# table.
-CLOTH_MAP_X0, CLOTH_MAP_X1 = -0.35, 0.35
-CLOTH_MAP_Z0, CLOTH_MAP_Z1 = -0.50, -0.05
-CLOTH_MAP_STEP = 0.003
-CLOTH_MAP_SCALE = 0.02 / 65535.0
-
-
-def _device_outside(x, z):
-    """How far (x, z) is outside the resting device's footprint, metres; negative inside."""
-    np = _np()
-    yaw = math.radians(CLOTH_DEVICE_YAW_DEG)
-    dx, dz = x - CLOTH_DEVICE_X, z - CLOTH_DEVICE_Z
-    lx = dx * math.cos(yaw) - dz * math.sin(yaw)
-    lz = dx * math.sin(yaw) + dz * math.cos(yaw)
-    qx = np.abs(lx) - (POCKET_W / 2.0 - POCKET_R)
-    qz = np.abs(lz) - (POCKET_H / 2.0 - POCKET_R)
-    return np.hypot(np.maximum(qx, 0.0), np.maximum(qz, 0.0)) + np.minimum(np.maximum(qx, qz), 0.0) - POCKET_R
-
-
-def _smooth01(t):
-    np = _np()
-    t = np.clip(t, 0.0, 1.0)
-    return t * t * (3.0 - 2.0 * t)
-
-
-def cloth_height(X, Z):
-    """The cloth's top over the table at (X, Z), metres: its creases and swells, flat under the device."""
-    np = _np()
-    X = np.asarray(X, dtype=np.float64)
-    Z = np.asarray(Z, dtype=np.float64)
-    h = CLOTH_WAVE_M * (np.sin(X / 0.11 + 0.7) * np.sin(Z / 0.09 + 1.9) + 0.5 * np.sin((X - Z) / 0.05 + 4.0))
-    for x, sign in CLOTH_CREASES_X:
-        h = h + sign * CLOTH_CREASE_H * np.exp(-np.abs(X - x) / CLOTH_CREASE_W)
-    for z, sign in CLOTH_CREASES_Z:
-        h = h + sign * CLOTH_CREASE_H * np.exp(-np.abs(Z - z) / CLOTH_CREASE_W)
-    m = _smooth01(_device_outside(X, Z) / CLOTH_FLATTEN_M)
-    return CLOTH_T + h * m
-
-
-def _cloth_grid(name, x0, x1, z0, z1, step, height):
-    """A grid object over app (x, z), its heights (over the table) from [height](X, Z), faces up."""
-    np = _np()
-    xs = np.linspace(x0, x1, int(round((x1 - x0) / step)) + 1)
-    zs = np.linspace(z0, z1, int(round((z1 - z0) / step)) + 1)
-    X, Z = np.meshgrid(xs, zs)
-    Y = CARRIAGE_TABLE_TOP_Y + height(X, Z)
-    obj = new_mesh_object(name)
-    mesh = obj.data
-    nz, nx = X.shape
-    co = np.stack([X.ravel(), -Z.ravel(), Y.ravel()], axis=1)
-    # Wound so the faces look up: rows run toward +app z, which is −Blender y.
-    faces = []
-    for j in range(nz - 1):
-        for i in range(nx - 1):
-            a = j * nx + i
-            faces.append((a, a + nx, a + nx + 1, a + 1))
-    mesh.from_pydata(co.tolist(), [], faces)
-    mesh.update()
-    return obj
-
-
-def _linen_tile(px=1024, seed=11):
-    """
-    One tile of plain-weave linen: heights 0..1 and a tone, rows running from the tile's top.
-
-    Warp and weft over and under each other in turn, each thread round in section and rising where
-    it passes over; and linen's character on top — **slubs**, stretches a few millimetres long where
-    a thread runs thicker and a shade lighter, which are what make linen read as linen rather than
-    as a printed grid — and a tone that wanders thread to thread. Everything wraps with the tile.
-    """
-    np = _np()
-    rng = np.random.default_rng(seed)
-    n = int(round(CLOTH_TILE_M / CLOTH_THREAD_M))
-    pitch = px / n
-    t = (np.arange(px) + 0.5) / pitch
-    idx = np.floor(t).astype(int)
-    frac = t - idx
-
-    def along(count, cells):
-        """Per thread, a periodic 1-D wander along the tile, 0..1, [cells] keys long."""
-        keys = rng.random((count, cells))
-        pos = (np.arange(px) + 0.5) / px * cells
-        i0 = np.floor(pos).astype(int)
-        f = pos - i0
-        f = f * f * (3.0 - 2.0 * f)
-        a = keys[:, i0 % cells]
-        b = keys[:, (i0 + 1) % cells]
-        return a + (b - a) * f[None, :]
-
-    # Slubs: thicker, lighter runs along a thread, and the thread's own tone.
-    warp_slub = np.clip((along(n, 24) - 0.62) / 0.3, 0.0, 1.0)      # [thread, y]
-    weft_slub = np.clip((along(n, 24) - 0.62) / 0.3, 0.0, 1.0)      # [thread, x]
-    warp_tone = rng.random(n) - 0.5
-    weft_tone = rng.random(n) - 0.5
-
-    xi = idx[None, :]
-    yi = idx[:, None]
-    fx = frac[None, :]
-    fy = frac[:, None]
-    # Across a thread: round, a little narrower than its pitch, fatter along a slub.
-    w_slub = warp_slub[idx[None, :], np.arange(px)[:, None]]        # warp thread at x, along y
-    f_slub = weft_slub[idx[:, None], np.arange(px)[None, :]]        # weft thread at y, along x
-    w_width = 0.80 + 0.25 * w_slub
-    f_width = 0.80 + 0.25 * f_slub
-    w_cross = np.sqrt(np.clip(1.0 - ((2.0 * fx - 1.0) / w_width) ** 2, 0.0, 1.0))
-    f_cross = np.sqrt(np.clip(1.0 - ((2.0 * fy - 1.0) / f_width) ** 2, 0.0, 1.0))
-    # Over and under: warp i is over weft j where i + j is even.
-    ty = (np.arange(px)[:, None] + 0.5) / pitch
-    tx = (np.arange(px)[None, :] + 0.5) / pitch
-    w_und = 0.5 + 0.5 * np.cos(math.pi * (ty - 0.5) + math.pi * xi)
-    f_und = 0.5 - 0.5 * np.cos(math.pi * (tx - 0.5) + math.pi * yi)
-    warp_h = w_cross * (0.35 + 0.65 * w_und) * (1.0 + 0.30 * w_slub)
-    weft_h = f_cross * (0.35 + 0.65 * f_und) * (1.0 + 0.30 * f_slub)
-    height = np.maximum(warp_h, weft_h)
-    on_warp = warp_h >= weft_h
-    tone = np.where(on_warp, warp_tone[xi % n] + 0.5 * w_slub, weft_tone[yi % n] + 0.5 * f_slub)
-    return np.clip(height / 1.3, 0.0, 1.0), tone
-
-
-def _cloth_height_map():
-    """The cloth's top every CLOTH_MAP_STEP over the table, as the bytes of `cloth_height.bin`."""
-    np = _np()
-    import struct
-    xs = np.arange(CLOTH_MAP_X0, CLOTH_MAP_X1 + 1e-9, CLOTH_MAP_STEP)
-    zs = np.arange(CLOTH_MAP_Z0, CLOTH_MAP_Z1 + 1e-9, CLOTH_MAP_STEP)
-    X, Z = np.meshgrid(xs, zs)
-    on = (X >= CLOTH_X0) & (X <= CLOTH_X1) & (Z >= CLOTH_Z0) & (Z <= CLOTH_Z1)
-    heights = np.where(on, cloth_height(X, Z), 0.0)
-    values = np.clip(np.round(heights / CLOTH_MAP_SCALE), 0, 65535).astype("<u2")
-    header = struct.pack(
-        "<4siiifffff", b"JWHM", 1, len(xs), len(zs),
-        float(CLOTH_MAP_X0), float(CLOTH_MAP_Z0), float(CLOTH_MAP_STEP),
-        float(CARRIAGE_TABLE_TOP_Y), float(CLOTH_MAP_SCALE),
-    )
-    return header + values.tobytes()
-
-
-def build_cloth():
-    """
-    The tablecloth: a grid lying on the table in its pressed creases, flat under the device, dressed
-    as fine white linen — the weave in a normal map and the colour, and linen's faint sheen. Also
-    writes `cloth_height.bin`, its top, which the app lays the cord on, from the same function the
-    grid is built from, so the two can never disagree.
-    """
-    np = _np()
-    obj = _cloth_grid("cloth", CLOTH_X0, CLOTH_X1, CLOTH_Z0, CLOTH_Z1, CLOTH_STEP, cloth_height)
-    mesh = obj.data
-    uv = mesh.uv_layers.new(name="UVMap").data
-    for poly in mesh.polygons:
-        poly.use_smooth = True
-        for li in poly.loop_indices:
-            co = mesh.vertices[mesh.loops[li].vertex_index].co
-            uv[li].uv = (co.x / CLOTH_TILE_M, co.y / CLOTH_TILE_M)
-
-    blob = _cloth_height_map()
-    path = os.path.abspath(os.path.join(OUT_DIR, "cloth_height.bin"))
-    with open(path, "wb") as f:
-        f.write(blob)
-    print("JAVON-BUILD wrote %s (%.1f KB)" % (path, len(blob) / 1024.0))
-
-    height, tone = _linen_tile()
-    linen = principled("ClothLinen", base_color=CLOTH_COLOUR, metallic=0.0, roughness=0.84)
-    nt = linen.node_tree
-    bsdf = nt.nodes["Principled BSDF"]
-    # Linen's lustre: a faint sheen at glancing angles, pressed a little into the cloth.
-    for key, value in (("Sheen Weight", 0.3), ("Sheen Roughness", 0.45)):
-        if key in bsdf.inputs:
-            bsdf.inputs[key].default_value = value
-    if "Sheen Tint" in bsdf.inputs:
-        bsdf.inputs["Sheen Tint"].default_value = (1.0, 0.98, 0.95, 1.0)
-    albedo = np.array(CLOTH_COLOUR)[None, None, :] * (0.90 + 0.10 * height[..., None]) * (1.0 + 0.05 * tone[..., None])
-    _use_base_colour(linen, _colour_image("cloth_linen", albedo[::-1].copy()))
-    _use_normal_map(linen, _normal_image("cloth_weave", height, CLOTH_RELIEF_M, CLOTH_TILE_M, CLOTH_TILE_M))
-    obj.data.materials.append(linen)
-    obj.modifiers.new(name="Triangulate", type="TRIANGULATE")
-    return [obj]
-
-
-# ---------------------------------------------------------------------------
-# The tea — a glass of it in a railway holder, with its spoon: the still life's first prop
-# (docs/formats.md §4). The sleeper train's own: a thin tea glass in a nickel-silver
-# podstakannik, fluted, with a handle, and a teaspoon standing in it. Top left of the frame at
-# rest, cut by its edge the way a photographer lets a prop run out of the picture.
-# ---------------------------------------------------------------------------
-
-# Where it stands on the cloth, in the room's own coordinates, and which way its handle and the
-# spoon lean — degrees round from +x toward +z (toward you), seen from above.
-TEA_X, TEA_Z = -0.080, -0.425
-TEA_HANDLE_DEG = 40.0
-TEA_SPOON_DEG = -15.0
-# The glass: thin, tapering a little to its foot, with a thick base. 250ml to the brim.
-TEA_GLASS_H = 0.100
-TEA_GLASS_R_TOP = 0.0355
-TEA_GLASS_R_BOTTOM = 0.0300
-TEA_GLASS_WALL = 0.0016
-TEA_GLASS_BASE = 0.0070
-# How full: a finger's width below the rim, as a glass is carried to a compartment.
-TEA_LEVEL = 0.085
-# The holder: sheet nickel silver hugging the glass's lower two thirds, on a foot of its own.
-TEA_HOLDER_FLOOR = 0.0080    # the glass stands this high off the cloth
-TEA_HOLDER_UP = 0.064        # how far up the glass it comes
-TEA_HOLDER_GAP = 0.0004
-TEA_HOLDER_SHEET = 0.0008
-TEA_HOLDER_FLUTES = 18
-TEA_HOLDER_FLUTE_M = 0.0008
-TEA_SEGMENTS = 96
-# The ticket: a card one, 85 × 54mm, lying at the frame's lower left, its long edges lifting
-# where the paper remembers being folded into a pocket.
-TICKET_X, TICKET_Z = -0.050, -0.195
-TICKET_YAW_DEG = 24.0
-TICKET_W = 0.085
-TICKET_D = 0.054
-TICKET_T = 0.00025
-TICKET_CURL_M = 0.0012
-
-
-def _glass_outer_r(h):
-    """The tea glass's outside radius at [h] up it."""
-    t = min(max(h / TEA_GLASS_H, 0.0), 1.0)
-    return TEA_GLASS_R_BOTTOM + (TEA_GLASS_R_TOP - TEA_GLASS_R_BOTTOM) * t
-
-
-def _glass_inner_r(h):
-    return _glass_outer_r(h) - TEA_GLASS_WALL
-
-
-def _lathe(bm, profile, segments, cx, cy, cz, radial=None):
-    """
-    A closed surface of revolution about a vertical axis through Blender (cx, cy), its foot at cz:
-    [profile] is (r, h) pairs in order round the solid's cross-section, an r of 0 closing that end
-    on the axis. [radial](theta, h, index) adds to the radius — for flutes. Normals are left to the
-    caller's recalc.
-    """
-    rings = []
-    for index, (r, h) in enumerate(profile):
-        if r <= 1e-9:
-            rings.append([bm.verts.new((cx, cy, cz + h))])
-            continue
-        ring = []
-        for k in range(segments):
-            t = 2.0 * math.pi * k / segments
-            rr = r + (radial(t, h, index) if radial else 0.0)
-            ring.append(bm.verts.new((cx + rr * math.cos(t), cy + rr * math.sin(t), cz + h)))
-        rings.append(ring)
-    for a, b in zip(rings, rings[1:]):
-        if len(a) == 1 and len(b) == 1:
-            continue
-        for k in range(segments):
-            k1 = (k + 1) % segments
-            if len(a) == 1:
-                bm.faces.new((a[0], b[k1], b[k]))
-            elif len(b) == 1:
-                bm.faces.new((a[k], a[k1], b[0]))
-            else:
-                bm.faces.new((a[k], a[k1], b[k1], b[k]))
-
-
-def _sweep(bm, points, half_w, half_t, up, segments=12):
-    """
-    A closed tube along [points] (Blender Vectors), its cross-section an ellipse [half_w] across
-    the plane of the path and [half_t] in it; [up] is the plane's normal. Capped at both ends.
-    """
-    rings = []
-    n = len(points)
-    for i, p in enumerate(points):
-        a = points[max(i - 1, 0)]
-        b = points[min(i + 1, n - 1)]
-        tangent = (b - a).normalized()
-        side = up.cross(tangent).normalized()
-        ring = []
-        for k in range(segments):
-            t = 2.0 * math.pi * k / segments
-            ring.append(bm.verts.new(p + side * (half_t * math.cos(t)) + up * (half_w * math.sin(t))))
-        rings.append(ring)
-    for a, b in zip(rings, rings[1:]):
-        for k in range(segments):
-            k1 = (k + 1) % segments
-            bm.faces.new((a[k], a[k1], b[k1], b[k]))
-    bm.faces.new(list(reversed(rings[0])))
-    bm.faces.new(rings[-1])
-
-
-def _catmull(points, samples):
-    """A Catmull-Rom curve through [points] (Vectors), [samples] points along it, ends included."""
-    out = []
-    pts = [points[0]] + list(points) + [points[-1]]
-    spans = len(points) - 1
-    for s in range(samples):
-        u = s / (samples - 1) * spans
-        i = min(int(u), spans - 1)
-        f = u - i
-        p0, p1, p2, p3 = pts[i], pts[i + 1], pts[i + 2], pts[i + 3]
-        f2, f3 = f * f, f * f * f
-        out.append(0.5 * ((2.0 * p1) + (-p0 + p2) * f + (2.0 * p0 - 5.0 * p1 + 4.0 * p2 - p3) * f2 +
-                          (-p0 + 3.0 * p1 - 3.0 * p2 + p3) * f3))
-    return out
-
-
-def build_tea():
-    """
-    The glass of tea in its holder, with the spoon: four objects, one per material — the glass,
-    the tea, the nickel silver and the spoon's steel. In the room's own coordinates, standing on
-    the cloth where `TEA_X`/`TEA_Z` put it.
-    """
-    np = _np()
-    base = CARRIAGE_TABLE_TOP_Y + float(cloth_height(np.array(TEA_X), np.array(TEA_Z))) - 0.0004
-    cx, cy = TEA_X, az(TEA_Z)
-    # A tenth of a millimetre off the holder's floor, so the two never fight for the same depth.
-    glass_z = base + TEA_HOLDER_FLOOR + 0.0001
-    objects = []
-
-    # The glass: its outside up from a softened foot, a rounded rim, its inside down to the thick
-    # base — one closed solid, so the refraction has a front and a back to it.
-    glass = new_mesh_object("tea_glass")
-    bm = bmesh.new()
-    rim = TEA_GLASS_WALL / 2.0
-    profile = [(0.0, 0.0), (TEA_GLASS_R_BOTTOM - 0.0006, 0.0), (TEA_GLASS_R_BOTTOM, 0.0008)]
-    for h in (0.02, 0.04, 0.06, 0.08, TEA_GLASS_H - rim):
-        profile.append((_glass_outer_r(h), h))
-    profile += [
-        (_glass_outer_r(TEA_GLASS_H) - rim * 0.3, TEA_GLASS_H - rim * 0.3),
-        (_glass_outer_r(TEA_GLASS_H) - rim, TEA_GLASS_H),
-        (_glass_inner_r(TEA_GLASS_H) + rim * 0.3, TEA_GLASS_H - rim * 0.3),
-        (_glass_inner_r(TEA_GLASS_H - rim), TEA_GLASS_H - rim),
-    ]
-    for h in (0.08, 0.06, 0.04, 0.02, TEA_GLASS_BASE + 0.002):
-        profile.append((_glass_inner_r(h), h))
-    profile += [(_glass_inner_r(TEA_GLASS_BASE) - 0.0015, TEA_GLASS_BASE), (0.0, TEA_GLASS_BASE)]
-    _lathe(bm, profile, TEA_SEGMENTS, cx, cy, glass_z)
-    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
-    bm.to_mesh(glass.data)
-    bm.free()
-    # Clear, thin, blended rather than refracting: through a glass this thin nothing bends enough
-    # to see, and what shows it is glass is its specular — the rim's line of light, the walls'
-    # reflections — which a blended surface keeps whole (the pocket player's cover, trap 32).
-    glass.data.materials.append(principled(
-        "TeaGlass", base_color=(0.92, 0.95, 0.94), metallic=0.0, roughness=0.02, alpha=0.10, blend=True,
-    ))
-    finish(glass, bevel=False)
-    objects.append(glass)
-
-    # The tea: a solid of it inside the glass, its top a little meniscus where it climbs the wall.
-    tea = new_mesh_object("tea_liquid")
-    bm = bmesh.new()
-    wall = lambda h: _glass_inner_r(h) - 0.0002
-    top = TEA_LEVEL
-    profile = [
-        (0.0, TEA_GLASS_BASE + 0.0002), (wall(TEA_GLASS_BASE) - 0.0015, TEA_GLASS_BASE + 0.0002),
-        (wall(TEA_GLASS_BASE + 0.002), TEA_GLASS_BASE + 0.002),
-    ]
-    for h in (0.03, 0.05, 0.07, top - 0.0004):
-        profile.append((wall(h), h))
-    profile += [(wall(top + 0.0007), top + 0.0007), (wall(top) - 0.0012, top + 0.0002),
-                (wall(top) - 0.004, top), (0.0, top)]
-    _lathe(bm, profile, TEA_SEGMENTS, cx, cy, glass_z)
-    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
-    bm.to_mesh(tea.data)
-    bm.free()
-    # Strong black tea: a deep red-brown, and a surface that mirrors — the lamp and the window
-    # lie on it as two small lights.
-    tea.data.materials.append(principled(
-        "Tea", base_color=(0.085, 0.022, 0.004), metallic=0.0, roughness=0.04,
-    ))
-    finish(tea, bevel=False)
-    objects.append(tea)
-
-    # The holder: a foot, a floor the glass stands on, and a thin fluted cup up the glass's lower
-    # two thirds, rolled over into a bead at the top.
-    holder = new_mesh_object("tea_holder")
-    bm = bmesh.new()
-    gz = TEA_HOLDER_FLOOR
-    out = lambda h: _glass_outer_r(h) + TEA_HOLDER_GAP + TEA_HOLDER_SHEET
-    inn = lambda h: _glass_outer_r(h) + TEA_HOLDER_GAP
-    up = TEA_HOLDER_UP
-    profile = [
-        (0.0, gz - 0.0008), (0.0245, gz - 0.0008), (0.0258, 0.0), (0.0300, 0.0), (0.0304, 0.0012),
-        (0.0292, 0.0055), (out(0.0) + 0.0002, gz), (out(0.004), gz + 0.004),
-    ]
-    fluted_from = len(profile)
-    for h in (0.012, 0.020, 0.028, 0.036, 0.044, 0.052):
-        profile.append((out(h), gz + h))
-    fluted_to = len(profile)
-    profile += [
-        (out(up - 0.002), gz + up - 0.002), (out(up) + 0.0010, gz + up - 0.0006), (out(up) + 0.0010, gz + up + 0.0006),
-        (inn(up) + 0.0004, gz + up + 0.0010), (inn(up), gz + up),
-    ]
-    for h in (0.05, 0.035, 0.02, 0.005):
-        profile.append((inn(h), gz + h))
-    profile += [(inn(0.0), gz), (0.0, gz)]
-
-    def flutes(theta, h, index):
-        if not (fluted_from <= index < fluted_to):
-            return 0.0
-        # Brought in and out of the band smoothly, so the flutes rise from the plain sheet.
-        u = (h - gz - 0.012) / 0.040
-        window = math.sin(math.pi * min(max(u, 0.0), 1.0))
-        return TEA_HOLDER_FLUTE_M * window * (0.5 + 0.5 * math.cos(TEA_HOLDER_FLUTES * theta))
-
-    _lathe(bm, profile, TEA_SEGMENTS * 2, cx, cy, base, radial=flutes)
-    # The handle: a flat band in a D from under the bead down to the waist, on the side the
-    # handle faces.
-    heading = math.radians(TEA_HANDLE_DEG)
-    radial = Vector((math.cos(heading), -math.sin(heading), 0.0))   # app +z is Blender -y
-    plane_normal = Vector((0.0, 0.0, 1.0)).cross(radial).normalized()
-    centre = Vector((cx, cy, base))
-    def at(r, h):
-        return centre + radial * r + Vector((0.0, 0.0, h))
-    r0 = out(up - 0.004)
-    path = _catmull([
-        at(r0 - 0.0010, gz + up - 0.004), at(r0 + 0.010, gz + up + 0.001), at(r0 + 0.019, gz + up - 0.008),
-        at(r0 + 0.021, gz + up - 0.024), at(r0 + 0.015, gz + up - 0.040), at(r0 + 0.004, gz + up - 0.046),
-        at(out(0.018) - 0.0010, gz + 0.018),
-    ], 40)
-    _sweep(bm, path, half_w=0.0028, half_t=0.0011, up=plane_normal)
-    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
-    bm.to_mesh(holder.data)
-    bm.free()
-    # Nickel silver: a warm, slightly yellow silver, polished once and handled since.
-    holder.data.materials.append(principled(
-        "TeaHolder", base_color=(0.80, 0.77, 0.69), metallic=1.0, roughness=0.24,
-    ))
-    finish(holder, bevel=False)
-    objects.append(holder)
-
-    # The spoon, standing in the tea and leaning on the rim: its stem out over the rim and on up,
-    # widening to the handle's blade. Only what is above the tea is made — the rest is under it.
-    spoon = new_mesh_object("tea_spoon")
-    bm = bmesh.new()
-    lean = math.radians(TEA_SPOON_DEG)
-    toward = Vector((math.cos(lean), -math.sin(lean), 0.0))
-    rim_top = glass_z + TEA_GLASS_H
-    # From its bowl down by the glass's far wall, over the rim on the near side and on up — about
-    # 35° from upright, as a spoon left in a glass leans.
-    contact = centre + toward * (_glass_inner_r(TEA_GLASS_H) - 0.0012) + Vector((0.0, 0.0, rim_top - base + 0.0012))
-    bottom = centre - toward * (_glass_inner_r(0.01) - 0.004) + Vector((0.0, 0.0, glass_z - base + 0.012))
-    axis = (contact - bottom).normalized()
-    length_above = 0.045
-    stations = 36
-    side = Vector((0.0, 0.0, 1.0)).cross(toward).normalized()
-    rings = []
-    total = (contact - bottom).length + length_above
-    for s in range(stations + 1):
-        u = s / stations
-        p = bottom + axis * (total * u)
-        # A narrow stem, widening into the handle's blade over its last 30mm, rounded at the tip.
-        from_top = total * (1.0 - u)
-        blade = min(max((0.040 - from_top) / 0.030, 0.0), 1.0)
-        half_w = 0.0016 + 0.0034 * (blade * blade * (3.0 - 2.0 * blade))
-        if from_top < 0.005:
-            half_w *= math.sqrt(max(1.0 - ((0.005 - from_top) / 0.005) ** 2, 0.04))
-        half_t = 0.0008 - 0.0002 * blade
-        normal = axis.cross(side).normalized()
-        ring = []
-        for k in range(12):
-            t = 2.0 * math.pi * k / 12
-            ring.append(bm.verts.new(p + side * (half_w * math.cos(t)) + normal * (half_t * math.sin(t))))
-        rings.append(ring)
-    for a, b in zip(rings, rings[1:]):
-        for k in range(12):
-            k1 = (k + 1) % 12
-            bm.faces.new((a[k], a[k1], b[k1], b[k]))
-    bm.faces.new(list(reversed(rings[0])))
-    bm.faces.new(rings[-1])
-    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
-    bm.to_mesh(spoon.data)
-    bm.free()
-    spoon.data.materials.append(principled(
-        "TeaSpoon", base_color=(0.86, 0.86, 0.87), metallic=1.0, roughness=0.14,
-    ))
-    finish(spoon, bevel=False)
-    objects.append(spoon)
-    return objects
-
-
-def build_ticket():
-    """
-    The ticket: a thin card lying on the cloth, its long edges lifting a little. Its face carries a
-    placeholder texture the app replaces with the ticket it draws — the destination is the album
-    playing — so the face's UVs run 0..1 across it.
-    """
-    np = _np()
-    obj = new_mesh_object("ticket")
-    bm = bmesh.new()
-    nu, nv = 34, 22
-    yaw = math.radians(TICKET_YAW_DEG)
-    cu = Vector((math.cos(yaw), -math.sin(yaw), 0.0))   # along the long side, app +x turned toward +z
-    cv = Vector((math.sin(yaw), math.cos(yaw), 0.0))
-    # Card is stiff: it lies on the crowns of the cloth's creases and bridges their valleys, so it
-    # rests flat at the highest point of the cloth under it.
-    xs, zs = [], []
-    for j in range(9):
-        for i in range(13):
-            p = Vector((TICKET_X, az(TICKET_Z), 0.0)) + cu * ((i / 12 - 0.5) * TICKET_W) + cv * ((j / 8 - 0.5) * TICKET_D)
-            xs.append(p.x)
-            zs.append(-p.y)
-    rest_y = CARRIAGE_TABLE_TOP_Y + float(np.max(cloth_height(np.array(xs), np.array(zs))))
-    top = []
-    bottom = []
-    for j in range(nv + 1):
-        v = j / nv
-        row_t, row_b = [], []
-        for i in range(nu + 1):
-            u = i / nu
-            p = Vector((TICKET_X, az(TICKET_Z), 0.0)) + cu * ((u - 0.5) * TICKET_W) + cv * ((v - 0.5) * TICKET_D)
-            lift = TICKET_CURL_M * abs(2.0 * v - 1.0) ** 2.2 + 0.0004 * math.sin(math.pi * u)
-            y = rest_y + 0.0001 + lift
-            row_t.append(bm.verts.new((p.x, p.y, y + TICKET_T)))
-            row_b.append(bm.verts.new((p.x, p.y, y)))
-        top.append(row_t)
-        bottom.append(row_b)
-    bm.verts.ensure_lookup_table()
-    uv_layer = bm.loops.layers.uv.new("UVMap")
-    faces_top = []
-    for j in range(nv):
-        for i in range(nu):
-            f = bm.faces.new((top[j][i], top[j][i + 1], top[j + 1][i + 1], top[j + 1][i]))
-            faces_top.append((f, i, j))
-            bm.faces.new((bottom[j][i], bottom[j + 1][i], bottom[j + 1][i + 1], bottom[j][i + 1]))
-    # The edges round it.
-    ring_t = [top[0][i] for i in range(nu + 1)] + [top[j][nu] for j in range(1, nv + 1)] + \
-             [top[nv][i] for i in range(nu - 1, -1, -1)] + [top[j][0] for j in range(nv - 1, 0, -1)]
-    ring_b = [bottom[0][i] for i in range(nu + 1)] + [bottom[j][nu] for j in range(1, nv + 1)] + \
-             [bottom[nv][i] for i in range(nu - 1, -1, -1)] + [bottom[j][0] for j in range(nv - 1, 0, -1)]
-    for k in range(len(ring_t)):
-        k1 = (k + 1) % len(ring_t)
-        bm.faces.new((ring_b[k], ring_b[k1], ring_t[k1], ring_t[k]))
-    for f, i, j in faces_top:
-        for loop, (du, dv) in zip(f.loops, ((0, 0), (1, 0), (1, 1), (0, 1))):
-            # The image's top at the ticket's far edge, so it reads upright from the camera above.
-            loop[uv_layer].uv = ((i + du) / nu, (j + dv) / nv)
-    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
-    bm.to_mesh(obj.data)
-    bm.free()
-    face = attach_placeholder_basecolor(principled(
-        "TicketFace", base_color=(1.0, 1.0, 1.0), metallic=0.0, roughness=0.78,
-    ), "ticket_face")
-    obj.data.materials.append(face)
-    for poly in obj.data.polygons:
-        poly.use_smooth = True
-    obj.modifiers.new(name="Triangulate", type="TRIANGULATE")
-    return [obj]
-
-
-def _normal_image(name, height, relief_m, tile_w, tile_h):
-    """
-    A tangent-space normal map (OpenGL, +Y up the image) from a height field whose rows run from
-    the image's top down.
-    """
-    np = _np()
-    ny, nx = height.shape
-    hm = height * relief_m
-    dx = (np.roll(hm, -1, axis=1) - np.roll(hm, 1, axis=1)) / (2.0 * tile_w / nx)
-    # Rows run down the image, so up the image is −row.
-    dy = -(np.roll(hm, -1, axis=0) - np.roll(hm, 1, axis=0)) / (2.0 * tile_h / ny)
-    nxv, nyv, nzv = -dx, -dy, np.ones_like(dx)
-    length = np.sqrt(nxv * nxv + nyv * nyv + nzv * nzv)
-    rgba = np.ones((ny, nx, 4), dtype=np.float32)
-    rgba[..., 0] = nxv / length * 0.5 + 0.5
-    rgba[..., 1] = nyv / length * 0.5 + 0.5
-    rgba[..., 2] = nzv / length * 0.5 + 0.5
-    img = bpy.data.images.new(name, width=nx, height=ny, alpha=False)
-    img.colorspace_settings.name = "Non-Color"
-    # Blender's pixel buffer runs from the bottom row up.
-    img.pixels.foreach_set(rgba[::-1].ravel())
-    img.file_format = "JPEG"
-    img.pack()
-    return img
-
-
-def _use_normal_map(mat, image, strength=1.0):
-    nt = mat.node_tree
-    tex = nt.nodes.new("ShaderNodeTexImage")
-    tex.image = image
-    nm = nt.nodes.new("ShaderNodeNormalMap")
-    nm.inputs["Strength"].default_value = strength
-    nt.links.new(tex.outputs["Color"], nm.inputs["Color"])
-    nt.links.new(nm.outputs["Normal"], nt.nodes["Principled BSDF"].inputs["Normal"])
-
-
-def build_carriage_glass():
-    """
-    The carriage window's pane, as a file of its own: its grime needs an alpha channel, so it
-    exports as PNG, while the carriage's wood grain is JPEG — the exporter takes one image format
-    per file, and one file of both was 1.7MB where these two are 0.6.
-    """
-    ow = CARRIAGE_WINDOW_HALF_W
-    lo, hi = CARRIAGE_WINDOW_BOTTOM_Y, CARRIAGE_WINDOW_TOP_Y
-    ww, wh = 2.0 * ow, hi - lo
-    cz = (lo + hi) / 2.0
-    objects = []
-    # ---- the pane: glass in the frame, never quite clean -------------------------------------
-    # **What makes the window a window.** Blended rather than transmissive, for the reason the
-    # device's glass is (trap 32 and `PocketGlass`): a flat pane bends nothing a person could see,
-    # and a blended surface keeps its full 4% specular — so it reflects the lit compartment
-    # behind the viewer, the lamp and the ceiling's lines, over the night, which is the look of a
-    # train window after dark. A little rough, so those reflections are as soft as the night
-    # behind them: the reflected carriage is as far off as the lights are, and would be out of
-    # focus too.
-    pane = new_mesh_object("carriage_glass")
-    bm = bmesh.new()
-    _, e = rounded_rect(bm, ww, wh, CARRIAGE_FRAME_R, az(CARRIAGE_PANE_Z), cz=cz)
-    bmesh.ops.contextual_create(bm, geom=e)
-    bm.to_mesh(pane.data)
-    bm.free()
-    grime = carriage_pane_grime()
-    np = _np()
-    dust = np.zeros(grime.shape + (3,))
-    dust[..., 0], dust[..., 1], dust[..., 2] = 0.20, 0.19, 0.17
-    glass = principled(
-        "CarriageGlass", base_color=(0.02, 0.022, 0.025), metallic=0.0,
-        roughness=0.12, alpha=0.05, blend=True,
-    )
-    _use_colour_alpha(glass, _colour_alpha_image("carriage_glass_grime", dust, 0.03 + 0.10 * grime))
-    _use_metal_rough(glass, _metal_rough_image("carriage_glass_mr", 0.10 + 0.30 * grime, 0.0))
-    pane.data.materials.append(glass)
-    _uvs_along(pane, "x", -ww / 2.0, ww / 2.0, "z", lo, hi)
-    finish(pane, bevel=False)
-    objects.append(pane)
-
-    return objects
-
-
-def build_carriage():
-    """
-    The compartment around the pocket player, one object per material: the table, the
-    panelling's boards and the dark backing behind them, the window frame and its sill.
-
-    The panelling is four slabs round the window rather than one with a hole cut in it, for
-    the reason the device's plate is filled rather than cut (docs/models.md): at these sizes a
-    boolean leaves slivers, and a slab cannot.
-    """
-    objects = []
-
-    # ---- the table: varnished walnut, under the window --------------------------------------
-    table = new_mesh_object("carriage_table")
-    bm = bmesh.new()
-    depth = CARRIAGE_TABLE_FRONT_Z - CARRIAGE_WALL_Z
-    centre_y = az((CARRIAGE_TABLE_FRONT_Z + CARRIAGE_WALL_Z) / 2.0)
-    top_z = CARRIAGE_TABLE_TOP_Y
-    _, e = rounded_rect_xy(bm, CARRIAGE_TABLE_W, depth, CARRIAGE_TABLE_R, top_z, cy=centre_y)
-    bmesh.ops.contextual_create(bm, geom=e)
-    ex = bmesh.ops.extrude_face_region(bm, geom=[f for f in bm.faces])
-    moved = [v for v in ex["geom"] if isinstance(v, bmesh.types.BMVert)]
-    bmesh.ops.translate(bm, verts=moved, vec=(0.0, 0.0, -CARRIAGE_TABLE_T))
-    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
-    bm.to_mesh(table.data)
-    bm.free()
-    walnut = principled(
-        # Oiled walnut, satin: a soft pool under a lamp and no mirror in it. It was varnished to a
-        # gloss first (coat 0.65), and seen from above in the flat lay the ceiling's lights rippled
-        # across the grain and the owner read it as "shining too much for a wood".
-        "CarriageWalnut", base_color=(0.06, 0.03, 0.017), metallic=0.0,
-        roughness=0.62, coat=0.12, coat_roughness=0.38,
-    )
-    _use_base_colour(walnut, _colour_image(
-        "carriage_walnut", wood_grain(2048, 1024, 21, (0.030, 0.014, 0.007), (0.105, 0.052, 0.026),
-                                      ring_share=0.28)))
-    table.data.materials.append(walnut)
-    _uvs_along(table, "x", -CARRIAGE_TABLE_W / 2.0, CARRIAGE_TABLE_W / 2.0,
-               "y", az(CARRIAGE_TABLE_FRONT_Z), az(CARRIAGE_WALL_Z))
-    finish(table, bevel_width=0.003, harden=True)
-    objects.append(table)
-
-    # ---- the panelling, round the window: boards over a dark backing -------------------------
-    # **Boards, not a sheet.** Panelling is narrow boards with hairline gaps between them, each
-    # cut from a different part of the log; one sheet of grain the size of the wall read as
-    # veneer on a cupboard. The boards run floor to ceiling in 20cm columns, broken only by the
-    # window, and each samples its own band of the grain. The backing behind them is what the
-    # gaps show — without it they would show the night outside.
-    hw = CARRIAGE_WALL_HALF_W
-    ow = CARRIAGE_WINDOW_HALF_W
-    lo, hi = CARRIAGE_WINDOW_BOTTOM_Y, CARRIAGE_WINDOW_TOP_Y
-    bottom, top = CARRIAGE_WALL_BOTTOM_Y, CARRIAGE_WALL_TOP_Y
-    slabs = ((-hw, -ow, bottom, top), (ow, hw, bottom, top), (-ow, ow, bottom, lo), (-ow, ow, hi, top))
-
-    backing = new_mesh_object("carriage_backing")
-    bm = bmesh.new()
-    by = az(CARRIAGE_WALL_Z - CARRIAGE_WALL_T - CARRIAGE_BACKING_T / 2.0)
-    for x0, x1, y0, y1 in slabs:
-        box(bm, (x0 + x1) / 2.0, by, (y0 + y1) / 2.0, x1 - x0, CARRIAGE_BACKING_T, y1 - y0)
-    bm.to_mesh(backing.data)
-    bm.free()
-    backing.data.materials.append(principled(
-        "CarriageBacking", base_color=(0.012, 0.008, 0.006), metallic=0.0, roughness=0.9,
-    ))
-    finish(backing, bevel=False)
-    objects.append(backing)
-
-    wall = new_mesh_object("carriage_wall")
-    bm = bmesh.new()
-    wy = az(CARRIAGE_WALL_Z - CARRIAGE_WALL_T / 2.0)
-    boards = []
-    columns = int(round(2.0 * hw / CARRIAGE_BOARD_W))
-    for i in range(columns):
-        x0 = -hw + i * CARRIAGE_BOARD_W
-        x1 = x0 + CARRIAGE_BOARD_W
-        spans = ((bottom, lo), (hi, top)) if (x0 >= -ow - 1e-6 and x1 <= ow + 1e-6) else ((bottom, top),)
-        for y0, y1 in spans:
-            boards.append((x0 + CARRIAGE_BOARD_GAP / 2.0, x1 - CARRIAGE_BOARD_GAP / 2.0, y0, y1))
-    for x0, x1, y0, y1 in boards:
-        box(bm, (x0 + x1) / 2.0, wy, (y0 + y1) / 2.0, x1 - x0, CARRIAGE_WALL_T, y1 - y0)
-    bm.to_mesh(wall.data)
-    bm.free()
-    mahogany = principled(
-        "CarriageMahogany", base_color=(0.07, 0.028, 0.016), metallic=0.0,
-        roughness=0.5, coat=0.35, coat_roughness=0.18,
-    )
-    _use_base_colour(mahogany, _colour_image(
-        "carriage_mahogany", wood_grain(2048, 1024, 22, (0.040, 0.014, 0.008), (0.100, 0.040, 0.022))))
-    wall.data.materials.append(mahogany)
-    # Grain upright, the full height of the wall along the texture's width; across it, each board
-    # takes its own quarter-height band of the texture, chosen from a fixed seed.
-    band_rng = __import__("random").Random(23)
-    offsets = [band_rng.random() * 0.75 for _ in boards]
-    mesh = wall.data
-    mesh.uv_layers.new(name="UVMap")
-    uv = mesh.uv_layers.active.data
-    for poly in mesh.polygons:
-        cx = poly.center.x
-        cz = poly.center.z
-        k = next((j for j, (x0, x1, y0, y1) in enumerate(boards)
-                  if x0 - 1e-4 <= cx <= x1 + 1e-4 and y0 - 1e-4 <= cz <= y1 + 1e-4), 0)
-        x0, x1, _, _ = boards[k]
-        for li in poly.loop_indices:
-            co = mesh.vertices[mesh.loops[li].vertex_index].co
-            uv[li].uv = ((co.z - bottom) / (top - bottom), offsets[k] + 0.25 * (co.x - x0) / (x1 - x0))
-    finish(wall, bevel_width=0.0015)
-    objects.append(wall)
-
-    # ---- the window frame: a rounded ring standing proud of the panelling ---------------------
-    frame = new_mesh_object("carriage_frame")
-    bm = bmesh.new()
-    face_y = az(CARRIAGE_WALL_Z + CARRIAGE_FRAME_DEPTH)
-    cz = (lo + hi) / 2.0
-    ww, wh = 2.0 * ow, hi - lo
-    fw = CARRIAGE_FRAME_W
-    _, outer = rounded_rect(bm, ww + 2.0 * fw, wh + 2.0 * fw, CARRIAGE_FRAME_R + fw, face_y, cz=cz)
-    _, inner = rounded_rect(bm, ww, wh, CARRIAGE_FRAME_R, face_y, cz=cz)
-    bmesh.ops.triangle_fill(bm, use_beauty=True, use_dissolve=False, edges=outer + inner)
-    ex = bmesh.ops.extrude_face_region(bm, geom=[f for f in bm.faces])
-    moved = [v for v in ex["geom"] if isinstance(v, bmesh.types.BMVert)]
-    bmesh.ops.translate(bm, verts=moved, vec=(0.0, -az(CARRIAGE_FRAME_DEPTH + CARRIAGE_WALL_T), 0.0))
-    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
-    bm.to_mesh(frame.data)
-    bm.free()
-    frame_wood = principled(
-        # The same mahogany, French-polished: the frame is what the hand touches.
-        "CarriageFrame", base_color=(0.06, 0.024, 0.014), metallic=0.0,
-        roughness=0.35, coat=0.7, coat_roughness=0.07,
-    )
-    frame.data.materials.append(frame_wood)
-    finish(frame, bevel_width=0.004, harden=True)
-    objects.append(frame)
-
-    # ---- the sill, a ledge under the glass ------------------------------------------------------
-    sill = new_mesh_object("carriage_sill")
-    bm = bmesh.new()
-    box(bm, 0.0, az(CARRIAGE_WALL_Z + CARRIAGE_SILL_DEPTH / 2.0), lo - CARRIAGE_SILL_T / 2.0,
-        ww, CARRIAGE_SILL_DEPTH, CARRIAGE_SILL_T)
-    bm.to_mesh(sill.data)
-    bm.free()
-    sill.data.materials.append(frame_wood)
-    finish(sill, bevel_width=0.003)
-    objects.append(sill)
-
     return objects
 
 
@@ -2997,7 +2233,7 @@ def export(objects, filename, image_format="AUTO", jpeg_quality=75):
         export_tangents=True,   # anisotropy needs a tangent frame
         export_texcoords=True,
         export_materials="EXPORT",
-        # JPEG for large colour maps (the carriage's wood): lossy is fine for albedo, and a
+        # JPEG for large maps (the pocket face's wear): lossy is fine for albedo and roughness, and a
         # 2048-wide grain is megabytes as PNG. Everything else keeps its own format.
         export_image_format=image_format,
         export_jpeg_quality=jpeg_quality,
@@ -3071,39 +2307,19 @@ def main():
         clear_scene()
         paths.append(export(build_pocket(), "pocket.glb"))
 
-    # The earphone plug, in the device's frame — the app parents it to the device.
-    if not skip("earphone_plug.glb"):
+    # The pocket player's face: the phone as the player, its print the device's (so after it).
+    # JPEG for its wear maps — roughness noise is megabytes as PNG and nobody can see the loss.
+    if not skip("pocket_face.glb"):
         clear_scene()
-        paths.append(export(build_earphone_plug(), "earphone_plug.glb"))
+        paths.append(export(build_pocket_face(), "pocket_face.glb", image_format="JPEG", jpeg_quality=90))
 
-    # The tablecloth the pocket player lies on at rest, in the room's own coordinates — and beside
-    # it cloth_height.bin, its top, which the app lays the earphone cord on.
-    if not skip("cloth.glb"):
-        clear_scene()
-        paths.append(export(build_cloth(), "cloth.glb", image_format="JPEG", jpeg_quality=94))
 
-    # The still life's props, standing on the cloth in the room's own coordinates: the tea, and the
-    # ticket whose face the app draws.
-    if not skip("tea.glb"):
-        clear_scene()
-        paths.append(export(build_tea(), "tea.glb"))
-    if not skip("ticket.glb"):
-        clear_scene()
-        paths.append(export(build_ticket(), "ticket.glb"))
+
 
     # The showroom between formats.
     if not skip("showroom.glb"):
         clear_scene()
         paths.append(export(build_showroom(), "showroom.glb"))
-
-    # The pocket player's carriage: the room around it, in the room's own coordinates.
-    if not skip("carriage.glb"):
-        clear_scene()
-        paths.append(export(build_carriage(), "carriage.glb", image_format="JPEG"))
-    # Its pane on its own: the grime needs PNG's alpha (see build_carriage_glass).
-    if not skip("carriage_glass.glb"):
-        clear_scene()
-        paths.append(export(build_carriage_glass(), "carriage_glass.glb"))
 
     # Exported together, unlike the case parts: these eight are one object that
     # has come apart, the app wants them all or none, and it addresses them by
