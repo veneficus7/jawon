@@ -273,7 +273,7 @@ internal const val SCREEN_Z = 0.00525f - 0.0010f + 0.0001f
 fun PocketRoomScreen(
     onOpenSettings: () -> Unit,
     onAddAlbum: () -> Unit,
-    /** Two fingers pinched together: the showroom between formats. */
+    /** Back at the main menu, or two fingers pinched together: the showroom between formats. */
     onOpenShowroom: () -> Unit = {},
     viewModel: WallSceneViewModel = hiltViewModel()
 ) {
@@ -679,6 +679,9 @@ fun PocketRoomScreen(
     }
 
     BackHandler(enabled = nav.stack.size > 1) { device.back() }
+    // At the main menu, Back goes up out of the player to the showroom between formats, in a build
+    // that has one — the same way out as the CD room's, so the two rooms leave alike.
+    BackHandler(enabled = nav.stack.size <= 1 && device.showroomReachable) { device.onOpenShowroom() }
 
     // **The phone is the device**, so tilting it turns the device against the world: the
     // carriage's reflections slide across the glass and the polished edge — first-order, twice

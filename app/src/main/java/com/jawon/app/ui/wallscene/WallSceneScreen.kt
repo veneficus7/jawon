@@ -90,7 +90,6 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.graphicsLayer
 import com.jawon.app.BuildConfig
 import com.jawon.app.ui.showroom.Exhibit
-import com.jawon.app.ui.showroom.PullOut
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
@@ -229,16 +228,13 @@ private const val FLING_CLAIM_MS = 120L
 internal const val ZOOM_NEAR = 0.46f
 internal const val ZOOM_FAR = 1.30f
 
-/**
- * **Past [ZOOM_FAR], the pinch goes on out of the room** — into the showroom between formats
- * (`docs/formats.md` §7, step 5b), in any build that has somewhere else to go. The room gives a
- * little further against a spring and darkens as it goes; far enough on, it lets go (`PullOut`).
- *
- * The give is small on purpose: the wall's visible set is culled at [ZOOM_FAR], so a camera much
- * further back would show its edges empty. By the time it is back this far the room is mostly dark.
- */
-private const val PULL_BACK_M = 0.08f
-private const val PULL_DIM = 0.75f
+// **The pinch only ever zooms.** It used to go on past ZOOM_FAR out of the room into the
+// showroom, and the owner found that zooming out to see more of the wall threw him out of the
+// room instead (2026-10-03). The way out is Back now, or a tap on the neon sign
+// (NEON_SIGN_NODE) — neither of which a hand reaching for something else can do by accident.
+
+/** The neon sign's node name: a tap that lands on it goes to the showroom. */
+private const val NEON_SIGN_NODE = "neon_sign"
 
 /**
  * How fast a pinch travels, as a multiplier on the raw scale factor's departure from 1.
@@ -1092,7 +1088,7 @@ fun WallSceneScreen(
     onOpenShelfManager: () -> Unit,
     onOpenSettings: () -> Unit,
     onEditAlbum: (String) -> Unit,
-    /** Pinched out past the furthest the camera goes: the showroom between formats. */
+    /** Back while browsing, or a tap on the neon sign: the showroom between formats. */
     onOpenShowroom: () -> Unit = {},
     viewModel: WallSceneViewModel = hiltViewModel()
 ) {
@@ -1133,11 +1129,8 @@ fun WallSceneScreen(
          * gesture callbacks can read live, rather than a value they would capture once.
          */
         val zoom = remember { WallZoom(CAMERA_Z) }
-        // Pinching on out of the room, into the showroom — see PULL_BACK_M.
-        val pullOut = remember { PullOut() }
+        // Whether there is a showroom to go to — see the pinch's note above ZOOM_GAIN.
         val showroomReachable = remember { Exhibit.reachable(BuildConfig.DEBUG || BuildConfig.SHOW_FORMATS) }
-        val pulling = remember { mutableStateOf(false) }
-        val pullDim = remember { mutableFloatStateOf(0f) }
 
         // Culling and pool sizing are computed at the WIDEST the camera can go, not at the
         // current zoom. They feed `remember` keys, and a value that changes continuously
@@ -2074,29 +2067,17 @@ fun WallSceneScreen(
             // Pinch to walk the camera in and out of the room. Browsing only: once a case is
             // out, the open sequence owns the camera and a pinch would fight it for the same
             // channel.
-            onScaleBegin = { _, _, _ -> pullOut.begin() },
             onScale = { detector, _, _ ->
                 if (selectedAlbumId == null) {
                     // Damped, and about 1.0 rather than multiplied raw � see ZOOM_GAIN.
                     val factor = 1f + (detector.scaleFactor - 1f) * ZOOM_GAIN
-                    val wanted = zoom.target / factor
-                    if (showroomReachable && (pullOut.engaged || wanted > ZOOM_FAR)) {
-                        // Past the furthest the camera stands, the pinch is spent on leaving
-                        // the room — undamped, so its threshold is the fingers' own distance.
-                        zoom.target = ZOOM_FAR
-                        if (pullOut.pinch(detector.scaleFactor)) {
-                            haptics.detent()
-                            onOpenShowroom()
-                        }
-                    } else {
-                        // Moves the TARGET. The camera itself is eased toward it in the frame
-                        // loop, which is what filters out the per-sample jitter that made the
-                        // zoom judder � see WallZoom.
-                        zoom.target = wanted.coerceIn(ZOOM_NEAR, ZOOM_FAR)
-                    }
+                    // Moves the TARGET. The camera itself is eased toward it in the frame
+                    // loop, which is what filters out the per-sample jitter that made the
+                    // zoom judder � see WallZoom. And it stops at the limits: the pinch never
+                    // leaves the room (see the note above ZOOM_GAIN).
+                    zoom.target = (zoom.target / factor).coerceIn(ZOOM_NEAR, ZOOM_FAR)
                 }
             },
-            onScaleEnd = { _, _, _ -> pullOut.end() },
             // Records the throw; does NOT animate. The single settle on release reads this
             // and projects from it � see WallSettle for why there is only one settle site.
             onFling = { _, _, _, velocity ->
@@ -2145,6 +2126,12 @@ fun WallSceneScreen(
                         // Reversible from anywhere: a tap while closing sends it back out.
                         if (sequence.direction < 0) sequence.direction = 1 else closeCase()
                     }
+                } else if (showroomReachable &&
+                    generateSequence(node) { it.parent }.any { it.name == NEON_SIGN_NODE }
+                ) {
+                    // The neon sign: out to the showroom.
+                    haptics.detent()
+                    onOpenShowroom()
                 } else {
                     // Only ever open something that is actually an album. Taking the first
                     // named ancestor on trust meant any named node in the scene could be
@@ -2318,10 +2305,6 @@ fun WallSceneScreen(
                         cadence.pointerDown = false
                         caseDrag.slot = null
                         endScratch()
-                        // The pull out of the room lets go with the last finger, whatever the
-                        // scale detector did — a pinch it cancelled would otherwise leave the room
-                        // held back and dimmed.
-                        pullOut.end()
 
                         // THE settle � the only one. Both a slow drag and a fling end here.
                         //
@@ -2422,11 +2405,6 @@ fun WallSceneScreen(
                 // whether or not anything is pinching � it is a no-op once it has arrived,
                 // and this is also what carries the camera home when a case opens.
                 zoom.advance(dt)
-                // And past it, the pull out of the room: springing back unless it has left.
-                pullOut.step(dt)
-                if (pullOut.isMoving) cadence.moving = true
-                pullDim.floatValue = pullOut.progress
-                if (pulling.value != pullOut.engaged) pulling.value = pullOut.engaged
                 // `advance` eases exponentially and so never quite arrives — unlike
                 // `CaseSlot.settleTowardTarget`, which snaps when it gets close. So this
                 // needs a threshold of its own rather than an equality test, or the room
@@ -2770,11 +2748,7 @@ fun WallSceneScreen(
                         // over the artwork. See railVisibleUntil.
                         railVisibleUntil = SystemClock.elapsedRealtime() + RAIL_DWELL_MS
                     }
-                    cameraNode.position = Position(
-                        panX.value,
-                        panY.value,
-                        zoom.current + PULL_BACK_M * pullOut.progress
-                    )
+                    cameraNode.position = Position(panX.value, panY.value, zoom.current)
                     cameraNode.rotation = LOOK_STRAIGHT_AHEAD
                 } else {
                     val beats = OpenSequence.beatsAt(sequence.progress)
@@ -3583,7 +3557,10 @@ fun WallSceneScreen(
                             materialInstance = neon,
                             position = Position(0f, signY, signZ),
                             apply = {
-                                isTouchable = false
+                                // The shop's name is also its door: a tap on it goes out to the
+                                // showroom, in a build that has one.
+                                name = NEON_SIGN_NODE
+                                isTouchable = showroomReachable
                                 isShadowCaster = false
                                 isShadowReceiver = false
                             }
@@ -4015,9 +3992,11 @@ fun WallSceneScreen(
             )
         }
 
-        // The room is the home screen now, so back has nowhere to pop to — it closes an open
-        // case, and is left alone while browsing so it exits the app normally.
+        // Back closes an open case. While browsing it goes up a level, to the showroom between
+        // formats, in a build that has one; in one that does not, it is left alone and exits the
+        // app as it always has. The showroom's own Back is what leaves the app from there.
         BackHandler(enabled = selectedAlbumId != null) { closeCase() }
+        BackHandler(enabled = selectedAlbumId == null && showroomReachable) { onOpenShowroom() }
 
         // **What happens when the record finishes.**
         //
@@ -4305,17 +4284,6 @@ fun WallSceneScreen(
                         // that only fades appears; one that also moves *arrives*.
                         translationY = (1f - deckAlpha) * DECK_RISE_PX
                     }
-            )
-        }
-
-        // The room going dark as it is pinched away, over its chrome as well — only composed
-        // while it is: a screen-wide layer costs a blend every frame whether it shows or not.
-        if (pulling.value) {
-            Box(
-                Modifier
-                    .fillMaxSize()
-                    .graphicsLayer { alpha = PULL_DIM * pullDim.floatValue }
-                    .background(ComposeColor.Black)
             )
         }
     }

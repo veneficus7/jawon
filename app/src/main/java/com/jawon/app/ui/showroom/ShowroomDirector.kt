@@ -158,15 +158,13 @@ internal class ShowroomDirector(
     }
 
     /**
-     * Back: from the plinth you came in on, straight back into that room; from anywhere else,
-     * false, and the caller simply goes back.
+     * Back. **The showroom is the top of the app**: a room's own Back comes here (2026-10-03,
+     * when the pinch out of the CD room was retired for catching its zoom), so Back from here
+     * leaves the app — if it went back into the room, Back would only ever go round in a circle.
+     * True while a flight into a room is under way, which it does not interrupt; false otherwise,
+     * and the caller leaves. A room is entered by tapping its plinth.
      */
-    fun back(): Boolean {
-        if (isLeaving) return true
-        if (carousel.index != from || abs(carousel.position - from) > TAP_SETTLED) return false
-        depart(Exhibit.entries[from])
-        return true
-    }
+    fun back(): Boolean = isLeaving
 
     fun onFrame(dtIn: Float) {
         val dt = dtIn.coerceIn(0f, MAX_DT_S)

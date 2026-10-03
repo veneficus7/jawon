@@ -1,5 +1,8 @@
 package com.jawon.app.navigation
 
+import android.app.Activity
+import android.content.Context
+import android.content.ContextWrapper
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.core.FastOutSlowInEasing
@@ -8,6 +11,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.platform.LocalContext
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -171,7 +175,14 @@ fun JawonNavHost(
                 fadeIn(tween(SHOWROOM_IN_MS, easing = FastOutSlowInEasing))
             }
         ) {
-            ShowroomScreen(onLeave = { navController.popBackStack() })
+            val activity = LocalContext.current.findActivity()
+            ShowroomScreen(
+                onLeave = { navController.popBackStack() },
+                // The showroom is the app's top now (a room's Back comes here), so its Back leaves:
+                // to the background, as Back from a launcher activity's root does since Android 12,
+                // with the room still under it for when the app is opened again.
+                onExit = { activity?.moveTaskToBack(true) }
+            )
         }
         composable(JawonDestination.AddAlbum.route) { entry ->
             // The CD screen hands its finished folder back through this entry's saved state,
@@ -236,10 +247,17 @@ fun JawonNavHost(
 }
 
 /**
- * Into the showroom — once. A pinch that keeps closing after it has let go of the room must not
- * stack a second showroom on the first.
+ * Into the showroom — once. A second Back, or a pinch that keeps closing after it has let go of
+ * the room, must not stack a second showroom on the first.
  */
 private fun NavHostController.openShowroom() {
     if (currentDestination?.route == JawonDestination.Showroom.route) return
     navigate(JawonDestination.Showroom.route) { launchSingleTop = true }
+}
+
+/** The activity behind a composition's context, through any wrappers a theme put round it. */
+private tailrec fun Context.findActivity(): Activity? = when (this) {
+    is Activity -> this
+    is ContextWrapper -> baseContext.findActivity()
+    else -> null
 }

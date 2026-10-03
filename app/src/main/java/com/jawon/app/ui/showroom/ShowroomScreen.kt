@@ -178,9 +178,10 @@ private const val CAPTION_SPACING = 0.62f
  *
  * A dark gallery with a row of plinths, each under its own spot, and on each a format's object
  * floating and slowly turning — the jewel case holding the record you played last, the pocket
- * player, and for the formats still to come an empty plinth under a dim light. Reached by pinching
- * out of a room: the camera arrives close on that room's object and eases back. A drag carries it
- * along the row, a tap on a room's plinth flies into it, and back returns to where you were.
+ * player, and for the formats still to come an empty plinth under a dim light. Reached by Back
+ * from a room's top level (and by a tap on the CD room's neon sign, or a pinch out of the pocket
+ * player): the camera arrives close on that room's object and eases back. A drag carries it along
+ * the row, a tap on a room's plinth flies into it, and Back leaves the app — this is its top.
  *
  * A destination of its own, and a scene of its own — a sibling of the rooms, sharing only what it
  * calls: `RoomHaptics`, `RoomCadence`, `CaseArt`'s decoder, the pocket player's steel.
@@ -189,6 +190,8 @@ private const val CAPTION_SPACING = 0.62f
 fun ShowroomScreen(
     /** Leave the showroom for the room the app is now in — which [ShowroomViewModel.choose] set. */
     onLeave: () -> Unit,
+    /** Back: leave the app, as Back from an app's top level does. */
+    onExit: () -> Unit,
     viewModel: ShowroomViewModel = hiltViewModel()
 ) {
     val context = LocalContext.current
@@ -246,7 +249,7 @@ fun ShowroomScreen(
         }
         onLeave()
     }
-    BackHandler { if (!director.back()) onLeave() }
+    BackHandler { if (!director.back()) onExit() }
 
     val cadence = remember(context) {
         RoomCadence().apply {

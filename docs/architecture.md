@@ -117,15 +117,18 @@ The eight pure pieces have test files (`ClickWheelTest`, `PocketMenuTest`, `Clic
 ## `ui/showroom` — the way between formats
 
 A destination of its own, `JawonDestination.Showroom` (`docs/formats.md` §7, step 5b): a dark
-gallery with a plinth per format, reached by **pinching out of a room** — past the CD room's
-`ZOOM_FAR`, or two fingers together in the pocket room — wherever `Exhibit.reachable` says there
-is somewhere else to go. Choosing a plinth sets `AppPreferences.format` and pops back to `Wall`,
-which is whichever room the format now says.
+gallery with a plinth per format, reached by **Back from a room's top level** (no case open in
+the CD room, the main menu in the pocket player), by a tap on the CD room's neon sign, or by two
+fingers pinched together in the pocket room — wherever `Exhibit.reachable` says there is somewhere
+else to go. Choosing a plinth sets `AppPreferences.format` and pops back to `Wall`, which is
+whichever room the format now says. **The showroom is the app's top**: its own Back leaves the app
+(`moveTaskToBack`), or Back would only go round between it and the room. The CD room's pinch never
+leaves it any more — it caught the owner's zoom (2026-10-03).
 
 | File | Owns |
 |---|---|
 | `Exhibit.kt` | **Pure.** What stands on the plinths, in order — every format the app is going to have, the unbuilt ones as *coming* with no room behind them — which may open (the rule Settings' picker follows), and whether the showroom is reachable at all. |
-| `PullOut.kt` | **Pure.** Pinching out of a room: past the room's own limit, the pinch's log-span accumulates against a spring, and far enough on it lets go, once. Shared by both rooms; each owns what it pulls back and dims. |
+| `PullOut.kt` | **Pure.** Pinching out of a room: past the room's own limit, the pinch's log-span accumulates against a spring, and far enough on it lets go, once. The pocket room's alone since 2026-10-03, where no other gesture uses two fingers; the CD room's pinch is its zoom and nothing else. |
 | `ShowroomCarousel.kt` | **Pure.** The row under the finger: one-to-one while held, a rubber band past either end, a flick that always moves on, a critically damped settle, and one haptic detent per plinth crossed. |
 | `ShowroomCamera.kt` | **Pure.** `ShowroomStage` (the model's numbers) and the camera's three framings — hero, travel, close — blended by the director's springs. |
 | `ShowroomDirector.kt` | The frame loop and the touch: the carousel, the springs, the exhibits' float (`Wander`, never a loop), the arrival that waits for the scene and is revealed from black, and the push into a room that ends in black. |

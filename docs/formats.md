@@ -478,10 +478,17 @@ One thing at a time, checked on the owner's phone between each (the working agre
    came from. The format's name sits under it in the app's own type. Once it works on the phone it
    replaces Settings → THE ROOM.
    **Built on 2026-09-27, on the emulator — the phone was off** (`ui/showroom/`, `docs/architecture.md`).
-   Both rooms pinch out into it (`PullOut`): the CD room gives 8cm past `ZOOM_FAR` against a spring
-   and darkens, and lets go with the fingers a third closer again; the pocket room takes two fingers
+   Both rooms pinched out into it (`PullOut`): the CD room gave 8cm past `ZOOM_FAR` against a spring
+   and darkened, and let go with the fingers a third closer again; the pocket room takes two fingers
    together, which the wheel then never sees. Only where there is somewhere else to go — a release
-   build with one finished room pinches exactly as before. The CD's plinth holds the held case with
+   build with one finished room pinches exactly as before.
+   **Changed on 2026-10-03, on the owner's report**: zooming out in the CD room to see more of the
+   wall kept throwing him into the showroom. The CD room's pinch is its zoom and nothing else now.
+   The way out of either room is **Back from its top level** — no case open, or the main menu —
+   and in the CD room **a tap on the neon sign** too, the shop's name as its door; the pocket room
+   keeps its pinch, which nothing else there uses. **The showroom is the app's top**: Back from it
+   leaves the app (to the background, as a root activity's Back does), because Back going back into
+   the room would make the two a circle with no way out. The CD's plinth holds the held case with
    **the record played last** in it; the pocket player's screen is **switched on**, its own main menu
    on `LcdPanel` with the same record beside it — dark, it barely read on a dark plinth. Vinyl and
    cassette are empty plinths under dim light, marked *coming*. The four things the look cost, in
