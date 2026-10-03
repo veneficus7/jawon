@@ -1,5 +1,6 @@
 package com.jawon.app.ui.cd
 
+import com.jawon.app.ui.theme.JawonType
 import com.jawon.app.ui.common.ScreenBar
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -160,14 +161,14 @@ private fun Note(title: String, body: String, action: String? = null, onAction: 
             text = title,
             fontFamily = JetBrainsMonoFamily,
             fontWeight = FontWeight.Bold,
-            fontSize = 11.sp,
+            fontSize = JawonType.Body,
             letterSpacing = 2.sp,
             color = LampAmber
         )
         Text(
             text = body,
             fontFamily = JetBrainsMonoFamily,
-            fontSize = 11.sp,
+            fontSize = JawonType.Body,
             lineHeight = 18.sp,
             color = LabelDim
         )
@@ -188,7 +189,7 @@ private fun Button(text: String, onClick: () -> Unit, enabled: Boolean = true) {
             text = text,
             fontFamily = JetBrainsMonoFamily,
             fontWeight = FontWeight.Bold,
-            fontSize = 10.sp,
+            fontSize = JawonType.Caption,
             letterSpacing = 1.6.sp,
             color = if (enabled) LampAmber else LabelDim
         )
@@ -225,7 +226,7 @@ private fun ReadyView(state: CdState.Ready, onRip: () -> Unit) {
                 append(" MB")
             }.uppercase(Locale.ROOT),
             fontFamily = JetBrainsMonoFamily,
-            fontSize = 10.sp,
+            fontSize = JawonType.Caption,
             letterSpacing = 1.4.sp,
             color = LabelDim
         )
@@ -233,7 +234,7 @@ private fun ReadyView(state: CdState.Ready, onRip: () -> Unit) {
             Text(
                 text = "LOOKING THE DISC UP…",
                 fontFamily = JetBrainsMonoFamily,
-                fontSize = 9.sp,
+                fontSize = JawonType.Fine,
                 letterSpacing = 1.4.sp,
                 color = LabelDim
             )
@@ -244,7 +245,7 @@ private fun ReadyView(state: CdState.Ready, onRip: () -> Unit) {
                 text = "NOT IN THE DATABASE — TRACKS WILL BE NUMBERED, AND YOU CAN NAME THEM " +
                     "ON THE NEXT SCREEN.",
                 fontFamily = JetBrainsMonoFamily,
-                fontSize = 9.sp,
+                fontSize = JawonType.Fine,
                 lineHeight = 15.sp,
                 letterSpacing = 1.2.sp,
                 color = LabelDim
@@ -257,7 +258,7 @@ private fun ReadyView(state: CdState.Ready, onRip: () -> Unit) {
             text = "The tracks are written as WAV into a folder you pick, then imported like " +
                 "any other folder. They stay yours, where you put them.",
             fontFamily = JetBrainsMonoFamily,
-            fontSize = 10.sp,
+            fontSize = JawonType.Caption,
             lineHeight = 16.sp,
             color = LabelDim
         )
@@ -271,7 +272,7 @@ private fun ReadyView(state: CdState.Ready, onRip: () -> Unit) {
                     Text(
                         text = "%02d".format(track.number),
                         fontFamily = JetBrainsMonoFamily,
-                        fontSize = 11.sp,
+                        fontSize = JawonType.Body,
                         color = LabelDim
                     )
                     Text(
@@ -288,7 +289,7 @@ private fun ReadyView(state: CdState.Ready, onRip: () -> Unit) {
                             (track.sectors / 75) % 60
                         ),
                         fontFamily = JetBrainsMonoFamily,
-                        fontSize = 11.sp,
+                        fontSize = JawonType.Body,
                         color = LabelDim
                     )
                 }
@@ -305,7 +306,7 @@ private fun RippingView(state: CdState.Ripping, onCancel: () -> Unit) {
             text = "RIPPING",
             fontFamily = JetBrainsMonoFamily,
             fontWeight = FontWeight.Bold,
-            fontSize = 11.sp,
+            fontSize = JawonType.Body,
             letterSpacing = 2.sp,
             color = LampAmber
         )
@@ -330,7 +331,7 @@ private fun RippingView(state: CdState.Ripping, onCancel: () -> Unit) {
             text = "TRACK ${progress.tracksDone + 1} OF ${progress.tracksTotal}  ·  " +
                 "${(progress.fraction * 100).toInt()}%",
             fontFamily = JetBrainsMonoFamily,
-            fontSize = 10.sp,
+            fontSize = JawonType.Caption,
             letterSpacing = 1.4.sp,
             color = LabelDim
         )
@@ -338,7 +339,7 @@ private fun RippingView(state: CdState.Ripping, onCancel: () -> Unit) {
             text = "A disc takes a few minutes and the drive has to stay connected. Anything " +
                 "already written stays where it is if you stop.",
             fontFamily = JetBrainsMonoFamily,
-            fontSize = 10.sp,
+            fontSize = JawonType.Caption,
             lineHeight = 16.sp,
             color = LabelDim
         )

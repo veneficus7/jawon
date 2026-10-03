@@ -1,5 +1,6 @@
 package com.jawon.app.ui.editalbum
 
+import com.jawon.app.ui.theme.JawonType
 import com.jawon.app.ui.common.ScreenBar
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
@@ -178,7 +179,7 @@ fun EditAlbumScreen(
                             text = if (state.findingCover) "LOOKING…" else "FIND COVER ART",
                             fontFamily = JetBrainsMonoFamily,
                             fontWeight = FontWeight.Bold,
-                            fontSize = 11.sp,
+                            fontSize = JawonType.Body,
                             letterSpacing = 1.6.sp,
                             color = if (state.findingCover) LabelDim else LampAmber
                         )
@@ -188,7 +189,7 @@ fun EditAlbumScreen(
                         // pressing it again; this points at the fix, which is usually the tags.
                         Text(
                             "Nothing found — check the title and artist.",
-                            style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = 10.sp)
+                            style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = JawonType.Caption)
                         )
                     }
                 }
@@ -275,7 +276,7 @@ private fun ArtworkPicker(
             } else {
                 Text(
                     "TAP TO SET",
-                    style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = 10.sp)
+                    style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = JawonType.Caption)
                 )
             }
         }
@@ -301,7 +302,7 @@ private fun LabelledField(
             textStyle = LocalTextStyle.current.copy(
                 fontFamily = if (numeric) JetBrainsMonoFamily else ArchivoFamily,
                 fontWeight = if (numeric) FontWeight.Medium else FontWeight.ExtraBold,
-                fontSize = if (numeric) 14.sp else 17.sp,
+                fontSize = if (numeric) JawonType.Title else JawonType.Subhead,
                 color = LabelCream
             ),
             colors = TextFieldDefaults.colors(
@@ -340,7 +341,7 @@ private fun UnderlightPicker(hue: Float, onHueChanged: (Float) -> Unit, onCleare
                 text = if (chosen) "USE THE COVER'S" else "FROM THE COVER",
                 style = JawonTextStyle.mono.copy(
                     color = if (chosen) LampAmber else LabelDim,
-                    fontSize = 10.sp
+                    fontSize = JawonType.Caption
                 ),
                 modifier = if (chosen) Modifier.clickable(onClick = onCleared) else Modifier
             )
@@ -397,7 +398,7 @@ private fun ShelfPicker(
                 Text(
                     text = current.uppercase(Locale.ROOT),
                     fontFamily = JetBrainsMonoFamily,
-                    fontSize = 13.sp,
+                    fontSize = JawonType.Title,
                     letterSpacing = 1.6.sp,
                     color = LabelCream,
                     maxLines = 1,
@@ -405,7 +406,7 @@ private fun ShelfPicker(
                 )
                 Text(
                     "CHANGE",
-                    style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = 10.sp)
+                    style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = JawonType.Caption)
                 )
             }
             DropdownMenu(
@@ -439,7 +440,7 @@ private fun FieldLabel(text: String) {
         text = text,
         fontFamily = JetBrainsMonoFamily,
         fontWeight = FontWeight.Bold,
-        fontSize = 9.sp,
+        fontSize = JawonType.Fine,
         letterSpacing = 2.sp,
         color = LampAmber.copy(alpha = 0.75f)
     )

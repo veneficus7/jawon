@@ -1,5 +1,6 @@
 package com.jawon.app.ui.shelfmanager
 
+import com.jawon.app.ui.theme.JawonType
 import com.jawon.app.ui.common.ScreenBar
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
@@ -243,7 +244,7 @@ private fun FilingRow(current: WallSort, onPick: (WallSort) -> Unit) {
             Text(
                 text = "FILED BY",
                 fontFamily = JetBrainsMonoFamily,
-                fontSize = 10.sp,
+                fontSize = JawonType.Caption,
                 letterSpacing = 1.6.sp,
                 color = LabelDim,
                 modifier = Modifier.weight(1f)
@@ -252,7 +253,7 @@ private fun FilingRow(current: WallSort, onPick: (WallSort) -> Unit) {
                 text = current.label,
                 fontFamily = JetBrainsMonoFamily,
                 fontWeight = FontWeight.Bold,
-                fontSize = 10.sp,
+                fontSize = JawonType.Caption,
                 letterSpacing = 1.6.sp,
                 color = LampAmber
             )
@@ -271,7 +272,7 @@ private fun FilingRow(current: WallSort, onPick: (WallSort) -> Unit) {
                 "Sort by album or artist and the letters down the side of the " +
                     "wall start working."
             },
-            style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = 9.5.sp),
+            style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = JawonType.Fine),
             lineHeight = 15.sp,
             modifier = Modifier.padding(top = 7.dp, start = 2.dp)
         )
@@ -287,7 +288,7 @@ private fun FilingRow(current: WallSort, onPick: (WallSort) -> Unit) {
                         Text(
                             text = option.label,
                             fontFamily = JetBrainsMonoFamily,
-                            fontSize = 11.sp,
+                            fontSize = JawonType.Body,
                             letterSpacing = 1.4.sp,
                             color = if (option == current) LampAmber else LabelCream
                         )
@@ -370,7 +371,7 @@ private fun ShelfBoard(
                 Text(
                     text = if (entry.albums.isEmpty()) "EMPTY"
                     else "${entry.albums.size} ${if (entry.albums.size == 1) "ALBUM" else "ALBUMS"}",
-                    style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = 10.sp)
+                    style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = JawonType.Caption)
                 )
             }
             Icon(
@@ -450,7 +451,7 @@ private fun ShelfBoard(
                         Text(
                             "REMOVE SHELF",
                             fontFamily = JetBrainsMonoFamily,
-                            fontSize = 11.sp,
+                            fontSize = JawonType.Body,
                             letterSpacing = 1.4.sp,
                             color = LabelDim
                         )
@@ -478,7 +479,7 @@ private fun TapeLabel(name: String, modifier: Modifier = Modifier) {
             text = name.uppercase(Locale.ROOT),
             fontFamily = JetBrainsMonoFamily,
             fontWeight = FontWeight.Medium,
-            fontSize = 11.sp,
+            fontSize = JawonType.Body,
             letterSpacing = 2.sp,
             color = CrateBlack,
             maxLines = 1,
@@ -518,7 +519,7 @@ private fun NameField(
             singleLine = true,
             textStyle = LocalTextStyle.current.copy(
                 fontFamily = JetBrainsMonoFamily,
-                fontSize = 14.sp,
+                fontSize = JawonType.Title,
                 letterSpacing = 1.2.sp,
                 color = LabelCream
             ),
@@ -584,7 +585,7 @@ private fun NewShelfField(onCreate: (String) -> Unit) {
                 },
                 textStyle = LocalTextStyle.current.copy(
                     fontFamily = JetBrainsMonoFamily,
-                    fontSize = 14.sp,
+                    fontSize = JawonType.Title,
                     letterSpacing = 1.2.sp,
                     color = LabelCream
                 ),
@@ -604,7 +605,7 @@ private fun NewShelfField(onCreate: (String) -> Unit) {
                     "ADD",
                     fontFamily = JetBrainsMonoFamily,
                     fontWeight = FontWeight.Bold,
-                    fontSize = 12.sp,
+                    fontSize = JawonType.Title,
                     letterSpacing = 1.6.sp,
                     color = if (name.isNotBlank()) LampAmber else LabelDim
                 )
@@ -655,7 +656,7 @@ private fun AlbumLine(
                 text = if (selected) "■" else "□",
                 style = JawonTextStyle.mono.copy(
                     color = if (selected) LampAmber else LabelDim,
-                    fontSize = 14.sp
+                    fontSize = JawonType.Title
                 )
             )
         }
@@ -664,20 +665,20 @@ private fun AlbumLine(
                 album.title,
                 fontFamily = ArchivoFamily,
                 fontWeight = FontWeight.ExtraBold,
-                fontSize = 14.sp,
+                fontSize = JawonType.Row,
                 color = LabelCream,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
             Text(
                 album.artist.uppercase(Locale.ROOT),
-                style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = 10.sp),
+                style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = JawonType.Caption),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
         }
         // Says what tapping does, without being a second target to aim at.
-        Text("EDIT", style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = 10.sp))
+        Text("EDIT", style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = JawonType.Caption))
     }
 }
 
@@ -701,7 +702,7 @@ private fun MoveButton(
         Text(
             label,
             fontFamily = JetBrainsMonoFamily,
-            fontSize = 11.sp,
+            fontSize = JawonType.Body,
             letterSpacing = 1.4.sp,
             color = tint
         )
@@ -735,7 +736,7 @@ private fun RemoveShelfDialog(
                     text = "REMOVE SHELF",
                     fontFamily = JetBrainsMonoFamily,
                     fontWeight = FontWeight.Bold,
-                    fontSize = 11.sp,
+                    fontSize = JawonType.Body,
                     letterSpacing = 2.2.sp,
                     color = LampAmber
                 )
@@ -743,7 +744,7 @@ private fun RemoveShelfDialog(
                     text = name,
                     fontFamily = ArchivoFamily,
                     fontWeight = FontWeight.ExtraBold,
-                    fontSize = 22.sp,
+                    fontSize = JawonType.Heading,
                     lineHeight = 25.sp,
                     color = LabelCream,
                     maxLines = 2,
@@ -769,7 +770,7 @@ private fun RemoveShelfDialog(
                     "REMOVE",
                     fontFamily = JetBrainsMonoFamily,
                     fontWeight = FontWeight.Bold,
-                    fontSize = 13.sp,
+                    fontSize = JawonType.Title,
                     letterSpacing = 1.6.sp,
                     color = LampAmber
                 )
@@ -780,7 +781,7 @@ private fun RemoveShelfDialog(
                 Text(
                     "KEEP IT",
                     fontFamily = JetBrainsMonoFamily,
-                    fontSize = 13.sp,
+                    fontSize = JawonType.Title,
                     letterSpacing = 1.6.sp,
                     color = LabelDim
                 )
@@ -796,7 +797,7 @@ private fun FieldLabel(text: String) {
         text = text,
         fontFamily = JetBrainsMonoFamily,
         fontWeight = FontWeight.Bold,
-        fontSize = 9.sp,
+        fontSize = JawonType.Fine,
         letterSpacing = 2.sp,
         color = LampAmber.copy(alpha = 0.75f)
     )
@@ -825,7 +826,7 @@ private fun EmptyNote() {
             "NO SHELVES YET",
             fontFamily = JetBrainsMonoFamily,
             fontWeight = FontWeight.Bold,
-            fontSize = 11.sp,
+            fontSize = JawonType.Body,
             letterSpacing = 2.sp,
             color = LabelDim
         )
@@ -859,7 +860,7 @@ private fun SelectionBar(count: Int, onCancel: () -> Unit, onRemove: () -> Unit)
     ) {
         Text(
             text = if (count == 1) "1 RECORD" else "$count RECORDS",
-            style = JawonTextStyle.mono.copy(color = LabelCream, fontSize = 11.sp),
+            style = JawonTextStyle.mono.copy(color = LabelCream, fontSize = JawonType.Body),
             modifier = Modifier.weight(1f)
         )
         Box(
@@ -872,7 +873,7 @@ private fun SelectionBar(count: Int, onCancel: () -> Unit, onRemove: () -> Unit)
                 "CANCEL",
                 fontFamily = JetBrainsMonoFamily,
                 fontWeight = FontWeight.Bold,
-                fontSize = 10.sp,
+                fontSize = JawonType.Caption,
                 letterSpacing = 1.5.sp,
                 color = LabelDim
             )
@@ -889,7 +890,7 @@ private fun SelectionBar(count: Int, onCancel: () -> Unit, onRemove: () -> Unit)
                 "REMOVE $count",
                 fontFamily = JetBrainsMonoFamily,
                 fontWeight = FontWeight.Bold,
-                fontSize = 10.sp,
+                fontSize = JawonType.Caption,
                 letterSpacing = 1.5.sp,
                 color = LampAmber
             )

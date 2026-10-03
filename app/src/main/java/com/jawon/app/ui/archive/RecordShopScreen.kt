@@ -1,5 +1,6 @@
 package com.jawon.app.ui.archive
 
+import com.jawon.app.ui.theme.JawonType
 import com.jawon.app.ui.common.ScreenBar
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -116,7 +117,7 @@ private fun Browsing(
 
         Text(
             text = state.collection.blurb,
-            style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = 10.sp),
+            style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = JawonType.Caption),
             modifier = Modifier.padding(top = 10.dp)
         )
 
@@ -127,12 +128,12 @@ private fun Browsing(
             placeholder = {
                 Text(
                     text = "A band, a year, a venue…",
-                    style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = 12.sp)
+                    style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = JawonType.Title)
                 )
             },
             textStyle = LocalTextStyle.current.copy(
                 fontFamily = JetBrainsMonoFamily,
-                fontSize = 13.sp,
+                fontSize = JawonType.Title,
                 color = LabelCream
             ),
             colors = TextFieldDefaults.colors(
@@ -148,7 +149,7 @@ private fun Browsing(
         state.message?.let {
             Text(
                 text = it,
-                style = JawonTextStyle.mono.copy(color = LampAmber, fontSize = 10.sp),
+                style = JawonTextStyle.mono.copy(color = LampAmber, fontSize = JawonType.Caption),
                 lineHeight = 16.sp,
                 modifier = Modifier.padding(top = 12.dp)
             )
@@ -159,7 +160,7 @@ private fun Browsing(
                 text = "LOOKING…",
                 fontFamily = JetBrainsMonoFamily,
                 fontWeight = FontWeight.Bold,
-                fontSize = 10.sp,
+                fontSize = JawonType.Caption,
                 letterSpacing = 1.6.sp,
                 color = LabelDim,
                 modifier = Modifier.padding(top = 14.dp)
@@ -197,7 +198,7 @@ private fun CollectionChip(label: String, selected: Boolean, onClick: () -> Unit
             text = label,
             fontFamily = JetBrainsMonoFamily,
             fontWeight = FontWeight.Bold,
-            fontSize = 10.sp,
+            fontSize = JawonType.Caption,
             letterSpacing = 1.4.sp,
             color = if (selected) LampAmber else LabelDim
         )
@@ -222,14 +223,14 @@ private fun ResultRow(
             text = result.title,
             fontFamily = ArchivoFamily,
             fontWeight = FontWeight.ExtraBold,
-            fontSize = 15.sp,
+            fontSize = JawonType.Row,
             color = if (owned) LabelDim else LabelCream,
             maxLines = 2
         )
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             Text(
                 text = result.creator + (result.year?.let { " · $it" } ?: ""),
-                style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = 10.sp),
+                style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = JawonType.Caption),
                 maxLines = 1,
                 modifier = Modifier.weight(1f, fill = false)
             )
@@ -240,7 +241,7 @@ private fun ResultRow(
                     text = "ON YOUR WALL",
                     fontFamily = JetBrainsMonoFamily,
                     fontWeight = FontWeight.Bold,
-                    fontSize = 9.sp,
+                    fontSize = JawonType.Fine,
                     letterSpacing = 1.2.sp,
                     color = LampAmber
                 )
@@ -248,7 +249,7 @@ private fun ResultRow(
             if (opening) {
                 Text(
                     text = "OPENING…",
-                    style = JawonTextStyle.mono.copy(color = LampAmber, fontSize = 9.sp)
+                    style = JawonTextStyle.mono.copy(color = LampAmber, fontSize = JawonType.Fine)
                 )
             }
         }
@@ -280,17 +281,17 @@ private fun OpenedRecord(
             text = album.title,
             fontFamily = ArchivoFamily,
             fontWeight = FontWeight.ExtraBold,
-            fontSize = 22.sp,
+            fontSize = JawonType.Heading,
             color = LabelCream,
             modifier = Modifier.padding(top = 12.dp)
         )
         Text(
             text = album.creator + (album.year?.let { " · $it" } ?: ""),
-            style = JawonTextStyle.mono.copy(color = LampAmber, fontSize = 12.sp)
+            style = JawonTextStyle.mono.copy(color = LampAmber, fontSize = JawonType.Title)
         )
         Text(
             text = "${album.tracks.size} tracks",
-            style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = 10.sp)
+            style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = JawonType.Caption)
         )
 
         Box(
@@ -305,7 +306,7 @@ private fun OpenedRecord(
                 text = if (owned) "ALREADY ON YOUR WALL" else "TAKE IT HOME",
                 fontFamily = JetBrainsMonoFamily,
                 fontWeight = FontWeight.Bold,
-                fontSize = 11.sp,
+                fontSize = JawonType.Body,
                 letterSpacing = 1.6.sp,
                 color = if (owned) LabelDim else LampAmber
             )
@@ -315,7 +316,7 @@ private fun OpenedRecord(
             text = "It becomes a case on your wall, streamed from the Archive when you play " +
                 "it and kept in the offline store after that — so the disc, the equaliser and " +
                 "the rack all work on it, the same as anything else in the room.",
-            style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = 10.sp),
+            style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = JawonType.Caption),
             lineHeight = 16.sp
         )
 
@@ -326,11 +327,11 @@ private fun OpenedRecord(
             ) {
                 Text(
                     text = "%02d".format(track.trackNumber),
-                    style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = 11.sp)
+                    style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = JawonType.Body)
                 )
                 Text(
                     text = track.title,
-                    style = JawonTextStyle.mono.copy(color = LabelCream, fontSize = 11.sp),
+                    style = JawonTextStyle.mono.copy(color = LabelCream, fontSize = JawonType.Body),
                     modifier = Modifier.weight(1f),
                     maxLines = 2
                 )
@@ -340,7 +341,7 @@ private fun OpenedRecord(
                             track.durationMs / 60_000,
                             (track.durationMs / 1000) % 60
                         ),
-                        style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = 11.sp)
+                        style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = JawonType.Body)
                     )
                 }
             }

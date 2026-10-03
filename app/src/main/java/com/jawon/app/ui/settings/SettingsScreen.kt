@@ -1,5 +1,6 @@
 package com.jawon.app.ui.settings
 
+import com.jawon.app.ui.theme.JawonType
 import com.jawon.app.ui.common.ScreenBar
 import android.content.Context
 import android.content.Intent
@@ -101,7 +102,7 @@ private fun SectionHeader(label: String) {
             text = label,
             fontFamily = JetBrainsMonoFamily,
             fontWeight = FontWeight.Bold,
-            fontSize = 10.sp,
+            fontSize = JawonType.Caption,
             letterSpacing = 3.sp,
             color = LampAmber
         )
@@ -174,7 +175,7 @@ private fun UpdateSection(
                 note?.let {
                     Text(
                         it,
-                        style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = 10.sp),
+                        style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = JawonType.Caption),
                         textAlign = TextAlign.Center
                     )
                 }
@@ -182,19 +183,19 @@ private fun UpdateSection(
 
             is UpdateState.Checking -> Text(
                 "CHECKING…",
-                style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = 10.sp)
+                style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = JawonType.Caption)
             )
 
             is UpdateState.Available -> {
                 Text(
                     "VERSION ${state.update.versionName.uppercase(Locale.ROOT)} IS AVAILABLE",
-                    style = JawonTextStyle.mono.copy(fontSize = 10.sp),
+                    style = JawonTextStyle.mono.copy(fontSize = JawonType.Caption),
                     textAlign = TextAlign.Center
                 )
                 if (state.update.notes.isNotBlank()) {
                     Text(
                         state.update.notes,
-                        style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = 10.sp),
+                        style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = JawonType.Caption),
                         lineHeight = 16.sp,
                         textAlign = TextAlign.Center
                     )
@@ -208,7 +209,7 @@ private fun UpdateSection(
                     Text(
                         "Android needs your permission for Jawon to install its own " +
                             "updates. This is the only thing it is used for.",
-                        style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = 10.sp),
+                        style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = JawonType.Caption),
                         lineHeight = 16.sp,
                         textAlign = TextAlign.Center
                     )
@@ -218,13 +219,13 @@ private fun UpdateSection(
 
             is UpdateState.Downloading -> Text(
                 "DOWNLOADING ${(state.fraction * 100).toInt()}%",
-                style = JawonTextStyle.mono.copy(fontSize = 10.sp)
+                style = JawonTextStyle.mono.copy(fontSize = JawonType.Caption)
             )
 
             is UpdateState.Ready -> {
                 Text(
                     "READY TO INSTALL",
-                    style = JawonTextStyle.mono.copy(fontSize = 10.sp)
+                    style = JawonTextStyle.mono.copy(fontSize = JawonType.Caption)
                 )
                 TextChip(text = "INSTALL", onClick = { onInstall(state.apk) })
             }
@@ -245,7 +246,7 @@ private fun TextChip(text: String, onClick: () -> Unit) {
             text,
             fontFamily = JetBrainsMonoFamily,
             fontWeight = FontWeight.Bold,
-            fontSize = 11.sp,
+            fontSize = JawonType.Body,
             letterSpacing = 1.6.sp,
             color = LampAmber
         )
@@ -295,20 +296,20 @@ private fun FormatPicker(current: Format, onPick: (Format) -> Unit) {
                     text = format.displayName.uppercase(Locale.ROOT),
                     style = JawonTextStyle.mono.copy(
                         color = if (selected) LampAmber else LabelCream,
-                        fontSize = 12.sp
+                        fontSize = JawonType.Title
                     )
                 )
                 if (!format.built) {
                     Text(
                         text = "IN PROGRESS",
-                        style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = 9.5.sp)
+                        style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = JawonType.Fine)
                     )
                 }
             }
         }
         Text(
             text = "Debug builds only until a second room is finished.",
-            style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = 9.5.sp)
+            style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = JawonType.Fine)
         )
     }
 }
@@ -402,7 +403,7 @@ private fun SchemePicker(current: RoomScheme, onPick: (RoomScheme) -> Unit) {
                             text = scheme.displayName.uppercase(Locale.ROOT),
                             style = JawonTextStyle.mono.copy(
                                 color = if (selected) scheme.accent else LabelCream,
-                                fontSize = 10.sp
+                                fontSize = JawonType.Caption
                             ),
                             modifier = Modifier.padding(start = 8.dp, top = 7.dp, bottom = 8.dp)
                         )
@@ -446,7 +447,7 @@ private fun DiagnosticsSection(
     ) {
         Text(
             text = device.uppercase(Locale.ROOT),
-            style = JawonTextStyle.mono.copy(color = LabelCream, fontSize = 10.sp),
+            style = JawonTextStyle.mono.copy(color = LabelCream, fontSize = JawonType.Caption),
             lineHeight = 15.sp
         )
 
@@ -454,7 +455,7 @@ private fun DiagnosticsSection(
             Text(
                 text = "Browse the room for a few seconds, then come back — there is not " +
                     "enough here to measure yet.",
-                style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = 10.sp),
+                style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = JawonType.Caption),
                 lineHeight = 16.sp
             )
             return@Column
@@ -490,7 +491,7 @@ private fun DiagnosticsSection(
             },
             style = JawonTextStyle.mono.copy(
                 color = if (snapshot.stepDowns > 0) LampAmber else LabelDim,
-                fontSize = 10.sp
+                fontSize = JawonType.Caption
             ),
             lineHeight = 16.sp,
             modifier = Modifier.padding(top = 4.dp)
@@ -507,7 +508,7 @@ private fun DiagnosticsSection(
                 text = "MEASURE AGAIN",
                 fontFamily = JetBrainsMonoFamily,
                 fontWeight = FontWeight.Bold,
-                fontSize = 10.sp,
+                fontSize = JawonType.Caption,
                 letterSpacing = 1.5.sp,
                 color = LabelDim
             )
@@ -561,7 +562,7 @@ private fun CrashReportSection(
             text = "PROBLEMS",
             fontFamily = JetBrainsMonoFamily,
             fontWeight = FontWeight.Bold,
-            fontSize = 11.sp,
+            fontSize = JawonType.Body,
             letterSpacing = 2.sp,
             color = LabelCream
         )
@@ -571,7 +572,7 @@ private fun CrashReportSection(
             // an empty panel that looks broken.
             Text(
                 text = "Nothing has gone wrong since you last cleared this.",
-                style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = 10.sp),
+                style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = JawonType.Caption),
                 lineHeight = 16.sp
             )
             return@Column
@@ -581,7 +582,7 @@ private fun CrashReportSection(
             text = "Something went wrong, and Jawon wrote it down. Sending it is what " +
                 "gets it fixed: it holds the fault, the app version and the phone model, " +
                 "and nothing about you or your music.",
-            style = JawonTextStyle.mono.copy(color = LampAmber, fontSize = 10.sp),
+            style = JawonTextStyle.mono.copy(color = LampAmber, fontSize = JawonType.Caption),
             lineHeight = 16.sp
         )
 
@@ -598,7 +599,7 @@ private fun CrashReportSection(
         ) {
             Text(
                 text = report,
-                style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = 9.sp),
+                style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = JawonType.Fine),
                 lineHeight = 13.sp
             )
         }
@@ -622,7 +623,7 @@ private fun DiagnosticRow(label: String, value: String) {
         Text(
             text = label,
             fontFamily = JetBrainsMonoFamily,
-            fontSize = 10.sp,
+            fontSize = JawonType.Caption,
             letterSpacing = 1.4.sp,
             color = LabelDim
         )
@@ -630,7 +631,7 @@ private fun DiagnosticRow(label: String, value: String) {
             text = value,
             fontFamily = JetBrainsMonoFamily,
             fontWeight = FontWeight.Bold,
-            fontSize = 10.sp,
+            fontSize = JawonType.Caption,
             letterSpacing = 1.sp,
             color = LabelCream
         )
@@ -658,7 +659,7 @@ private fun ReplayGainSection(
             text = "VOLUME LEVELLING",
             fontFamily = JetBrainsMonoFamily,
             fontWeight = FontWeight.Bold,
-            fontSize = 11.sp,
+            fontSize = JawonType.Body,
             letterSpacing = 2.sp,
             color = LabelCream
         )
@@ -690,7 +691,7 @@ private fun ReplayGainSection(
                         text = label,
                         fontFamily = JetBrainsMonoFamily,
                         fontWeight = FontWeight.Bold,
-                        fontSize = 10.sp,
+                        fontSize = JawonType.Caption,
                         letterSpacing = 1.4.sp,
                         color = if (selected) LampAmber else LabelDim
                     )
@@ -727,7 +728,7 @@ private fun BackupSection(
             text = "BACK UP YOUR SHELVES",
             fontFamily = JetBrainsMonoFamily,
             fontWeight = FontWeight.Bold,
-            fontSize = 11.sp,
+            fontSize = JawonType.Body,
             letterSpacing = 2.sp,
             color = LabelCream
         )
@@ -754,13 +755,13 @@ private fun BackupSection(
         if (busy) {
             Text(
                 text = "WORKING…",
-                style = JawonTextStyle.mono.copy(fontSize = 10.sp)
+                style = JawonTextStyle.mono.copy(fontSize = JawonType.Caption)
             )
         }
         message?.let {
             Text(
                 text = it,
-                style = JawonTextStyle.mono.copy(color = LabelCream, fontSize = 10.sp),
+                style = JawonTextStyle.mono.copy(color = LabelCream, fontSize = JawonType.Caption),
                 lineHeight = 16.sp
             )
         }
@@ -779,7 +780,7 @@ private fun BackupButton(text: String, enabled: Boolean, onClick: () -> Unit) {
             text = text,
             fontFamily = JetBrainsMonoFamily,
             fontWeight = FontWeight.Bold,
-            fontSize = 10.sp,
+            fontSize = JawonType.Caption,
             letterSpacing = 1.6.sp,
             color = if (enabled) LampAmber else LabelDim
         )
@@ -1041,7 +1042,7 @@ private fun ServerCredentials(
             } else {
                 "Been sent a link? Paste it here and the three fields below fill themselves in."
             },
-            style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = 10.sp),
+            style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = JawonType.Caption),
             lineHeight = 16.sp
         )
         ServerField(
@@ -1059,7 +1060,7 @@ private fun ServerCredentials(
             text = "OR FILL IT IN YOURSELF",
             fontFamily = JetBrainsMonoFamily,
             fontWeight = FontWeight.Bold,
-            fontSize = 9.sp,
+            fontSize = JawonType.Fine,
             letterSpacing = 1.6.sp,
             color = LabelDim,
             modifier = Modifier.padding(top = 6.dp)
@@ -1100,7 +1101,7 @@ private fun OfflineStoreRow(usedMb: Int, limitMb: Int, onClear: () -> Unit) {
             text = "OFFLINE STORE · $usedMb OF $limitMb MB",
             fontFamily = JetBrainsMonoFamily,
             fontWeight = FontWeight.Bold,
-            fontSize = 10.sp,
+            fontSize = JawonType.Caption,
             letterSpacing = 1.6.sp,
             color = LabelCream,
             modifier = Modifier.padding(top = 6.dp)
@@ -1171,7 +1172,7 @@ private fun TidySection(
 private fun StatusLine(text: String, color: androidx.compose.ui.graphics.Color) {
     Text(
         text = text,
-        style = JawonTextStyle.mono.copy(color = color, fontSize = 10.sp),
+        style = JawonTextStyle.mono.copy(color = color, fontSize = JawonType.Caption),
         lineHeight = 16.sp
     )
 }
@@ -1189,7 +1190,7 @@ private fun ServerField(
             text = label,
             fontFamily = JetBrainsMonoFamily,
             fontWeight = FontWeight.Bold,
-            fontSize = 9.sp,
+            fontSize = JawonType.Fine,
             letterSpacing = 1.6.sp,
             color = LabelDim
         )
@@ -1200,7 +1201,7 @@ private fun ServerField(
             placeholder = {
                 Text(
                     text = placeholder,
-                    style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = 12.sp)
+                    style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = JawonType.Title)
                 )
             },
             visualTransformation = if (password) {
@@ -1216,7 +1217,7 @@ private fun ServerField(
             ),
             textStyle = LocalTextStyle.current.copy(
                 fontFamily = JetBrainsMonoFamily,
-                fontSize = 12.sp,
+                fontSize = JawonType.Title,
                 color = LabelCream
             ),
             colors = TextFieldDefaults.colors(
@@ -1281,7 +1282,7 @@ private fun SettingRow(
                         text = title,
                         fontFamily = JetBrainsMonoFamily,
                         fontWeight = FontWeight.Bold,
-                        fontSize = 11.sp,
+                        fontSize = JawonType.Body,
                         letterSpacing = 2.sp,
                         color = LabelCream
                     )
@@ -1291,13 +1292,13 @@ private fun SettingRow(
                         text = if (expanded) "–" else "+",
                         fontFamily = JetBrainsMonoFamily,
                         fontWeight = FontWeight.Bold,
-                        fontSize = 11.sp,
+                        fontSize = JawonType.Body,
                         color = LampAmber.copy(alpha = 0.7f)
                     )
                 }
                 Text(
                     text = summary,
-                    style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = 10.sp),
+                    style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = JawonType.Caption),
                     lineHeight = 15.sp
                 )
             }
@@ -1317,7 +1318,7 @@ private fun SettingRow(
         if (expanded) {
             Text(
                 text = detail,
-                style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = 10.sp),
+                style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = JawonType.Caption),
                 lineHeight = 16.sp,
                 modifier = Modifier.padding(top = 2.dp, bottom = 6.dp, end = 56.dp)
             )
@@ -1344,7 +1345,7 @@ private fun MoreText(summary: String, detail: String) {
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(
                 text = summary,
-                style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = 10.sp),
+                style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = JawonType.Caption),
                 lineHeight = 16.sp,
                 modifier = Modifier.weight(1f)
             )
@@ -1352,14 +1353,14 @@ private fun MoreText(summary: String, detail: String) {
                 text = if (open) "–" else "+",
                 fontFamily = JetBrainsMonoFamily,
                 fontWeight = FontWeight.Bold,
-                fontSize = 11.sp,
+                fontSize = JawonType.Body,
                 color = LampAmber.copy(alpha = 0.7f)
             )
         }
         if (open) {
             Text(
                 text = detail,
-                style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = 10.sp),
+                style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = JawonType.Caption),
                 lineHeight = 16.sp
             )
         }
@@ -1395,13 +1396,13 @@ private fun Disclosure(
                     text = title,
                     fontFamily = JetBrainsMonoFamily,
                     fontWeight = FontWeight.Bold,
-                    fontSize = 11.sp,
+                    fontSize = JawonType.Body,
                     letterSpacing = 2.sp,
                     color = LabelCream
                 )
                 Text(
                     text = subtitle,
-                    style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = 10.sp),
+                    style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = JawonType.Caption),
                     lineHeight = 15.sp
                 )
             }
@@ -1409,7 +1410,7 @@ private fun Disclosure(
                 text = if (open) "–" else "+",
                 fontFamily = JetBrainsMonoFamily,
                 fontWeight = FontWeight.Bold,
-                fontSize = 14.sp,
+                fontSize = JawonType.Title,
                 color = LampAmber.copy(alpha = 0.7f)
             )
         }
@@ -1509,7 +1510,7 @@ fun SettingsScreen(
                     text = stringResource(R.string.app_name).uppercase(Locale.ROOT),
                     fontFamily = ArchivoFamily,
                     fontWeight = FontWeight.ExtraBold,
-                    fontSize = 44.sp,
+                    fontSize = JawonType.Masthead,
                     letterSpacing = 3.sp,
                     color = LabelCream
                 )
@@ -1576,7 +1577,7 @@ fun SettingsScreen(
                         text = "CASES TURN",
                         fontFamily = JetBrainsMonoFamily,
                         fontWeight = FontWeight.Bold,
-                        fontSize = 11.sp,
+                        fontSize = JawonType.Body,
                         letterSpacing = 2.sp,
                         color = LabelCream
                     )
@@ -1586,7 +1587,7 @@ fun SettingsScreen(
                             caseSpin >= 1f -> "FULL"
                             else -> "%.0f%%".format(Locale.US, caseSpin * 100f)
                         },
-                        style = JawonTextStyle.mono.copy(fontSize = 10.sp)
+                        style = JawonTextStyle.mono.copy(fontSize = JawonType.Caption)
                     )
                 }
                 MoreText(
@@ -1623,14 +1624,14 @@ fun SettingsScreen(
                         text = "CROSSFADE",
                         fontFamily = JetBrainsMonoFamily,
                         fontWeight = FontWeight.Bold,
-                        fontSize = 11.sp,
+                        fontSize = JawonType.Body,
                         letterSpacing = 2.sp,
                         color = LabelCream
                     )
                     Text(
                         text = if (crossfadeMs < Crossfade.MIN_MS) "OFF"
                         else "%.1f s".format(Locale.US, crossfadeMs / 1000f),
-                        style = JawonTextStyle.mono.copy(fontSize = 10.sp)
+                        style = JawonTextStyle.mono.copy(fontSize = JawonType.Caption)
                     )
                 }
                 MoreText(
@@ -1789,7 +1790,7 @@ fun SettingsScreen(
                 // moment a music server could be attached. It is still true of everything the
                 // *app* keeps, and that is what it now says.
                 text = "Jawon keeps nothing about you, anywhere but this phone.",
-                style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = 10.sp),
+                style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = JawonType.Caption),
                 modifier = Modifier.padding(top = 48.dp, bottom = 48.dp)
             )
         }

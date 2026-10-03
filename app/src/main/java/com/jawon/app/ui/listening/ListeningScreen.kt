@@ -1,5 +1,6 @@
 package com.jawon.app.ui.listening
 
+import com.jawon.app.ui.theme.JawonType
 import com.jawon.app.ui.common.ScreenBar
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -142,7 +143,7 @@ private fun Totals(state: ListeningState) {
             text = longFormat(state.totalMs),
             fontFamily = JetBrainsMonoFamily,
             fontWeight = FontWeight.Bold,
-            fontSize = 34.sp,
+            fontSize = JawonType.Figure,
             color = LabelCream
         )
         Text(
@@ -157,7 +158,7 @@ private fun Totals(state: ListeningState) {
                 }
             },
             fontFamily = JetBrainsMonoFamily,
-            fontSize = 11.sp,
+            fontSize = JawonType.Body,
             letterSpacing = 2.sp,
             color = LabelDim,
             modifier = Modifier.padding(top = 6.dp)
@@ -178,7 +179,7 @@ private fun Totals(state: ListeningState) {
                     }
                 },
                 fontFamily = JetBrainsMonoFamily,
-                fontSize = 11.sp,
+                fontSize = JawonType.Body,
                 letterSpacing = 2.sp,
                 color = LampAmber,
                 modifier = Modifier.padding(top = 4.dp)
@@ -217,7 +218,7 @@ private fun PeriodChips(
                     text = period.label,
                     fontFamily = JetBrainsMonoFamily,
                     fontWeight = if (active) FontWeight.Bold else FontWeight.Normal,
-                    fontSize = 9.sp,
+                    fontSize = JawonType.Fine,
                     letterSpacing = 1.4.sp,
                     color = if (active) LampAmber else LabelDim
                 )
@@ -275,7 +276,7 @@ private fun ListeningClock(state: ListeningState) {
                 Text(
                     text = label,
                     fontFamily = JetBrainsMonoFamily,
-                    fontSize = 8.sp,
+                    fontSize = JawonType.Fine,
                     letterSpacing = 1.sp,
                     color = LabelDim
                 )
@@ -285,7 +286,7 @@ private fun ListeningClock(state: ListeningState) {
             Text(
                 text = "MOSTLY AROUND %02d:00".format(hour),
                 fontFamily = JetBrainsMonoFamily,
-                fontSize = 10.sp,
+                fontSize = JawonType.Caption,
                 letterSpacing = 1.6.sp,
                 color = LabelDim,
                 modifier = Modifier.padding(top = 10.dp)
@@ -301,7 +302,7 @@ private fun SectionLabel(text: String) {
         text = text,
         fontFamily = JetBrainsMonoFamily,
         fontWeight = FontWeight.Bold,
-        fontSize = 10.sp,
+        fontSize = JawonType.Caption,
         letterSpacing = 3.sp,
         color = LampAmber,
         modifier = Modifier.padding(top = 18.dp, bottom = 10.dp)
@@ -325,7 +326,7 @@ private fun TallyRowView(rank: Int, row: TallyRow) {
             Text(
                 text = "%02d".format(rank),
                 fontFamily = JetBrainsMonoFamily,
-                fontSize = 11.sp,
+                fontSize = JawonType.Body,
                 color = LabelDim
             )
             Column(Modifier.weight(1f)) {
@@ -340,7 +341,7 @@ private fun TallyRowView(rank: Int, row: TallyRow) {
                     Text(
                         text = row.under,
                         fontFamily = JetBrainsMonoFamily,
-                        fontSize = 9.sp,
+                        fontSize = JawonType.Fine,
                         letterSpacing = 1.sp,
                         color = LabelDim,
                         maxLines = 1,
@@ -351,7 +352,7 @@ private fun TallyRowView(rank: Int, row: TallyRow) {
             Text(
                 text = shortFormat(row.totalMs),
                 fontFamily = JetBrainsMonoFamily,
-                fontSize = 11.sp,
+                fontSize = JawonType.Body,
                 color = LabelDim
             )
         }
@@ -377,7 +378,7 @@ private fun ListeningRowView(rank: Int, row: ListeningRow, onClick: () -> Unit) 
             Text(
                 text = rank.toString().padStart(2, '0'),
                 fontFamily = JetBrainsMonoFamily,
-                fontSize = 11.sp,
+                fontSize = JawonType.Body,
                 color = if (rank <= 3) LampAmber else LabelDim,
                 modifier = Modifier.width(30.dp)
             )
@@ -409,7 +410,7 @@ private fun ListeningRowView(rank: Int, row: ListeningRow, onClick: () -> Unit) 
                 Text(
                     text = row.title,
                     color = LabelCream,
-                    fontSize = 15.sp,
+                    fontSize = JawonType.Row,
                     fontWeight = FontWeight.Medium,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
@@ -417,7 +418,7 @@ private fun ListeningRowView(rank: Int, row: ListeningRow, onClick: () -> Unit) 
                 Text(
                     text = row.artist.uppercase(Locale.ROOT),
                     fontFamily = JetBrainsMonoFamily,
-                    fontSize = 10.sp,
+                    fontSize = JawonType.Caption,
                     letterSpacing = 1.2.sp,
                     color = LabelDim,
                     maxLines = 1,
@@ -429,13 +430,13 @@ private fun ListeningRowView(rank: Int, row: ListeningRow, onClick: () -> Unit) 
                 Text(
                     text = shortFormat(row.totalMs),
                     fontFamily = JetBrainsMonoFamily,
-                    fontSize = 13.sp,
+                    fontSize = JawonType.Title,
                     color = LabelCream
                 )
                 Text(
                     text = "${row.plays}×",
                     fontFamily = JetBrainsMonoFamily,
-                    fontSize = 10.sp,
+                    fontSize = JawonType.Caption,
                     color = LabelDim
                 )
             }
@@ -482,7 +483,7 @@ private fun EmptyNote() {
             text = "NOTHING PLAYED YET",
             fontFamily = JetBrainsMonoFamily,
             fontWeight = FontWeight.Bold,
-            fontSize = 13.sp,
+            fontSize = JawonType.Title,
             letterSpacing = 2.5.sp,
             color = LabelCream
         )
@@ -490,7 +491,7 @@ private fun EmptyNote() {
             text = "Put a record on. Jawon keeps a note of what you actually listen to, " +
                 "including while the app is closed, and the cases on the shelf wear in to match.",
             fontFamily = JetBrainsMonoFamily,
-            fontSize = 12.sp,
+            fontSize = JawonType.Title,
             color = LabelDim,
             modifier = Modifier.padding(top = 14.dp)
         )
@@ -502,7 +503,7 @@ private fun Footnote() {
     Text(
         text = "COUNTED AS TIME IN THE TRACK — PAUSING AND SCRUBBING BACK DO NOT INFLATE IT",
         fontFamily = JetBrainsMonoFamily,
-        fontSize = 9.sp,
+        fontSize = JawonType.Fine,
         letterSpacing = 1.sp,
         color = Color(0xFF6E6152),
         modifier = Modifier.padding(top = 28.dp, start = 30.dp)

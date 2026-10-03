@@ -1,5 +1,6 @@
 package com.jawon.app.ui.intro
 
+import com.jawon.app.ui.theme.JawonType
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
@@ -168,7 +169,7 @@ fun IntroOverlay(onFinished: () -> Unit) {
                     text = "JAWON",
                     fontFamily = ArchivoFamily,
                     fontWeight = FontWeight.ExtraBold,
-                    fontSize = 52.sp,
+                    fontSize = JawonType.Masthead,
                     letterSpacing = 6.sp,
                     color = LabelCream,
                     // Tight and warm rather than wide and washy. The spread is the Canvas
@@ -204,7 +205,7 @@ fun IntroOverlay(onFinished: () -> Unit) {
                 text = "BY VENEFICUS",
                 fontFamily = JetBrainsMonoFamily,
                 fontWeight = FontWeight.Medium,
-                fontSize = 11.sp,
+                fontSize = JawonType.Body,
                 // **Fixed, and it must not be animated from the strike.**
                 //
                 // This was tracked open as the byline came up, reading `byline.value` — which is

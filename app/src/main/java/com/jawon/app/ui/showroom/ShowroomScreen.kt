@@ -1,5 +1,6 @@
 package com.jawon.app.ui.showroom
 
+import com.jawon.app.ui.theme.JawonType
 import android.graphics.Bitmap
 import android.os.SystemClock
 import android.view.ViewConfiguration
@@ -521,7 +522,7 @@ fun ShowroomScreen(
                     style = TextStyle(
                         fontFamily = ArchivoFamily,
                         fontWeight = FontWeight.ExtraBold,
-                        fontSize = 22.sp,
+                        fontSize = JawonType.Heading,
                         letterSpacing = 2.sp,
                         color = if (exhibit.format == null) LabelDim else LabelCream
                     )
@@ -529,7 +530,7 @@ fun ShowroomScreen(
                 Spacer(Modifier.height(8.dp))
                 Text(
                     text = exhibit.line.uppercase(Locale.ROOT),
-                    style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = 10.sp)
+                    style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = JawonType.Caption)
                 )
                 // The room you are in, marked the way Settings marks a choice: in the lamp's amber.
                 Spacer(Modifier.height(10.dp))

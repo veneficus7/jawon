@@ -1,5 +1,6 @@
 package com.jawon.app.ui.common
 
+import com.jawon.app.ui.theme.JawonType
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
@@ -60,7 +61,7 @@ fun ScreenBar(
             text = title,
             fontFamily = JetBrainsMonoFamily,
             fontWeight = FontWeight.Bold,
-            fontSize = 12.sp,
+            fontSize = JawonType.Title,
             letterSpacing = 3.sp,
             color = LampAmber,
             maxLines = 1,

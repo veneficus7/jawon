@@ -1,5 +1,6 @@
 package com.jawon.app.ui.addalbum
 
+import com.jawon.app.ui.theme.JawonType
 import com.jawon.app.ui.common.ScreenBar
 import android.Manifest
 import android.content.Context
@@ -231,7 +232,7 @@ private fun IdleContent(
                 text = "SCAN THIS PHONE",
                 fontFamily = ArchivoFamily,
                 fontWeight = FontWeight.ExtraBold,
-                fontSize = 22.sp,
+                fontSize = JawonType.Heading,
                 letterSpacing = 1.sp,
                 color = LabelCream
             )
@@ -272,7 +273,7 @@ private fun IdleContent(
                 text = "CHOOSE A FOLDER",
                 fontFamily = ArchivoFamily,
                 fontWeight = FontWeight.ExtraBold,
-                fontSize = 18.sp,
+                fontSize = JawonType.Subhead,
                 letterSpacing = 1.sp,
                 color = LabelDim
             )
@@ -280,7 +281,7 @@ private fun IdleContent(
                 // Not a fallback for the stubborn: MediaStore only indexes what the media
                 // scanner has seen, so this is the only route to some music.
                 text = "For a memory card or cloud storage, which a scan cannot see.",
-                style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = 10.sp),
+                style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = JawonType.Caption),
                 lineHeight = 16.sp
             )
         }
@@ -298,7 +299,7 @@ private fun IdleContent(
                 text = "IMPORT A CD",
                 fontFamily = ArchivoFamily,
                 fontWeight = FontWeight.ExtraBold,
-                fontSize = 18.sp,
+                fontSize = JawonType.Subhead,
                 letterSpacing = 1.sp,
                 color = LabelDim
             )
@@ -307,7 +308,7 @@ private fun IdleContent(
                 // is a GOTCHA rather than an explanation, and finding it out by having a
                 // drive fail to enumerate is the worst way to learn it.
                 text = "Read a disc from a USB drive. Most drives need their own power.",
-                style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = 10.sp),
+                style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = JawonType.Caption),
                 lineHeight = 16.sp
             )
         }
@@ -325,13 +326,13 @@ private fun IdleContent(
                 text = "THE RECORD SHOP",
                 fontFamily = ArchivoFamily,
                 fontWeight = FontWeight.ExtraBold,
-                fontSize = 18.sp,
+                fontSize = JawonType.Subhead,
                 letterSpacing = 1.sp,
                 color = LabelDim
             )
             Text(
                 text = "Live concerts and free releases from the Internet Archive.",
-                style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = 10.sp),
+                style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = JawonType.Caption),
                 lineHeight = 16.sp
             )
         }
@@ -379,7 +380,7 @@ private fun Problem(message: String, onBack: () -> Unit) {
                 "BACK TO THE ROOM",
                 fontFamily = JetBrainsMonoFamily,
                 fontWeight = FontWeight.Bold,
-                fontSize = 11.sp,
+                fontSize = JawonType.Body,
                 letterSpacing = 1.6.sp,
                 color = LampAmber
             )
@@ -416,12 +417,12 @@ private fun MultiPreviewContent(
                     text = "${state.albums.size} ALBUMS",
                     fontFamily = ArchivoFamily,
                     fontWeight = FontWeight.ExtraBold,
-                    fontSize = 20.sp,
+                    fontSize = JawonType.Heading,
                     color = LabelCream
                 )
                 Text(
                     text = "Tick what you want on your shelves.",
-                    style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = 10.sp)
+                    style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = JawonType.Caption)
                 )
             }
             // A phone scan can return hundreds. Ticking them one at a time is not a
@@ -437,7 +438,7 @@ private fun MultiPreviewContent(
                     text = if (allTicked) "NONE" else "ALL",
                     fontFamily = JetBrainsMonoFamily,
                     fontWeight = FontWeight.Bold,
-                    fontSize = 11.sp,
+                    fontSize = JawonType.Body,
                     letterSpacing = 1.6.sp,
                     color = LampAmber
                 )
@@ -477,7 +478,7 @@ private fun MultiPreviewContent(
                     else "${state.coversToLookUp} of these have no artwork of their own. ") +
                         "Jawon will look " + (if (state.coversToLookUp == 1) "it" else "those") +
                         " up online, sending just the album and artist name.",
-                    style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = 10.sp),
+                    style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = JawonType.Caption),
                     lineHeight = 16.sp
                 )
             }
@@ -501,7 +502,7 @@ private fun MultiPreviewContent(
                     },
                     fontFamily = JetBrainsMonoFamily,
                     fontWeight = FontWeight.Bold,
-                    fontSize = 13.sp,
+                    fontSize = JawonType.Title,
                     letterSpacing = 1.8.sp,
                     color = if (enabled) LampAmber else LabelDim
                 )
@@ -551,7 +552,7 @@ private fun AlbumChoice(
                 text = title,
                 fontFamily = ArchivoFamily,
                 fontWeight = FontWeight.ExtraBold,
-                fontSize = 14.sp,
+                fontSize = JawonType.Row,
                 color = if (checked) LabelCream else LabelDim,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
@@ -565,7 +566,7 @@ private fun AlbumChoice(
                     (if (hasCover) " · COVER" else ""),
                 style = JawonTextStyle.mono.copy(
                     color = if (alreadyInLibrary) LampAmber else LabelDim,
-                    fontSize = 10.sp
+                    fontSize = JawonType.Caption
                 ),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
@@ -648,7 +649,7 @@ private fun PreviewContent(
                     "PUT IT ON THE SHELF",
                     fontFamily = JetBrainsMonoFamily,
                     fontWeight = FontWeight.Bold,
-                    fontSize = 13.sp,
+                    fontSize = JawonType.Title,
                     letterSpacing = 1.8.sp,
                     color = LampAmber
                 )
@@ -681,7 +682,7 @@ private fun UnderlightPicker(hue: Float, onHueChanged: (Float) -> Unit) {
                 text = if (chosen) "USE THE COVER'S" else "FROM THE COVER",
                 style = JawonTextStyle.mono.copy(
                     color = if (chosen) LampAmber else LabelDim,
-                    fontSize = 10.sp
+                    fontSize = JawonType.Caption
                 ),
                 modifier = if (chosen) Modifier.clickable { onHueChanged(0f) } else Modifier
             )
@@ -742,7 +743,7 @@ private fun CoverPicker(
             } else {
                 Text(
                     "TAP TO SET",
-                    style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = 10.sp)
+                    style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = JawonType.Caption)
                 )
             }
         }
@@ -768,7 +769,7 @@ private fun LabelledField(
             textStyle = LocalTextStyle.current.copy(
                 fontFamily = if (numeric) JetBrainsMonoFamily else ArchivoFamily,
                 fontWeight = if (numeric) FontWeight.Medium else FontWeight.ExtraBold,
-                fontSize = if (numeric) 14.sp else 17.sp,
+                fontSize = if (numeric) JawonType.Title else JawonType.Subhead,
                 color = LabelCream
             ),
             colors = TextFieldDefaults.colors(
@@ -794,14 +795,14 @@ private fun TrackRow(track: TrackMetadata) {
     ) {
         Text(
             text = track.title,
-            style = JawonTextStyle.mono.copy(color = LabelCream, fontSize = 11.sp),
+            style = JawonTextStyle.mono.copy(color = LabelCream, fontSize = JawonType.Body),
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f)
         )
         Text(
             text = formatDuration(track.durationMs),
-            style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = 11.sp)
+            style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = JawonType.Body)
         )
     }
 }
@@ -813,7 +814,7 @@ private fun FieldLabel(text: String) {
         text = text,
         fontFamily = JetBrainsMonoFamily,
         fontWeight = FontWeight.Bold,
-        fontSize = 9.sp,
+        fontSize = JawonType.Fine,
         letterSpacing = 2.sp,
         color = LampAmber.copy(alpha = 0.75f)
     )
