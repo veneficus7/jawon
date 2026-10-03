@@ -14,7 +14,7 @@ modelled by hand and not downloaded.
 | `disc` | the held case | 4608 | 1.2mm thick, radial UVs |
 | `showroom` | the showroom between formats | ~5160 | three objects, one per material: a polished concrete floor, a dark plaster back wall, and four charcoal plinths with moulded caps and feet — in the showroom's own coordinates; ~150KB |
 | `pocket` | the device on its plinth in the showroom | 8314 | eight objects, one per material; life size, 61.8 × 103.5 × 10.5mm; a polished bead round the face; ~830KB, most of it three wear maps |
-| `pocket_face` | the pocket player's room: the device's face as the phone's whole display | ~8070 | seven objects under the device's part names, plus a floor behind the gaps; laid out at life size on a 1440 × 3120 display at 498ppi; ~470KB, most of it three wear maps — see "The face" below |
+| `pocket_face` | the pocket player's room: the device's face as the phone's whole display | ~10300 | six objects under the device's part names, plus a floor behind the gaps; laid out at life size on a 1440 × 3120 display at 498ppi; ~520KB, most of it three wear maps — see "The face" below |
 
 **Why the shelf gets its own case.** A shut jewel case shows none of the tray's
 interior, and the wall draws up to ~470 at once — carrying that interior would
@@ -61,6 +61,15 @@ triangles from the M of MENU; the face's build imports the committed device, kee
 loops left some faces looking down; `SOLIDIFY` with `offset = −1` then thickened those toward
 the viewer and the wheel exported proud of the plate (Z −0.6…+0.7mm, the print buried in it). It
 is the same class of error as the device's first wheel below, caught by the same bounds.
+
+**The plate is triangulated by constrained Delaunay, not filled** (`plate_triangles()`). A
+`triangle_fill` across a plate this wide left triangles 40mm long between the window's lower
+corners and the wheel's sides, and two of them folded back over their neighbours. A flat plate
+shows a fold only through its normals: the bevel's hardened normals turned six corners round, the
+normal swept through zero along each long triangle, and the face carried four faint lines from the
+window to the wheel in every finish. Delaunay with points every 4mm over the display (20mm past
+it) has no long triangle to fold. **The check is one number**: every corner of the front faces
+within half a degree of +Z. It read 600 of 606 turned round before; it reads none now.
 
 The wear maps cover the display, not the plate (the plate's UVs run 0..1 across the reference
 display, the textures' extension set to EXTEND), so past a display the wear holds its edge

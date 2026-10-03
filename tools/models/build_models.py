@@ -1028,6 +1028,87 @@ def circle_loop(bm, radius, y, cz, segments=96):
     return verts, edges
 
 
+def _inside(pt, loop):
+    """Whether [pt] is inside the closed polygon [loop] — even-odd, by a ray along +x."""
+    x, z = pt
+    inside = False
+    n = len(loop)
+    for i in range(n):
+        x0, z0 = loop[i]
+        x1, z1 = loop[(i + 1) % n]
+        if (z0 > z) != (z1 > z) and x < x0 + (z - z0) * (x1 - x0) / (z1 - z0):
+            inside = not inside
+    return inside
+
+
+def _distance_to_loop(pt, loop):
+    """The distance from [pt] to the nearest edge of the closed polygon [loop]."""
+    x, z = pt
+    best = float("inf")
+    n = len(loop)
+    for i in range(n):
+        x0, z0 = loop[i]
+        x1, z1 = loop[(i + 1) % n]
+        dx, dz = x1 - x0, z1 - z0
+        t = max(0.0, min(1.0, ((x - x0) * dx + (z - z0) * dz) / max(dx * dx + dz * dz, 1e-30)))
+        best = min(best, math.hypot(x - (x0 + t * dx), z - (z0 + t * dz)))
+    return best
+
+
+def plate_triangles(outer, holes, steiner_step, fine_box, coarse_step):
+    """
+    A flat plate with holes, triangulated by **constrained Delaunay**: `(points, triangles)` in
+    Blender's XZ plane, the triangles wound alike.
+
+    For a plate wider than a fill can be trusted with. `triangle_fill` left the face's plate with
+    triangles 40mm long between the window's corners and the wheel's sides, and two of them folded
+    back over their neighbours — a plate is flat, so a fold shows only as its normals, and those
+    drew four lines across the face. Delaunay with points scattered through the plate
+    ([steiner_step] apart inside [fine_box] — `(x0, z0, x1, z1)` — and [coarse_step] outside it)
+    has no long triangles to fold.
+    """
+    from mathutils import Vector
+    from mathutils.geometry import delaunay_2d_cdt
+    loops = [outer] + holes
+    coords, edges = [], []
+    for loop in loops:
+        base = len(coords)
+        coords += [Vector(p) for p in loop]
+        edges += [(base + i, base + (i + 1) % len(loop)) for i in range(len(loop))]
+
+    xs = [p[0] for p in outer]
+    zs = [p[1] for p in outer]
+
+    def scatter(step, keep):
+        x = min(xs) + step / 2.0
+        while x < max(xs):
+            z = min(zs) + step / 2.0
+            while z < max(zs):
+                pt = (x, z)
+                if keep(pt) and _inside(pt, outer) and not any(_inside(pt, h) for h in holes) \
+                        and min(_distance_to_loop(pt, loop) for loop in loops) > 0.45 * step:
+                    coords.append(Vector(pt))
+                z += step
+            x += step
+
+    fx0, fz0, fx1, fz1 = fine_box
+    in_box = lambda pt: fx0 <= pt[0] <= fx1 and fz0 <= pt[1] <= fz1
+    scatter(steiner_step, in_box)
+    scatter(coarse_step, lambda pt: not (fx0 - coarse_step <= pt[0] <= fx1 + coarse_step
+                                         and fz0 - coarse_step <= pt[1] <= fz1 + coarse_step))
+
+    out_v, _, out_f, _, _, _ = delaunay_2d_cdt(coords, edges, [], 0, 1e-7)
+    triangles = []
+    for f in out_f:
+        cx = sum(out_v[i].x for i in f) / len(f)
+        cz = sum(out_v[i].y for i in f) / len(f)
+        if _inside((cx, cz), outer) and not any(_inside((cx, cz), h) for h in holes):
+            triangles.append(list(f))
+    used = sorted({i for f in triangles for i in f})
+    remap = {old: new for new, old in enumerate(used)}
+    return [(out_v[i].x, out_v[i].y) for i in used], [[remap[i] for i in f] for f in triangles]
+
+
 # ---------------------------------------------------------------------------
 # The pocket player's wear: roughness maps, generated.
 #
@@ -1668,17 +1749,29 @@ def build_pocket_face():
 
     # ---- the plate: one face with two holes, filled and extruded, as the device's is ---------
     front = new_mesh_object("pocket_front")
+    outline = bmesh.new()
+    loops = [rounded_rect(outline, FACE_PLATE_W, FACE_PLATE_H, 0.01, 0.0)[0],
+             rounded_rect(outline, FACE_SCREEN_W, FACE_SCREEN_H, FACE_SCREEN_R, 0.0,
+                          cz=FACE_SCREEN_Y)[0],
+             circle_loop(outline, FACE_WHEEL_R + FACE_WHEEL_GAP, 0.0, FACE_WHEEL_Y, segments=128)[0]]
+    loops = [[(v.co.x, v.co.z) for v in loop] for loop in loops]
+    outline.free()
+    # Points every 4mm over the display, where the face is looked at; every 20mm past it.
+    points, triangles = plate_triangles(
+        loops[0], loops[1:], 0.004,
+        (-FACE_DISPLAY_W / 2.0 - 0.004, -FACE_DISPLAY_H / 2.0 - 0.004,
+         FACE_DISPLAY_W / 2.0 + 0.004, FACE_DISPLAY_H / 2.0 + 0.004),
+        0.020,
+    )
     bm = bmesh.new()
-    _, outer_e = rounded_rect(bm, FACE_PLATE_W, FACE_PLATE_H, 0.01, az(front_z))
-    _, screen_e = rounded_rect(bm, FACE_SCREEN_W, FACE_SCREEN_H, FACE_SCREEN_R, az(front_z),
-                               cz=FACE_SCREEN_Y)
-    _, wheel_e = circle_loop(bm, FACE_WHEEL_R + FACE_WHEEL_GAP, az(front_z), FACE_WHEEL_Y,
-                             segments=128)
-    bmesh.ops.triangle_fill(bm, use_beauty=True, use_dissolve=False,
-                            edges=outer_e + screen_e + wheel_e)
+    verts = [bm.verts.new((x, az(front_z), z)) for x, z in points]
+    for tri in triangles:
+        bm.faces.new([verts[i] for i in tri])
     ex = bmesh.ops.extrude_face_region(bm, geom=[f for f in bm.faces])
     moved = [v for v in ex["geom"] if isinstance(v, bmesh.types.BMVert)]
     bmesh.ops.translate(bm, verts=moved, vec=(0.0, -az(FACE_FRONT_T), 0.0))
+    # Outward, every face: the triangulation winds them as it likes.
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
     bm.to_mesh(front.data)
     bm.free()
     # The device's anodising, the same numbers: the app's finish (`PocketFinish`) puts its own
