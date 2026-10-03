@@ -1,5 +1,10 @@
 package com.jawon.app.ui.editalbum
 
+import com.jawon.app.ui.common.YEAR_KEYS
+import com.jawon.app.ui.common.NAME_KEYS
+import com.jawon.app.ui.common.FieldLabel
+import com.jawon.app.ui.common.FieldFace
+import com.jawon.app.ui.common.JawonTextField
 import com.jawon.app.ui.theme.JawonType
 import com.jawon.app.ui.common.ScreenBar
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -22,7 +27,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.CircularProgressIndicator
@@ -30,12 +34,9 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextField
-import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -48,14 +49,12 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
-import com.jawon.app.ui.theme.ArchivoFamily
 import com.jawon.app.ui.theme.CrateBlack
 import com.jawon.app.ui.theme.CrateEdge
 import com.jawon.app.ui.theme.CrateRaised
@@ -197,13 +196,22 @@ fun EditAlbumScreen(
 
             item {
                 Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                    LabelledField("TITLE", state.title, viewModel::onTitleChanged)
-                    LabelledField("ARTIST", state.artist, viewModel::onArtistChanged)
-                    LabelledField(
-                        "YEAR",
-                        state.year,
-                        viewModel::onYearChanged,
-                        numeric = true
+                    JawonTextField(
+                        state.title, viewModel::onTitleChanged,
+                        label = "TITLE",
+                        face = FieldFace.SLEEVE,
+                        keyboardOptions = NAME_KEYS
+                    )
+                    JawonTextField(
+                        state.artist, viewModel::onArtistChanged,
+                        label = "ARTIST",
+                        face = FieldFace.SLEEVE,
+                        keyboardOptions = NAME_KEYS
+                    )
+                    JawonTextField(
+                        state.year, viewModel::onYearChanged,
+                        label = "YEAR",
+                        keyboardOptions = YEAR_KEYS
                     )
                 }
             }
@@ -280,40 +288,6 @@ private fun ArtworkPicker(
                 )
             }
         }
-    }
-}
-
-@Composable
-private fun LabelledField(
-    label: String,
-    value: String,
-    onValueChange: (String) -> Unit,
-    numeric: Boolean = false
-) {
-    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        FieldLabel(label)
-        TextField(
-            value = value,
-            onValueChange = onValueChange,
-            singleLine = true,
-            keyboardOptions = KeyboardOptions(
-                keyboardType = if (numeric) KeyboardType.Number else KeyboardType.Text
-            ),
-            textStyle = LocalTextStyle.current.copy(
-                fontFamily = if (numeric) JetBrainsMonoFamily else ArchivoFamily,
-                fontWeight = if (numeric) FontWeight.Medium else FontWeight.ExtraBold,
-                fontSize = if (numeric) JawonType.Title else JawonType.Subhead,
-                color = LabelCream
-            ),
-            colors = TextFieldDefaults.colors(
-                focusedContainerColor = CrateRaised,
-                unfocusedContainerColor = CrateRaised,
-                focusedIndicatorColor = LampAmber,
-                unfocusedIndicatorColor = CrateEdge,
-                cursorColor = LampAmber
-            ),
-            modifier = Modifier.fillMaxWidth()
-        )
     }
 }
 
@@ -434,14 +408,3 @@ private fun ShelfPicker(
     }
 }
 
-@Composable
-private fun FieldLabel(text: String) {
-    Text(
-        text = text,
-        fontFamily = JetBrainsMonoFamily,
-        fontWeight = FontWeight.Bold,
-        fontSize = JawonType.Fine,
-        letterSpacing = 2.sp,
-        color = LampAmber.copy(alpha = 0.75f)
-    )
-}

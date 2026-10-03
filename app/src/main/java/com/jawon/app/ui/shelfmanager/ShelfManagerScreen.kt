@@ -1,5 +1,8 @@
 package com.jawon.app.ui.shelfmanager
 
+import androidx.compose.ui.text.input.KeyboardCapitalization
+import com.jawon.app.ui.common.FieldLabel
+import com.jawon.app.ui.common.JawonTextField
 import com.jawon.app.ui.theme.JawonType
 import com.jawon.app.ui.common.ScreenBar
 import androidx.activity.compose.BackHandler
@@ -44,12 +47,9 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TextField
-import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -488,6 +488,12 @@ private fun TapeLabel(name: String, modifier: Modifier = Modifier) {
     }
 }
 
+/** A shelf's name reads as a phrase — "Sunday morning" — so only its first word is capitalised. */
+private val SHELF_NAME_KEYS = KeyboardOptions(
+    capitalization = KeyboardCapitalization.Sentences,
+    imeAction = ImeAction.Done
+)
+
 /**
  * Renaming, committed on Done or when the field loses focus — **not on every keystroke**.
  *
@@ -511,46 +517,30 @@ private fun NameField(
         if (trimmed.isNotEmpty() && trimmed != initial) onCommit(shelfId, trimmed)
     }
 
-    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        FieldLabel("NAME")
-        TextField(
-            value = text,
-            onValueChange = { text = it },
-            singleLine = true,
-            textStyle = LocalTextStyle.current.copy(
-                fontFamily = JetBrainsMonoFamily,
-                fontSize = JawonType.Title,
-                letterSpacing = 1.2.sp,
-                color = LabelCream
-            ),
-            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-            keyboardActions = KeyboardActions(onDone = {
-                commit()
-                focus.clearFocus()
-            }),
-            colors = TextFieldDefaults.colors(
-                focusedContainerColor = CrateBlack,
-                unfocusedContainerColor = CrateBlack,
-                focusedIndicatorColor = LampAmber,
-                unfocusedIndicatorColor = CrateEdge,
-                cursorColor = LampAmber
-            ),
-            modifier = Modifier
-                .fillMaxWidth()
-                .onFocusChanged { state ->
-                    // Losing focus counts as finishing — tapping away from the field is how
-                    // most people leave it, and nobody expects that to discard the edit.
-                    if (focused && !state.isFocused) commit()
-                    focused = state.isFocused
-                }
-        )
-    }
+    JawonTextField(
+        value = text,
+        onValueChange = { text = it },
+        label = "NAME",
+        onRaised = true,
+        keyboardOptions = SHELF_NAME_KEYS,
+        keyboardActions = KeyboardActions(onDone = {
+            commit()
+            focus.clearFocus()
+        }),
+        onFocusChanged = { isFocused ->
+            // Losing focus counts as finishing — tapping away from the field is how most people
+            // leave it, and nobody expects that to discard the edit.
+            if (focused && !isFocused) commit()
+            focused = isFocused
+        }
+    )
 }
 
 /** The create-a-shelf field, shown only when the header's + is pressed. */
 @Composable
 private fun NewShelfField(onCreate: (String) -> Unit) {
     var name by remember { mutableStateOf("") }
+    var focused by remember { mutableStateOf(false) }
     val focus = LocalFocusManager.current
 
     fun submit() {
@@ -568,36 +558,20 @@ private fun NewShelfField(onCreate: (String) -> Unit) {
             .padding(14.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        FieldLabel("NEW SHELF")
+        // Above the row rather than the field's own label, so ADD centres on the field alone.
+        FieldLabel("NEW SHELF", active = focused)
         Row(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            TextField(
+            JawonTextField(
                 value = name,
                 onValueChange = { name = it },
-                singleLine = true,
-                placeholder = {
-                    Text(
-                        "Jazz, 2009, Sunday morning…",
-                        style = JawonTextStyle.mono.copy(color = LabelDim)
-                    )
-                },
-                textStyle = LocalTextStyle.current.copy(
-                    fontFamily = JetBrainsMonoFamily,
-                    fontSize = JawonType.Title,
-                    letterSpacing = 1.2.sp,
-                    color = LabelCream
-                ),
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                placeholder = "Jazz, 2009, Sunday morning…",
+                onRaised = true,
+                keyboardOptions = SHELF_NAME_KEYS,
                 keyboardActions = KeyboardActions(onDone = { submit() }),
-                colors = TextFieldDefaults.colors(
-                    focusedContainerColor = CrateBlack,
-                    unfocusedContainerColor = CrateBlack,
-                    focusedIndicatorColor = LampAmber,
-                    unfocusedIndicatorColor = CrateEdge,
-                    cursorColor = LampAmber
-                ),
+                onFocusChanged = { focused = it },
                 modifier = Modifier.weight(1f)
             )
             TextButton(onClick = { submit() }, enabled = name.isNotBlank()) {
@@ -787,19 +761,6 @@ private fun RemoveShelfDialog(
                 )
             }
         }
-    )
-}
-
-/** The small amber caption that names a control. */
-@Composable
-private fun FieldLabel(text: String) {
-    Text(
-        text = text,
-        fontFamily = JetBrainsMonoFamily,
-        fontWeight = FontWeight.Bold,
-        fontSize = JawonType.Fine,
-        letterSpacing = 2.sp,
-        color = LampAmber.copy(alpha = 0.75f)
     )
 }
 

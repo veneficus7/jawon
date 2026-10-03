@@ -1,5 +1,7 @@
 package com.jawon.app.ui.settings
 
+import androidx.compose.ui.text.input.ImeAction
+import com.jawon.app.ui.common.JawonTextField
 import com.jawon.app.ui.theme.JawonType
 import com.jawon.app.ui.common.ScreenBar
 import android.content.Context
@@ -51,9 +53,6 @@ import androidx.core.content.FileProvider
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material3.LocalTextStyle
-import androidx.compose.material3.TextField
-import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
@@ -71,7 +70,6 @@ import com.jawon.app.playback.ReplayGain
 import com.jawon.app.ui.theme.ArchivoFamily
 import com.jawon.app.ui.theme.CrateBlack
 import com.jawon.app.ui.theme.CrateEdge
-import com.jawon.app.ui.theme.CrateRaised
 import com.jawon.app.ui.theme.JawonTextStyle
 import com.jawon.app.ui.theme.JetBrainsMonoFamily
 import com.jawon.app.ui.theme.LabelCream
@@ -1069,18 +1067,18 @@ private fun ServerCredentials(
             label = "ADDRESS",
             value = server.url,
             placeholder = "https://music.example.net",
+            last = false,
             onValueChange = { onServerChanged(server.copy(url = it)) }
         )
         ServerField(
             label = "USERNAME",
             value = server.username,
-            placeholder = "",
+            last = false,
             onValueChange = { onServerChanged(server.copy(username = it)) }
         )
         ServerField(
             label = "PASSWORD",
             value = server.password,
-            placeholder = "",
             password = true,
             onValueChange = { onServerChanged(server.copy(password = it)) }
         )
@@ -1181,55 +1179,29 @@ private fun StatusLine(text: String, color: androidx.compose.ui.graphics.Color) 
 private fun ServerField(
     label: String,
     value: String,
-    placeholder: String,
     onValueChange: (String) -> Unit,
-    password: Boolean = false
+    placeholder: String? = null,
+    password: Boolean = false,
+    last: Boolean = true
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Text(
-            text = label,
-            fontFamily = JetBrainsMonoFamily,
-            fontWeight = FontWeight.Bold,
-            fontSize = JawonType.Fine,
-            letterSpacing = 1.6.sp,
-            color = LabelDim
+    JawonTextField(
+        value = value,
+        onValueChange = onValueChange,
+        label = label,
+        placeholder = placeholder,
+        visualTransformation = if (password) {
+            PasswordVisualTransformation()
+        } else {
+            VisualTransformation.None
+        },
+        keyboardOptions = KeyboardOptions(
+            keyboardType = if (password) KeyboardType.Password else KeyboardType.Uri,
+            // A server address is not a sentence, and autocapitalising the first letter of
+            // a URL or a username is how a correct entry becomes a failed login.
+            autoCorrectEnabled = false,
+            imeAction = if (last) ImeAction.Done else ImeAction.Next
         )
-        TextField(
-            value = value,
-            onValueChange = onValueChange,
-            singleLine = true,
-            placeholder = {
-                Text(
-                    text = placeholder,
-                    style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = JawonType.Title)
-                )
-            },
-            visualTransformation = if (password) {
-                PasswordVisualTransformation()
-            } else {
-                VisualTransformation.None
-            },
-            keyboardOptions = KeyboardOptions(
-                keyboardType = if (password) KeyboardType.Password else KeyboardType.Uri,
-                // A server address is not a sentence, and autocapitalising the first letter of
-                // a URL or a username is how a correct entry becomes a failed login.
-                autoCorrectEnabled = false
-            ),
-            textStyle = LocalTextStyle.current.copy(
-                fontFamily = JetBrainsMonoFamily,
-                fontSize = JawonType.Title,
-                color = LabelCream
-            ),
-            colors = TextFieldDefaults.colors(
-                focusedContainerColor = CrateRaised,
-                unfocusedContainerColor = CrateRaised,
-                focusedIndicatorColor = LampAmber,
-                unfocusedIndicatorColor = CrateEdge,
-                cursorColor = LampAmber
-            ),
-            modifier = Modifier.fillMaxWidth()
-        )
-    }
+    )
 }
 
 /**

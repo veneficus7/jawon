@@ -1,5 +1,10 @@
 package com.jawon.app.ui.archive
 
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.text.KeyboardActions
+import com.jawon.app.ui.common.JawonTextField
 import com.jawon.app.ui.theme.JawonType
 import com.jawon.app.ui.common.ScreenBar
 import androidx.compose.foundation.background
@@ -20,10 +25,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextField
-import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
@@ -38,7 +40,6 @@ import com.jawon.app.data.archive.ArchiveResult
 import com.jawon.app.ui.theme.ArchivoFamily
 import com.jawon.app.ui.theme.CrateBlack
 import com.jawon.app.ui.theme.CrateEdge
-import com.jawon.app.ui.theme.CrateRaised
 import com.jawon.app.ui.theme.JawonTextStyle
 import com.jawon.app.ui.theme.JetBrainsMonoFamily
 import com.jawon.app.ui.theme.LabelCream
@@ -121,28 +122,15 @@ private fun Browsing(
             modifier = Modifier.padding(top = 10.dp)
         )
 
-        TextField(
+        // It searches as you type, so the keyboard's search key has only one job left: get out of
+        // the way of the results.
+        val focus = LocalFocusManager.current
+        JawonTextField(
             value = state.query,
             onValueChange = onQueryChanged,
-            singleLine = true,
-            placeholder = {
-                Text(
-                    text = "A band, a year, a venue…",
-                    style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = JawonType.Title)
-                )
-            },
-            textStyle = LocalTextStyle.current.copy(
-                fontFamily = JetBrainsMonoFamily,
-                fontSize = JawonType.Title,
-                color = LabelCream
-            ),
-            colors = TextFieldDefaults.colors(
-                focusedContainerColor = CrateRaised,
-                unfocusedContainerColor = CrateRaised,
-                focusedIndicatorColor = LampAmber,
-                unfocusedIndicatorColor = CrateEdge,
-                cursorColor = LampAmber
-            ),
+            placeholder = "A band, a year, a venue…",
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+            keyboardActions = KeyboardActions(onSearch = { focus.clearFocus() }),
             modifier = Modifier.fillMaxWidth().padding(top = 12.dp)
         )
 

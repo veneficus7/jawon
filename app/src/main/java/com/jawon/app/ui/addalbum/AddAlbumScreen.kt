@@ -1,5 +1,10 @@
 package com.jawon.app.ui.addalbum
 
+import com.jawon.app.ui.common.YEAR_KEYS
+import com.jawon.app.ui.common.NAME_KEYS
+import com.jawon.app.ui.common.FieldLabel
+import com.jawon.app.ui.common.FieldFace
+import com.jawon.app.ui.common.JawonTextField
 import com.jawon.app.ui.theme.JawonType
 import com.jawon.app.ui.common.ScreenBar
 import android.Manifest
@@ -29,17 +34,13 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
-import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextField
-import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -51,7 +52,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -620,9 +620,23 @@ private fun PreviewContent(
         }
         item {
             Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                LabelledField("TITLE", state.title, onTitleChanged)
-                LabelledField("ARTIST", state.artist, onArtistChanged)
-                LabelledField("YEAR", state.year, onYearChanged, numeric = true)
+                JawonTextField(
+                    state.title, onTitleChanged,
+                    label = "TITLE",
+                    face = FieldFace.SLEEVE,
+                    keyboardOptions = NAME_KEYS
+                )
+                JawonTextField(
+                    state.artist, onArtistChanged,
+                    label = "ARTIST",
+                    face = FieldFace.SLEEVE,
+                    keyboardOptions = NAME_KEYS
+                )
+                JawonTextField(
+                    state.year, onYearChanged,
+                    label = "YEAR",
+                    keyboardOptions = YEAR_KEYS
+                )
             }
         }
         item { UnderlightPicker(hue = state.spineHue, onHueChanged = onSpineHueChanged) }
@@ -751,40 +765,6 @@ private fun CoverPicker(
 }
 
 @Composable
-private fun LabelledField(
-    label: String,
-    value: String,
-    onValueChange: (String) -> Unit,
-    numeric: Boolean = false
-) {
-    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        FieldLabel(label)
-        TextField(
-            value = value,
-            onValueChange = onValueChange,
-            singleLine = true,
-            keyboardOptions = KeyboardOptions(
-                keyboardType = if (numeric) KeyboardType.Number else KeyboardType.Text
-            ),
-            textStyle = LocalTextStyle.current.copy(
-                fontFamily = if (numeric) JetBrainsMonoFamily else ArchivoFamily,
-                fontWeight = if (numeric) FontWeight.Medium else FontWeight.ExtraBold,
-                fontSize = if (numeric) JawonType.Title else JawonType.Subhead,
-                color = LabelCream
-            ),
-            colors = TextFieldDefaults.colors(
-                focusedContainerColor = CrateRaised,
-                unfocusedContainerColor = CrateRaised,
-                focusedIndicatorColor = LampAmber,
-                unfocusedIndicatorColor = CrateEdge,
-                cursorColor = LampAmber
-            ),
-            modifier = Modifier.fillMaxWidth()
-        )
-    }
-}
-
-@Composable
 private fun TrackRow(track: TrackMetadata) {
     Row(
         modifier = Modifier
@@ -805,17 +785,4 @@ private fun TrackRow(track: TrackMetadata) {
             style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = JawonType.Body)
         )
     }
-}
-
-/** The small amber caption that names a control. Shared shape with the edit screen. */
-@Composable
-private fun FieldLabel(text: String) {
-    Text(
-        text = text,
-        fontFamily = JetBrainsMonoFamily,
-        fontWeight = FontWeight.Bold,
-        fontSize = JawonType.Fine,
-        letterSpacing = 2.sp,
-        color = LampAmber.copy(alpha = 0.75f)
-    )
 }
