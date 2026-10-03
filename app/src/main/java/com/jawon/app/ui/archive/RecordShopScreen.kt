@@ -1,5 +1,6 @@
 package com.jawon.app.ui.archive
 
+import com.jawon.app.ui.common.ScreenBar
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -69,7 +70,7 @@ fun RecordShopScreen(
             .background(CrateBlack)
             .statusBarsPadding()
     ) {
-        ScreenHeader(
+        ScreenBar(
             title = if (state.opened != null) "ONE RECORD" else "THE RECORD SHOP",
             onBack = { if (state.opened != null) viewModel.onCloseOpened() else onBack() }
         )
@@ -89,40 +90,6 @@ fun RecordShopScreen(
                 onOpen = viewModel::onOpen
             )
         }
-    }
-}
-
-/**
- * The same bar every 2D screen wears.
- *
- * Duplicated rather than shared, because the one in `AddAlbumScreen` is private and widening a
- * composable's visibility to reuse eleven lines is the wrong trade — it makes a screen's private
- * detail into an API that other screens can then constrain.
- */
-@Composable
-private fun ScreenHeader(title: String, onBack: () -> Unit) {
-    Column {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 18.dp),
-            horizontalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            Text(
-                text = "←",
-                fontFamily = JetBrainsMonoFamily,
-                fontSize = 18.sp,
-                color = LabelDim,
-                modifier = Modifier.clickable(onClick = onBack)
-            )
-            Text(
-                text = title,
-                fontFamily = JetBrainsMonoFamily,
-                fontWeight = FontWeight.Bold,
-                fontSize = 13.sp,
-                letterSpacing = 2.sp,
-                color = LampAmber
-            )
-        }
-        Box(Modifier.fillMaxWidth().height(1.dp).background(CrateEdge))
     }
 }
 

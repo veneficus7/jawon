@@ -1,5 +1,6 @@
 package com.jawon.app.ui.addalbum
 
+import com.jawon.app.ui.common.ScreenBar
 import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
@@ -29,11 +30,9 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
@@ -129,13 +128,14 @@ fun AddAlbumScreen(
             .background(CrateBlack)
             .statusBarsPadding()
     ) {
-        ScreenHeader(
+        ScreenBar(
             title = when (uiState) {
                 is AddAlbumUiState.MultiPreview -> "WHAT WAS FOUND"
                 is AddAlbumUiState.Preview -> "ONE ALBUM"
                 else -> "ADD ALBUM"
             },
-            onBack = onCancel
+            onBack = onCancel,
+            backDescription = "Back to the room"
         )
 
         when (val state = uiState) {
@@ -190,38 +190,6 @@ private fun audioPermission(): String =
 private fun hasAudioPermission(context: Context): Boolean =
     ContextCompat.checkSelfPermission(context, audioPermission()) ==
         PackageManager.PERMISSION_GRANTED
-
-@Composable
-private fun ScreenHeader(title: String, onBack: () -> Unit) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(start = 8.dp, end = 8.dp, top = 6.dp, bottom = 10.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        IconButton(onClick = onBack) {
-            Icon(
-                Icons.AutoMirrored.Filled.ArrowBack,
-                contentDescription = "Back to the room",
-                tint = LabelDim
-            )
-        }
-        Text(
-            text = title,
-            fontFamily = JetBrainsMonoFamily,
-            fontWeight = FontWeight.Bold,
-            fontSize = 12.sp,
-            letterSpacing = 3.sp,
-            color = LampAmber
-        )
-    }
-    Box(
-        Modifier
-            .fillMaxWidth()
-            .height(1.dp)
-            .background(CrateEdge)
-    )
-}
 
 /**
  * The three ways in, weighted.

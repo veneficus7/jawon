@@ -1,5 +1,6 @@
 package com.jawon.app.ui.listening
 
+import com.jawon.app.ui.common.ScreenBar
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -21,10 +22,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -82,7 +79,7 @@ fun ListeningScreen(
             .background(CrateBlack)
             .statusBarsPadding()
     ) {
-        Header(onBack = onBack)
+        ScreenBar(title = "LISTENING", onBack = onBack)
 
         if (state.loaded && state.rows.isEmpty()) {
             EmptyNote()
@@ -135,34 +132,6 @@ fun ListeningScreen(
             item { Footnote() }
         }
     }
-}
-
-@Composable
-private fun Header(onBack: () -> Unit) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(start = 8.dp, end = 8.dp, top = 6.dp, bottom = 10.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        IconButton(onClick = onBack) {
-            Icon(
-                Icons.AutoMirrored.Filled.ArrowBack,
-                contentDescription = "Back",
-                tint = LabelDim
-            )
-        }
-        Text(
-            text = "LISTENING",
-            fontFamily = JetBrainsMonoFamily,
-            fontWeight = FontWeight.Bold,
-            fontSize = 12.sp,
-            letterSpacing = 3.sp,
-            color = LampAmber,
-            modifier = Modifier.weight(1f)
-        )
-    }
-    Box(Modifier.fillMaxWidth().height(1.dp).background(CrateEdge))
 }
 
 /** The one line worth reading before any of the rows. */

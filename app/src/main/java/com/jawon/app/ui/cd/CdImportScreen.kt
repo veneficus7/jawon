@@ -1,5 +1,6 @@
 package com.jawon.app.ui.cd
 
+import com.jawon.app.ui.common.ScreenBar
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -19,10 +20,6 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -91,7 +88,7 @@ fun CdImportScreen(
             .background(CrateBlack)
             .statusBarsPadding()
     ) {
-        Header(onBack)
+        ScreenBar(title = "IMPORT A CD", onBack = onBack)
 
         Column(
             modifier = Modifier
@@ -152,29 +149,6 @@ fun CdImportScreen(
                 )
             }
         }
-    }
-}
-
-@Composable
-private fun Header(onBack: () -> Unit) {
-    Column {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(end = 16.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            IconButton(onClick = onBack) {
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = LabelCream)
-            }
-            Text(
-                text = "IMPORT A CD",
-                fontFamily = JetBrainsMonoFamily,
-                fontWeight = FontWeight.Bold,
-                fontSize = 12.sp,
-                letterSpacing = 3.sp,
-                color = LabelCream
-            )
-        }
-        Box(Modifier.fillMaxWidth().height(1.dp).background(CrateEdge))
     }
 }
 

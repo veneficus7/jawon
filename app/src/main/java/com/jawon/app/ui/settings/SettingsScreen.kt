@@ -1,5 +1,6 @@
 package com.jawon.app.ui.settings
 
+import com.jawon.app.ui.common.ScreenBar
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
@@ -23,10 +24,6 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Switch
@@ -1486,34 +1483,7 @@ fun SettingsScreen(
             .background(CrateBlack)
             .statusBarsPadding()
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(start = 8.dp, end = 8.dp, top = 6.dp, bottom = 10.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            IconButton(onClick = onBack) {
-                Icon(
-                    Icons.AutoMirrored.Filled.ArrowBack,
-                    contentDescription = "Back to the room",
-                    tint = LabelDim
-                )
-            }
-            Text(
-                text = "SETTINGS",
-                fontFamily = JetBrainsMonoFamily,
-                fontWeight = FontWeight.Bold,
-                fontSize = 12.sp,
-                letterSpacing = 3.sp,
-                color = LampAmber
-            )
-        }
-        Box(
-            Modifier
-                .fillMaxWidth()
-                .height(1.dp)
-                .background(CrateEdge)
-        )
+        ScreenBar(title = "SETTINGS", onBack = onBack, backDescription = "Back to the room")
 
         Column(
             modifier = Modifier

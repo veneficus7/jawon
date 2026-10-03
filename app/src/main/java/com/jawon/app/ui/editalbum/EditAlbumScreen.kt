@@ -1,5 +1,6 @@
 package com.jawon.app.ui.editalbum
 
+import com.jawon.app.ui.common.ScreenBar
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
@@ -22,7 +23,6 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
@@ -101,11 +101,16 @@ fun EditAlbumScreen(
             .background(CrateBlack)
             .statusBarsPadding()
     ) {
-        Header(
-            onBack = onCancel,
-            onSave = viewModel::onSave,
-            canSave = !state.loading && !state.saving
-        )
+        val canSave = !state.loading && !state.saving
+        ScreenBar(title = "EDIT ALBUM", onBack = onCancel, backDescription = "Discard changes") {
+            IconButton(onClick = viewModel::onSave, enabled = canSave) {
+                Icon(
+                    Icons.Default.Check,
+                    contentDescription = "Save",
+                    tint = if (canSave) LampAmber else CrateEdge
+                )
+            }
+        }
 
         if (state.loading) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -219,46 +224,6 @@ fun EditAlbumScreen(
             }
         }
     }
-}
-
-@Composable
-private fun Header(onBack: () -> Unit, onSave: () -> Unit, canSave: Boolean) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(start = 8.dp, end = 8.dp, top = 6.dp, bottom = 10.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        IconButton(onClick = onBack) {
-            Icon(
-                Icons.AutoMirrored.Filled.ArrowBack,
-                contentDescription = "Discard changes",
-                tint = LabelDim
-            )
-        }
-        Text(
-            text = "EDIT ALBUM",
-            fontFamily = JetBrainsMonoFamily,
-            fontWeight = FontWeight.Bold,
-            fontSize = 12.sp,
-            letterSpacing = 3.sp,
-            color = LampAmber,
-            modifier = Modifier.weight(1f)
-        )
-        IconButton(onClick = onSave, enabled = canSave) {
-            Icon(
-                Icons.Default.Check,
-                contentDescription = "Save",
-                tint = if (canSave) LampAmber else CrateEdge
-            )
-        }
-    }
-    Box(
-        Modifier
-            .fillMaxWidth()
-            .height(1.dp)
-            .background(CrateEdge)
-    )
 }
 
 /**

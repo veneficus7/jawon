@@ -1,5 +1,6 @@
 package com.jawon.app.ui.shelfmanager
 
+import com.jawon.app.ui.common.ScreenBar
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.FastOutSlowInEasing
@@ -32,7 +33,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.KeyboardArrowDown
@@ -126,12 +126,30 @@ fun ShelfManagerScreen(
         // presses to do the obvious thing.
         BackHandler(enabled = selecting) { viewModel.onClearSelection() }
 
-        ScreenHeader(
-            onBack = onBack,
-            onNew = { creating = !creating },
-            onOpenListening = onOpenListening,
-            newIsOpen = creating
-        )
+        // Back on the left, new shelf on the right. The old screen's only way out was a button
+        // below every shelf, so on a full library you had to scroll to leave.
+        ScreenBar(title = "SHELVES", onBack = onBack, backDescription = "Back to the room") {
+            // The listening record. It sits here rather than in the room's chrome because that
+            // is three even thirds by an explicit decision in WallSceneScreen, and because what
+            // you have played is a fact about the collection, which is what this screen is.
+            IconButton(onClick = onOpenListening) {
+                Icon(
+                    Icons.Default.BarChart,
+                    contentDescription = "What you have listened to",
+                    tint = LabelDim
+                )
+            }
+            IconButton(onClick = { creating = !creating }) {
+                Icon(
+                    Icons.Default.Add,
+                    contentDescription = "New shelf",
+                    // Turns into a close affordance while the field is open, so the button
+                    // that opened it is also the one that puts it away.
+                    modifier = Modifier.rotate(if (creating) 45f else 0f),
+                    tint = if (creating) LampAmber else LabelDim
+                )
+            }
+        }
 
         if (selecting) {
             SelectionBar(
@@ -197,72 +215,6 @@ fun ShelfManagerScreen(
             }
         }
     }
-}
-
-/**
- * Back on the left, new shelf on the right, title between them.
- *
- * The old screen's only way out was a button at the very bottom of the list, below every shelf
- * — on a full library you had to scroll to leave. A header is always reachable, and the system
- * back gesture already worked, so this just makes it visible.
- */
-@Composable
-private fun ScreenHeader(
-    onBack: () -> Unit,
-    onNew: () -> Unit,
-    onOpenListening: () -> Unit,
-    newIsOpen: Boolean
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(start = 8.dp, end = 8.dp, top = 6.dp, bottom = 10.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        IconButton(onClick = onBack) {
-            Icon(
-                Icons.AutoMirrored.Filled.ArrowBack,
-                contentDescription = "Back to the room",
-                tint = LabelDim
-            )
-        }
-        Text(
-            text = "SHELVES",
-            fontFamily = JetBrainsMonoFamily,
-            fontWeight = FontWeight.Bold,
-            fontSize = 12.sp,
-            letterSpacing = 3.sp,
-            color = LampAmber,
-            modifier = Modifier.weight(1f)
-        )
-        // The listening record. It sits here rather than in the room's chrome because that is
-        // three even thirds by an explicit decision in WallSceneScreen, and because what you
-        // have played is a fact about the collection, which is what this screen is.
-        IconButton(onClick = onOpenListening) {
-            Icon(
-                Icons.Default.BarChart,
-                contentDescription = "What you have listened to",
-                tint = LabelDim
-            )
-        }
-        IconButton(onClick = onNew) {
-            Icon(
-                Icons.Default.Add,
-                contentDescription = "New shelf",
-                // Turns into a close affordance while the field is open, so the button
-                // that opened it is also the one that puts it away.
-                modifier = Modifier.rotate(if (newIsOpen) 45f else 0f),
-                tint = if (newIsOpen) LampAmber else LabelDim
-            )
-        }
-    }
-    // Hairline, not a shadow. Everything in this room is a flat printed edge.
-    Box(
-        Modifier
-            .fillMaxWidth()
-            .height(1.dp)
-            .background(CrateEdge)
-    )
 }
 
 /**
