@@ -90,6 +90,24 @@ class PocketMenuTest {
     }
 
     @Test
+    fun `its colour is chosen in its own Settings, and silver is what it comes in`() {
+        val rows = PocketMenus.rows(
+            MenuKey.Settings, library, emptyMap(), false,
+            PocketSettings(finish = PocketFinish.RED.ordinal)
+        )
+        assertEquals("Red", rows.first { it.label == "Colour" }.value)
+        val choices = PocketMenus.rows(
+            MenuKey.Choice(PocketSetting.FINISH), library, emptyMap(), false,
+            PocketSettings(finish = PocketFinish.BLACK.ordinal)
+        )
+        assertEquals(listOf("Silver", "Black", "Red"), choices.map { it.label })
+        assertEquals(listOf("Black"), choices.filter { it.checked }.map { it.label })
+        assertEquals(PocketFinish.SILVER, PocketFinish.fromName(null))
+        assertEquals(PocketFinish.SILVER, PocketFinish.fromName("GOLD"))
+        assertEquals(PocketFinish.RED, PocketFinish.fromName("RED"))
+    }
+
+    @Test
     fun `bands set by hand in the rack read as Custom rather than as a preset they are not`() {
         val rows = PocketMenus.rows(
             MenuKey.Settings, library, emptyMap(), false,
@@ -209,5 +227,33 @@ class PocketMenuTest {
         val clamped = nav.clamp(4)
         assertEquals(3, clamped.current.selected)
         assertEquals(0, clamped.current.top)
+    }
+
+    // ---- which page is up, for the screen's slide -------------------------------------------
+
+    @Test
+    fun `a highlight moving within a page is the same page, so nothing slides`() {
+        val nav = PocketNav().open(MenuKey.Albums)
+        assertEquals(nav.page, nav.move(2, rowCount = 4).page)
+    }
+
+    @Test
+    fun `opening goes a page deeper and back comes up one, to the same page as before`() {
+        val albums = PocketNav().open(MenuKey.Albums)
+        val album = albums.open(MenuKey.Album("a2"))
+        assertEquals(albums.page.depth + 1, album.page.depth)
+        assertEquals(albums.page, album.back().page)
+    }
+
+    @Test
+    fun `two albums at the same depth are different pages`() {
+        val albums = PocketNav().open(MenuKey.Albums)
+        assertFalse(albums.open(MenuKey.Album("a1")).page == albums.open(MenuKey.Album("a2")).page)
+    }
+
+    @Test
+    fun `turning a cover over is still Cover Flow's page - it turns, it does not slide`() {
+        val flow = PocketNav().open(MenuKey.CoverFlow)
+        assertEquals(flow.page, flow.open(MenuKey.Flipped("a1")).page)
     }
 }

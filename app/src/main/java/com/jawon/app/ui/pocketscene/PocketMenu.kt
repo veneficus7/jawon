@@ -42,7 +42,8 @@ enum class PocketSetting(val title: String) {
     SOUND_CHECK("Sound Check"),
     BACKLIGHT("Backlight"),
     CLICKER("Clicker"),
-    REVERB("Reverb")
+    REVERB("Reverb"),
+    FINISH("Colour")
 }
 
 /** What choosing a row does. */
@@ -95,7 +96,9 @@ data class PocketSettings(
     val sound: Map<SoundControl, Float> = emptyMap(),
     /** Reverb's choices ("Off" first) and which is on. */
     val reverbOptions: List<String> = listOf("Off"),
-    val reverb: Int = 0
+    val reverb: Int = 0,
+    /** Which of `PocketFinish`'s colours the device is — which one you bought. */
+    val finish: Int = 0
 ) {
     companion object {
         /** Sound Check's choices — Jawon's ReplayGain modes, in `ReplayGain.Mode` order of meaning. */
@@ -195,6 +198,11 @@ object PocketMenus {
                 RowAction.Open(MenuKey.Choice(PocketSetting.CLICKER)),
                 value = if (settings.clicker) "On" else "Off"
             ),
+            MenuRow(
+                "Colour",
+                RowAction.Open(MenuKey.Choice(PocketSetting.FINISH)),
+                value = PocketFinish.entries.getOrNull(settings.finish)?.title
+            ),
             MenuRow("All Settings", RowAction.OpenSettings)
         )
         MenuKey.About -> listOf(
@@ -259,6 +267,7 @@ object PocketMenus {
             PocketSetting.BACKLIGHT -> PocketSettings.BACKLIGHT_OPTIONS_MS.map { PocketSettings.backlightLabel(it) }
             PocketSetting.CLICKER -> listOf("On", "Off")
             PocketSetting.REVERB -> settings.reverbOptions
+            PocketSetting.FINISH -> PocketFinish.entries.map { it.title }
         }
         val current = when (setting) {
             PocketSetting.EQ -> settings.eqChosen
@@ -266,6 +275,7 @@ object PocketMenus {
             PocketSetting.BACKLIGHT -> PocketSettings.BACKLIGHT_OPTIONS_MS.indexOf(settings.backlightMs)
             PocketSetting.CLICKER -> if (settings.clicker) 0 else 1
             PocketSetting.REVERB -> settings.reverb
+            PocketSetting.FINISH -> settings.finish
         }
         return labels.mapIndexed { i, label ->
             MenuRow(label, RowAction.Choose(setting, i), checked = i == current)
@@ -306,6 +316,21 @@ data class PocketNav(val stack: List<Level> = listOf(Level(MenuKey.Main))) {
     data class Level(val key: MenuKey, val selected: Int = 0, val top: Int = 0)
 
     val current: Level get() = stack.last()
+
+    /**
+     * Which page is up, for the screen's slide between pages: the path of menus, and how deep it
+     * is. Deeper slides in from the right, as the classic's did, and back slides out to it; the
+     * same page with its highlight moved is the same page, and does not slide.
+     *
+     * A turned-over cover counts as Cover Flow's own page — it turns over, it does not slide.
+     */
+    val page: Page
+        get() {
+            val path = stack.map { it.key }.filterNot { it is MenuKey.Flipped }
+            return Page(path, path.size)
+        }
+
+    data class Page(val path: List<MenuKey>, val depth: Int)
 
     /**
      * Moves the highlight [items] rows down (negative is up), stopping at either end — the

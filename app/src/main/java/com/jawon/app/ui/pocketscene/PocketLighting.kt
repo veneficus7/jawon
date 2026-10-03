@@ -3,137 +3,151 @@ package com.jawon.app.ui.pocketscene
 import com.google.android.filament.Engine
 import com.google.android.filament.IndirectLight
 import com.google.android.filament.Texture
-import dev.romainguy.kotlin.math.Float3
-import dev.romainguy.kotlin.math.Quaternion
-import dev.romainguy.kotlin.math.rotation
 import io.github.sceneview.environment.Environment
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import kotlin.math.PI
 import kotlin.math.abs
-import kotlin.math.acos
+import kotlin.math.asin
 import kotlin.math.atan2
 import kotlin.math.exp
 import kotlin.math.sqrt
 
 /**
- * The pocket player's room: **a walnut desk at night, under a desk lamp** — the device lying on
- * it, a pair of headphones plugged into its top.
+ * The pocket player's room, as an image-based light: a train carriage at night — **lit the way a
+ * photographer would light the object in it.**
  *
- * The room is in three pieces, and they have to agree:
+ * **Why this room is lit by an environment at all:** almost every surface here is *metal* or
+ * glass. A polished back and an anodised front are pictures of whatever is around them; with no
+ * environment they render black, and no analytic light fixes that (`docs/realism.md` §1.2).
  *
- * - **The desk**, `models/pocket_desk.glb`: the wood with the lamp's light, the room's light and
- *   the device's own shadow already *baked into it* by Cycles (`build_pocket_desk()`), drawn
- *   unlit. A path-traced contact shadow and a soft pool of lamplight are the two things that
- *   make an object look like it is lying on something, and neither is affordable live here.
- * - **The lamp**, a spot light the room places beside the device ([LAMP_POSITION] …): the
- *   device's own light, live, so the wheel's coat and the anodising answer it.
- * - **The room**, this environment: what every metal and glass surface on the device reflects
- *   — the lamp's shade, the ceiling its open top lights, the desk, a window across the room.
+ * **Why the environment is placed rather than painted.** The first version was a ring — a window
+ * band all the way round, lights repeating in it — and on the owner's phone the device read as a
+ * flat black slab: nothing bright sat where its surfaces actually look. A flat face reflects one
+ * small patch of the world, so the patch has to be *chosen*. With the device turned 15° and
+ * tipped 6°, the view reflects off:
  *
- * **`tools/models/pocket_room.py` is the other copy of all three**, read by the bake and by
- * `tools/pocket-preview/`; every constant here that it also has must be the same number there,
- * or the device is lit by one room and lies on a desk lit by another. [radiance] is the same
- * function, term for term — `PocketLightingTest` pins values the Python produces.
+ * - **the front and the screen's glass** toward azimuth ~60°, elevation ~0.2 rad — behind you and
+ *   over your right shoulder. That is where the **reading lamp** is: a warm softbox whose lower
+ *   edge crosses the face, so the anodising has a gradient down it and the glass a sheen across
+ *   its top, the look of every good product photograph.
+ * - **the visible left side** toward azimuth ~−120°, level — the window behind the device, cool
+ *   and dark with the city low in it, which is what the polished edge should show.
+ * - **the polished bead** round the face, which faces every way between the front and the side and
+ *   so crosses the **ceiling's light runs** — overhead along the top, converging toward the
+ *   carriage's two ends down the sides — for the bright lines along the edges that say *machined
+ *   metal* and draw the outline against the dark.
  *
- * **Directions are in the device's frame**: +X right, +Y up the device, +Z out of its face,
- * which with the device lying on the desk is *up off the desk*. The cubemap is built already
- * turned by the device's pose ([devicePose]), so the room the device reflects is the room its
- * desk was baked in; the phone's tilt is applied on top, as a rotation of the light.
+ * Everything else is the dark of a carriage at night. The lights that *move* across the device are
+ * analytic ones the room animates ([PassingLamps]); this is the room that holds still.
  *
- * **Why the device is in the lamp's falloff and not its pool** is in `pocket_room.py`: the wheel
- * is black plastic at 7% albedo and walnut is 6%, so any light that makes the wood a readable
- * brown makes the wheel the same grey — the "white wheel" the owner turned down on 2026-09-22.
+ * Directions: azimuth is `atan2(z, x)` — 0 along +X, +π/2 toward the viewer — and elevation is up
+ * from level. Built procedurally, like `RoomLighting`'s, so it can be tuned against a screenshot.
  */
 object PocketLighting {
 
-    /** Cubemap face size. The glass at roughness 0.03 reads the sharpest level. */
+    /**
+     * Cubemap face size. The glass at roughness 0.03 reads the sharpest level, and a softbox's
+     * edge should be an edge on it, not a smear.
+     */
     const val CUBEMAP_PX = 256
 
-    /** How hard the room lights the device — the world's strength the desk was baked at. */
+    /** How hard the carriage lights the device, before the room's own lights. */
     const val AMBIENT_INTENSITY = 2_600f
 
-    // ---- the lamp ---------------------------------------------------------------------------
+    /** The carriage at night: almost black, a little blue from the window. */
+    private val VOID = floatArrayOf(0.0038f, 0.0042f, 0.0058f)
 
-    /** Up and to the left of the device, a hand-span above the desk. Metres, device frame. */
-    val LAMP_POSITION = floatArrayOf(-0.15f, 0.20f, 0.34f)
+    /** The reading lamp, as a softbox: where it hangs, how large, how soft its edges, how bright. */
+    internal const val SOFTBOX_AZ = 1.04f
+    internal const val SOFTBOX_EL = 0.52f
+    private const val SOFTBOX_HALF_AZ = 0.50f
+    private const val SOFTBOX_HALF_EL = 0.30f
+    private const val SOFTBOX_EDGE = 0.10f
+    private val SOFTBOX_COLOUR = floatArrayOf(3.10f, 2.62f, 2.05f)
 
-    /** Where its axis meets the desk: up-left of the device, so the device is in the falloff. */
-    val LAMP_AIM = floatArrayOf(-0.11f, 0.14f, -0.005f)
+    // **No glare on the screen's glass, on purpose.** A thin tube thirty times the softbox's
+    // brightness, placed exactly where the glass reflects, left no visible streak over the lit
+    // screen — and a probe at ten times that showed why: the glass *does* reflect it, but a rough
+    // surface collects a light's total energy where smooth glass shows only its peak, so anything
+    // bright enough to read on the glass floods the anodised front first (it went from 30 to 60
+    // of 255). The passing lamps' glints are the honest version of a glare, and they move.
 
-    /** At SceneView's sunny-16 exposure, as the desk was baked. */
-    const val LAMP_CANDELA = 15_000f
+    /** The window behind the device: the glass dark and cool, the city a warm glow low in it. */
+    private const val WINDOW_AZ = (-PI / 2.0).toFloat()
+    private const val WINDOW_HALF_AZ = 1.05f
+    private const val WINDOW_LOW_EL = -0.22f
+    private const val WINDOW_HIGH_EL = 0.55f
+    // As bright as the first version's band was: it is what gives the polished side its sheen,
+    // and at a fifth of this the side fell from 35 to 3 of 255 on the owner's phone.
+    private val WINDOW_COLOUR = floatArrayOf(0.24f, 0.30f, 0.42f)
+    private val CITY_GLOW = floatArrayOf(0.20f, 0.13f, 0.075f)
 
-    val LAMP_COLOUR = floatArrayOf(1.0f, 0.82f, 0.60f)
-
-    /**
-     * The cone, as half-angles. The bake's lamp is Cycles' 64° spot with its whole cone blended,
-     * which falls off as a smoothstep in the cosine; Filament's falls off as the square of a
-     * linear ramp. These two angles are the Filament cone that best matches it across the
-     * device — within 4% of the lamp's light from the plug to the wheel, a few per cent
-     * brighter at the foot, where the room's light is most of it anyway.
-     */
-    const val LAMP_CONE_INNER_RAD = 0.2269f   // 13°
-    const val LAMP_CONE_OUTER_RAD = 0.6109f   // 35°
-
-    /** Past the device by a long way: Filament's falloff is a hard cutoff (trap 6). */
-    const val LAMP_FALLOFF_M = 3f
-
-    // ---- the room as light ------------------------------------------------------------------
-
-    private val VOID = floatArrayOf(0.0055f, 0.0048f, 0.0042f)
-
-    /** The desk, as the polished sides see it at a grazing angle: warm, brighter toward the lamp. */
-    private val DESK_SEEN = floatArrayOf(0.62f, 0.37f, 0.22f)
-
-    /** The lamp itself: its shade's mouth, and the glow round it. */
-    private const val LAMP_DISC = 60f
-    private const val LAMP_DISC_RAD = 0.045f
-    private const val LAMP_GLOW = 1.2f
-    private const val LAMP_GLOW_RAD = 0.30f
-
-    /**
-     * **The ceiling, lit from the lamp's open top.** The face reflects a patch 11–23° from
-     * straight up, off to the right (`tools/pocket-preview/frame.py --probe`), so this glow —
-     * brightest over the lamp, falling away to the right — is what fills the face where the lamp
-     * has fallen away, and keeps it a gradient rather than a cliff.
-     */
-    private val CEILING = floatArrayOf(2.5f, 2.0f, 1.5f)
-    private val CEILING_DIR = floatArrayOf(-0.19f, 0.24f, 0.95f)
-    private const val CEILING_RAD = 0.55f
-
-    /** A window across the room: a cool band low on the far wall, for the polished edges. */
-    private val WINDOW = floatArrayOf(0.10f, 0.14f, 0.22f)
-    private const val WINDOW_AZ = -2.3f
-    private const val WINDOW_HALF_AZ = 0.5f
-    private const val WINDOW_Z = 0.10f
-    private const val WINDOW_HALF_Z = 0.18f
-
-    private val LAMP_DIR = unit(LAMP_POSITION)
-    private val LAMP_TOWARD = unit(floatArrayOf(LAMP_DIR[0], LAMP_DIR[1]))
-    private val CEILING_UNIT = unit(CEILING_DIR)
+    /** Far lights standing still in the window — the town a long way off. */
+    private val WINDOW_LIGHTS = arrayOf(
+        floatArrayOf(-2.30f, 0.06f, 2.6f, 1.6f, 0.7f),
+        floatArrayOf(-1.95f, 0.12f, 1.4f, 1.3f, 1.2f),
+        floatArrayOf(-1.62f, 0.03f, 2.8f, 1.9f, 0.9f),
+        floatArrayOf(-1.20f, 0.18f, 1.2f, 1.4f, 1.9f),
+        floatArrayOf(-0.95f, 0.08f, 2.4f, 1.3f, 0.5f),
+        floatArrayOf(-0.72f, 0.02f, 1.8f, 1.6f, 1.1f)
+    )
+    private const val WINDOW_LIGHT_SIZE = 0.035f
 
     /**
-     * The device's pose as SceneView applies it: `Rotation(x = pitch, y = yaw)` through the very
-     * call `Node.rotation` makes (`Quaternion.fromEuler`), as a column-major 3×3 taking the
-     * device's frame into the world's. Not written out by hand: the order of the two turns is
-     * kotlin-math's, `Ry · Rx`, and the preview had them the other way round for a day.
+     * The ceiling's light: two runs of diffuser down the carriage's length (along X) — one over the
+     * window, one over the aisle behind you — in fittings with short gaps between them, running off
+     * to the carriage's two ends. How a carriage is actually lit.
+     *
+     * **Placed by where the bead looks, not by eye.** The polished bead's top sweeps straight over
+     * the zenith as it turns from the face to the edge, and its sides look along the carriage toward
+     * its ends, where the runs converge — so a line down the ceiling draws a line along every
+     * visible edge. What this replaced was a ring of seven round points at one elevation: a ceiling
+     * no carriage has, which put a dot here and there on the chamfers and left the outline dark.
+     *
+     * **Traced rather than painted**: a direction's ray meets the ceiling [CEILING_H_M] up and the
+     * run is a band on it, so the runs narrow and converge with distance as real ones do. Near the
+     * ends a fitting is thinner than one texel of the cubemap, and it is spread across the texel
+     * ([coverage]) rather than falling between samples and flickering in and out along the edge.
      */
-    fun devicePose(pitchDeg: Float, yawDeg: Float): FloatArray {
-        val m = rotation(Quaternion.fromEuler(Float3(pitchDeg, yawDeg, 0f)))
-        return floatArrayOf(m.x.x, m.x.y, m.x.z, m.y.x, m.y.y, m.y.z, m.z.x, m.z.y, m.z.z)
-    }
+    private const val CEILING_H_M = 1.05f
+    private val CEILING_RUNS_Z_M = floatArrayOf(-0.30f, 0.60f)
+    private const val CEILING_RUN_W_M = 0.07f
+    private const val CEILING_FITTING_M = 1.20f
+    private const val CEILING_GAP_M = 0.30f
+    private const val CARRIAGE_HALF_LENGTH_M = 11f
+    private val CEILING_RUN_COLOUR = floatArrayOf(5.2f, 4.9f, 4.4f)
+
+    /** One texel of the cubemap, as an angle — the least a light can be spread over. */
+    private const val TEXEL_RAD = 2f / CUBEMAP_PX
 
     /**
-     * The room as an image-based light, turned by [pose] (column-major, device to world) so its
-     * directions land where the device's own frame says they are.
+     * The window's frames: dark verticals between the panes, every [MULLION_SPACING] radians.
+     * Polished steel shows the world's *structure*, not its average — a window that is one smooth
+     * colour reflects as a dull band, where one crossed by dark frames puts the crisp light-and-dark
+     * lines along the edge that say "polished".
      */
+    private const val MULLION_SPACING = 0.62f
+    private const val MULLION_WIDTH = 0.07f
+
+    /**
+     * The carriage's other windows, all round at eye level, dimmer than the one behind the device:
+     * what keeps the wheel's rim and the chamfers lit from every side, which is most of what
+     * separates a dark device from a dark room.
+     */
+    private val WINDOWS_ALL_ROUND = floatArrayOf(0.10f, 0.12f, 0.17f)
+    private const val WINDOWS_EL = 0.06f
+    private const val WINDOWS_HALF_EL = 0.30f
+
+    /** Warm bounce off the seats and the floor, below level everywhere — the underside's fill. */
+    private val BOUNCE = floatArrayOf(0.045f, 0.035f, 0.026f)
+
     fun createEnvironment(
         engine: Engine,
-        pose: FloatArray,
         size: Int = CUBEMAP_PX,
         prefilter: (Texture) -> Texture
     ): Environment {
-        val cubemap = buildCubemap(engine, pose, size)
+        val cubemap = buildCarriageCubemap(engine, size)
         val indirectLight = IndirectLight.Builder()
             .reflections(prefilter(cubemap))
             .intensity(AMBIENT_INTENSITY)
@@ -141,42 +155,77 @@ object PocketLighting {
         return Environment(indirectLight = indirectLight, skybox = null)
     }
 
-    /**
-     * The room's radiance toward one direction, in the device's frame — `pocket_room.radiance`,
-     * term for term. Pure, so the placement can be tested against the Python.
-     */
-    fun radiance(dx: Float, dy: Float, dz: Float, out: FloatArray) {
-        val len = sqrt(dx * dx + dy * dy + dz * dz)
-        val x = dx / len
-        val y = dy / len
-        val z = dz / len
-        for (c in 0..2) out[c] = VOID[c]
-
-        // The desk, below: warm, and brighter on the lamp's side.
-        val below = (-z * 4f).coerceIn(0f, 1f)
-        val toward = (0.5f + 0.5f * (x * LAMP_TOWARD[0] + y * LAMP_TOWARD[1])).coerceIn(0f, 1f)
-        val desk = below * (0.35f + 0.65f * toward)
-        for (c in 0..2) out[c] += DESK_SEEN[c] * desk
-
-        // The lamp.
-        val a = acos((x * LAMP_DIR[0] + y * LAMP_DIR[1] + z * LAMP_DIR[2]).coerceIn(-1f, 1f))
-        val lamp = LAMP_DISC * gauss(a, LAMP_DISC_RAD) + LAMP_GLOW * gauss(a, LAMP_GLOW_RAD)
-        for (c in 0..2) out[c] += LAMP_COLOUR[c] * lamp
-
-        // The ceiling it lights.
-        val cAngle = acos((x * CEILING_UNIT[0] + y * CEILING_UNIT[1] + z * CEILING_UNIT[2]).coerceIn(-1f, 1f))
-        val ceiling = gauss(cAngle, CEILING_RAD) * (z * 3f).coerceIn(0f, 1f)
-        for (c in 0..2) out[c] += CEILING[c] * ceiling
-
-        // The window.
-        val band = (1f - abs(z - WINDOW_Z) / WINDOW_HALF_Z).coerceIn(0f, 1f)
-        val across = (1f - abs(atan2(y, x) - WINDOW_AZ) / WINDOW_HALF_AZ).coerceIn(0f, 1f)
-        for (c in 0..2) out[c] += WINDOW[c] * band * across
+    /** The softbox's centre as a unit direction, into [out] — what [RestLight] turns onto the lamp. */
+    fun softboxDirection(out: FloatArray) {
+        val c = kotlin.math.cos(SOFTBOX_EL)
+        out[0] = c * kotlin.math.cos(SOFTBOX_AZ)
+        out[1] = kotlin.math.sin(SOFTBOX_EL)
+        out[2] = c * kotlin.math.sin(SOFTBOX_AZ)
     }
 
-    private fun buildCubemap(engine: Engine, pose: FloatArray, size: Int): Texture {
-        // RGBA float: the prefilter rejects an LDR single-level cubemap, and the lamp needs
-        // headroom far above 1.0 or it is a pale patch rather than a light.
+    /** The carriage's radiance in one direction — pure, so the placement can be tested. */
+    fun radiance(dx: Float, dy: Float, dz: Float, out: FloatArray) {
+        val len = sqrt(dx * dx + dy * dy + dz * dz)
+        val el = asin((dy / len).coerceIn(-1f, 1f))
+        val az = atan2(dz, dx)
+
+        for (c in 0..2) out[c] = VOID[c]
+
+        // The reading lamp: a soft-edged rectangle in azimuth and elevation.
+        val box = softRect(angleDelta(az, SOFTBOX_AZ), SOFTBOX_HALF_AZ, SOFTBOX_EDGE) *
+            softRect(el - SOFTBOX_EL, SOFTBOX_HALF_EL, SOFTBOX_EDGE)
+        // Brighter toward its middle, as a diffuser is.
+        val falloff = 0.75f + 0.25f * (1f - (abs(angleDelta(az, SOFTBOX_AZ)) / SOFTBOX_HALF_AZ).coerceIn(0f, 1f))
+        for (c in 0..2) out[c] += SOFTBOX_COLOUR[c] * box * falloff
+
+        // The window, and the city low in it.
+        val inWindow = softRect(angleDelta(az, WINDOW_AZ), WINDOW_HALF_AZ, 0.12f) *
+            softStep(WINDOW_LOW_EL - 0.05f, WINDOW_LOW_EL + 0.05f, el) *
+            (1f - softStep(WINDOW_HIGH_EL - 0.08f, WINDOW_HIGH_EL + 0.08f, el))
+        val glow = exp(-((el - 0.02f) / 0.10f) * ((el - 0.02f) / 0.10f))
+        // The frames between the panes, and the sill's dark line under the glass.
+        val pane = ((angleDelta(az, WINDOW_AZ) / MULLION_SPACING) % 1f + 1f) % 1f
+        val frame = softStep(MULLION_WIDTH, 0f, minOf(pane, 1f - pane) * MULLION_SPACING)
+        val sill = exp(-((el - WINDOW_LOW_EL - 0.04f) / 0.025f) * ((el - WINDOW_LOW_EL - 0.04f) / 0.025f))
+        val glass = (1f - 0.92f * frame) * (1f - 0.85f * sill)
+        for (c in 0..2) out[c] += (WINDOW_COLOUR[c] + CITY_GLOW[c] * glow) * inWindow * glass
+        for (light in WINDOW_LIGHTS) {
+            val d = hypot2(angleDelta(az, light[0]), el - light[1])
+            val spot = exp(-(d / WINDOW_LIGHT_SIZE) * (d / WINDOW_LIGHT_SIZE)) * inWindow
+            for (c in 0..2) out[c] += light[2 + c] * spot
+        }
+
+        // The ceiling's runs: where this direction meets the ceiling, is it under a fitting?
+        if (dy > 0f) {
+            val t = CEILING_H_M * len / dy
+            val hx = dx / len * t
+            val hz = dz / len * t
+            if (abs(hx) < CARRIAGE_HALF_LENGTH_M) {
+                // How much ceiling one texel covers out there.
+                val texel = t * TEXEL_RAD
+                // Fittings centred on the device, so it is under one rather than a gap.
+                val pitch = CEILING_FITTING_M + CEILING_GAP_M
+                val along = abs(((hx / pitch + 0.5f) % 1f + 1f) % 1f - 0.5f) * pitch
+                val lit = coverage(along, CEILING_FITTING_M / 2f, texel)
+                for (z in CEILING_RUNS_Z_M) {
+                    val across = coverage(abs(hz - z), CEILING_RUN_W_M / 2f, texel) * lit
+                    for (c in 0..2) out[c] += CEILING_RUN_COLOUR[c] * across
+                }
+            }
+        }
+
+        // The other windows, all round.
+        val round = 1f - softStep(WINDOWS_HALF_EL * 0.4f, WINDOWS_HALF_EL, abs(el - WINDOWS_EL))
+        for (c in 0..2) out[c] += WINDOWS_ALL_ROUND[c] * round * (1f - inWindow)
+
+        // The seats and the floor, a faint warmth below level.
+        val below = softStep(0.05f, -0.4f, el)
+        for (c in 0..2) out[c] += BOUNCE[c] * below
+    }
+
+    private fun buildCarriageCubemap(engine: Engine, size: Int): Texture {
+        // RGBA float: the prefilter rejects an LDR single-level cubemap, and the lamps need
+        // headroom above 1.0 or they are pale patches rather than lights.
         val faceBytes = size * size * 4 * Float.SIZE_BYTES
         val buffer = ByteBuffer.allocateDirect(faceBytes * 6).order(ByteOrder.nativeOrder())
         val floats = buffer.asFloatBuffer()
@@ -189,13 +238,7 @@ object PocketLighting {
                     val u = (x + 0.5f) / size * 2f - 1f
                     val v = (y + 0.5f) / size * 2f - 1f
                     faceDirection(face, u, v, dir)
-                    // World into the device's frame: the pose's transpose.
-                    radiance(
-                        pose[0] * dir[0] + pose[1] * dir[1] + pose[2] * dir[2],
-                        pose[3] * dir[0] + pose[4] * dir[1] + pose[5] * dir[2],
-                        pose[6] * dir[0] + pose[7] * dir[1] + pose[8] * dir[2],
-                        rgb
-                    )
+                    radiance(dir[0], dir[1], dir[2], rgb)
                     floats.put(rgb[0]); floats.put(rgb[1]); floats.put(rgb[2]); floats.put(1f)
                 }
             }
@@ -236,12 +279,34 @@ object PocketLighting {
         }
     }
 
-    private fun gauss(angle: Float, radius: Float): Float = exp(-(angle / radius) * (angle / radius))
+    /** Shortest difference between two angles, wrapped to (−π, π]. */
+    private fun angleDelta(a: Float, b: Float): Float {
+        var d = a - b
+        val twoPi = (2.0 * PI).toFloat()
+        while (d > PI) d -= twoPi
+        while (d <= -PI) d += twoPi
+        return d
+    }
 
-    private fun unit(v: FloatArray): FloatArray {
-        var sum = 0f
-        for (c in v) sum += c * c
-        val len = sqrt(sum)
-        return FloatArray(v.size) { v[it] / len }
+    /** 1 inside ±[half], falling to 0 over [edge] beyond it. */
+    private fun softRect(offset: Float, half: Float, edge: Float): Float =
+        1f - softStep(half - edge * 0.5f, half + edge * 0.5f, abs(offset))
+
+    private fun softStep(edge0: Float, edge1: Float, x: Float): Float {
+        val t = ((x - edge0) / (edge1 - edge0)).coerceIn(0f, 1f)
+        return t * t * (3f - 2f * t)
+    }
+
+    private fun hypot2(a: Float, b: Float): Float = sqrt(a * a + b * b)
+
+    /**
+     * How much of a sample [filter] wide, centred [offset] from a band's middle, falls inside the
+     * band's ±[half] — 1 well inside, 0 well outside, and a band narrower than the sample gives its
+     * share of it rather than all or nothing.
+     */
+    private fun coverage(offset: Float, half: Float, filter: Float): Float {
+        val lo = maxOf(offset - filter / 2f, -half)
+        val hi = minOf(offset + filter / 2f, half)
+        return (maxOf(0f, hi - lo) / filter).coerceIn(0f, 1f)
     }
 }

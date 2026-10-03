@@ -7,8 +7,8 @@ import kotlin.math.sqrt
  * How far the phone has just been tilted, from wherever it is being held.
  *
  * The phone *is* the device in this room, so tilting it should tilt the device against the
- * world: the room's reflections sliding across the glass and the polished edge, as they would
- * if you leant over the desk to look. What is wanted is the tilt *away from how it is held*, not the phone's
+ * world: the carriage's reflections sliding across the glass and the polished edge, the window
+ * shifting behind. What is wanted is the tilt *away from how it is held*, not the phone's
  * absolute attitude — someone lying down and someone standing both hold it at "neutral" — so the
  * orientation is measured against a baseline that follows it slowly, and only the difference is
  * reported. The difference decays as the baseline catches up, which is also what keeps a slow

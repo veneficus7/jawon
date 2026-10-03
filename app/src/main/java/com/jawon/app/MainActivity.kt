@@ -1,7 +1,9 @@
 package com.jawon.app
 
+import android.graphics.Color
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.fillMaxSize
@@ -54,7 +56,14 @@ class MainActivity : ComponentActivity() {
         // else on screen needs more. Harmless if so.
         window.attributes = window.attributes.apply { preferredRefreshRate = TARGET_REFRESH_HZ }
 
-        enableEdgeToEdge()
+        // **Dark bars, whatever the phone is set to.** The defaults follow the system theme, and
+        // Jawon is dark on every screen whatever the system says: on a phone in light mode the
+        // status icons came out dark on the dark room, nearly invisible, and three-button
+        // navigation got a 90%-white scrim across the foot of it. Light icons on nothing, always.
+        enableEdgeToEdge(
+            statusBarStyle = SystemBarStyle.dark(Color.TRANSPARENT),
+            navigationBarStyle = SystemBarStyle.dark(Color.TRANSPARENT)
+        )
         setContent {
             val roomScheme by preferences.roomScheme.collectAsStateWithLifecycle()
             // Which room the app opens in. Read here, above the NavHost, because it decides the

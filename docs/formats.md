@@ -33,7 +33,7 @@ cassette. A **mode** stays the light.
 | How is vinyl browsed? | **Crate-digging, from the start** | Records upright in bins, flicked through — not face-out on a wall. §5. |
 | The same shop, or a room per format? | **A room of its own for each format** | **Reverses the locked "one room" decision** (`ENGINEERING.md`). The CD room stays exactly as it is; each new format gets its own. |
 | Do the four light modes reach the new rooms? | **No** — "other rooms are separate" | Vesper · Glacies · Vigilia · Officina are the CD room's own. Each new room is lit its own way. |
-| The pocket player's room? | **A desk at night** — a train window until 2026-10-02 | Rebuilt from scratch on his call that day, idea and all. §4, §7 step 5. |
+| The pocket player's room? | **A train window** | §4. |
 | Its controls? | **The iPod's, as closely as a touchscreen allows** | He has never used one; the point is the experience people remember as satisfying. §4 sets out what that experience was. |
 | Its name? | **Later** | Not "iPod" either way (§4). |
 | The visual bar? | **"Dont hold back at all … hyper realism and beauty … the highest quality of 3d graphics and animation"** | For every new room, and for animation as much as for stills. §4 sets out what that means for this one. |
@@ -123,13 +123,121 @@ effect on the way back — no mid-session teardown, and no brush with trap 1.
   product's look is Apple's. Its own name, proportions and face, with no Apple marks, keep
   the interaction without borrowing the brand. Not legal advice — check before shipping, the
   way `docs/server.md` treats what may be served. **Open:** the name.
-- **Its room: a desk at night — decided 2026-10-02.** The device fills the screen, so the room
-  is what it lies on and what lights it: a walnut desk under a desk lamp, headphones plugged
-  in, looked down on. It was **a train window** until then — the night streaking past as bokeh,
-  its lights sliding across the glass — and the owner asked for it rebuilt "from the start …
-  even the idea": however good the picture behind it, a device in front of a backdrop is a
-  product shot, and nothing in the frame said where it was. A desk does, with a shadow and a
-  contact the eye reads before anything else (§7 step 5).
+- **Its room: a train window — decided.** The device fills the screen, so the room is what
+  lies behind and around it. Proposed: **at night**, like the rest of Jawon — the dark window,
+  lights outside streaking past as out-of-focus bokeh, and **their reflections sliding across
+  the device's glass and its polished back**. That last part is the room: the passing lights
+  are its lighting, and a glossy object under moving light is the most convincing thing a
+  renderer can show. Day or night is the owner's call.
+- **The room around it — decided (2026-09-27).** The owner asked for the background, the
+  environment and the atmosphere next — "animations, movements, little wiggles, levitations,
+  camera movements, some magical effects, some realistic moody elements like lights and
+  windows" — and that it **not look cheap**. Three calls, made that day:
+  - **A classic night train**: dark wood table and panelling, a warm brass reading lamp,
+    deep-coloured velvet seats, curtains. The moodiest of the three offered.
+  - **The train follows the music**: pause, and it slows into a station — platform lamps holding
+    still, lighting the device from one side — and play pulls it out again.
+  - **Two states.** *In hand* is the device as it is: life size, still, the phone *is* the device
+    (the sway note in `PocketRoomScreen`). *At rest* — the phone laid flat, or twenty seconds
+    untouched — the camera eases back into the carriage and the device lifts off the table and
+    floats in the lamp's light, its shadow moving beneath it; a touch, or picking the phone up,
+    flies it back into the hand. The motion the owner asked for lives in the second state and the
+    move between them, so it never fights the hand holding the phone.
+  **Not cheap** is read as: no lens flares, sparkles or glow for its own sake; every effect
+  something light or motion really does; springs and noise, never a visible loop; each piece
+  measured on the phone as it lands. Built in four phases (§7, step 5a).
+  **Two more, the same day:** the device wears **earphones** — "if its pocket player it should
+  be connected to a wire … just to make it more realistic" — a **white** cord, the classic's,
+  from a plug in the top edge; and **switching between formats becomes a showroom**: pinch out in
+  any room and the camera pulls back into a dark gallery, each format on its own pedestal under a
+  spotlight — swipe between them, tap one to fly into its room. Chosen over objects hidden in
+  each room and over a menu row, because it scales as the formats arrive and it is a moment, not
+  a setting. It replaces Settings → THE ROOM as the way between rooms.
+  **And four from his reference photos, later the same day** — flat lays of iPods on linen, denim
+  and blankets, mostly silver classics with white wheels, EarPods and white cords, soft or warm
+  light. Asked rather than guessed, because they reversed built work: **its colour is chosen in its
+  own Settings** — silver, black and red, white later — "which one you bought" (`PocketFinish`,
+  silver by default); **at rest it lies flat, seen from above**, and lifts off only when picked
+  up — the float is replaced; **it lies on a knitted blanket** on the train table; and **the cord
+  keeps running off-frame**, the earbuds never seen. He offered more references on request, and
+  looking them up is cleared too.
+  **The blanket became a linen sheet (2026-09-28)**, on his brief the next day — "fix the visual
+  issues … I don't mind if you change the visual look … give the most reasonable and professional
+  looking end product; do research" — after the first flat lay drew three complaints: the cord
+  wiggled, the wood under it shone like no wood does, and the scene was not aesthetic, its lights,
+  reflections and shadows not agreeing. The research was a search for iPods photographed on
+  bedding, and it came back overwhelmingly as **crumpled cream cotton and linen sheets under warm,
+  low light** — the knit was the minority, and drawn as a normal map on a flat sheet it read as a
+  printed pattern however it was drawn. So the sheet is **crumpled by a cloth simulation** in the
+  model script (`build_sheet()`, `docs/models.md`), and what was wrong with the light is fixed at
+  its root rather than tuned round:
+  - **The cord is never simulated in the move** (`CordRig`): a simulation settling on cloth froze in
+    zigzags or never stopped moving, and dragged from the sheet to your ears as the device was picked
+    up it shivered for a second and a half — the owner saw it the same day. It lies on the sheet's own
+    surface (`SheetSurface`, the simulated sheet's height map) in one eased curve, hangs in the hand in
+    the chain's own settled shape, and eases between the two, the end at the plug first and the far end
+    trailing, on springs that cannot overshoot.
+  - **One lamp, everywhere.** The carriage's environment is placed for the hand, so on the table
+    its softbox lit the sheet from the bottom right while the lamp's shadow fell from the top right
+    and the glass reflected a ceiling light neither knew of. Now the environment turns as the device
+    goes down (`RestLight`) — to show the resting device the room it sees in the hand, then swung
+    45° so the softbox sits at the frame's upper right — and the lamp moves to hang where the
+    softbox lands. Measured on the emulator: the face is brighter toward the lamp (192 at its top
+    right, 162 at its bottom left), the glass's sheen sits in its top right corner, and the shadow
+    falls down and to the left.
+  - **Soft shadows** (PCSS), from a lamp whose cone narrows at rest so the shadow map's texels
+    are spent on the frame — at the hand's width the device's shadow came out in steps.
+  - **Three times the fill at rest**: at the hand's level the lamp did nine-tenths of the
+    lighting and the flat lay read as one spotlight in a black room.
+  Depth of field was tried and left off: it softened the sheet beautifully and broke the wheel's
+  hairlines into dots.
+  **The sheet became a still life (2026-09-29).** Shown the linen sheet, he found the device lying
+  on it "not aesthetic enough" and asked for a better setting and better animation; offered four
+  directions, he picked **a still life seen from above**: the table's white linen, pressed into
+  creases (`build_cloth()`, `docs/models.md`), the camera over it widened so the device lies right
+  of the frame's middle with the window's sill along the top, and room on the left for what is to
+  come — a glass of tea in a metal holder with its spoon, cropped by the frame's edge, and a paper
+  ticket whose destination is the album playing; then life at rest (steam drifting with the train,
+  the tea trembling, the spoon rattling as the train brakes into a station) and a set-down with
+  weight (a settle, a soft tap, a haptic). **The cloth and the props are in** (`build_tea()`,
+  `build_ticket()`, `docs/models.md`): the glass in its holder, placed by a Cycles render from the
+  room's own rest camera before anything reached the app, and the ticket, drawn by the room
+  (`TicketArt`) from the album playing. The holder first rendered as a black mug — the carriage's
+  environment, turned for the table, has the night window where the cloth should be — and wears a
+  material of its own now that reflects the cloth (`table_metal.mat`, `docs/materials.md`), which
+  is also how it came out that Filament turns the whole frame it shades in with the environment.
+  Life at rest and the set-down's weight are next.
+  **Inspected frame by frame (2026-09-29)**, on his ask — "you will see some animation flaws" —
+  from a 40-second screen recording on his phone: every frame's timing, and every frame of the two
+  flights and the page slides laid out as contact sheets. What it found, and what was done:
+  - **The set-down hovered.** One critically damped spring drove the flight, and a spring's last
+    tenth is an exponential tail: the device hung 2cm over the cloth and sank for two more seconds;
+    picked up, it was home while the camera still rose, so the window slid in behind it for a
+    second after. Now the camera's share and the device's each run on a clock of their own for a
+    fixed time, eased (`RestFlight`) — down in 1.2s, up in 0.55s with both arriving together — and
+    nothing moves after.
+  - **The light pumped.** The lamp, its cone, the ambient fill and the environment's turn were
+    eased with the device, which lags the camera going down: with the cloth already in view the
+    lamp was still widening and brightening, so the table brightened past its resting level and
+    dimmed back for a second after landing, and the shadow slid for reasons of its own. They follow
+    the camera now; the device comes down through a light that has stopped, and its shadow comes
+    to meet it as a real one does.
+  - **The flight stuttered.** Drawn at every vsync, the room over the cloth costs more than 8ms, so
+    frames came 8, 16, 8, 16ms apart — an uneven 60-to-120 where the move is fastest. The flight is
+    drawn at an even 60 now; only a thumb on the wheel draws at 120.
+  - **The cord hooked and swept.** Easing node by node from the hand's shape toward a resting curve
+    laid afresh from the moving plug, it bent into a hook above the plug going down and, coming up,
+    ran down across the device's face. It **drapes** now (`CordRig`): the resting curve laid once,
+    where the device will land, the cord hanging from the plug to where it touches it, and the
+    swing out of the hand's shape over before the camera can see behind the device. The rig was
+    filmed frame by frame off the device, from above and from the side, before it went near the
+    phone.
+  - **Pages hesitated.** The title changed on the press while the list, eased in, sat still for
+    50ms. It leaves at once now and slows into place.
+  - **Every click froze the room for 42–67ms** — the one found and not yet fixed. It follows every
+    step of the wheel and every button alike; the likeliest cause is the click's `AudioTrack`
+    restarting on the main thread, and a system trace on the phone decides it before anything
+    changes.
 - **The bar is "as realistic and high quality as possible" — decided.** What that means here:
   - **It is seen closer than anything in the CD room.** At life size, filling the screen, every
     seam, bevel, the wheel's slight recess and the screen's inset glass is on show, so the model
@@ -227,48 +335,9 @@ One thing at a time, checked on the owner's phone between each (the working agre
    not a project, and every later model benefits (`docs/realism.md` §1.5).
 4. **The device model** — body, wheel, centre button, glass and bezel, at real size — in
    `build_models.py`, with bounds checks added to `docs/models.md` the way the case's are.
-5. **Its room — a desk at night, rebuilt from scratch on 2026-10-02** on the owner's call: "I dont
-   like the background and 3d environment itself around ipod … completely rebuild it from the
-   start … even the idea." The train (below) put the device *in front of* a picture, and a device
-   filling the screen against a window is a product shot against a backdrop, however good the
-   backdrop. **The room is now the thing the device lies on**: a walnut desk at night under a
-   desk lamp, a pair of headphones plugged into its top and the cable running off across the
-   wood, looked down on as a player on a desk is. What makes it read as real is what the train
-   could never have had — the soft shadow under the device, the contact darkness where it
-   touches, the lamp's pool spilling over the grain — and those are **path-traced in Cycles and
-   baked into the desk's texture** (`pocket_desk.glb`, `docs/models.md`), so they cost a
-   texture fetch. The device is lit live by the same room: the lamp as a spot, and an
-   environment (`PocketLighting`) holding the lamp's shade, the ceiling its open top lights, the
-   desk and a window across the room, built already turned to the device's pose.
-   **The lamp is aimed past the device**, so the device lies in its falloff rather than its pool.
-   The wheel is black plastic at 7% albedo and walnut is 6%: any light that makes the wood a
-   readable brown made the wheel the grey the owner turned down on 2026-09-22, and in the pool's
-   centre it read lighter than the anodised body. In the falloff the face takes its gradient
-   from the ceiling instead, which the metal reflects far more strongly than the black wheel
-   diffuses. **One copy of the room is `tools/models/pocket_room.py`** (the bake and the preview
-   read it) **and one is `PocketLighting.kt`**; `PocketLightingTest` pins the second to the
-   first's numbers. The pose they share is SceneView's own — `Ry(yaw) · Rx(pitch)`, pinned too —
-   which the preview had backwards until this rebuild. Removed with the train: `night_window.mat`,
-   `NightWindow`/`TrainMotion`, `PassingLamps` and the carriage's key light. Nothing in the room
-   animates on its own any more, so at rest it costs the device and one textured quad.
-   **Judged in the calibrated preview (`tools/pocket-preview/`), not yet on the phone** — and the
-   lamp's falloff is the first thing to check there: Filament's spot is a different curve from
-   Cycles', fitted to it across the device (`PocketLighting.LAMP_CONE_*`).
-
-   **The train window, 2026-09-26 to 2026-10-02 — removed.** Kept here because what it
-   taught about lighting this device carries over:
-   Lit by the lights going past
+5. **Its room** — the train window (§4), lit by the lights going past
    (`docs/realism.md` §3). **The window is up (2026-09-26)**: `night_window.mat`, the night
-   out of focus at three depths with poles and a rocking carriage, behind the device.
-   **Recomposed on 2026-10-02**, because it read as a bokeh wallpaper: its discs were spread
-   evenly over the whole window, sky included, and the device floated in front of them with
-   nothing to say where it was. A player is looked down at, so the window behind it now shows a
-   **horizon in the strip above the device** — towns along it as a fine glitter that comes and
-   goes, their sodium glow on the haze, a navy sky going teal low down — fewer, larger lights
-   below, and **the window's sill across the bottom strip**, warm where the reading lamp catches
-   it and still while the night slides past. Cool outside, warm inside. Designed against a
-   full-frame preview (`tools/pocket-preview/`: the shader itself in WebGL, the device in Cycles
-   at the app's camera and exposure, Filament's grade) — **not yet seen on the phone**. **And
+   out of focus at three depths with poles and a rocking carriage, behind the device. **And
    the lights going past are light**: a key spot for the carriage's ceiling lamp, and a pool of
    lamps on an irregular schedule whose glints slide across the glass and whose light rims the
    edge (`PassingLamps`). First tuning on the AVD: a lamp behind you at 900–2600cd washed the
@@ -290,37 +359,36 @@ One thing at a time, checked on the owner's phone between each (the working agre
    vignette, and ambient occlusion at a 3.5mm radius for the wheel's recess and the screen's
    inset. The screen itself reads as a backlit panel now: a cool never-quite-white, a falloff to
    its corners, and the window lip's shadow along its top and left edges.
-   **Lifted on 2026-10-02**, on the owner's go-ahead: the lower half of the device and its base
-   had no edge against the night (the face at its foot 12 of 255). The front reflects azimuth ~60°
-   from elevation 3° at the foot to 20° at the top, and the softbox only reached down to 12.6° —
-   so the softbox now has a **skirt**, its light on the panelling below it, fading downward
-   (`PocketLighting.SKIRT_*` — gone with the train). In the calibrated preview:
-   the foot 13 -> 23, beside the screen 39 -> 45, the wheel 13 -> 16, the gradient kept and the
-   face a shade less bronze. Nothing else was added: four other fixtures aimed at the edges
-   measured nothing, because at this pose the top, right and bottom walls face away. **Not yet
-   on the phone.**
-   **Refined on 2026-10-02**, judged in a DOM mock of the screen and Cycles renders of the model, not
-   yet on the phone: the window grew a 1.8mm **black surround** round the unchanged picture (the
-   lip shadow drawn on the screen went with it — it now falls on the surround, as on a real one);
-   the screen sets type in **real SemiBold and Bold** where it had been drawing Medium and a
-   rasterised fake bold; rows keep **one weight** whether highlighted or not, so text no longer
-   shuffles as the highlight passes; the selection, the bars, the scrollbar and the play mark share
-   **one lit-glass treatment** (bright top edge, a crease at the waist); times use **tabular
-   figures** and a true minus; covers carry a hairline so a pale sleeve keeps its edge; and a
-   record with no art gets drawn quavers where a fallback-font "♪" was.
-   **And the phone's tilt turns the world** (`TiltFilter`): the environment rotates against how
-   far the phone has just been tilted, so reflections slide across the glass and the edge —
-   first-order, twice the tilt, as a turned mirror's do, and as they would if you leant over the
-   desk. The desk's baked light and the lamp stay where they are: a tilt is a change of view,
-   and the light on wood does not move with the viewer.
+   **And an outline (2026-09-26, on the AVD):** the steel comes round the edge as a polished bead
+   0.8mm across, and the ceiling is two runs of light traced down the carriage rather than a ring
+   of points — worked out from where each part of the bead looks, so a line of light runs along
+   every visible edge and the lower corners no longer dissolve into the dark. The steel wears its
+   own material so those lines stay lines instead of breaking into dashes (ENGINEERING.md, trap 34).
+   Not yet judged on the phone. **And judge the lower face on the phone, never the AVD**: at
+   rest the AVD renders the front plate beside the wheel at ~2 of 255 where the phone's last
+   screenshot read 13, with a gentler slope all the way down (44 → 2 against 32 → 7). A red
+   probe showed the reflection geometry is the same on both — the lower face looks at eye level
+   behind your right shoulder, where the carriage has little that is bright — so the difference
+   is in how the two render it, and lighting tuned there would be tuned to the wrong device.
+   **And the phone's tilt turns the world** (`TiltFilter`): the environment and the passing
+   lamps rotate against how far the phone has just been tilted, so reflections slide across
+   the glass and the edge — first-order, twice the tilt, as a turned mirror's do. The window
+   behind is left still on purpose: for a phone turning about its own middle, a world-fixed
+   picture behind it barely moves, and making it swing would be the stylised parallax of a
+   wallpaper, not a device in the hand.
 6. **Browsing on its screen — done (2026-09-26).** Cover Flow first on the main menu — the
    covers in perspective on a glossy black floor, eased to the wheel, a cover turned over by
    the centre to list its tracks on the back — then Albums (filed as iTunes filed them, "The"
    and "A" set aside), Shelves as playlists in their wall order, Artists, an album's tracks,
    and Now Playing. `PocketMenu.kt`, `CoverFlowLcd.kt`. The main menu is the classic's split
    screen — the list on the left, covers from the library pushed in, drifted and dissolved on
-   the right — on a clock that ticks at 20fps only while that menu is up and lit. **Cost unmeasured**: the flow redraws
-   the screen in software every frame it moves (trap 33's copy), which the phone has to answer.
+   the right — on a clock that ticks at 20fps only while that menu is up and lit. **And pages
+   slide**, as the classic's did (2026-09-27): select, and the new page comes in from the right
+   and pushes the old one off to the left in 260ms; MENU runs it back. The title bar stays put
+   and only its words change; a highlight moving within a page is the same page, and turning a
+   cover over is Cover Flow's own page (it turns, it does not slide) — `PocketNav.page`, tested.
+   **The cost is measured now**: Cover Flow moving put the main thread at 0.71 of a core while
+   `ViewNode` copied the screen in software, and 0.24 once `LcdPanel` drew it on the GPU (trap 33).
 7. **The wheel — done (2026-09-26), bar the feel.** Turning, with acceleration on long lists;
    the centre; MENU (held: the main menu); Play/Pause (held: off, the screen dark until any
    button); the sides (held: cue through the track); on Now Playing the volume, and the
@@ -345,6 +413,103 @@ One thing at a time, checked on the owner's phone between each (the working agre
    row each with its reading, a slider each that the wheel turns, the classic's Brightness
    screen with Jawon's rack behind it. Touching an effect switches its cell in; Flat puts them
    all back.
+5a. **The room around the device (planned 2026-09-27, §4).** In four phases, each checked on the
+   owner's phone and measured before the next — the idle GPU clock is 342–443MHz after the
+   ambient occlusion went to half resolution, so there is room, and the CD room's fog showed how
+   fast it goes:
+   1. **The two states and a blockout of the carriage** — the camera pulling back, the table and
+      the window frame, the device levitating with a real shadow from the reading lamp, and the
+      flight between the table and the hand, reversible from any point. **Built (2026-09-27) and
+      running on the owner's phone**: `PocketRest.kt` (the state, the flight, the float, the
+      put-down detector — tested), `carriage.glb` (walnut table, mahogany boards, frame, sill —
+      `build_carriage()`), and a shadow-casting reading lamp over the window's corner at 15,000cd,
+      which is what this room's exposure asks of a lamp that pools on dark wood. Lying on the
+      desk, the phone went to rest by itself and floated the device over the table. **Cost at
+      rest**: 0.50 of a core, GPU 443–525MHz, against 342–443 in the hand. **And the earphones**:
+      a white plug in the top edge's jack (`build_earphone_plug()`) and a simulated cord from it
+      (`PocketCord.kt`) that rises out of the frame in the hand and sways over the table at rest.
+      Two things it took: white plastic in a room exposed for polished metal renders grey, so the
+      cord and plug have a light channel of their own with one light, from the reading lamp's
+      direction; and a touch on a phone lying flat must not send the device straight back to the
+      table — lying flat is disarmed by a touch until the phone is lifted and put down again.
+   2. **The glass and what passes it** — rain and grime (a hand-written material, `docs/realism.md`
+      §3), the carriage and the device's screen reflected in the pane, and events outside:
+      tunnels, bridges, a level crossing, showers, and **stations**, tied to pause and play.
+      **Stations built on 2026-09-27, on the AVD**: the train follows the music. Paused, it brakes
+      into a station — placed ahead exactly where the brake ends, so the platform stops at the
+      window — on the S-curve a driver brakes to, speed `1 − smoothstep`: no jolt going in, none
+      as it stands, ten seconds from speed (a critically damped spring was first, and still crept
+      twelve seconds on). Played, it pulls away over nine; paused just after leaving, it stops
+      alongside the same platform, as a real train would. Standing, the carriage is still — the
+      sway and the joints scale with speed — after one settle on its springs. The window draws the
+      platform (`docs/materials.md`), and its cold fluorescent light comes in at the window, a
+      spot over the window's top at 8,000cd that lays a cool cast on the walnut. Opening the room
+      with nothing playing finds the train already standing. The kinematics were checked on the
+      AVD end to end by log (departure 0.4 → 17.4m/s in ~9s, the album ending, a stop 10.3s later
+      with the platform's middle at 0.0); **the look of the stop and the moving platform is still
+      the owner's to judge on his phone**, as is the cost of the platform's shader (A/B on the AVD
+      moved nothing measurable).
+      **Tunnels, the same day, on the AVD** (`NightLine`): a few hundred metres long, a couple of
+      kilometres apart, the first a way down the line so the room never opens in one. Inside, the
+      window is the wall with its lamps streaking by, the carriage's ambient dips by 30%, the
+      night's lamps stop and the tunnel's sweep through instead, one per lamp the window passes:
+      bright from behind the device — on the table and the device's edges, which is where they
+      read at rest — and at the night's own level from behind you, because at 5,000cd those
+      washed the whole black front beige in the hand. A pause in a tunnel runs out of it first
+      and stands at a platform clear of the mouth; a tunnel the stop would run into is taken off
+      the line before it is reached, where nobody can see it go. Seen through on the AVD with the
+      first tunnel moved to 40m for the test; the lamps' beat is still his to judge.
+   3. **Light, and the small magic** — the screen's glow spilling onto the table in the colour of
+      what it shows, a reading lamp that switches off with a tap, dust in its beam, passing
+      lights sweeping the whole carriage.
+   4. **Motion and the bake** — the carriage's sway under the camera at rest, the float on springs
+      and noise, wiggles on a track change and a landing, tilt parallax, a drag to look round, and
+      Cycles baking the interior's bounce light and shadow into lightmaps.
+5b. **The showroom — the way between formats (planned 2026-09-27, §4).** A scene and a destination
+   of its own (`ui/showroom/`), reached by **pinching out of a room**: in the CD room, pinching on
+   past the camera's far limit (`ZOOM_FAR`) — you pull back out of the room into the gallery — and
+   in the pocket room, a pinch, which nothing else there uses. A dark gallery: a glossy black
+   floor, a row of plinths each under its own shadow-casting spot, and on each the format's object
+   hovering and slowly turning — a jewel case, the pocket player, and for vinyl and cassette an
+   empty plinth under a dim light with its name and *coming*. The camera starts close on the room
+   you left and eases back; a horizontal drag carries it along the row, released it springs to the
+   nearest plinth with a haptic tick per plinth (`ShowroomCarousel`, pure and tested); a tap on a
+   built format pushes the camera in, fades, and opens that room. Back returns to the room you
+   came from. The format's name sits under it in the app's own type. Once it works on the phone it
+   replaces Settings → THE ROOM.
+   **Built on 2026-09-27, on the emulator — the phone was off** (`ui/showroom/`, `docs/architecture.md`).
+   Both rooms pinch out into it (`PullOut`): the CD room gives 8cm past `ZOOM_FAR` against a spring
+   and darkens, and lets go with the fingers a third closer again; the pocket room takes two fingers
+   together, which the wheel then never sees. Only where there is somewhere else to go — a release
+   build with one finished room pinches exactly as before. The CD's plinth holds the held case with
+   **the record played last** in it; the pocket player's screen is **switched on**, its own main menu
+   on `LcdPanel` with the same record beside it — dark, it barely read on a dark plinth. Vinyl and
+   cassette are empty plinths under dim light, marked *coming*. The four things the look cost, in
+   the order they were found, measured as screenshots and luminance boxes:
+   - **Black materials returned nothing at this exposure.** Black lacquer plinths and a black stone
+     floor rendered as a void: a surface this dark is seen only by what it reflects, and a spot's
+     reflection off a horizontal cap goes away from the camera. Charcoal satin and polished
+     concrete, which a spot can show.
+   - **A shadow straight under a floating object reads as a stand.** With the spot in front, each
+     exhibit's shadow fell directly beneath it as the camera sees it — a black block it sat on. The
+     spots come from the front right now, and the camera sits lower, so the gap under the float
+     shows; a ceiling glow in the environment fills the shadow, which was otherwise a hole.
+   - **A face turned to a camera above it reflects a direction *below* level.** The first strips
+     behind the camera stopped just above it and the black anodised front never caught anything; a
+     doorway-sized softbox filled the CD's clear lid at once and laid a grey veil over the cover.
+     Tall strips either side, from well below eye level: as an exhibit turns, a sheen slides across
+     it. And the lid, authored at 22% alpha for the CD room, went milky under a spot this strong —
+     the showroom sets its alpha to 5%, which keeps its reflections and drops the veil.
+   - **Black all round has no depth.** A plaster wall behind the row, with a warm wash on it behind
+     each plinth: the exhibit stands against a glow, and the wash rims it from behind.
+   **Startup, measured on the AVD**: the showroom's first frame arrives ~1.25s after it composes —
+   models, SceneView's setup and first-use shader compilation. It opens black and is revealed as the
+   camera starts back, so the arrival is a move that is seen; the environment's 393k directions are
+   worked out off the main thread (a quarter of a second it used to block). Going into a room costs
+   the same again for that room. **The real fix is an engine that outlives a destination** — every
+   room rebuilds Filament from nothing, which is also the black the NavHost's return fade masks.
+   **Not yet**: checked on the phone, its cost measured, floor reflections, and Settings → THE ROOM
+   retired.
 9. **Vinyl** (§5), then **cassette** (§6), each its own room and built the same way.
 
 Each of 3–8 is about a session's work. **Measure every tier as it lands** (traps 28–30).

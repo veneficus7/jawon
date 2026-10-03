@@ -12,10 +12,10 @@ import com.google.android.filament.View
  * - **4× MSAA**, not FXAA. The device is all hard, thin, bright edges — the chamfer, the wheel's
  *   rim, the print — which is exactly where FXAA smears, and trap 30 measured MSAA as close to
  *   free where resolution is not.
- * - **A restrained bloom** over the HDR threshold only: the lamp's highlights on the plug and the
- *   wheel's coat glow a little, as they do through a lens; the screen and the desk, below the
- *   threshold, stay crisp.
- * - **A vignette**, because the eye should come to rest on the device, not on the desk's edge.
+ * - **A restrained bloom** over the HDR threshold only: the lamps' highlights and the brightest of
+ *   the lights outside glow a little, as they do through a lens; the screen, below the
+ *   threshold, stays crisp.
+ * - **A vignette**, because the eye should come to rest on the device, not on the window's edge.
  *
  * **Re-applied whenever it has been undone.** SceneView applies a `RenderQuality` preset of its own
  * to the View it is handed, after the first frame, overwriting whatever was set before it — the
@@ -26,7 +26,7 @@ object PocketAtmosphere {
 
     const val BLOOM_STRENGTH = 0.085f
     private const val BLOOM_LEVELS = 6
-    // Light: at a midpoint of 0.42 the top of the frame fell from 23 to 3 of 255 and the wheel
+    // Light: at a midpoint of 0.42 the top of the window fell from 23 to 3 of 255 and the wheel
     // went into the dark with it. The vignette is a hint at the corners, not a spotlight.
     private const val VIGNETTE_MID = 0.68f
     private const val VIGNETTE_ROUNDNESS = 0.5f
@@ -56,6 +56,11 @@ object PocketAtmosphere {
         // as depth — but lit only by the environment they get no shadow at all, and read as
         // lines drawn on a flat face. A radius of a few millimetres puts a contact shade in
         // exactly those places and nowhere else on an object this size.
+        //
+        // **At half resolution, measured.** Full resolution held the owner's phone's GPU at
+        // 607–660MHz idle on the main menu; half, 342–443MHz, with every luminance box on the face
+        // — the wheel's recess included — within 0.2 of 255. The radius is ~70 pixels at life
+        // size, far above anything half resolution can lose.
         view.ambientOcclusionOptions = View.AmbientOcclusionOptions().apply {
             enabled = true
             radius = AO_RADIUS_M
@@ -63,11 +68,17 @@ object PocketAtmosphere {
             power = AO_POWER
             bias = AO_BIAS_M
             quality = View.QualityLevel.HIGH
-            resolution = 1.0f
+            resolution = 0.5f
             upsampling = View.QualityLevel.HIGH
             lowPassFilter = View.QualityLevel.MEDIUM
         }
         view.dithering = View.Dithering.TEMPORAL
+        // **Soft shadows** (PCSS): the penumbra widens with the distance from what casts it, as a
+        // lampshade's does, so the device's shadow is sharp where it meets the cloth and soft
+        // where it leaves it. Plain PCF drew one hard line under the device; DPCF broke the
+        // surface up in blocks; VSM's blur lost the shadow altogether. Its size is the lamp's
+        // `shadowBulbRadius`.
+        view.setShadowType(View.ShadowType.PCSS)
     }
 
     private const val AO_RADIUS_M = 0.0035f
