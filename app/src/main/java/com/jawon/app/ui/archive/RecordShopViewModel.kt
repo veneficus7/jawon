@@ -75,8 +75,13 @@ class RecordShopViewModel @Inject constructor(
             val results = client.search(current.collection, current.query)
             _state.value = _state.value.copy(
                 searching = false,
-                results = results,
-                message = if (results.isEmpty()) "Nothing found. Try fewer words." else null
+                results = results.orEmpty(),
+                message = when {
+                    results == null -> "Couldn't reach the Internet Archive. Check the connection."
+                    results.isNotEmpty() -> null
+                    current.query.isBlank() -> "Nothing on these racks right now."
+                    else -> "Nothing found. Try fewer words."
+                }
             )
         }
     }

@@ -55,8 +55,16 @@ enum class ArchiveCollection(val query: String, val label: String, val blurb: St
      * Concert recordings from artists who explicitly allow taping and trading. Around a quarter
      * of a million shows, always with per-track FLAC and MP3 derivatives — which is why this is
      * the default.
+     *
+     * **Their mediatype is `etree`, not `audio`.** Until 0.7 the client asked for `audio` across
+     * both collections, which matched none of the ~296,000 concerts: the shop opened on this tab
+     * saying "Nothing found" to every search. Each collection now carries its own.
      */
-    LIVE_MUSIC("collection:(etree)", "LIVE SHOWS", "Concerts, from bands who allow taping"),
+    LIVE_MUSIC(
+        "collection:(etree) AND mediatype:(etree)",
+        "LIVE SHOWS",
+        "Concerts, from bands who allow taping"
+    ),
 
     /**
      * Netlabel releases, mostly Creative Commons.
@@ -65,5 +73,9 @@ enum class ArchiveCollection(val query: String, val label: String, val blurb: St
      * hold nothing but a ZIP, and are filtered out only after their metadata is fetched. What
      * survives is proper studio albums.
      */
-    NETLABELS("collection:(netlabels)", "NETLABELS", "Creative Commons releases")
+    NETLABELS(
+        "collection:(netlabels) AND mediatype:(audio)",
+        "NETLABELS",
+        "Creative Commons releases"
+    )
 }

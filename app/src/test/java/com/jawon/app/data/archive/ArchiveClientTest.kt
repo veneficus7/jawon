@@ -22,6 +22,16 @@ class ArchiveClientTest {
 
     // ---- search ----------------------------------------------------------------------------
 
+    /**
+     * Checked against the live index on 2026-10-09: `collection:(etree) AND mediatype:(audio)`
+     * found 0 items, `mediatype:(etree)` 295,627. One shared `audio` filter emptied the live tab.
+     */
+    @Test
+    fun `each collection asks for the mediatype its items actually have`() {
+        assertTrue(ArchiveCollection.LIVE_MUSIC.query.contains("mediatype:(etree)"))
+        assertTrue(ArchiveCollection.NETLABELS.query.contains("mediatype:(audio)"))
+    }
+
     @Test
     fun `a search result is read`() {
         val results = ArchiveClient.parseSearch(

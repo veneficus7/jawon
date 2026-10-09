@@ -31,14 +31,21 @@ import javax.inject.Singleton
 @Singleton
 class ArchiveClient @Inject constructor() {
 
+    /**
+     * One page of [collection] matching [query], or the collection's newest for a blank one.
+     *
+     * **Null when the Archive could not be reached**, as opposed to an empty list, which is an
+     * answer. The shop used to say "Nothing found. Try fewer words." for both — on a phone with
+     * no signal, that is advice to change a search that never ran.
+     */
     suspend fun search(
         collection: ArchiveCollection,
         query: String,
         page: Int = 1
-    ): List<ArchiveResult> = withContext(Dispatchers.IO) {
+    ): List<ArchiveResult>? = withContext(Dispatchers.IO) {
         val terms = buildString {
+            // The collection names its own mediatype; see LIVE_MUSIC for why one cannot be shared.
             append(collection.query)
-            append(" AND mediatype:(audio)")
             if (query.isNotBlank()) {
                 // Quoted, so a search containing a colon or a bracket is read as words rather
                 // than as query syntax — a user typing "AC/DC" should not produce a parse error.
@@ -53,7 +60,7 @@ class ArchiveClient @Inject constructor() {
             append("&page=").append(page.coerceAtLeast(1))
             append("&output=json")
         }
-        runCatching { parseSearch(get(url)) }.getOrDefault(emptyList())
+        runCatching { parseSearch(get(url)) }.getOrNull()
     }
 
     /** One item, with its tracks — or null if it holds nothing this app can play. */
