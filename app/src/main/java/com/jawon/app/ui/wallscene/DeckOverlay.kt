@@ -1031,15 +1031,17 @@ private fun TrackRow(
  * decorating itself. The two that describe the *file* rather than the listening sit dimmer
  * still, because they are the least surprising thing on the row.
  *
- * Abbreviated rather than spelled out: a tracklist row is 42dp and already carries a number, a
- * title and a duration. See [TrackBadge] for what each one is claiming.
+ * Short rather than spelled out: a tracklist row is 42dp and already carries a number, a title
+ * and a duration. But each is still a word: "MOST" and "UNFIN" were shorter and read as a riddle
+ * (most what?), and the title ellipsises before a badge is lost. See [TrackBadge] for what each
+ * one is claiming.
  */
 @Composable
 private fun BadgeMark(badge: TrackBadge) {
     val finish = LocalDeckFinish.current
     val (label, colour) = when (badge) {
-        TrackBadge.MOST_PLAYED -> "MOST" to finish.accent
-        TrackBadge.NEVER_FINISHED -> "UNFIN" to finish.plateDim
+        TrackBadge.MOST_PLAYED -> "TOP" to finish.accent
+        TrackBadge.NEVER_FINISHED -> "UNFINISHED" to finish.plateDim
         TrackBadge.FIRST_PLAYED -> "FIRST" to finish.accent
         TrackBadge.LOSSLESS -> "LOSSLESS" to finish.plateDim
         TrackBadge.HI_RES -> "HI-RES" to finish.plateDim
