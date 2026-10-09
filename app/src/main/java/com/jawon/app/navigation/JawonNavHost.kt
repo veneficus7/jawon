@@ -1,5 +1,10 @@
 package com.jawon.app.navigation
 
+import com.jawon.app.ui.wallscene.RoomHaptics
+import com.jawon.app.ui.showroom.ShowroomViewModel
+import com.jawon.app.ui.common.ShakeToSwitch
+import com.jawon.app.BuildConfig
+import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import com.jawon.app.ui.wallscene.QualityTier
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.runtime.mutableIntStateOf
@@ -135,12 +140,28 @@ fun JawonNavHost(
     // one; never a Navigation route, so its Back is the stage's to decide and nothing can stack two.
     var showroomWanted by rememberSaveable { mutableStateOf(false) }
 
+    // **The rooms, a tap or a shake away** (0.7.2). The switcher stays open after a pick, so rooms
+    // can be flicked through behind it; a shake flips to the next room wherever you are in one.
+    val rooms: ShowroomViewModel = hiltViewModel()
+    val shakeOn by rooms.shakeToSwitch.collectAsStateWithLifecycle()
+    var roomsOpen by rememberSaveable { mutableStateOf(false) }
+    val showUnbuilt = BuildConfig.DEBUG || BuildConfig.SHOW_FORMATS
+    val offered = Format.entries.filter { it.built || showUnbuilt }
+    val switchTo: (Format) -> Unit = { if (it != format) rooms.choose(it) }
+    ShakeToSwitch(
+        enabled = shakeOn && offered.size > 1 && !covered && !roomsOpen && !showroomWanted
+    ) {
+        val here = offered.indexOf(format)
+        switchTo(offered[(here + 1) % offered.size])
+    }
+
     Box(Modifier.fillMaxSize()) {
         RoomStage(
             format = format,
             showroomWanted = showroomWanted,
             covered = covered,
             onOpenShowroom = { showroomWanted = true },
+            onOpenRooms = { roomsOpen = true },
             onLeaveShowroom = { showroomWanted = false },
             // The showroom is the app's top (a room's Back comes here), so its Back leaves: to the
             // background, as Back from a launcher activity's root does since Android 12, with the
@@ -249,6 +270,16 @@ fun JawonNavHost(
                 Panel { SettingsScreen(onBack = { navController.popBackStack() }) }
             }
         }
+
+        if (roomsOpen) {
+            RoomSwitcher(
+                current = format,
+                offered = offered,
+                shakeOn = shakeOn,
+                onPick = switchTo,
+                onDismiss = { roomsOpen = false }
+            )
+        }
     }
 }
 
@@ -279,6 +310,7 @@ private fun RoomStage(
     showroomWanted: Boolean,
     covered: Boolean,
     onOpenShowroom: () -> Unit,
+    onOpenRooms: () -> Unit,
     onLeaveShowroom: () -> Unit,
     onExit: () -> Unit,
     onAddAlbum: () -> Unit,
@@ -289,22 +321,28 @@ private fun RoomStage(
     val context = LocalContext.current
     val keepPlaces = remember(context) { QualityTier.detect(context) != QualityTier.LOW }
 
-    var showing by rememberSaveable { mutableStateOf(showroomWanted) }
+    // The place on stage, which follows the place wanted once the curtain is down.
+    val wanted = if (showroomWanted) Place.SHOWROOM else Place.of(format)
+    var shown by rememberSaveable { mutableStateOf(wanted) }
+    val haptics = remember(context) { RoomHaptics(context) }
     // Each visit to the showroom is a new arrival (ShowroomScreen's `visit`).
     var showroomVisit by rememberSaveable { mutableIntStateOf(0) }
     val curtain = remember { Animatable(0f) }
-    LaunchedEffect(showroomWanted) {
-        if (showroomWanted != showing) {
+    // Any change of place — into the showroom, out of it, or from one room to another by the
+    // switcher or a shake — is the same short dip, and lands with a click you can feel.
+    LaunchedEffect(wanted) {
+        if (wanted != shown) {
             curtain.animateTo(1f, tween(CURTAIN_DOWN_MS, easing = LinearOutSlowInEasing))
-            if (showroomWanted) showroomVisit++
-            showing = showroomWanted
+            if (wanted == Place.SHOWROOM) showroomVisit++
+            shown = wanted
+            haptics.detent()
             // One frame for the place to take the stage under the curtain.
             withFrameNanos { }
         }
         curtain.animateTo(0f, tween(CURTAIN_UP_MS, easing = FastOutSlowInEasing))
     }
 
-    val active = if (showing) Place.SHOWROOM else Place.of(format)
+    val active = shown
     // Every place built so far, in the order they were first wanted.
     var built by remember { mutableStateOf(listOf(active)) }
     val places = if (!keepPlaces) listOf(active) else if (active in built) built else built + active
@@ -341,12 +379,14 @@ private fun RoomStage(
                             onOpenSettings = onOpenSettings,
                             onEditAlbum = onEditAlbum,
                             onOpenShowroom = onOpenShowroom,
+                            onOpenRooms = onOpenRooms,
                             covered = covered || !isActive
                         )
                         Place.POCKET -> PocketRoomScreen(
                             onOpenSettings = onOpenSettings,
                             onAddAlbum = onAddAlbum,
                             onOpenShowroom = onOpenShowroom,
+                            onOpenRooms = onOpenRooms,
                             covered = covered || !isActive
                         )
                     }

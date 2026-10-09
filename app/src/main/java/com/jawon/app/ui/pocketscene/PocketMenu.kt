@@ -52,6 +52,8 @@ sealed interface RowAction {
     /** Play [albumId] from its [index]th track. */
     data class PlayTrack(val albumId: String, val index: Int) : RowAction
     data object AddAlbums : RowAction
+    /** The room switcher: the other formats, a tap away (0.7.2). */
+    data object OpenRooms : RowAction
     /** The phone app's own Settings, everything the device's menu does not carry. */
     data object OpenSettings : RowAction
     /** Pick option [option] of [setting]. */
@@ -72,7 +74,8 @@ data class MenuRow(
 ) {
     /** Whether the row leads to another list — the chevron. A track plays instead. */
     val leadsOn: Boolean
-        get() = action is RowAction.Open || action == RowAction.AddAlbums || action == RowAction.OpenSettings
+        get() = action is RowAction.Open || action == RowAction.AddAlbums ||
+            action == RowAction.OpenSettings || action == RowAction.OpenRooms
 }
 
 /**
@@ -173,6 +176,7 @@ object PocketMenus {
             add(MenuRow("Artists", RowAction.Open(MenuKey.Artists)))
             if (hasNowPlaying) add(MenuRow("Now Playing", RowAction.Open(MenuKey.NowPlaying)))
             add(MenuRow("Add Albums", RowAction.AddAlbums))
+            add(MenuRow("Rooms", RowAction.OpenRooms))
             add(MenuRow("Settings", RowAction.Open(MenuKey.Settings)))
         }
         MenuKey.Settings -> listOf(

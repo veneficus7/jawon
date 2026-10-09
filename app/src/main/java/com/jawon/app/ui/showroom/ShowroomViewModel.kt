@@ -26,6 +26,9 @@ class ShowroomViewModel @Inject constructor(
     /** The pocket player's colour, as its own Settings chose it — the plinth's wears the same. */
     val pocketFinish: StateFlow<String?> = preferences.pocketFinish
 
+    /** Whether a shake flips rooms (Settings → Room). */
+    val shakeToSwitch: StateFlow<Boolean> = preferences.shakeToSwitch
+
     /** Opens [format]'s room from now on: the same switch Settings' picker throws. */
     fun choose(format: Format) = preferences.setFormat(format)
 

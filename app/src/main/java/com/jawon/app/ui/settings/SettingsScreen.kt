@@ -1,5 +1,6 @@
 package com.jawon.app.ui.settings
 
+import androidx.compose.material.icons.rounded.Vibration
 import com.jawon.app.ui.theme.LocalPalette
 import com.jawon.app.ui.theme.InterFamily
 import com.jawon.app.ui.common.JawonMark
@@ -1440,6 +1441,7 @@ fun SettingsScreen(
     val context = LocalContext.current
     val fetchCoverArt by viewModel.fetchCoverArt.collectAsStateWithLifecycle()
     val fetchLyrics by viewModel.fetchLyrics.collectAsStateWithLifecycle()
+    val shakeToSwitch by viewModel.shakeToSwitch.collectAsStateWithLifecycle()
     val preferOnlineLyrics by viewModel.preferOnlineLyrics.collectAsStateWithLifecycle()
     val roomScheme by viewModel.roomScheme.collectAsStateWithLifecycle()
     val format by viewModel.format.collectAsStateWithLifecycle()
@@ -1557,6 +1559,19 @@ fun SettingsScreen(
                             value = roomScheme.displayName,
                             onClick = { page = SettingsPage.LIGHT }
                         )
+                        if (offeredFormats.size > 1) {
+                            SettingsDivider()
+                            SettingsSwitchRow(
+                                icon = Icons.Rounded.Vibration,
+                                title = "Shake to switch rooms",
+                                summary = "A shake flips to the next room.",
+                                detail = "Two quick shakes back and forth flip Jawon to the next room. " +
+                                    "It never happens with the phone in a pocket, under a panel or in the " +
+                                    "showroom, and one shake is one room however long you keep at it.",
+                                checked = shakeToSwitch,
+                                onCheckedChange = viewModel::onShakeToSwitchChanged
+                            )
+                        }
                     }
 
                     SettingsGroup(header = "Playback") {

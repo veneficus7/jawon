@@ -194,6 +194,8 @@ class SettingsViewModel @Inject constructor(
 
     /** See [com.jawon.app.data.lyrics.LrclibClient] for why LRCLIB and not a commercial one. */
     val fetchLyrics: StateFlow<Boolean> = preferences.fetchLyrics
+    val shakeToSwitch: StateFlow<Boolean> = preferences.shakeToSwitch
+    fun onShakeToSwitchChanged(enabled: Boolean) = preferences.setShakeToSwitch(enabled)
 
     val roomScheme: StateFlow<RoomScheme> = preferences.roomScheme
 

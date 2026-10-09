@@ -240,6 +240,17 @@ class AppPreferences @Inject constructor(@param:ApplicationContext context: Cont
         _caseSpin.value = clamped
     }
 
+    /**
+     * Shaking the phone flips to the next room (0.7.2, on the owner's call). On by default — it is
+     * meant to be found and enjoyed — with this switch for anyone it catches out.
+     */
+    private val _shakeToSwitch = MutableStateFlow(prefs.getBoolean(KEY_SHAKE_TO_SWITCH, true))
+    val shakeToSwitch: StateFlow<Boolean> = _shakeToSwitch.asStateFlow()
+    fun setShakeToSwitch(enabled: Boolean) {
+        prefs.edit { putBoolean(KEY_SHAKE_TO_SWITCH, enabled) }
+        _shakeToSwitch.value = enabled
+    }
+
     private val _fetchLyrics = MutableStateFlow(prefs.getBoolean(KEY_FETCH_LYRICS, true))
 
     /**
@@ -465,6 +476,7 @@ class AppPreferences @Inject constructor(@param:ApplicationContext context: Cont
         const val KEY_CROSSFADE_MS = "crossfade_ms"
         const val KEY_FETCH_COVER_ART = "fetch_cover_art"
         const val KEY_FETCH_LYRICS = "fetch_lyrics"
+        const val KEY_SHAKE_TO_SWITCH = "shake_to_switch"
         const val KEY_PREFER_ONLINE_LYRICS = "prefer_online_lyrics"
         const val KEY_ROOM_SCHEME = "room_scheme"
         const val KEY_FORMAT = "format"
