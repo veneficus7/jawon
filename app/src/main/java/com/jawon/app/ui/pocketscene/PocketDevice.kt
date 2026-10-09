@@ -74,6 +74,37 @@ internal class PocketDevice(
     var lyricShownTop = 0
     private var lyricTurnedAt = 0L
 
+    /**
+     * **Hold** (0.7.3), the classic's switch, thrown by the phone itself: with the proximity sensor
+     * covered — in a pocket, face down on a table — the wheel does nothing, so a thigh cannot skip a
+     * track, and a lock shows in the title bar. Written by the room; uncovered, it lets go at once.
+     */
+    val hold = mutableStateOf(false)
+
+    /**
+     * How far the room's light dims the screen, 0..1 — the ambient light sensor's reading, eased
+     * (0.7.3). A backlit LCD in a dark room is a torch; this takes the edge off it, as a panel
+     * that answered the room would. Written by the room.
+     */
+    val roomDim = mutableFloatStateOf(0f)
+
+    /** The phone's sideways lean, −1..1 ([leanOf]) — for Brick and for Cover Flow. Written by the room. */
+    var lean = 0f
+
+    /** Tilt & Turn, from the device's Settings: whether a lean browses Cover Flow. */
+    var motionOn = true
+
+    /** Cover Flow's drift with the lean, in covers — added to where the covers are, never to the selection. */
+    val flowDrift = mutableFloatStateOf(0f)
+    private var lastFlickAt = 0L
+
+    /** Brick, and what its screen shows. The game is kept while you are away from it, paused. */
+    private val brick = BrickGame()
+    val brickFrame = mutableStateOf<BrickFrame?>(null)
+    private var brickPaused = false
+    private var brickWasOver = false
+    var brickBest = 0
+
     var library = PocketLibrary()
     var trackTitles: Map<String, List<String>> = emptyMap()
     var settings = PocketSettings()
@@ -185,6 +216,12 @@ internal class PocketDevice(
     fun onTouch(event: MotionEvent): Boolean {
         if (pinch(event)) return true
         val now = event.eventTime
+        if (hold.value) {
+            // Held: the touch is taken and nothing happens, as the classic's wheel did under its
+            // switch. Anything already under the thumb is let go.
+            if (gesture.isDown) handle(gesture.cancel(), now)
+            return true
+        }
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
                 if (!toWheel(event.x, event.y)) return false
@@ -287,9 +324,13 @@ internal class PocketDevice(
         sceneChanged = true
     }
 
-    /** A thumb on the wheel, the wheel still moving from one, or a pinch: drawn every vsync. */
+    /** A thumb on the wheel, the wheel still moving from one, a pinch, or a ball in play: drawn every vsync. */
     val interacting: Boolean
-        get() = gesture.isDown || rock.isMoving || pullOut.isMoving
+        get() = gesture.isDown || rock.isMoving || pullOut.isMoving || brickRunning
+
+    private val brickRunning: Boolean
+        get() = nav.value.current.key == MenuKey.Brick && awake.value && !brickPaused &&
+            brick.phase == BrickGame.Phase.PLAYING
 
     // ---- whether there is anything new to draw ----------------------------------------------
 
@@ -327,6 +368,8 @@ internal class PocketDevice(
 
     fun onFrame(now: Long) {
         if (lastInputAt == 0L) lastInputAt = now
+        // A game in play is a hand on the device, wheel or no wheel: the backlight stays up.
+        if (brickRunning) lastInputAt = now
         // A song asked for that never arrived — a file gone, say — stops standing in for it.
         pendingPlay.value?.let { if (now - it.at > PENDING_PLAY_MS) pendingPlay.value = null }
         handle(gesture.poll(now), now)
@@ -367,6 +410,9 @@ internal class PocketDevice(
             viewModel.onSeek(scrubMs.value)
         }
 
+        stepBrick(dt)
+        browseByLean(now)
+
         // Scrolled lyrics go back to following the song once the wheel has been left a while.
         if (lyricsOpen.value && !lyricsFollowing.value && now - lyricTurnedAt > LYRICS_FOLLOW_AFTER_MS) {
             lyricsFollowing.value = true
@@ -379,6 +425,66 @@ internal class PocketDevice(
                 viewModel.onSeek(scrubMs.value)
             }
             bar.value = LcdScreen.Bar.PROGRESS
+        }
+    }
+
+    /**
+     * Brick's clock: steered by the lean as well as the wheel, stepped only while its page is up
+     * and it is not paused, and its frame handed to the screen. A finished game's score goes to
+     * the view model, which keeps it only if it is the best.
+     */
+    private fun stepBrick(dt: Float) {
+        val onBrick = nav.value.current.key == MenuKey.Brick && awake.value
+        if (!onBrick) {
+            // Away from the game it waits, and a ball in play waits for the centre on the way back.
+            if (brick.phase == BrickGame.Phase.PLAYING) brickPaused = true
+            if (brickFrame.value != null) brickFrame.value = null
+            return
+        }
+        val speed = BrickGame.leanSpeed(lean)
+        if (!brickPaused && brick.phase == BrickGame.Phase.PLAYING) {
+            if (speed != 0f) brick.movePaddle(speed * dt)
+            brick.step(dt)
+        } else if (brick.phase != BrickGame.Phase.PLAYING) {
+            // Waiting to serve, the paddle still answers a lean, with the ball on it.
+            if (speed != 0f) brick.movePaddle(speed * dt)
+        }
+        val over = brick.phase == BrickGame.Phase.OVER
+        if (over && !brickWasOver) {
+            viewModel.onBrickScore(brick.score)
+            if (brick.score > brickBest) brickBest = brick.score
+            press()
+        }
+        brickWasOver = over
+        val f = brick.frame()
+        brickFrame.value = BrickFrame(
+            paddleX = f.paddleX, ballX = f.ballX, ballY = f.ballY, bricks = f.bricks,
+            score = f.score, lives = f.lives, level = f.level, phase = f.phase,
+            best = maxOf(brickBest, f.score), paused = brickPaused
+        )
+    }
+
+    /**
+     * **Leaning through Cover Flow** (0.7.3): a slight lean drifts the covers the way it leans, and
+     * a firm one — past [FLICK_LEAN] — moves to the next cover, again every [FLICK_REPEAT_MS] for
+     * as long as it is held, like a key held down. The wheel stays the precise control; with a
+     * thumb on it the lean does nothing.
+     */
+    private fun browseByLean(now: Long) {
+        val inFlow = nav.value.current.key == MenuKey.CoverFlow
+        val active = inFlow && motionOn && awake.value && !gesture.isDown && !hold.value
+        // Quantised, so a sensor's murmur is not a new picture for the screen every reading.
+        val drift = if (active) kotlin.math.round(lean * DRIFT_COVERS * 100f) / 100f else 0f
+        if (drift != flowDrift.floatValue) flowDrift.floatValue = drift
+        if (!active || kotlin.math.abs(lean) < FLICK_LEAN || now - lastFlickAt < FLICK_REPEAT_MS) return
+        val count = library.albums.size
+        val moved = nav.value.clamp(count).move(if (lean > 0f) 1 else -1, count)
+        lastFlickAt = now
+        if (moved != nav.value) {
+            nav.value = moved
+            lastInputAt = now
+            backlight.value = true
+            step(now)
         }
     }
 
@@ -502,6 +608,11 @@ internal class PocketDevice(
         PocketMenus.rows(nav.value.current.key, library, trackTitles, hasNowPlaying, settings)
 
     private fun turn(turn: WheelGesture.Event.Turn, now: Long) {
+        if (nav.value.current.key == MenuKey.Brick) {
+            brick.movePaddle(turn.steps * BrickGame.PADDLE_PER_STEP)
+            step(now)
+            return
+        }
         val adjusting = nav.value.current.key
         if (adjusting is MenuKey.Adjust) {
             adjust(adjusting.control, turn.steps, now)
@@ -639,6 +750,11 @@ internal class PocketDevice(
                     nav.value = nav.value.back()
                     return
                 }
+                // In Brick the centre serves, resumes, or starts again.
+                if (key == MenuKey.Brick) {
+                    if (brickPaused) brickPaused = false else brick.press()
+                    return
+                }
                 if (onNowPlaying) {
                     // The classic's cycle: the scrubber, then the words, then back to the song.
                     barTouchedAt = now
@@ -735,6 +851,11 @@ internal class PocketDevice(
             }
             RowAction.Nothing -> Unit
             RowAction.FlatSound -> flatten()
+            RowAction.ShuffleAlbums -> {
+                val chosen = viewModel.shuffleAlbum(library.albums.map { it.id }) ?: return
+                pendingPlay.value = PendingPlay(chosen, 0, SystemClock.uptimeMillis())
+                showNowPlaying()
+            }
         }
     }
 
@@ -761,11 +882,19 @@ internal class PocketDevice(
             PocketSetting.CLICKER -> viewModel.onPocketClickerChanged(option == 0)
             PocketSetting.FINISH -> PocketFinish.entries.getOrNull(option)
                 ?.let { viewModel.onPocketFinishChanged(it.name) }
+            PocketSetting.MOTION -> viewModel.onPocketMotionChanged(option == 0)
             PocketSetting.REVERB -> {
                 if (option > 0) viewModel.engage(com.jawon.app.playback.RackChannel.SPACE)
                 viewModel.onReverbChange(option)
             }
         }
+    }
+
+    /** A track chosen in sideways Cover Flow: played, and Now Playing waiting when the phone comes upright. */
+    fun playFrom(albumId: String, index: Int) {
+        viewModel.playAlbumFrom(albumId, index)
+        pendingPlay.value = PendingPlay(albumId, index, SystemClock.uptimeMillis())
+        showNowPlaying()
     }
 
     /** Whatever starts a record goes to Now Playing, as the classic did; MENU comes back. */
@@ -816,6 +945,9 @@ internal class PocketDevice(
 
     // ---- feedback ---------------------------------------------------------------------------
 
+    /** A cover passing in sideways Cover Flow: the wheel's own click and tick. */
+    fun tick() = step(SystemClock.uptimeMillis())
+
     /** One step of the wheel: the click and the tick, together and never faster than a buzz. */
     private fun step(now: Long) {
         if (now - lastClickAt < CLICK_MIN_INTERVAL_MS) return
@@ -852,5 +984,11 @@ internal class PocketDevice(
         const val SEEK_RATE_FAST = 16f
         const val SCRUB_SEEK_MS = 150L
         const val SCRUB_STEPS_PER_TRACK = 96L
+
+        /** How far a full lean drifts Cover Flow, in covers. */
+        const val DRIFT_COVERS = 0.32f
+        /** A lean past this — about 20° — flicks to the next cover. */
+        const val FLICK_LEAN = 0.6f
+        const val FLICK_REPEAT_MS = 480L
     }
 }

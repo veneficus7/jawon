@@ -118,6 +118,7 @@ internal fun lcdScreenFor(
         }
         return LcdScreen.CoverFlow(covers, albumsInOrder[centre].title, albumsInOrder[centre].artist, back)
     }
+    if (key == MenuKey.Brick) return LcdScreen.Brick
     if (key is MenuKey.Adjust) {
         val control = key.control
         val position = settings.sound[control] ?: 0f

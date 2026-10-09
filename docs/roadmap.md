@@ -50,7 +50,7 @@ Fixed items are struck through; the rest are assigned below.
 | Type everywhere | The mono scale bottoms out at 9sp (`JawonType.Fine`) and the commonest size is 10sp — legible on a 6.9" flagship, small on a 6.1" phone and for older eyes | 0.7.2 |
 | Scan results | Rows say "COVER" but show no cover; a `Download` folder is offered as an album; one-track "albums" crowd out real records; Back skips the chooser and lands in the room | 0.7.3 |
 | CD import | A paragraph of jargon ("bus-powered") and a LOOK AGAIN button; no steps, no picture, no automatic detection of a drive being plugged in | 0.7.3 |
-| CD room | Closing a case pauses, and a paused record leaves no bar on the wall — resuming means finding and reopening the case | 0.7.3 |
+| CD room | ~~Closing a case pauses, and a paused record leaves no bar on the wall~~ — it plays on, its case proud, a real bar at the foot of the wall (0.7.3) | done |
 | CD room | The chrome's labels are 10sp dim mono under icons; only the 48dp icon is the target, not the label | 0.7.2 |
 | Deck | At the resting height only ~2 tracklist rows show; long titles truncate in the plate | 0.7.3 |
 | Edit album | "UNDERLIGHT" names a light the room no longer has (it is the glow pool now) | 0.7.2 |
@@ -154,9 +154,10 @@ suite) keep one structure and let a *skin* change the look.
 | Release | Contents |
 |---|---|
 | **0.7.2** | §S switching (engine, warm rooms, coalescing, a faster way between rooms) · §B brand system · §U Settings redesign · type scale up a step · the rest of the audit pass · "UNDERLIGHT" → glow · showroom captions |
-| **0.7.3** | Import: covers in the scan results, junk filtered (voice notes, `Download`, ringtones), singles grouped under the albums, Back to the chooser · CD import with steps, a drawing, and a drive detected the moment it is plugged in · a paused record keeps a bar on the wall · undo for removing an album · a taller deck at rest · the pocket player's Search menu · **first run, per room**: how to scratch, the showroom, the wheel · "Open with Jawon" for audio files and album **ZIPs** (Bandcamp downloads arrive as ZIPs; no scraping, there is no official API) |
-| **0.7.4** | **Optimisation**: the CD room draws only on change when nothing is moving (the pocket room's 0.60 → 0.32 core, applied to the wall); cold start to first frame measured and cut; a battery saver tier on low battery; memory under rapid switching; APK size |
-| **0.7.5** | **Convenience**: a home-screen **widget** (Glance — a small jewel case, play/pause, the record's own colour) · a **Quick Settings tile** · **app shortcuts** (Resume · A record from your shelves · Add music) · **Android Auto** (`MediaLibraryService`: shelves → albums → tracks) · **"Play ⟨album⟩ on Jawon"** by voice · **resume when headphones connect** (opt-in, and never starting on its own otherwise) · sleep timer "at the end of this record" |
+| **0.7.3** — shipped | **Jawon's mark** as the app icon, the themed icon, the notification and a splash that writes it · **the record plays on** at the foot of the wall (`NowPlayingBar`: the track, progress, swipe to change track, down to put it away) · the pocket player's sensors, §C below: **Tilt & Turn** (sideways Cover Flow, leaning through the covers), **Hold**, a backlight that answers the room, the phone's own battery in the title bar, **Shuffle Albums**, **Brick** · the activity held in portrait · a wall fault fixed on the way: a parked pool slot swallowing taps |
+| **0.7.4** | Import: covers in the scan results, junk filtered (voice notes, `Download`, ringtones), singles grouped under the albums, Back to the chooser · CD import with steps, a drawing, and a drive detected the moment it is plugged in · undo for removing an album · a taller deck at rest · the pocket player's Search menu · **first run, per room**: how to scratch, the showroom, the wheel, Tilt & Turn · "Open with Jawon" for audio files and album **ZIPs** (Bandcamp downloads arrive as ZIPs; no scraping, there is no official API) |
+| **0.7.5** | **Optimisation**: the CD room draws only on change when nothing is moving (the pocket room's 0.60 → 0.32 core, applied to the wall); cold start to first frame measured and cut; a battery saver tier on low battery; memory under rapid switching; APK size |
+| **0.7.6** | **Convenience**: a home-screen **widget** (Glance — a small jewel case, play/pause, the record's own colour) · a **Quick Settings tile** · **app shortcuts** (Resume · A record from your shelves · Add music) · **Android Auto** (`MediaLibraryService`: shelves → albums → tracks) · **"Play ⟨album⟩ on Jawon"** by voice · **resume when headphones connect** (opt-in, and never starting on its own otherwise) · sleep timer "at the end of this record" |
 
 ## 0.8 — vinyl (November 2026)
 
@@ -239,18 +240,27 @@ before 1.0 (still open in `docs/formats.md`).
 The owner asked for more of the phone's own sensors in the pocket player. In order of how much they
 add per unit of work:
 
-1. **Turn it sideways for Cover Flow** — the iPod nano's own gesture: rotate the phone and Cover
-   Flow fills the landscape screen, turned through by swiping, back upright to the menus.
-2. **Hold, from the proximity sensor** — the classic had a HOLD switch; in a pocket (proximity near,
-   screen-down) the wheel locks so a thigh cannot skip a track, and unlocks the moment it is out.
-3. **Shake for a record** — shaking picks a random album from your shelves and plays it (the album
-   stays the unit; it never shuffles tracks across albums).
-4. **Tilt Cover Flow** — a slight tilt drifts the covers, a firm one flicks to the next, with the
-   wheel still the precise control.
-5. **A backlight that answers the room** — the ambient light sensor dims the screen's backlight in
-   the dark and lifts it outdoors, as an LCD under a window would.
-6. **Lyrics that follow a tilt** when the wheel is not being turned.
-7. **Brick**, the classic's game, steered by tilting — an extra on its own menu.
+1. ~~**Turn it sideways for Cover Flow**~~ — **0.7.3** (`Sideways.kt`, `SidewaysCoverFlow.kt`).
+   The activity is held in portrait, so the turn is read from gravity and Cover Flow is drawn
+   turned to meet the phone: swiped through with a throw that settles on a cover, a tap on the
+   middle cover turns it over to its tracks, a tap on a track plays it, and back upright the player
+   is on Now Playing or on the cover the row was left at.
+2. ~~**Hold, from the proximity sensor**~~ — **0.7.3**: covered for 0.4s, the wheel takes touches
+   and does nothing, the backlight goes out and a lock shows in the title bar; uncovered, it lets go
+   at once.
+3. ~~**Shake for a record**~~ — shake became the way between rooms (0.7.2), so a random record is
+   **Shuffle Albums** on the main menu instead (0.7.3): a whole album, never the one already on.
+4. ~~**Tilt Cover Flow**~~ — **0.7.3**: the lean (`leanOf`, absolute, from gravity — not the
+   reflections' tilt, whose neutral follows the phone) drifts the covers, and past about 20° flicks
+   to the next, again every half second while held. Off with Tilt & Turn in the device's Settings.
+5. ~~**A backlight that answers the room**~~ — **0.7.3**: below about 60 lux the screen dims, up to
+   a third in the dark, along the log of the light.
+6. **Lyrics that follow a tilt** when the wheel is not being turned — not yet.
+7. ~~**Brick**~~ — **0.7.3**, Extras → Brick (`BrickGame`, pure and tested): the wheel moves the
+   paddle and so does leaning the phone; the best score is kept.
+
+And one the list did not have: **the battery in the title bar is the phone's own** (0.7.3), from
+the system's battery broadcast — no permission.
 
 ---
 
@@ -262,7 +272,8 @@ the policy is rewritten from this list once, before 1.0.
 | Added | What | Leaves the phone? |
 |---|---|---|
 | 0.7.1 | Motion sensor (pocket player's light) — **already in the policy** | no |
-| planned | Proximity, ambient light, accelerometer (shake) — pocket player | no |
+| 0.7.2 | Linear acceleration (shake to switch rooms), proximity (no shake in a pocket) | no |
+| 0.7.3 | Gravity (sideways Cover Flow, leaning through it, Brick's paddle), proximity (Hold), ambient light (the pocket screen's backlight), battery level (the title bar, a system broadcast — no permission) — all read on the phone while the room is on screen, none stored or sent | no |
 | planned | NFC (tags on physical records) | no |
 | planned | Bluetooth connection events (resume when headphones connect) | no |
 | planned | Scrobbling to ListenBrainz / Last.fm | yes — what played, to the user's own account |

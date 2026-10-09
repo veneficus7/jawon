@@ -91,6 +91,31 @@ class AppPreferences @Inject constructor(@param:ApplicationContext context: Cont
         _pocketClicker.value = on
     }
 
+    private val _pocketMotion = MutableStateFlow(prefs.getBoolean(KEY_POCKET_MOTION, true))
+
+    /**
+     * The pocket player's Tilt & Turn (0.7.3): turning the phone sideways for Cover Flow, and
+     * leaning it to browse the covers. On by default; the device's own Settings turn it off, for
+     * anyone who reads lying on their side.
+     */
+    val pocketMotion: StateFlow<Boolean> = _pocketMotion.asStateFlow()
+
+    fun setPocketMotion(on: Boolean) {
+        prefs.edit { putBoolean(KEY_POCKET_MOTION, on) }
+        _pocketMotion.value = on
+    }
+
+    private val _pocketBrickBest = MutableStateFlow(prefs.getInt(KEY_POCKET_BRICK_BEST, 0))
+
+    /** Brick's best score on this phone. */
+    val pocketBrickBest: StateFlow<Int> = _pocketBrickBest.asStateFlow()
+
+    fun setPocketBrickBest(score: Int) {
+        if (score <= _pocketBrickBest.value) return
+        prefs.edit { putInt(KEY_POCKET_BRICK_BEST, score) }
+        _pocketBrickBest.value = score
+    }
+
     private val _pocketFinish = MutableStateFlow(prefs.getString(KEY_POCKET_FINISH, null))
 
     /**
@@ -496,6 +521,8 @@ class AppPreferences @Inject constructor(@param:ApplicationContext context: Cont
         const val KEY_FORMAT = "format"
         const val KEY_POCKET_BACKLIGHT_MS = "pocket_backlight_ms"
         const val KEY_POCKET_CLICKER = "pocket_clicker"
+        const val KEY_POCKET_MOTION = "pocket_motion"
+        const val KEY_POCKET_BRICK_BEST = "pocket_brick_best"
         const val KEY_POCKET_FINISH = "pocket_finish"
         const val KEY_EQ_ENABLED = "equalizer_enabled"
         const val KEY_EQ_BANDS = "equalizer_bands"

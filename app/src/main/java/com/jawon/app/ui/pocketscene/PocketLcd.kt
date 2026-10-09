@@ -208,6 +208,11 @@ sealed interface LcdScreen {
         override val title: String get() = "Cover Flow"
     }
 
+    /** Brick — the game is drawn from a [BrickFrame] handed in each frame, not from this. */
+    data object Brick : LcdScreen {
+        override val title: String get() = "Brick"
+    }
+
     /**
      * What the strip along the bottom of Now Playing is showing. The classic's: the song's
      * progress normally, the volume as soon as the wheel turns, and the scrubber after one press
@@ -248,7 +253,14 @@ fun PocketLcd(
     slide: Float = SLIDE_FADE_S,
     /** Which page this is, and how deep — see `PocketNav.page`. Unchanged, nothing slides. */
     page: Any = Unit,
-    depth: Int = 0
+    depth: Int = 0,
+    /** Hold is on — see `PocketDevice.hold`: a lock in the title bar. */
+    held: Boolean = false,
+    /** The phone's own battery, 0..1, and whether it is charging — the title bar's battery is live. */
+    battery: Float = 0.75f,
+    charging: Boolean = false,
+    /** Brick's latest frame, while its page is up. */
+    brick: BrickFrame? = null
 ) {
     val density = LocalDensity.current
     fun px(v: Int): Dp = with(density) { v.toDp() }
@@ -288,6 +300,7 @@ fun PocketLcd(
                         is LcdScreen.Menu -> MenuBody(s, slide)
                         is LcdScreen.NowPlaying -> NowPlayingBody(s)
                         is LcdScreen.Slider -> SliderBody(s)
+                        is LcdScreen.Brick -> BrickBody(brick)
                         is LcdScreen.CoverFlow -> Unit
                     }
                 }
@@ -302,7 +315,9 @@ fun PocketLcd(
             label = "titleBar"
         )
         if (bar > 0f) {
-            Column(modifier = Modifier.graphicsLayer { alpha = bar }) { TitleBar(screen.title, playing) }
+            Column(modifier = Modifier.graphicsLayer { alpha = bar }) {
+                TitleBar(screen.title, playing, held, battery, charging)
+            }
         }
         LcdGlass()
         if (unlit > 0f) {
@@ -369,7 +384,7 @@ private val BacklightTint = Color(0xFFEDF1F7)
 const val BACKLIGHT_OFF_DIM = 0.8f
 
 @Composable
-private fun TitleBar(title: String, playing: Boolean) {
+private fun TitleBar(title: String, playing: Boolean, held: Boolean, battery: Float, charging: Boolean) {
     val density = LocalDensity.current
     fun px(v: Int): Dp = with(density) { v.toDp() }
     Box(
@@ -378,7 +393,17 @@ private fun TitleBar(title: String, playing: Boolean) {
             .height(px(TITLE_PX))
             .background(Brush.verticalGradient(listOf(TitleTop, TitleBottom)))
     ) {
-        if (playing) PlayGlyph(Modifier.align(Alignment.CenterStart).padding(start = px(18)))
+        // Where the classic put them: the lock first, when Hold is on, then the play glyph.
+        Row(
+            modifier = Modifier.align(Alignment.CenterStart).padding(start = px(16)),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            if (held) {
+                LockGlyph(Modifier)
+                Spacer(Modifier.width(px(10)))
+            }
+            if (playing) PlayGlyph(Modifier)
+        }
         Text(
             text = title,
             fontFamily = InterFamily,
@@ -391,7 +416,7 @@ private fun TitleBar(title: String, playing: Boolean) {
                 .align(Alignment.Center)
                 .padding(horizontal = px(84))
         )
-        BatteryGlyph(Modifier.align(Alignment.CenterEnd).padding(end = px(16)))
+        BatteryGlyph(battery, charging, Modifier.align(Alignment.CenterEnd).padding(end = px(16)))
     }
     Box(
         modifier = Modifier
@@ -1030,9 +1055,40 @@ private fun PlayGlyph(modifier: Modifier) {
     }
 }
 
-/** A battery, three-quarters full — not live yet; the phone's own level can drive it later. */
+/**
+ * A padlock: Hold is on. Drawn, like every glyph on this screen, so it is the screen's ink and
+ * weight rather than an icon font's.
+ */
 @Composable
-private fun BatteryGlyph(modifier: Modifier) {
+private fun LockGlyph(modifier: Modifier) {
+    val density = LocalDensity.current
+    val w = with(density) { 16.toDp() }
+    val h = with(density) { 21.toDp() }
+    Canvas(modifier = modifier.size(w, h)) {
+        val bodyTop = size.height * 0.42f
+        drawRoundRect(
+            color = LcdInk,
+            topLeft = Offset(0f, bodyTop),
+            size = Size(size.width, size.height - bodyTop),
+            cornerRadius = CornerRadius(2.5f, 2.5f)
+        )
+        val shackle = Path().apply {
+            val inset = size.width * 0.2f
+            moveTo(inset, bodyTop)
+            lineTo(inset, size.height * 0.28f)
+            cubicTo(inset, -size.height * 0.08f, size.width - inset, -size.height * 0.08f, size.width - inset, size.height * 0.28f)
+            lineTo(size.width - inset, bodyTop)
+        }
+        drawPath(shackle, LcdInk, style = Stroke(width = size.width * 0.16f))
+    }
+}
+
+/**
+ * The battery — **the phone's own** since 0.7.3: the device is the phone, so its battery is the
+ * phone's, and it fills green, amber below a fifth, with a bolt while it charges.
+ */
+@Composable
+private fun BatteryGlyph(level: Float, charging: Boolean, modifier: Modifier) {
     val density = LocalDensity.current
     val w = with(density) { 40.toDp() }
     val h = with(density) { 20.toDp() }
@@ -1044,10 +1100,11 @@ private fun BatteryGlyph(modifier: Modifier) {
             cornerRadius = CornerRadius(3f, 3f),
             style = Stroke(width = 2.5f)
         )
+        val fill = level.coerceIn(0f, 1f)
         drawRoundRect(
-            color = Color(0xFF3E9A55),
+            color = if (fill < 0.2f && !charging) Color(0xFFD9822B) else Color(0xFF3E9A55),
             topLeft = Offset(4f, 4f),
-            size = Size((body.width - 8f) * 0.75f, body.height - 8f),
+            size = Size(((body.width - 8f) * fill).coerceAtLeast(2f), body.height - 8f),
             cornerRadius = CornerRadius(1.5f, 1.5f)
         )
         drawRect(
@@ -1055,5 +1112,144 @@ private fun BatteryGlyph(modifier: Modifier) {
             topLeft = Offset(body.width + 1f, size.height * 0.3f),
             size = Size(size.width * 0.08f, size.height * 0.4f)
         )
+        if (charging) {
+            val cx = body.width / 2f
+            val bolt = Path().apply {
+                moveTo(cx + body.width * 0.06f, size.height * 0.12f)
+                lineTo(cx - body.width * 0.12f, size.height * 0.56f)
+                lineTo(cx + body.width * 0.01f, size.height * 0.56f)
+                lineTo(cx - body.width * 0.06f, size.height * 0.88f)
+                lineTo(cx + body.width * 0.12f, size.height * 0.44f)
+                lineTo(cx - body.width * 0.01f, size.height * 0.44f)
+                close()
+            }
+            drawPath(bolt, LcdInk)
+        }
+    }
+}
+
+/** Brick's bricks, row by row from the top — the classic's rainbow, in the screen's own muted inks. */
+private val BrickRows = listOf(
+    Color(0xFFD65A4A),
+    Color(0xFFE08A3C),
+    Color(0xFFE2BE4A),
+    Color(0xFF5DA86E),
+    Color(0xFF4FA597),
+    Color(0xFF4A7FB5)
+)
+
+/**
+ * **Brick**, drawn: the wall, the paddle and the ball on the screen's white, the score along the
+ * top, and a line in the middle when the game is waiting for the centre. Everything is placed in
+ * the game's own field units ([BrickGame.FIELD_W] wide) and scaled to whatever the canvas is.
+ */
+@Composable
+private fun BrickBody(frame: BrickFrame?) {
+    val density = LocalDensity.current
+    fun px(v: Int): Dp = with(density) { v.toDp() }
+    if (frame == null) return
+    Box(modifier = Modifier.fillMaxSize()) {
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            val k = size.width / BrickGame.FIELD_W
+            val bw = (BrickGame.FIELD_W - 2 * BrickGame.SIDE_MARGIN - (BrickGame.COLS - 1) * BrickGame.GAP) /
+                BrickGame.COLS
+            for (row in 0 until BrickGame.ROWS) {
+                val ink = BrickRows[row % BrickRows.size]
+                for (col in 0 until BrickGame.COLS) {
+                    if (!frame.bricks[row * BrickGame.COLS + col]) continue
+                    val x = BrickGame.SIDE_MARGIN + col * (bw + BrickGame.GAP)
+                    val y = BrickGame.WALL_TOP + row * (BrickGame.BRICK_H + BrickGame.GAP)
+                    drawRoundRect(
+                        color = ink,
+                        topLeft = Offset(x * k, y * k),
+                        size = Size(bw * k, BrickGame.BRICK_H * k),
+                        cornerRadius = CornerRadius(3f * k, 3f * k)
+                    )
+                    // A lighter lip along the top: a brick, not a swatch.
+                    drawRect(
+                        color = Color.White.copy(alpha = 0.28f),
+                        topLeft = Offset((x + 2f) * k, (y + 2f) * k),
+                        size = Size((bw - 4f) * k, 3f * k)
+                    )
+                }
+            }
+            val paddleTop = (BrickGame.FIELD_H - BrickGame.PADDLE_FROM_BOTTOM - BrickGame.PADDLE_H / 2f)
+            drawRoundRect(
+                color = LcdInk,
+                topLeft = Offset((frame.paddleX - BrickGame.PADDLE_W / 2f) * k, paddleTop * k),
+                size = Size(BrickGame.PADDLE_W * k, BrickGame.PADDLE_H * k),
+                cornerRadius = CornerRadius(6f * k, 6f * k)
+            )
+            if (frame.phase != BrickGame.Phase.OVER) {
+                drawCircle(LcdInk, radius = BrickGame.BALL_R * k, center = Offset(frame.ballX * k, frame.ballY * k))
+            }
+        }
+        // The line along the top: score, best, and a dot a ball left.
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = px(18), vertical = px(8)),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "Score ${frame.score}",
+                fontFamily = InterFamily,
+                fontWeight = FontWeight.SemiBold,
+                fontSize = lcdSp(21),
+                color = LcdInk
+            )
+            Spacer(Modifier.weight(1f))
+            Text(
+                text = "Best ${frame.best}",
+                fontFamily = InterFamily,
+                fontWeight = FontWeight.Medium,
+                fontSize = lcdSp(19),
+                color = LcdDim
+            )
+            Spacer(Modifier.weight(1f))
+            Text(
+                text = "Level ${frame.level}",
+                fontFamily = InterFamily,
+                fontWeight = FontWeight.Medium,
+                fontSize = lcdSp(19),
+                color = LcdDim
+            )
+            Spacer(Modifier.width(px(14)))
+            repeat(frame.lives) {
+                Canvas(modifier = Modifier.padding(start = px(4)).size(px(12), px(12))) {
+                    drawCircle(LcdInk)
+                }
+            }
+        }
+        val note = when {
+            frame.phase == BrickGame.Phase.OVER -> "Game Over"
+            frame.paused -> "Paused"
+            frame.phase == BrickGame.Phase.READY && frame.score == 0 && frame.level == 1 -> "Brick"
+            frame.phase == BrickGame.Phase.READY -> if (frame.bricks.all { it }) "Level ${frame.level}" else ""
+            else -> ""
+        }
+        if (note.isNotEmpty()) {
+            Column(
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .padding(top = px(150)),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(
+                    text = note,
+                    fontFamily = InterFamily,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = lcdSp(30),
+                    color = LcdInk
+                )
+                Text(
+                    text = if (frame.phase == BrickGame.Phase.OVER) "Press the centre to play again" else "Press the centre",
+                    fontFamily = InterFamily,
+                    fontWeight = FontWeight.Medium,
+                    fontSize = lcdSp(20),
+                    color = LcdDim
+                )
+            }
+        }
     }
 }

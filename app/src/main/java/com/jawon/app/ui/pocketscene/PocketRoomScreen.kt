@@ -66,6 +66,7 @@ import io.github.sceneview.rememberRenderer
 import io.github.sceneview.rememberView
 import io.github.sceneview.rememberViewNodeManager
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlin.math.max
 
@@ -92,6 +93,25 @@ private const val SLIDE_TICK_MS = 50L
 /** Covers drawn either side of the middle one in Cover Flow, and how many are kept decoded. */
 internal const val COVER_WINDOW = 4
 private const val COVER_CACHE_MAX = 40
+
+/** How large sideways Cover Flow decodes its covers, and how many it keeps. */
+private const val SIDEWAYS_COVER_PX = 720
+private const val SIDEWAYS_CACHE_MAX = 24
+
+/** Proximity nearer than this, held for [HOLD_ENGAGE_MS], is Hold. */
+private const val HOLD_NEAR_CM = 3f
+private const val HOLD_ENGAGE_MS = 400L
+
+/**
+ * How far the room's light dims the screen: nothing from about 60 lux up — an ordinary lit room —
+ * down to [ROOM_DIM_MAX] in the dark, along the log of the light, which is how eyes measure it.
+ */
+private const val ROOM_DIM_MAX = 0.32f
+
+internal fun roomDimFor(lux: Float): Float {
+    val l = lux.coerceIn(1f, 60f)
+    return ROOM_DIM_MAX * (1f - kotlin.math.ln(l) / kotlin.math.ln(60f))
+}
 
 /** The face: the phone as the player — see `PocketFace` and `build_pocket_face()`. */
 private const val POCKET_FACE_ASSET = "models/pocket_face.glb"
@@ -140,6 +160,7 @@ fun PocketRoomScreen(
     viewModel: WallSceneViewModel = hiltViewModel()
 ) {
     val context = LocalContext.current
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
     val engine = rememberRoomEngine() // not SceneView's: see RoomEngine, its teardown leaked the GL context
     val modelLoader = rememberModelLoader(engine)
     val materialLoader = rememberMaterialLoader(engine)
@@ -193,6 +214,8 @@ fun PocketRoomScreen(
     val backlightMs by viewModel.pocketBacklightMs.collectAsStateWithLifecycle()
     val clickerOn by viewModel.pocketClicker.collectAsStateWithLifecycle()
     val finishName by viewModel.pocketFinish.collectAsStateWithLifecycle()
+    val motionOn by viewModel.pocketMotion.collectAsStateWithLifecycle()
+    val brickBest by viewModel.pocketBrickBest.collectAsStateWithLifecycle()
     val finish = PocketFinish.fromName(finishName)
     val songCount by viewModel.trackCount.collectAsStateWithLifecycle()
     val filter by viewModel.filterPosition.collectAsStateWithLifecycle()
@@ -219,6 +242,8 @@ fun PocketRoomScreen(
     device.backlightMs = backlightMs
     device.clickerOn = clickerOn
     device.finish = finish
+    device.motionOn = motionOn
+    device.brickBest = maxOf(device.brickBest, brickBest)
     device.settings = PocketSettings(
         eqOptions = listOf("Off") + eqPresets,
         // Off when the equaliser is; otherwise the preset chosen here this session, and
@@ -247,7 +272,8 @@ fun PocketRoomScreen(
         ),
         reverbOptions = PocketSound.reverbOptions(com.jawon.app.data.playback.NativeEffects.REVERB_PRESETS),
         reverb = reverb,
-        finish = finish.ordinal
+        finish = finish.ordinal,
+        motion = motionOn
     )
     device.deck = deck
     device.positionMs = positionMs
@@ -429,6 +455,33 @@ fun PocketRoomScreen(
     // The screen's own composition, on LcdPanel's hardware-drawn surface. Set once: everything it
     // shows is read from state inside it, and any change beneath the panel's host redraws the
     // texture (LcdPanel.onDescendantInvalidated) — which is what trap 33 needed all along.
+    // The phone's battery, for the title bar's — the device is the phone, so its battery is the phone's.
+    val battery = remember { mutableFloatStateOf(0.75f) }
+    val charging = remember { mutableStateOf(false) }
+    LifecycleResumeEffect(context, covered) {
+        val receiver = object : android.content.BroadcastReceiver() {
+            override fun onReceive(c: android.content.Context?, intent: android.content.Intent?) {
+                intent ?: return
+                val level = intent.getIntExtra(android.os.BatteryManager.EXTRA_LEVEL, -1)
+                val scale = intent.getIntExtra(android.os.BatteryManager.EXTRA_SCALE, -1)
+                if (level >= 0 && scale > 0) battery.floatValue = level / scale.toFloat()
+                val status = intent.getIntExtra(android.os.BatteryManager.EXTRA_STATUS, -1)
+                charging.value = status == android.os.BatteryManager.BATTERY_STATUS_CHARGING ||
+                    status == android.os.BatteryManager.BATTERY_STATUS_FULL
+            }
+        }
+        // A sticky broadcast: registering hands back the current reading at once.
+        if (!covered) {
+            androidx.core.content.ContextCompat.registerReceiver(
+                context,
+                receiver,
+                android.content.IntentFilter(android.content.Intent.ACTION_BATTERY_CHANGED),
+                androidx.core.content.ContextCompat.RECEIVER_NOT_EXPORTED
+            )?.let { receiver.onReceive(context, it) }
+        }
+        onPauseOrDispose { if (!covered) runCatching { context.unregisterReceiver(receiver) } }
+    }
+
     val lcdPanel = remember(engine) { LcdPanel(context, engine, LCD_PX_W, LCD_PX_H, LCD_SUPERSAMPLE) }
     DisposableEffect(lcdPanel, viewNodeManager) {
         viewNodeManager.addView(lcdPanel.host)
@@ -445,12 +498,17 @@ fun PocketRoomScreen(
                 screen = lcd.value,
                 playing = device.playingNow.value,
                 awake = device.awake.value,
-                unlit = unlit,
-                flow = flowAnim.value,
+                // The backlight's own fade, or the room's light taking the edge off it — whichever is darker.
+                unlit = maxOf(unlit, device.roomDim.floatValue),
+                flow = flowAnim.value + device.flowDrift.floatValue,
                 flip = flipAnim.value,
                 slide = slideClock.floatValue,
                 page = lcdPage.value.path,
-                depth = lcdPage.value.depth
+                depth = lcdPage.value.depth,
+                held = device.hold.value,
+                battery = battery.floatValue,
+                charging = charging.value,
+                brick = device.brickFrame.value
             )
         }
     }
@@ -465,6 +523,14 @@ fun PocketRoomScreen(
     // mirror's do. Only the change from how it is held counts (TiltFilter). Listening only while
     // the room is on screen: a sensor left running in the background is battery for nothing.
     val tilt = remember { TiltFilter() }
+    // Turned on its side: Cover Flow fills the screen (SidewaysCoverFlow). Read from gravity, since
+    // the activity itself never turns.
+    val sideways = remember { SidewaysDetector() }
+    val holding = remember { mutableStateOf(Holding.UPRIGHT) }
+    // Back while sideways puts Cover Flow away until the phone has been upright again.
+    val sidewaysDismissed = remember { mutableStateOf(false) }
+    val currentMotion = androidx.compose.runtime.rememberUpdatedState(motionOn)
+    val currentKeyState = androidx.compose.runtime.rememberUpdatedState(currentKey)
     // Keyed on `covered` too (0.7.2): a room parked off the stage, or under a panel, listens to nothing.
     LifecycleResumeEffect(context, covered) {
         val sensors = context.getSystemService(SensorManager::class.java)
@@ -482,17 +548,104 @@ fun PocketRoomScreen(
 
             override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) = Unit
         }
+        // **Gravity**, for which way the phone is held (sideways Cover Flow) and how far it leans
+        // (Brick's paddle, Cover Flow's drift). The platform's own gravity sensor where there is
+        // one; otherwise the accelerometer, low-passed down to the gravity in it.
+        val gravitySensor = sensors?.getDefaultSensor(Sensor.TYPE_GRAVITY)
+        val accelerometer = if (gravitySensor == null) sensors?.getDefaultSensor(Sensor.TYPE_ACCELEROMETER) else null
+        val gravity = FloatArray(3)
+        var haveGravity = false
+        val gravityListener = object : SensorEventListener {
+            override fun onSensorChanged(event: SensorEvent) {
+                if (event.sensor.type == Sensor.TYPE_ACCELEROMETER && haveGravity) {
+                    for (i in 0..2) gravity[i] += (event.values[i] - gravity[i]) * 0.12f
+                } else {
+                    for (i in 0..2) gravity[i] = event.values[i]
+                }
+                haveGravity = true
+                device.lean = leanOf(gravity[0], gravity[1], gravity[2])
+                val now = SystemClock.uptimeMillis()
+                val seen = sideways.update(gravity[0], gravity[1], gravity[2], now)
+                // Not in Brick, whose paddle is steered by the very lean that would turn it; not
+                // with Tilt & Turn off; not with the player switched off or held.
+                val allowed = currentMotion.value && currentKeyState.value != MenuKey.Brick &&
+                    device.awake.value && !device.hold.value
+                val shown = if (allowed) seen else Holding.UPRIGHT
+                if (seen == Holding.UPRIGHT) sidewaysDismissed.value = false
+                if (holding.value != shown) holding.value = shown
+            }
+
+            override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) = Unit
+        }
+
+        // **Hold**, from the proximity sensor: covered for a moment — a pocket, a face-down phone
+        // — and the wheel stops answering; uncovered, it answers at once.
+        val proximity = sensors?.getDefaultSensor(Sensor.TYPE_PROXIMITY)
+        val holdHandler = android.os.Handler(android.os.Looper.getMainLooper())
+        val engageHold = Runnable {
+            device.hold.value = true
+            device.backlight.value = false
+        }
+        val proximityListener = object : SensorEventListener {
+            override fun onSensorChanged(event: SensorEvent) {
+                val range = event.sensor.maximumRange
+                val near = event.values[0] < minOf(range, HOLD_NEAR_CM)
+                holdHandler.removeCallbacks(engageHold)
+                if (near) {
+                    holdHandler.postDelayed(engageHold, HOLD_ENGAGE_MS)
+                } else if (device.hold.value) {
+                    device.hold.value = false
+                }
+            }
+
+            override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) = Unit
+        }
+
+        // **A backlight that answers the room**, from the light sensor: in the dark the screen
+        // dims a little, eased so a passing shadow does not flicker it.
+        val light = sensors?.getDefaultSensor(Sensor.TYPE_LIGHT)
+        var dim = device.roomDim.floatValue
+        val lightListener = object : SensorEventListener {
+            override fun onSensorChanged(event: SensorEvent) {
+                val target = roomDimFor(event.values[0])
+                dim += (target - dim) * 0.25f
+                val shown = kotlin.math.round(dim * 100f) / 100f
+                if (shown != device.roomDim.floatValue) device.roomDim.floatValue = shown
+            }
+
+            override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) = Unit
+        }
+
         tilt.reset()
+        sideways.reset()
+        holding.value = Holding.UPRIGHT
         // Back from the background the surface is new and holds nothing: draw through a warm-up
         // again rather than waiting on a change that may not come for a second.
         drawState[ENTERED_AT] = 0L
-        if (!covered && sensors != null && rotation != null) {
-            sensors.registerListener(listener, rotation, SensorManager.SENSOR_DELAY_GAME)
+        if (!covered && sensors != null) {
+            rotation?.let { sensors.registerListener(listener, it, SensorManager.SENSOR_DELAY_GAME) }
+            (gravitySensor ?: accelerometer)?.let { sensors.registerListener(gravityListener, it, SensorManager.SENSOR_DELAY_GAME) }
+            proximity?.let { sensors.registerListener(proximityListener, it, SensorManager.SENSOR_DELAY_NORMAL) }
+            light?.let { sensors.registerListener(lightListener, it, SensorManager.SENSOR_DELAY_NORMAL) }
         }
-        onPauseOrDispose { sensors?.unregisterListener(listener) }
+        onPauseOrDispose {
+            sensors?.unregisterListener(listener)
+            sensors?.unregisterListener(gravityListener)
+            sensors?.unregisterListener(proximityListener)
+            sensors?.unregisterListener(lightListener)
+            holdHandler.removeCallbacks(engageHold)
+            // Out of the room nothing is held, and no lean is left steering anything.
+            device.hold.value = false
+            device.lean = 0f
+            holding.value = Holding.UPRIGHT
+        }
     }
     device.tilt = tilt
     device.indirectLight = environment.indirectLight
+
+    val sidewaysUp = holding.value != Holding.UPRIGHT && !sidewaysDismissed.value && !covered &&
+        albumsInOrder.isNotEmpty()
+    BackHandler(enabled = sidewaysUp) { sidewaysDismissed.value = true }
 
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
         // **Life size, computed from the scene's own height rather than chosen by eye.**
@@ -520,8 +673,8 @@ fun PocketRoomScreen(
             modifier = Modifier.fillMaxSize(),
             engine = engine,
             modelLoader = modelLoader,
-            // Under a panel: park the loop, and leave the last frame for the panel to slide over.
-            isRendering = !covered,
+            // Under a panel, or behind sideways Cover Flow: park the loop, and leave the last frame.
+            isRendering = !covered && !sidewaysUp,
             materialLoader = materialLoader,
             environmentLoader = environmentLoader,
             view = filamentView,
@@ -651,6 +804,71 @@ fun PocketRoomScreen(
         // No chrome over the room: the device *is* the interface, and the phone app's Settings
         // are on its own menu (Settings → All Settings). The debug line and a SETTINGS link used
         // to sit under the device and were the first thing that said "screen", not "object".
+
+        // **Sideways**: Cover Flow over the whole screen, turned to meet the phone.
+        androidx.compose.animation.AnimatedVisibility(
+            visible = sidewaysUp,
+            enter = androidx.compose.animation.fadeIn(tween(180)),
+            exit = androidx.compose.animation.fadeOut(tween(160))
+        ) {
+            // Where it opens: the cover the player was showing in Cover Flow, else the record on,
+            // else the first.
+            val startAt = remember {
+                val onFlow = currentKey == MenuKey.CoverFlow || currentKey is MenuKey.Flipped
+                when {
+                    onFlow -> flowCentre
+                    nowPlayingAlbumId != null -> albumsInOrder.indexOfFirst { it.id == nowPlayingAlbumId }.coerceAtLeast(0)
+                    else -> 0
+                }
+            }
+            val sideCentre = remember { mutableIntStateOf(startAt) }
+            // Covers decoded large enough for the whole screen, kept near where the row is.
+            val bigCovers = viewModel.pocketBigCoverArt
+            LaunchedEffect(sideCentre.intValue, albumsInOrder) {
+                val c = sideCentre.intValue
+                val from = (c - 7).coerceAtLeast(0)
+                val to = (c + 7).coerceAtMost(albumsInOrder.lastIndex)
+                for (i in (from..to).sortedBy { kotlin.math.abs(it - c) }) {
+                    val album = albumsInOrder[i]
+                    if (album.id in bigCovers) continue
+                    bigCovers[album.id] = withContext(Dispatchers.IO) {
+                        album.coverPath?.let { CaseArt.loadCover(it, maxPx = SIDEWAYS_COVER_PX)?.asImageBitmap() }
+                    }
+                }
+                if (bigCovers.size > SIDEWAYS_CACHE_MAX) {
+                    val keep = (from..to).map { albumsInOrder[it].id }.toSet()
+                    bigCovers.keys.filter { it !in keep }.take(bigCovers.size - SIDEWAYS_CACHE_MAX).forEach { bigCovers.remove(it) }
+                }
+            }
+            // Turned back upright, the player's own Cover Flow is left on the record the row was on.
+            androidx.compose.runtime.DisposableEffect(Unit) {
+                onDispose {
+                    val key = device.nav.value.current.key
+                    if (key == MenuKey.CoverFlow) {
+                        device.nav.value = device.nav.value.clamp(albumsInOrder.size)
+                            .move(sideCentre.intValue - device.nav.value.current.selected, albumsInOrder.size)
+                    }
+                }
+            }
+            SidewaysCoverFlow(
+                holding = if (holding.value == Holding.UPRIGHT) Holding.LEFT else holding.value,
+                albums = albumsInOrder,
+                startAt = startAt,
+                // The large cover once it has been decoded, the player's own until then.
+                art = { id -> bigCovers[id] ?: coverArt[id] },
+                trackTitles = trackTitles,
+                playingAlbumId = nowPlayingAlbumId,
+                playingIndex = deck.currentTrackIndex,
+                onCentre = { sideCentre.intValue = it },
+                onOpen = { albumId ->
+                    if (albumId !in trackTitles) {
+                        scope.launch { trackTitles[albumId] = viewModel.trackTitles(albumId) }
+                    }
+                },
+                onPlay = { albumId, index -> device.playFrom(albumId, index) },
+                onTick = { device.tick() }
+            )
+        }
 
         // The face going dark as it is pinched away - composed only while it is (trap 14).
         if (device.pulling.value) {

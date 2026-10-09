@@ -42,11 +42,11 @@ import kotlin.math.sign
 class LcdCover(val albumId: String, val index: Int, val art: ImageBitmap?)
 
 /** Cover size and placement, in LCD pixels. */
-private const val COVER_PX = 250f
-private const val COVER_TOP_PX = 62f
+internal const val COVER_PX = 250f
+internal const val COVER_TOP_PX = 62f
 /** How far the first cover either side sits from the middle, and how tight the rest stack. */
-private const val SIDE_OFFSET_PX = 188f
-private const val STACK_PX = 54f
+internal const val SIDE_OFFSET_PX = 188f
+internal const val STACK_PX = 54f
 /** How far a side cover is turned to face the middle, and how far it is pushed back. */
 private const val SIDE_ANGLE_DEG = 68f
 private const val SIDE_DEPTH_PX = 130f
@@ -210,7 +210,7 @@ private fun TrackBack(tracks: LcdScreen.Menu) {
  * The drawing itself, with its scratch objects held so nothing is allocated per frame — this
  * runs every frame the covers are moving.
  */
-private class CoverFlowTools {
+internal class CoverFlowTools {
     private val camera = Camera().apply { setLocation(0f, 0f, -14f) }
     private val matrix = Matrix()
     private val bitmapPaint = Paint(Paint.FILTER_BITMAP_FLAG or Paint.ANTI_ALIAS_FLAG)

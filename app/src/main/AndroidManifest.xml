@@ -100,11 +100,20 @@
             other apps; it is the setting Google recommends for measuring a shipped build.
         -->
         <profileable android:shell="true" />
+        <!--
+            Portrait (0.7.3). The rooms are built for a phone held upright, and with nothing
+            holding it a phone with auto-rotate on rebuilt the whole activity on a turn — every
+            room, its engine and its art, for a layout no room was drawn for. The one thing a
+            turn should do, the pocket player does itself: it reads the turn from gravity and
+            draws sideways Cover Flow to meet it (SidewaysCoverFlow).
+        -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
+            android:screenOrientation="portrait"
             android:theme="@style/Theme.Jawon"
-            android:windowSoftInputMode="adjustResize">
+            android:windowSoftInputMode="adjustResize"
+            tools:ignore="LockedOrientationActivity">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
 

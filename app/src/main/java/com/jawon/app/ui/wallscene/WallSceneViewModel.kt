@@ -112,6 +112,9 @@ class WallSceneViewModel @Inject constructor(
     /** The pocket player's decoded covers, by album id — kept across rebuilds for the same reason. */
     internal val pocketCoverArt = androidx.compose.runtime.mutableStateMapOf<String, androidx.compose.ui.graphics.ImageBitmap?>()
 
+    /** The same, decoded large for sideways Cover Flow, which fills the screen (0.7.3). */
+    internal val pocketBigCoverArt = androidx.compose.runtime.mutableStateMapOf<String, androidx.compose.ui.graphics.ImageBitmap?>()
+
 
 
     /** What colour the room is lit in. The scene reads this and writes it onto the lights. */
@@ -875,6 +878,29 @@ class WallSceneViewModel @Inject constructor(
     val pocketClicker: StateFlow<Boolean> = preferences.pocketClicker
 
     fun onPocketClickerChanged(on: Boolean) = preferences.setPocketClicker(on)
+
+    /** Tilt & Turn — see `AppPreferences.pocketMotion`. */
+    val pocketMotion: StateFlow<Boolean> = preferences.pocketMotion
+
+    fun onPocketMotionChanged(on: Boolean) = preferences.setPocketMotion(on)
+
+    /** Brick's best score; written only when beaten. */
+    val pocketBrickBest: StateFlow<Int> = preferences.pocketBrickBest
+
+    fun onBrickScore(score: Int) = preferences.setPocketBrickBest(score)
+
+    /**
+     * Shuffle Albums: a whole record at random, from its first track — never the one already on,
+     * when there is another. The album stays the unit (PLAN §2); this only chooses which one.
+     * Returns the album chosen, so the pocket player can show it straight away.
+     */
+    fun shuffleAlbum(albumIds: List<String>): String? {
+        if (albumIds.isEmpty()) return null
+        val choices = albumIds.filter { it != _nowPlayingAlbumId.value }.ifEmpty { albumIds }
+        val chosen = choices.random()
+        playAlbumFrom(chosen, 0)
+        return chosen
+    }
 
     /** The pocket player's colour, by name — see `PocketFinish`. */
     val pocketFinish: StateFlow<String?> = preferences.pocketFinish

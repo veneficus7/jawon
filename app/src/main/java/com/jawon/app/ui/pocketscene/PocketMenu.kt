@@ -9,7 +9,8 @@ package com.jawon.app.ui.pocketscene
  *
  * The shape is the classic's, cut to what Jawon is. There is no Songs list across the whole
  * library and no shuffle of everything, because the album is the unit here (PLAN §2) — a song
- * list is only ever the inside of one album. **Shelves are the playlists**, in the order they
+ * list is only ever the inside of one album, and the classic's Shuffle Songs is **Shuffle
+ * Albums**: a whole record, chosen at random. **Shelves are the playlists**, in the order they
  * are arranged, so the curation done on the wall survives in a pocket.
  */
 sealed interface MenuKey {
@@ -34,6 +35,10 @@ sealed interface MenuKey {
     data object Sound : MenuKey
     /** One effect's slider, which the wheel turns. */
     data class Adjust(val control: SoundControl) : MenuKey
+    /** The classic's Extras: here, its game. */
+    data object Extras : MenuKey
+    /** Brick — see [BrickGame]. The wheel moves the paddle; so does leaning the phone. */
+    data object Brick : MenuKey
 }
 
 /** The settings the device's own menu can change. */
@@ -43,7 +48,9 @@ enum class PocketSetting(val title: String) {
     BACKLIGHT("Backlight"),
     CLICKER("Clicker"),
     REVERB("Reverb"),
-    FINISH("Colour")
+    FINISH("Colour"),
+    /** Turning the phone sideways for Cover Flow, and leaning it to browse the covers. */
+    MOTION("Tilt & Turn")
 }
 
 /** What choosing a row does. */
@@ -62,6 +69,8 @@ sealed interface RowAction {
     data object Nothing : RowAction
     /** Every effect back to where it does nothing. */
     data object FlatSound : RowAction
+    /** A whole record, chosen at random — the classic's Shuffle Songs, with the album as the unit. */
+    data object ShuffleAlbums : RowAction
 }
 
 data class MenuRow(
@@ -101,7 +110,9 @@ data class PocketSettings(
     val reverbOptions: List<String> = listOf("Off"),
     val reverb: Int = 0,
     /** Which of `PocketFinish`'s colours the device is — which one you bought. */
-    val finish: Int = 0
+    val finish: Int = 0,
+    /** Tilt & Turn: sideways Cover Flow, and leaning through the covers. */
+    val motion: Boolean = true
 ) {
     companion object {
         /** Sound Check's choices — Jawon's ReplayGain modes, in `ReplayGain.Mode` order of meaning. */
@@ -150,6 +161,8 @@ object PocketMenus {
         MenuKey.Settings -> "Settings"
         MenuKey.About -> "About"
         MenuKey.Sound -> "Sound"
+        MenuKey.Extras -> "Extras"
+        MenuKey.Brick -> "Brick"
         is MenuKey.Adjust -> key.control.title
         is MenuKey.Choice -> key.setting.title
     }
@@ -175,6 +188,8 @@ object PocketMenus {
             add(MenuRow("Shelves", RowAction.Open(MenuKey.Shelves)))
             add(MenuRow("Artists", RowAction.Open(MenuKey.Artists)))
             if (hasNowPlaying) add(MenuRow("Now Playing", RowAction.Open(MenuKey.NowPlaying)))
+            if (library.albums.isNotEmpty()) add(MenuRow("Shuffle Albums", RowAction.ShuffleAlbums))
+            add(MenuRow("Extras", RowAction.Open(MenuKey.Extras)))
             add(MenuRow("Add Albums", RowAction.AddAlbums))
             add(MenuRow("Rooms", RowAction.OpenRooms))
             add(MenuRow("Settings", RowAction.Open(MenuKey.Settings)))
@@ -207,6 +222,11 @@ object PocketMenus {
                 RowAction.Open(MenuKey.Choice(PocketSetting.FINISH)),
                 value = PocketFinish.entries.getOrNull(settings.finish)?.title
             ),
+            MenuRow(
+                "Tilt & Turn",
+                RowAction.Open(MenuKey.Choice(PocketSetting.MOTION)),
+                value = if (settings.motion) "On" else "Off"
+            ),
             MenuRow("All Settings", RowAction.OpenSettings)
         )
         MenuKey.About -> listOf(
@@ -237,6 +257,9 @@ object PocketMenus {
         }
         // A slider has no rows: the wheel moves its value, and MENU or the centre goes back.
         is MenuKey.Adjust -> emptyList()
+        MenuKey.Extras -> listOf(MenuRow("Brick", RowAction.Open(MenuKey.Brick)))
+        // The game is the whole screen; the wheel is its paddle.
+        MenuKey.Brick -> emptyList()
         MenuKey.Albums -> albumsInOrder(library)
             .map { MenuRow(it.title, RowAction.Open(MenuKey.Album(it.id))) }
         // The same order as Albums, so a record is in the same place in both.
@@ -272,6 +295,7 @@ object PocketMenus {
             PocketSetting.CLICKER -> listOf("On", "Off")
             PocketSetting.REVERB -> settings.reverbOptions
             PocketSetting.FINISH -> PocketFinish.entries.map { it.title }
+            PocketSetting.MOTION -> listOf("On", "Off")
         }
         val current = when (setting) {
             PocketSetting.EQ -> settings.eqChosen
@@ -280,6 +304,7 @@ object PocketMenus {
             PocketSetting.CLICKER -> if (settings.clicker) 0 else 1
             PocketSetting.REVERB -> settings.reverb
             PocketSetting.FINISH -> settings.finish
+            PocketSetting.MOTION -> if (settings.motion) 0 else 1
         }
         return labels.mapIndexed { i, label ->
             MenuRow(label, RowAction.Choose(setting, i), checked = i == current)
@@ -396,6 +421,8 @@ data class PocketNav(val stack: List<Level> = listOf(Level(MenuKey.Main))) {
                 is MenuKey.Choice -> "choice" to k.setting.name
                 MenuKey.Sound -> "sound" to ""
                 is MenuKey.Adjust -> "adjust" to k.control.name
+                MenuKey.Extras -> "extras" to ""
+                MenuKey.Brick -> "brick" to ""
                 is MenuKey.Shelf -> "shelf" to k.shelfId
                 is MenuKey.Artist -> "artist" to k.name
                 is MenuKey.Album -> "album" to k.albumId
@@ -424,6 +451,8 @@ data class PocketNav(val stack: List<Level> = listOf(Level(MenuKey.Main))) {
                 "sound" -> MenuKey.Sound
                 "adjust" -> SoundControl.entries.firstOrNull { it.name == arg }?.let { MenuKey.Adjust(it) }
                     ?: return null
+                "extras" -> MenuKey.Extras
+                "brick" -> MenuKey.Brick
                 "shelf" -> MenuKey.Shelf(arg)
                 "artist" -> MenuKey.Artist(arg)
                 "album" -> MenuKey.Album(arg)

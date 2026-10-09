@@ -74,6 +74,30 @@ class PocketMenuTest {
     }
 
     @Test
+    fun `Shuffle Albums is offered once there is an album to shuffle, and Extras holds Brick`() {
+        assertTrue("Shuffle Albums" in labels(MenuKey.Main))
+        val empty = PocketMenus.rows(MenuKey.Main, PocketLibrary(), emptyMap(), false).map { it.label }
+        assertFalse("Shuffle Albums" in empty)
+        // It plays rather than leading on, so it has no chevron.
+        val shuffle = PocketMenus.rows(MenuKey.Main, library, emptyMap(), false).first { it.label == "Shuffle Albums" }
+        assertEquals(RowAction.ShuffleAlbums, shuffle.action)
+        assertFalse(shuffle.leadsOn)
+        assertEquals(listOf("Brick"), labels(MenuKey.Extras))
+        assertEquals(RowAction.Open(MenuKey.Brick), PocketMenus.rows(MenuKey.Extras, library, emptyMap(), false).single().action)
+        assertTrue(labels(MenuKey.Brick).isEmpty())
+    }
+
+    @Test
+    fun `Tilt and Turn is a setting with its value shown, on unless turned off`() {
+        val on = PocketMenus.rows(MenuKey.Settings, library, emptyMap(), false, PocketSettings())
+        assertEquals("On", on.first { it.label == "Tilt & Turn" }.value)
+        val off = PocketMenus.rows(MenuKey.Settings, library, emptyMap(), false, PocketSettings(motion = false))
+        assertEquals("Off", off.first { it.label == "Tilt & Turn" }.value)
+        val choices = PocketMenus.rows(MenuKey.Choice(PocketSetting.MOTION), library, emptyMap(), false, PocketSettings(motion = false))
+        assertEquals(listOf(false, true), choices.map { it.checked })
+    }
+
+    @Test
     fun `the main menu's Settings is the device's own, and each setting shows its value`() {
         val main = PocketMenus.rows(MenuKey.Main, library, emptyMap(), false)
         assertEquals(RowAction.Open(MenuKey.Settings), main.last().action)
@@ -211,6 +235,7 @@ class PocketMenuTest {
             .open(MenuKey.CoverFlow).move(3, 9).open(MenuKey.Flipped("a-2"))
             .open(MenuKey.Settings).open(MenuKey.About).open(MenuKey.Choice(PocketSetting.CLICKER))
             .open(MenuKey.Sound).open(MenuKey.Adjust(SoundControl.ECHO_TIME))
+            .open(MenuKey.Choice(PocketSetting.MOTION)).open(MenuKey.Extras).move(0, 1).open(MenuKey.Brick)
         val restored = nav.stack.map { PocketNav.encode(it) }.map { PocketNav.decode(it) }
         assertEquals(nav.stack, restored)
     }
