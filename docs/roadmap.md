@@ -56,7 +56,8 @@ Fixed items are struck through; the rest are assigned below.
 | Edit album | "UNDERLIGHT" names a light the room no longer has (it is the glow pool now) | 0.7.2 |
 | Remove album | A dialog, then gone: no undo | 0.7.3 |
 | Showroom | Neighbouring captions peek in clipped at the screen edges ("DS", "CA") and read as a layout fault | 0.7.2 |
-| Pocket player | No Search menu (the classic had one); on 60Hz phones and low tiers, unmeasured | 0.7.3 |
+| Pocket player | No Search menu (the classic had one); on 60Hz phones and low tiers, unmeasured | 0.7.4 |
+| Android 9 | On the API 28 emulator the pocket player's screen and the CD room's shelf plates render **blank** — both reach the GPU as a `SurfaceTexture` stream; a software canvas instead of the hardware one changed nothing, so it looks like the emulator's GL translator, not the app. Unverified on a real Android 9–11 phone; the room, the cases, playback and an update from 0.4.2 all work there | 0.7.4 |
 | First run | Not re-checked since the rooms and the showroom arrived: a new user is not told the showroom exists, how to scratch, or that Back leaves the wall | 0.7.3 |
 | Heat | The CD room holds the GPU near 100% even untouched (trap 28) — fine for an evening, a Play review waiting to happen on a hot day | 0.7.4 |
 
@@ -273,7 +274,7 @@ the policy is rewritten from this list once, before 1.0.
 |---|---|---|
 | 0.7.1 | Motion sensor (pocket player's light) — **already in the policy** | no |
 | 0.7.2 | Linear acceleration (shake to switch rooms), proximity (no shake in a pocket) | no |
-| 0.7.3 | Gravity (sideways Cover Flow, leaning through it, Brick's paddle), proximity (Hold), ambient light (the pocket screen's backlight), battery level (the title bar, a system broadcast — no permission) — all read on the phone while the room is on screen, none stored or sent | no |
+| 0.7.3 | Gravity (sideways Cover Flow, leaning through it, Brick's paddle), proximity (Hold), ambient light (the pocket screen's backlight), battery level (the title bar, a system broadcast — no permission) — all read on the phone while the room is on screen, none stored or sent. **In the policy since 0.7.3**, with 0.7.2's shake: the published table said the motion sensor was used "only in the pocket player", which shake made untrue | no |
 | planned | NFC (tags on physical records) | no |
 | planned | Bluetooth connection events (resume when headphones connect) | no |
 | planned | Scrobbling to ListenBrainz / Last.fm | yes — what played, to the user's own account |

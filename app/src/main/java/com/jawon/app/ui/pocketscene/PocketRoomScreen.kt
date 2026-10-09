@@ -36,6 +36,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.compose.currentStateAsState
 import com.google.android.filament.LightManager
 import com.google.android.filament.Renderer
 import com.jawon.app.BuildConfig
@@ -93,6 +94,9 @@ private const val SLIDE_TICK_MS = 50L
 /** Covers drawn either side of the middle one in Cover Flow, and how many are kept decoded. */
 internal const val COVER_WINDOW = 4
 private const val COVER_CACHE_MAX = 40
+
+/** How often the title bar's battery is read while the room is on screen. */
+private const val BATTERY_READ_MS = 60_000L
 
 /** How large sideways Cover Flow decodes its covers, and how many it keeps. */
 private const val SIDEWAYS_COVER_PX = 720
@@ -458,10 +462,23 @@ fun PocketRoomScreen(
     // The phone's battery, for the title bar's — the device is the phone, so its battery is the phone's.
     val battery = remember { mutableFloatStateOf(0.75f) }
     val charging = remember { mutableStateOf(false) }
-    LifecycleResumeEffect(context, covered) {
-        val receiver = object : android.content.BroadcastReceiver() {
-            override fun onReceive(c: android.content.Context?, intent: android.content.Intent?) {
-                intent ?: return
+    //
+    // **Read, not listened to.** The battery's state is a sticky broadcast, and asking for it with
+    // no receiver hands back the last one without registering anything. A registered receiver was
+    // the first version, flagged not-exported as Android 14 wants — and below Android 13 the compat
+    // library implements that flag with a permission of the app's own, which the system's sender
+    // does not hold, so on Android 9 every update was refused ("Permission Denial: broadcasting
+    // Intent BATTERY_CHANGED", on the API 28 emulator). A reading a minute while the room is on
+    // screen is all a title-bar battery needs.
+    val roomOnScreen = !covered && androidx.lifecycle.compose.LocalLifecycleOwner.current.lifecycle
+        .currentStateAsState().value.isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED)
+    LaunchedEffect(roomOnScreen) {
+        while (roomOnScreen) {
+            val intent = context.registerReceiver(
+                null,
+                android.content.IntentFilter(android.content.Intent.ACTION_BATTERY_CHANGED)
+            )
+            if (intent != null) {
                 val level = intent.getIntExtra(android.os.BatteryManager.EXTRA_LEVEL, -1)
                 val scale = intent.getIntExtra(android.os.BatteryManager.EXTRA_SCALE, -1)
                 if (level >= 0 && scale > 0) battery.floatValue = level / scale.toFloat()
@@ -469,17 +486,8 @@ fun PocketRoomScreen(
                 charging.value = status == android.os.BatteryManager.BATTERY_STATUS_CHARGING ||
                     status == android.os.BatteryManager.BATTERY_STATUS_FULL
             }
+            kotlinx.coroutines.delay(BATTERY_READ_MS)
         }
-        // A sticky broadcast: registering hands back the current reading at once.
-        if (!covered) {
-            androidx.core.content.ContextCompat.registerReceiver(
-                context,
-                receiver,
-                android.content.IntentFilter(android.content.Intent.ACTION_BATTERY_CHANGED),
-                androidx.core.content.ContextCompat.RECEIVER_NOT_EXPORTED
-            )?.let { receiver.onReceive(context, it) }
-        }
-        onPauseOrDispose { if (!covered) runCatching { context.unregisterReceiver(receiver) } }
     }
 
     val lcdPanel = remember(engine) { LcdPanel(context, engine, LCD_PX_W, LCD_PX_H, LCD_SUPERSAMPLE) }
