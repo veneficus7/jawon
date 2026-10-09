@@ -57,6 +57,14 @@ fun ScreenBar(
                 tint = LabelDim
             )
         }
+        // Jawon's mark beside every screen's name (0.7.2): the brand travels with the bar, so
+        // there is no flat screen that could be any other app's. Decorative to TalkBack — the
+        // title says where you are.
+        JawonMark(
+            size = 18.dp,
+            contentDescription = null,
+            modifier = Modifier.padding(end = 10.dp)
+        )
         Text(
             text = title,
             fontFamily = JetBrainsMonoFamily,
