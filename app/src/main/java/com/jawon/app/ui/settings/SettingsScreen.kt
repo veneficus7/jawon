@@ -1,5 +1,36 @@
 package com.jawon.app.ui.settings
 
+import com.jawon.app.ui.theme.LocalPalette
+import com.jawon.app.ui.theme.InterFamily
+import com.jawon.app.ui.common.JawonMark
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
+import androidx.compose.material3.Icon
+import androidx.compose.material.icons.rounded.Description
+import androidx.compose.material.icons.rounded.Lock
+import androidx.compose.material.icons.rounded.BugReport
+import androidx.compose.material.icons.rounded.Speed
+import androidx.compose.material.icons.rounded.Dns
+import androidx.compose.material.icons.rounded.Backup
+import androidx.compose.material.icons.rounded.CleaningServices
+import androidx.compose.material.icons.rounded.Sync
+import androidx.compose.material.icons.rounded.Lyrics
+import androidx.compose.material.icons.rounded.Image
+import androidx.compose.material.icons.rounded.GraphicEq
+import androidx.compose.material.icons.rounded.Tune
+import androidx.compose.material.icons.rounded.LightMode
+import androidx.compose.material.icons.rounded.Album
+import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
+import androidx.compose.material.icons.Icons
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.animation.togetherWith
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.AnimatedContent
+import androidx.activity.compose.BackHandler
 import androidx.compose.ui.text.input.ImeAction
 import com.jawon.app.ui.common.FieldLabel
 import com.jawon.app.ui.common.JawonTextField
@@ -711,7 +742,9 @@ private fun BackupSection(
     busy: Boolean,
     message: String?,
     onWrite: () -> Unit,
-    onRead: () -> Unit
+    onRead: () -> Unit,
+    /** False on its own page, whose bar already names it. */
+    showTitle: Boolean = true
 ) {
     Column(
         modifier = Modifier
@@ -719,7 +752,7 @@ private fun BackupSection(
             .padding(top = 26.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        Text(
+        if (showTitle) Text(
             text = "BACK UP YOUR SHELVES",
             fontFamily = JetBrainsMonoFamily,
             fontWeight = FontWeight.Bold,
@@ -822,17 +855,17 @@ private fun MusicServerSection(
     onTest: () -> Unit,
     onSync: () -> Unit,
     onForget: () -> Unit,
-    onClearCache: () -> Unit
+    onClearCache: () -> Unit,
+    /** On a page of its own (Settings, 0.7.2): the content without the disclosure round it. */
+    asPage: Boolean = false
 ) {
-    Disclosure(
-        title = "A MUSIC SERVER OF YOUR OWN",
-        subtitle = when {
+    val subtitle = when {
             !server.isConfigured ->
                 "Not set up. Play a library that is too big for this phone."
             albumCount > 0 -> "$albumCount albums from ${server.displayHost}."
             else -> "${server.displayHost} — nothing synced yet."
         }
-    ) {
+    val body: @Composable () -> Unit = {
         Column(
             modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
@@ -911,6 +944,11 @@ private fun MusicServerSection(
                 onClear = onClearCache
             )
         }
+    }
+    if (asPage) {
+        Box(Modifier.padding(top = 16.dp)) { body() }
+    } else {
+        Disclosure(title = "A MUSIC SERVER OF YOUR OWN", subtitle = subtitle) { body() }
     }
 }
 
@@ -1128,12 +1166,11 @@ private fun OfflineStoreRow(usedMb: Int, limitMb: Int, onClear: () -> Unit) {
 private fun TidySection(
     busy: Boolean,
     message: String?,
-    onRemoveDuplicates: () -> Unit
+    onRemoveDuplicates: () -> Unit,
+    /** On a page of its own (Settings, 0.7.2): the content without the disclosure round it. */
+    asPage: Boolean = false
 ) {
-    Disclosure(
-        title = "TIDY THE LIBRARY",
-        subtitle = "Seeing a track twice on a record? Fix it here."
-    ) {
+    val body: @Composable () -> Unit = {
         Column(
             modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
@@ -1160,6 +1197,14 @@ private fun TidySection(
             }
             message?.let { StatusLine(it, LampAmber) }
         }
+    }
+    if (asPage) {
+        Box(Modifier.padding(top = 16.dp)) { body() }
+    } else {
+        Disclosure(
+            title = "TIDY THE LIBRARY",
+            subtitle = "Seeing a track twice on a record? Fix it here."
+        ) { body() }
     }
 }
 
@@ -1447,304 +1492,365 @@ fun SettingsScreen(
         }.getOrNull().orEmpty()
     }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(CrateBlack)
-            .statusBarsPadding()
-    ) {
-        ScreenBar(title = "SETTINGS", onBack = onBack, backDescription = "Back to the room")
+    // **Which page is showing**: the list, or one of its detail pages. Saved, so a rotation or a
+    // trip out to grant a permission comes back to the same page.
+    var page by rememberSaveable { mutableStateOf<SettingsPage?>(null) }
+    // Held above the pages, so coming back from one finds the list where you left it, as iOS does.
+    val listScroll = rememberScrollState()
+    // Back steps out one page at a time before it leaves Settings, as iOS's does.
+    BackHandler(enabled = page != null) { page = null }
 
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .verticalScroll(rememberScrollState())
-                .navigationBarsPadding()
-                // Centred and capped, so a landscape phone gives this page a readable column
-                // instead of foot-long lines. Portrait is narrower than the cap and unchanged.
-                .widthIn(max = READING_MAX_W)
-                .align(Alignment.CenterHorizontally)
-                .padding(horizontal = 24.dp)
-        ) {
-            // The title card. The one part that stays centred, because it is a masthead
-            // rather than a setting — everything below it is a control and reads left.
-            Column(
+    val showUnbuilt = BuildConfig.DEBUG || BuildConfig.SHOW_FORMATS
+    val offeredFormats = Format.entries.filter { it.built || showUnbuilt }
+
+    AnimatedContent(
+        targetState = page,
+        transitionSpec = {
+            // A page is pushed in from the right and the list slides a little left under it;
+            // going back is the same movement reversed.
+            val push = tween<IntOffset>(PAGE_PUSH_MS, easing = FastOutSlowInEasing)
+            if (targetState != null) {
+                slideInHorizontally(push) { it } togetherWith slideOutHorizontally(push) { -it / 4 }
+            } else {
+                slideInHorizontally(push) { -it / 4 } togetherWith slideOutHorizontally(push) { it }
+            }
+        },
+        label = "settingsPage"
+    ) { shown ->
+        when (shown) {
+            null -> Column(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 40.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(14.dp)
+                    .fillMaxSize()
+                    .background(CrateBlack)
+                    .statusBarsPadding()
             ) {
-                Text(
-                    text = stringResource(R.string.app_name).uppercase(Locale.ROOT),
-                    fontFamily = ArchivoFamily,
-                    fontWeight = FontWeight.ExtraBold,
-                    fontSize = JawonType.Masthead,
-                    letterSpacing = 3.sp,
-                    color = LabelCream
-                )
-                if (versionName.isNotEmpty()) {
-                    // Boxed like a stamp on a sleeve rather than set as a line of body text —
-                    // on a beta build the version is the single most useful thing on this
-                    // screen, because it is what a tester quotes back with a bug report.
-                    Box(
-                        Modifier
-                            .background(LampAmber.copy(alpha = 0.10f))
-                            .padding(horizontal = 14.dp, vertical = 6.dp)
+                ScreenBar(title = "SETTINGS", onBack = onBack, backDescription = "Back to the room")
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .verticalScroll(listScroll)
+                        .navigationBarsPadding()
+                        .widthIn(max = READING_MAX_W)
+                        .align(Alignment.CenterHorizontally)
+                        .padding(horizontal = 16.dp)
+                ) {
+                    BrandCard(
+                        appName = stringResource(R.string.app_name),
+                        versionName = versionName,
+                        updateLine = updateLine(updateState),
+                        onClick = { page = SettingsPage.UPDATES }
+                    )
+
+                    SettingsGroup(header = "Room") {
+                        if (offeredFormats.size > 1) {
+                            SettingsNavRow(
+                                icon = Icons.Rounded.Album,
+                                title = "Room",
+                                value = format.displayName,
+                                onClick = { page = SettingsPage.ROOM }
+                            )
+                            SettingsDivider()
+                        }
+                        SettingsNavRow(
+                            icon = Icons.Rounded.LightMode,
+                            title = "The CD room's light",
+                            value = roomScheme.displayName,
+                            onClick = { page = SettingsPage.LIGHT }
+                        )
+                    }
+
+                    SettingsGroup(header = "Playback") {
+                        SettingsNavRow(
+                            icon = Icons.Rounded.Tune,
+                            title = "Crossfade",
+                            value = crossfadeLabel(crossfadeMs),
+                            onClick = { page = SettingsPage.CROSSFADE }
+                        )
+                        SettingsDivider()
+                        SettingsNavRow(
+                            icon = Icons.Rounded.GraphicEq,
+                            title = "Even out loudness",
+                            value = loudnessLabel(ReplayGain.Mode.fromName(replayGainMode)),
+                            onClick = { page = SettingsPage.LOUDNESS }
+                        )
+                    }
+
+                    SettingsGroup(
+                        header = "Library",
+                        footer = "Lookups send a record's title and artist — never an account, " +
+                            "a phone id or a list of what you own."
                     ) {
+                        SettingsSwitchRow(
+                            icon = Icons.Rounded.Image,
+                            title = "Find missing covers",
+                            summary = "For albums that arrived without one.",
+                            // The full text is a promise docs/privacy.md makes in the same words.
+                            detail = "When an album's own files carry no picture, Jawon asks " +
+                                "MusicBrainz — a free, public music database — for one, sending " +
+                                "the album title and the artist and nothing else. No account, no " +
+                                "phone id, no list of what you own. Turn it off and albums without " +
+                                "a picture simply stay blank.",
+                            checked = fetchCoverArt,
+                            onCheckedChange = viewModel::onFetchCoverArtChanged
+                        )
+                        SettingsDivider()
+                        SettingsSwitchRow(
+                            icon = Icons.Rounded.Lyrics,
+                            title = "Find lyrics",
+                            summary = "For songs that carry no words of their own.",
+                            detail = "When a song has no words saved in it, Jawon asks LRCLIB — a " +
+                                "free lyrics database — sending the title, artist, album and " +
+                                "length. Only when you open the lyrics page, only for songs that " +
+                                "have none, and the answer is kept so nothing is asked for twice.",
+                            checked = fetchLyrics,
+                            onCheckedChange = viewModel::onFetchLyricsChanged
+                        )
+                        SettingsDivider()
+                        SettingsSwitchRow(
+                            icon = Icons.Rounded.Sync,
+                            title = "Prefer online lyrics",
+                            summary = "Even for songs that already have words.",
+                            detail = "Jawon already prefers words that scroll in time with the " +
+                                "music over words that just sit there. Turn this on to take the " +
+                                "online copy anyway — worth it if the words saved in your files " +
+                                "are wrong or badly timed. One lookup per song, and it does " +
+                                "nothing unless Find lyrics is on.",
+                            checked = preferOnlineLyrics,
+                            onCheckedChange = viewModel::onPreferOnlineLyricsChanged,
+                            enabled = fetchLyrics
+                        )
+                        SettingsDivider()
+                        SettingsNavRow(
+                            icon = Icons.Rounded.CleaningServices,
+                            title = "Fix duplicate tracks",
+                            onClick = { page = SettingsPage.TIDY }
+                        )
+                        SettingsDivider()
+                        SettingsNavRow(
+                            icon = Icons.Rounded.Backup,
+                            title = "Back up and restore",
+                            onClick = { page = SettingsPage.BACKUP }
+                        )
+                    }
+
+                    if (Features.MUSIC_SERVER) {
+                        SettingsGroup(header = "Music server") {
+                            SettingsNavRow(
+                                icon = Icons.Rounded.Dns,
+                                title = "Your server",
+                                value = when {
+                                    !musicServer.isConfigured -> "Not set up"
+                                    serverAlbumCount > 0 -> "$serverAlbumCount albums"
+                                    else -> "Connected"
+                                },
+                                onClick = { page = SettingsPage.SERVER }
+                            )
+                        }
+                    }
+
+                    SettingsGroup(header = "About") {
+                        SettingsNavRow(
+                            icon = Icons.Rounded.Speed,
+                            title = "Performance",
+                            onClick = { page = SettingsPage.PERFORMANCE }
+                        )
+                        SettingsDivider()
+                        SettingsNavRow(
+                            icon = Icons.Rounded.BugReport,
+                            title = "Problem reports",
+                            value = if (crashReport == null) "None" else "1 report",
+                            onClick = { page = SettingsPage.PROBLEMS }
+                        )
+                        SettingsDivider()
+                        SettingsNavRow(
+                            icon = Icons.Rounded.Lock,
+                            title = "Privacy",
+                            onClick = { page = SettingsPage.PRIVACY }
+                        )
+                    }
+
+                    // Was "Everything Jawon knows lives on this phone", which stopped being true
+                    // the moment a music server could be attached. It is still true of everything
+                    // the *app* keeps, and that is what it says.
+                    Column(
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(top = 40.dp, bottom = 48.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        JawonMark(size = 22.dp, color = LabelDim, contentDescription = null)
                         Text(
-                            text = "VERSION ${versionName.uppercase(Locale.ROOT)}",
-                            style = JawonTextStyle.mono
+                            text = "Jawon keeps nothing about you, anywhere but this phone.",
+                            fontFamily = InterFamily,
+                            fontSize = 13.sp,
+                            color = LabelDim,
+                            textAlign = TextAlign.Center
                         )
                     }
                 }
             }
 
-            SectionHeader("THIS BUILD")
-
-            UpdateSection(
-                state = updateState,
-                canInstall = canInstall,
-                onCheck = viewModel::onCheckForUpdates,
-                onDownload = viewModel::onDownloadUpdate,
-                onInstall = { apk -> installUpdate(context, apk) },
-                onAllowInstalls = { openInstallPermission(context) }
-            )
-
-            SectionHeader("THE ROOM")
-
-            // **Which room the app opens in**, once there is more than one finished room to choose
-            // between — the pocket player since 0.7.1. Unfinished rooms are still offered only by a
-            // debug build, or a release build cut with SHOW_FORMATS for the owner's phone (see
-            // app/build.gradle.kts), and are marked IN PROGRESS when they are.
-            val showUnbuilt = BuildConfig.DEBUG || BuildConfig.SHOW_FORMATS
-            val offered = Format.entries.filter { it.built || showUnbuilt }
-            if (offered.size > 1) {
-                FormatPicker(
-                    formats = offered,
-                    current = format,
-                    onPick = viewModel::onFormatChanged
-                )
-                // The four modes are the CD room's light and nothing else (ENGINEERING.md, room style).
-                Box(Modifier.padding(top = 18.dp)) { FieldLabel("THE CD ROOM'S LIGHT") }
+            SettingsPage.UPDATES -> SettingsPage(title = "Updates", onBack = { page = null }) {
+                Box(Modifier.fillMaxWidth().padding(top = 32.dp)) {
+                    UpdateSection(
+                        state = updateState,
+                        canInstall = canInstall,
+                        onCheck = viewModel::onCheckForUpdates,
+                        onDownload = viewModel::onDownloadUpdate,
+                        onInstall = { apk -> installUpdate(context, apk) },
+                        onAllowInstalls = { openInstallPermission(context) }
+                    )
+                }
             }
 
-            SchemePicker(
-                current = roomScheme,
-                onPick = viewModel::onRoomSchemeChanged
-            )
-
-
-            Box(Modifier.height(28.dp))
-
-            Column(
-                modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween
+            SettingsPage.ROOM -> SettingsPage(title = "Room", onBack = { page = null }) {
+                SettingsGroup(
+                    header = "Open Jawon in",
+                    footer = "Both rooms play the same library. You can also walk between them: " +
+                        "press Back on the wall, or tap the neon sign, to enter the showroom."
                 ) {
-                    Text(
-                        text = "CASES TURN",
-                        fontFamily = JetBrainsMonoFamily,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = JawonType.Body,
-                        letterSpacing = 2.sp,
-                        color = LabelCream
-                    )
-                    Text(
-                        text = when {
-                            caseSpin <= 0f -> "OFF"
-                            caseSpin >= 1f -> "FULL"
+                    offeredFormats.forEachIndexed { i, option ->
+                        if (i > 0) SettingsDivider(inset = false)
+                        SettingsChoiceRow(
+                            title = option.displayName,
+                            summary = formatLine(option),
+                            selected = option == format,
+                            onClick = { viewModel.onFormatChanged(option) }
+                        )
+                    }
+                }
+            }
+
+            SettingsPage.LIGHT -> SettingsPage(title = "The CD room's light", onBack = { page = null }) {
+                Box(Modifier.padding(top = 28.dp)) {
+                    SchemePicker(current = roomScheme, onPick = viewModel::onRoomSchemeChanged)
+                }
+                SettingsGroup(
+                    header = "Cases",
+                    footer = "Cases turn slowly to show you their cover, then their spine. Full " +
+                        "is the speed the room was built around; turn it right down and they " +
+                        "hold still, facing you. They float either way."
+                ) {
+                    SliderRow(
+                        title = "Turning",
+                        value = when {
+                            caseSpin <= 0f -> "Off"
+                            caseSpin >= 1f -> "Full"
                             else -> "%.0f%%".format(Locale.US, caseSpin * 100f)
                         },
-                        style = JawonTextStyle.mono.copy(fontSize = JawonType.Caption)
+                        position = caseSpin,
+                        range = 0f..1f,
+                        onChange = viewModel::onCaseSpinChanged
                     )
                 }
-                MoreText(
-                    summary = "How much the records turn on the shelf.",
-                    detail = "Cases turn slowly to show you their cover, then their spine. " +
-                        "FULL is the speed the room was built around; turn it right down " +
-                        "and they hold still, facing you. They float either way."
-                )
-                Slider(
-                    value = caseSpin,
-                    onValueChange = viewModel::onCaseSpinChanged,
-                    valueRange = 0f..1f,
-                    colors = SliderDefaults.colors(
-                        thumbColor = LampAmber,
-                        activeTrackColor = LampAmber.copy(alpha = 0.7f),
-                        inactiveTrackColor = CrateEdge
-                    )
-                )
             }
 
-            SectionHeader("SOUND")
-
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 26.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween
+            SettingsPage.CROSSFADE -> SettingsPage(title = "Crossfade", onBack = { page = null }) {
+                SettingsGroup(
+                    header = null,
+                    footer = "Off to begin with, and that is deliberate: plenty of records run " +
+                        "straight from one track into the next on purpose, and a crossfade " +
+                        "spoils it."
                 ) {
-                    Text(
-                        text = "CROSSFADE",
-                        fontFamily = JetBrainsMonoFamily,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = JawonType.Body,
-                        letterSpacing = 2.sp,
-                        color = LabelCream
-                    )
-                    Text(
-                        text = if (crossfadeMs < Crossfade.MIN_MS) "OFF"
-                        else "%.1f s".format(Locale.US, crossfadeMs / 1000f),
-                        style = JawonTextStyle.mono.copy(fontSize = JawonType.Caption)
+                    // From zero, so "off" is on the same control rather than a separate switch —
+                    // the slider's left end already means what a switch would say.
+                    SliderRow(
+                        title = "Fade one song into the next",
+                        value = crossfadeLabel(crossfadeMs),
+                        position = crossfadeMs.toFloat(),
+                        range = 0f..Crossfade.MAX_MS.toFloat(),
+                        onChange = { viewModel.onCrossfadeChanged(it.toInt()) }
                     )
                 }
-                MoreText(
-                    // Says what it does to an album, because that is the part worth knowing.
-                    summary = "Fade the end of one song into the next.",
-                    detail = "Off to begin with, and that is deliberate: plenty of records " +
-                        "run straight from one track into the next on purpose, and a " +
-                        "crossfade spoils it."
-                )
-                Slider(
-                    value = crossfadeMs.toFloat(),
-                    onValueChange = { viewModel.onCrossfadeChanged(it.toInt()) },
-                    // From zero, so "off" is on the same control rather than a separate
-                    // switch — the slider's left end already means what a switch would say.
-                    valueRange = 0f..Crossfade.MAX_MS.toFloat(),
-                    colors = SliderDefaults.colors(
-                        thumbColor = LampAmber,
-                        activeTrackColor = LampAmber.copy(alpha = 0.7f),
-                        inactiveTrackColor = CrateEdge
-                    )
-                )
             }
 
-            ReplayGainSection(
-                mode = ReplayGain.Mode.fromName(replayGainMode),
-                onPick = viewModel::onReplayGainModeChanged
-            )
-
-            SectionHeader("YOUR LIBRARY")
-
-            SettingRow(
-                title = "LOOK UP COVER ART",
-                // The summary names the service and what is sent, because those are the two
-                // facts a decision actually turns on. Everything else is a tap away.
-                summary = "Find covers for albums that arrived without one.",
-                // States exactly what leaves the device. A privacy switch that says
-                // "improve your experience" is not a switch anyone can make a decision with.
-                detail = "When an album's own files carry no picture, Jawon asks " +
-                    "MusicBrainz — a free, public music database — for one, sending the " +
-                    "album title and the artist and nothing else. No account, no phone " +
-                    "id, no list of what you own. Turn it off and albums without a " +
-                    "picture simply stay blank.",
-                checked = fetchCoverArt,
-                onCheckedChange = viewModel::onFetchCoverArtChanged
-            )
-
-            SettingRow(
-                title = "LOOK UP LYRICS",
-                summary = "Find the words for songs that carry none.",
-                // Same rule as above: name the service, name exactly what is sent, and say
-                // when. "Enhanced metadata" is not something anyone can decide about.
-                detail = "When a song has no words saved in it, Jawon asks LRCLIB — a " +
-                    "free lyrics database — sending the title, artist, album and length. " +
-                    "Only when you open the lyrics page, only for songs that have none, " +
-                    "and the answer is kept so nothing is asked for twice.",
-                checked = fetchLyrics,
-                onCheckedChange = viewModel::onFetchLyricsChanged
-            )
-
-            // Moved below the switch it depends on. It was above it, which read as the more
-            // important of the two and made "needs the switch above" point at nothing.
-            SettingRow(
-                title = "ALWAYS LOOK UP LYRICS",
-                summary = "Even for songs that already have words of their own.",
-                // Says what it costs as well as what it does. The default is off because the
-                // file's own words are instant, offline and private; this is for libraries
-                // whose tags are untimed or simply wrong.
-                detail = "Jawon already prefers words that scroll in time with the music " +
-                    "over words that just sit there. Turn this on to take the online copy " +
-                    "anyway — worth it if the words saved in your files are wrong or badly " +
-                    "timed. One lookup per song, and it does nothing unless the switch " +
-                    "above is on.",
-                checked = preferOnlineLyrics,
-                onCheckedChange = viewModel::onPreferOnlineLyricsChanged,
-                enabled = fetchLyrics
-            )
-
-            if (Features.MUSIC_SERVER) MusicServerSection(
-                server = musicServer,
-                probe = probe,
-                probing = probing,
-                syncState = syncState,
-                albumCount = serverAlbumCount,
-                // Read on composition rather than collected: the cache size changes as audio
-                // streams, and a flow of it would recompose this screen continuously for a
-                // number nobody is watching change.
-                cacheUsedMb = viewModel.cacheUsedMb(),
-                cacheLimitMb = streamCacheMb,
-                bundledServer = viewModel.hasBundledServer,
-                inviteMessage = inviteMessage,
-                onServerChanged = viewModel::onServerChanged,
-                onInvitePasted = viewModel::onInvitePasted,
-                onShareInvite = {
-                    viewModel.inviteForCurrentServer()?.let { link ->
-                        context.startActivity(
-                            Intent.createChooser(
-                                Intent(Intent.ACTION_SEND)
-                                    .setType("text/plain")
-                                    .putExtra(Intent.EXTRA_TEXT, link),
-                                "Share this library"
-                            )
+            SettingsPage.LOUDNESS -> SettingsPage(title = "Even out loudness", onBack = { page = null }) {
+                val mode = ReplayGain.Mode.fromName(replayGainMode)
+                SettingsGroup(
+                    header = null,
+                    // "ReplayGain" is the name of the tag, not a thing anyone needs to know to
+                    // decide this. What they need to know is that old records are quieter.
+                    footer = "Older albums were mastered quieter than modern ones, so a shelf of " +
+                        "both keeps changing volume on you. This evens them out using loudness " +
+                        "figures your files already carry, and re-encodes nothing."
+                ) {
+                    ReplayGain.Mode.entries.forEachIndexed { i, option ->
+                        if (i > 0) SettingsDivider(inset = false)
+                        SettingsChoiceRow(
+                            title = loudnessLabel(option),
+                            summary = loudnessLine(option),
+                            selected = option == mode,
+                            onClick = { viewModel.onReplayGainModeChanged(option) }
                         )
                     }
-                },
-                onTest = viewModel::onTestServer,
-                onSync = viewModel::onSyncLibrary,
-                onForget = viewModel::onForgetServer,
-                onClearCache = viewModel::onClearStreamCache
-            )
-
-            TidySection(
-                busy = repairBusy,
-                message = repairMessage,
-                onRemoveDuplicates = viewModel::onRemoveDuplicateTracks
-            )
-
-            BackupSection(
-                busy = backupBusy,
-                message = backupMessage,
-                onWrite = { writeBackupLauncher.launch(viewModel.suggestedBackupName()) },
-                onRead = { readBackupLauncher.launch(arrayOf("application/zip", "*/*")) }
-            )
-
-            // Closed by default. Frame times and a crash log are reference, not choices — worth
-            // having, opened perhaps twice in the life of the app, and until then the largest
-            // block of text on the screen. The subtitle carries the one thing worth knowing
-            // without opening it: whether anything has gone wrong.
-            Disclosure(
-                title = "HOW IT IS RUNNING",
-                subtitle = if (crashReport == null) {
-                    "Frame times and quality. Nothing has gone wrong."
-                } else {
-                    "Frame times and quality — and a problem worth reading."
                 }
-            ) {
+            }
+
+            SettingsPage.TIDY -> SettingsPage(title = "Fix duplicate tracks", onBack = { page = null }) {
+                TidySection(
+                    busy = repairBusy,
+                    message = repairMessage,
+                    onRemoveDuplicates = viewModel::onRemoveDuplicateTracks,
+                    asPage = true
+                )
+            }
+
+            SettingsPage.BACKUP -> SettingsPage(title = "Back up and restore", onBack = { page = null }) {
+                BackupSection(
+                    busy = backupBusy,
+                    message = backupMessage,
+                    onWrite = { writeBackupLauncher.launch(viewModel.suggestedBackupName()) },
+                    onRead = { readBackupLauncher.launch(arrayOf("application/zip", "*/*")) },
+                    showTitle = false
+                )
+            }
+
+            SettingsPage.SERVER -> SettingsPage(title = "Your music server", onBack = { page = null }) {
+                MusicServerSection(
+                    server = musicServer,
+                    probe = probe,
+                    probing = probing,
+                    syncState = syncState,
+                    albumCount = serverAlbumCount,
+                    // Read on composition rather than collected: the cache size changes as audio
+                    // streams, and a flow of it would recompose this screen continuously for a
+                    // number nobody is watching change.
+                    cacheUsedMb = viewModel.cacheUsedMb(),
+                    cacheLimitMb = streamCacheMb,
+                    bundledServer = viewModel.hasBundledServer,
+                    inviteMessage = inviteMessage,
+                    onServerChanged = viewModel::onServerChanged,
+                    onInvitePasted = viewModel::onInvitePasted,
+                    onShareInvite = {
+                        viewModel.inviteForCurrentServer()?.let { link ->
+                            context.startActivity(
+                                Intent.createChooser(
+                                    Intent(Intent.ACTION_SEND)
+                                        .setType("text/plain")
+                                        .putExtra(Intent.EXTRA_TEXT, link),
+                                    "Share this library"
+                                )
+                            )
+                        }
+                    },
+                    onTest = viewModel::onTestServer,
+                    onSync = viewModel::onSyncLibrary,
+                    onForget = viewModel::onForgetServer,
+                    onClearCache = viewModel::onClearStreamCache,
+                    asPage = true
+                )
+            }
+
+            SettingsPage.PERFORMANCE -> SettingsPage(title = "Performance", onBack = { page = null }) {
                 DiagnosticsSection(
                     device = viewModel.deviceLine(),
                     snapshot = viewModel.diagnosticsSnapshot(),
                     onReset = viewModel::onResetDiagnostics
                 )
+            }
 
+            SettingsPage.PROBLEMS -> SettingsPage(title = "Problem reports", onBack = { page = null }) {
                 CrashReportSection(
                     report = crashReport,
                     onShare = {
@@ -1757,15 +1863,179 @@ fun SettingsScreen(
                 )
             }
 
-            Text(
-                // Was "Everything Jawon knows lives on this phone", which stopped being true the
-                // moment a music server could be attached. It is still true of everything the
-                // *app* keeps, and that is what it now says.
-                text = "Jawon keeps nothing about you, anywhere but this phone.",
-                style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = JawonType.Caption),
-                modifier = Modifier.padding(top = 48.dp, bottom = 48.dp)
-            )
+            SettingsPage.PRIVACY -> SettingsPage(title = "Privacy", onBack = { page = null }) {
+                SettingsGroup(
+                    header = "What stays on this phone",
+                    footer = "Your library, your shelves, your listening and your settings live " +
+                        "in Jawon's private storage. There is no account, no analytics, and no " +
+                        "server of Jawon's own — nothing is ever sent to the developer."
+                ) {
+                    SettingsNavRow(
+                        icon = Icons.Rounded.Description,
+                        title = "Read the privacy policy",
+                        onClick = {
+                            context.startActivity(
+                                Intent(Intent.ACTION_VIEW, Uri.parse(PRIVACY_POLICY_URL))
+                            )
+                        }
+                    )
+                }
+                SettingsGroup(
+                    header = "What goes online",
+                    footer = "Each happens only as described. The first two have their own " +
+                        "switches under Library."
+                ) {
+                    Column(
+                        Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        ONLINE_USES.forEach {
+                            Text(
+                                text = it,
+                                fontFamily = InterFamily,
+                                fontSize = 14.sp,
+                                lineHeight = 19.sp,
+                                color = LabelCream
+                            )
+                        }
+                    }
+                }
+            }
         }
     }
 }
 
+/** The pages under Settings' list. */
+private enum class SettingsPage {
+    UPDATES, ROOM, LIGHT, CROSSFADE, LOUDNESS, TIDY, BACKUP, SERVER, PERFORMANCE, PROBLEMS, PRIVACY
+}
+
+private const val PAGE_PUSH_MS = 280
+
+private const val PRIVACY_POLICY_URL =
+    "https://github.com/veneficus7/javon-releases/blob/main/PRIVACY.md"
+
+/** `docs/privacy.md`'s six network uses, one line each, in its order. */
+private val ONLINE_USES = listOf(
+    "Finding missing covers — a title and an artist, to MusicBrainz.",
+    "Finding lyrics — a title, artist, album and length, to LRCLIB.",
+    "Checking for updates — only when you ask.",
+    "Your music server — only if you set one up.",
+    "The record shop — your searches, to the Internet Archive.",
+    "Ripping a CD — the disc's id, to MusicBrainz."
+)
+
+private fun crossfadeLabel(ms: Int): String =
+    if (ms < Crossfade.MIN_MS) "Off" else "%.1f s".format(Locale.US, ms / 1000f)
+
+private fun loudnessLabel(mode: ReplayGain.Mode): String = when (mode) {
+    ReplayGain.Mode.OFF -> "Off"
+    ReplayGain.Mode.ALBUM -> "By album"
+    ReplayGain.Mode.TRACK -> "By track"
+}
+
+private fun loudnessLine(mode: ReplayGain.Mode): String = when (mode) {
+    ReplayGain.Mode.OFF -> "Every file plays at its own level."
+    ReplayGain.Mode.ALBUM -> "Keeps a record's own quiet and loud moments."
+    ReplayGain.Mode.TRACK -> "Makes every song equally loud."
+}
+
+private fun formatLine(format: Format): String = when (format) {
+    Format.CD -> "A wall of records you pull out and play."
+    Format.POCKET -> "Your phone becomes the player, with a click wheel."
+} + if (!format.built) " In progress." else ""
+
+/** The brand card's second line: what the version stands for right now. */
+private fun updateLine(state: UpdateState): String = when (state) {
+    is UpdateState.Idle -> "Check for updates"
+    is UpdateState.Checking -> "Checking…"
+    is UpdateState.UpToDate -> "Up to date"
+    is UpdateState.Available -> "Version ${state.update.versionName} is available"
+    is UpdateState.Downloading -> "Downloading ${(state.fraction * 100).toInt()}%"
+    is UpdateState.Ready -> "Ready to install"
+    is UpdateState.Failed -> "Couldn't check — tap to try again"
+}
+
+/** A labelled slider in a card: the name, its reading at the right, and the track under them. */
+@Composable
+private fun SliderRow(
+    title: String,
+    value: String,
+    position: Float,
+    range: ClosedFloatingPointRange<Float>,
+    onChange: (Float) -> Unit
+) {
+    Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Text(title, fontFamily = InterFamily, fontSize = 16.sp, color = LabelCream)
+            Text(value, fontFamily = JetBrainsMonoFamily, fontSize = 13.sp, color = LabelDim)
+        }
+        Slider(
+            value = position,
+            onValueChange = onChange,
+            valueRange = range,
+            colors = SliderDefaults.colors(
+                thumbColor = LampAmber,
+                activeTrackColor = LampAmber.copy(alpha = 0.7f),
+                inactiveTrackColor = CrateEdge
+            )
+        )
+    }
+}
+
+/**
+ * The top of Settings, where iOS puts your account: Jawon's mark and name, the version, and what
+ * that version stands for. A beta tester quotes the version back with every bug report, so it is
+ * the first thing on the page; a tap opens the update page.
+ */
+@Composable
+private fun BrandCard(appName: String, versionName: String, updateLine: String, onClick: () -> Unit) {
+    val corner = LocalPalette.current.corner
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 20.dp)
+            .clip(RoundedCornerShape(corner))
+            .background(
+                Brush.verticalGradient(
+                    listOf(LampAmber.copy(alpha = 0.14f), LampAmber.copy(alpha = 0.04f))
+                )
+            )
+            .clickable(onClick = onClick)
+            .padding(18.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        JawonMark(size = 52.dp, contentDescription = null)
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+            Text(
+                text = appName.uppercase(Locale.ROOT),
+                fontFamily = ArchivoFamily,
+                fontWeight = FontWeight.ExtraBold,
+                fontSize = 24.sp,
+                letterSpacing = 2.sp,
+                color = LabelCream
+            )
+            if (versionName.isNotEmpty()) {
+                Text(
+                    text = versionName,
+                    fontFamily = JetBrainsMonoFamily,
+                    fontSize = 12.sp,
+                    color = LabelDim
+                )
+            }
+            Text(
+                text = updateLine,
+                fontFamily = InterFamily,
+                fontWeight = FontWeight.Medium,
+                fontSize = 14.sp,
+                color = LampAmber
+            )
+        }
+        Icon(
+            Icons.AutoMirrored.Rounded.KeyboardArrowRight,
+            contentDescription = null,
+            tint = LabelDim.copy(alpha = 0.7f)
+        )
+    }
+}
