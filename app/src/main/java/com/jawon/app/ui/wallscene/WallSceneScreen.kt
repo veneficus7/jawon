@@ -52,6 +52,11 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.ime
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.union
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
@@ -104,6 +109,7 @@ import com.jawon.app.ui.theme.ArchivoFamily
 import com.jawon.app.ui.theme.CrateBlack
 import com.jawon.app.ui.theme.CrateEdge
 import com.jawon.app.ui.theme.JawonTextStyle
+import com.jawon.app.ui.theme.JawonType
 import com.jawon.app.ui.theme.JetBrainsMonoFamily
 import com.jawon.app.ui.theme.LabelCream
 import com.jawon.app.ui.theme.LabelDim
@@ -3998,6 +4004,12 @@ fun WallSceneScreen(
         BackHandler(enabled = selectedAlbumId != null) { closeCase() }
         BackHandler(enabled = selectedAlbumId == null && showroomReachable) { onOpenShowroom() }
 
+        // Search is opened from the chrome row and takes its place while it is up. Declared
+        // after the two above so that, while it is open, Back closes it and nothing else.
+        var searchOpen by remember { mutableStateOf(false) }
+        if (selectedAlbumId != null) searchOpen = false
+        BackHandler(enabled = searchOpen) { searchOpen = false }
+
         // **What happens when the record finishes.**
         //
         // Until now: nothing. The queue ran out, playback stopped, and the case sat open in
@@ -4025,9 +4037,10 @@ fun WallSceneScreen(
         // Search, only while browsing. Like the crate flip it is a Compose overlay with its
         // own pointer input, so the scene never sees these events (ENGINEERING.md trap 10), and it
         // lands on a record through the same `animateTo` the flip and the magnet use.
-        if (selectedAlbumId == null) {
-            WallSearchBar(
+        if (selectedAlbumId == null && searchOpen) {
+            WallSearchPanel(
                 layout = layout,
+                onClose = { searchOpen = false },
                 // **The only way into a record that does not go through the 3D surface.**
                 //
                 // Search used to pan the camera and stop there, leaving the user to find and
@@ -4046,7 +4059,7 @@ fun WallSceneScreen(
                     scope.launch { panY.animateTo(target.y, animationSpec = FLIP_SPRING) }
                     openCase(target.albumId)
                 },
-                modifier = Modifier.align(Alignment.TopEnd)
+                modifier = Modifier.align(Alignment.BottomCenter)
             )
         }
 
@@ -4097,8 +4110,9 @@ fun WallSceneScreen(
             )
         }
 
-        // Chrome, only while browsing: with a case open the deck owns the screen.
-        if (selectedAlbumId == null) {
+        // Chrome, only while browsing: with a case open the deck owns the screen, and with
+        // search open the field stands where the chrome was.
+        if (selectedAlbumId == null && !searchOpen) {
             // Centred along the bottom: the top belongs to the focus label (a long title ran
             // straight under the icons when they lived up there), and on a phone this tall
             // the bottom is the only comfortable reach. navigationBarsPadding keeps it off
@@ -4151,9 +4165,18 @@ fun WallSceneScreen(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.Bottom
             ) {
-                // Even thirds rather than a huddle in the middle: three wide targets across
-                // the bottom is the easiest thing to hit one-handed on a phone this size.
+                // Even shares rather than a huddle in the middle: wide targets across the
+                // bottom are the easiest thing to hit one-handed on a phone this size.
+                //
+                // FIND lived in the top corner until 0.7, alone: under the status bar's icons
+                // on an edge-to-edge window, in the way of a long title, and at the far end of
+                // the reach the comment above is about.
                 ChromeAction(Icons.Default.Add, "ADD", onAddAlbum, Modifier.weight(1f))
+                if (layout.cases.size >= SEARCH_MIN_ALBUMS) {
+                    ChromeAction(
+                        Icons.Default.Search, "FIND", { searchOpen = true }, Modifier.weight(1f)
+                    )
+                }
                 ChromeAction(
                     Icons.AutoMirrored.Filled.List, "SHELVES", onOpenShelfManager,
                     Modifier.weight(1f)
@@ -4289,13 +4312,14 @@ fun WallSceneScreen(
     }
 }
 
-/** One room-chrome action: a real 48dp target with a quiet mono label under it. */
 /**
  * Finding a record by typing it.
  *
- * Collapsed to a single icon until it is wanted, because the room is the point and a search
- * field sitting permanently over it would be the first piece of ordinary app chrome in a
- * screen that has worked hard not to have any.
+ * Opened from FIND in the chrome row, and standing where that row stood while it is up: the
+ * field at the bottom, just above the keyboard, and what it matches stacked above the field with
+ * the best match nearest the thumb. Not on screen until it is wanted, because the room is the
+ * point and a search field sitting permanently over it would be the first piece of ordinary app
+ * chrome in a screen that has worked hard not to have any.
  *
  * Results are a short list rather than a filtered wall. Filtering would mean rebuilding the
  * layout — every case re-binding, the shelf packing up around the gaps — for something the
@@ -4303,54 +4327,96 @@ fun WallSceneScreen(
  * arriving at a record *on its shelf, in its place* is the answer the room should give.
  */
 @Composable
-private fun WallSearchBar(
+private fun WallSearchPanel(
     layout: WallLayout,
+    onClose: () -> Unit,
     /** Pans to the record *and opens it*. See the call site for why both. */
     onOpen: (CaseLayout) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    if (layout.cases.size < SEARCH_MIN_ALBUMS) return
-
-    var open by remember { mutableStateOf(false) }
     var query by remember { mutableStateOf("") }
     val focus = remember { FocusRequester() }
     val keyboard = LocalSoftwareKeyboardController.current
 
     fun close() {
-        open = false
-        query = ""
         keyboard?.hide()
+        onClose()
     }
 
+    LaunchedEffect(Unit) { focus.requestFocus() }
+
+    val matches = remember(layout, query) {
+        if (query.isBlank()) emptyList() else WallSearch.rank(layout.cases, query).take(6)
+    }
+
+    // The chrome row's own ground, so the field arrives on the surface the row left.
     Column(
-        modifier = modifier.padding(top = 8.dp, end = 6.dp),
-        horizontalAlignment = Alignment.End
-    ) {
-        if (!open) {
-            IconButton(onClick = { open = true }) {
-                Icon(
-                    Icons.Default.Search,
-                    contentDescription = "Find a record",
-                    tint = LabelDim
+        modifier = modifier
+            .fillMaxWidth()
+            .background(
+                Brush.verticalGradient(
+                    0f to ComposeColor.Transparent,
+                    0.22f to ComposeColor(0xE0060403),
+                    1f to ComposeColor(0xFA060403)
                 )
-            }
-            return@Column
-        }
-
-        // Opened: the field, and whatever it matches.
-        LaunchedEffect(Unit) { focus.requestFocus() }
-
-        val matches = remember(layout, query) {
-            if (query.isBlank()) emptyList() else WallSearch.rank(layout.cases, query).take(6)
-        }
-
+            )
+            .windowInsetsPadding(WindowInsets.ime.union(WindowInsets.navigationBars))
+            .padding(top = 44.dp, bottom = 10.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
         Column(
             modifier = Modifier
-                .width(292.dp)
-                .background(ComposeColor(0xF21A1511), RoundedCornerShape(4.dp))
-                .padding(6.dp)
+                .widthIn(max = CHROME_MAX_W)
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp)
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            if (query.isNotBlank() && matches.isEmpty()) {
+                Text(
+                    text = "NOTHING ON THE SHELVES MATCHES",
+                    fontFamily = JetBrainsMonoFamily,
+                    fontSize = JawonType.Caption,
+                    letterSpacing = 1.2.sp,
+                    color = LabelDim,
+                    modifier = Modifier.padding(start = 12.dp, bottom = 10.dp)
+                )
+            }
+
+            // Best match last, so it sits on the field the thumb is already at.
+            matches.asReversed().forEach { case ->
+                Column(
+                    Modifier
+                        .fillMaxWidth()
+                        .clickable { onOpen(case); close() }
+                        .padding(horizontal = 12.dp, vertical = 10.dp)
+                ) {
+                    Text(
+                        text = case.title,
+                        fontFamily = JetBrainsMonoFamily,
+                        fontSize = JawonType.Title,
+                        color = LabelCream,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Text(
+                        text = case.artist.uppercase(Locale.ROOT),
+                        fontFamily = JetBrainsMonoFamily,
+                        fontSize = JawonType.Caption,
+                        letterSpacing = 1.sp,
+                        color = LabelDim,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .padding(top = 6.dp)
+                    .fillMaxWidth()
+                    .background(ComposeColor(0xF21A1511), RoundedCornerShape(4.dp))
+                    .padding(horizontal = 6.dp)
+            ) {
                 Icon(
                     Icons.Default.Search,
                     contentDescription = null,
@@ -4363,7 +4429,7 @@ private fun WallSearchBar(
                     singleLine = true,
                     textStyle = TextStyle(
                         fontFamily = JetBrainsMonoFamily,
-                        fontSize = 13.sp,
+                        fontSize = JawonType.Title,
                         color = LabelCream
                     ),
                     cursorBrush = SolidColor(LampAmber),
@@ -4378,7 +4444,7 @@ private fun WallSearchBar(
                             Text(
                                 "ALBUM OR ARTIST",
                                 fontFamily = JetBrainsMonoFamily,
-                                fontSize = 11.sp,
+                                fontSize = JawonType.Body,
                                 letterSpacing = 1.4.sp,
                                 color = LabelDim.copy(alpha = 0.7f)
                             )
@@ -4387,49 +4453,11 @@ private fun WallSearchBar(
                     },
                     modifier = Modifier
                         .weight(1f)
-                        .padding(horizontal = 10.dp, vertical = 12.dp)
+                        .padding(horizontal = 10.dp, vertical = 14.dp)
                         .focusRequester(focus)
                 )
                 IconButton(onClick = { close() }) {
                     Icon(Icons.Default.Close, contentDescription = "Close search", tint = LabelDim)
-                }
-            }
-
-            if (query.isNotBlank() && matches.isEmpty()) {
-                Text(
-                    text = "NOTHING ON THE SHELVES MATCHES",
-                    fontFamily = JetBrainsMonoFamily,
-                    fontSize = 10.sp,
-                    letterSpacing = 1.2.sp,
-                    color = LabelDim,
-                    modifier = Modifier.padding(start = 12.dp, top = 4.dp, bottom = 10.dp)
-                )
-            }
-
-            matches.forEach { case ->
-                Column(
-                    Modifier
-                        .fillMaxWidth()
-                        .clickable { onOpen(case); close() }
-                        .padding(horizontal = 12.dp, vertical = 9.dp)
-                ) {
-                    Text(
-                        text = case.title,
-                        fontFamily = JetBrainsMonoFamily,
-                        fontSize = 12.sp,
-                        color = LabelCream,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    Text(
-                        text = case.artist.uppercase(Locale.ROOT),
-                        fontFamily = JetBrainsMonoFamily,
-                        fontSize = 9.sp,
-                        letterSpacing = 1.sp,
-                        color = LabelDim,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
                 }
             }
         }
@@ -4699,6 +4727,7 @@ private const val RAIL_LINE_PX = 3.5f
  */
 private const val RAIL_THUMB_FRACTION = 0.085f
 
+/** One room-chrome action: a real 48dp target with a quiet mono label under it. */
 @Composable
 private fun ChromeAction(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
