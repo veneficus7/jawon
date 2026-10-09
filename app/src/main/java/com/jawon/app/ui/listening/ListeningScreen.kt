@@ -179,10 +179,12 @@ private fun Totals(state: ListeningState) {
                         append(state.currentStreak)
                         append(" DAYS RUNNING")
                     }
+                    // "BEST 2" on its own read as a score, not a run of days.
                     if (state.longestStreak > state.currentStreak) {
                         if (isNotEmpty()) append("  ·  ")
-                        append("BEST ")
+                        append("LONGEST RUN ")
                         append(state.longestStreak)
+                        append(" DAYS")
                     }
                 },
                 fontFamily = JetBrainsMonoFamily,
@@ -412,7 +414,7 @@ private fun ListeningRowView(rank: Int, row: ListeningRow, onClick: () -> Unit) 
             Column(
                 Modifier
                     .weight(1f)
-                    .padding(start = 14.dp)
+                    .padding(start = 14.dp, end = 12.dp)
             ) {
                 Text(
                     text = row.title,
