@@ -25,8 +25,15 @@ sealed interface AddAlbumUiState {
      * fields — anything the tags got wrong is fixable on the album afterwards.
      */
     data class MultiPreview(
+        /** The albums first, then the singles — see [singlesStart] and `ScanTidy.albumsThenSingles`. */
         val albums: List<ImportPreview>,
         val selected: Set<Int>,
+        /**
+         * Where the singles begin in [albums] (0.7.4): records of one or two tracks, listed under
+         * the albums in a section of their own so they no longer crowd out the real records.
+         * [albums]' size when there are none.
+         */
+        val singlesStart: Int = albums.size,
         /**
          * How many of the *ticked* albums have no artwork of their own and would have their
          * cover looked up online.
@@ -38,6 +45,8 @@ sealed interface AddAlbumUiState {
         val coversToLookUp: Int = 0
     ) : AddAlbumUiState {
         val selectedCount: Int get() = selected.size
+        val albumCount: Int get() = singlesStart
+        val singleCount: Int get() = albums.size - singlesStart
     }
 
     data object Saving : AddAlbumUiState

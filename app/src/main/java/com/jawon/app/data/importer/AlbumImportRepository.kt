@@ -124,7 +124,19 @@ class AlbumImportRepository @Inject constructor(
         val alreadyShelved = albumDao.getAll().first()
             .mapTo(HashSet()) { albumKey(it.title, it.artist) }
 
-        val projection = arrayOf(
+        // Where each file lives, for ScanTidy (0.7.4): the relative path from Android 10, the full
+        // path before it. And Android 12's own word on what is a recording.
+        val pathColumn = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+            MediaStore.Audio.Media.RELATIVE_PATH
+        } else {
+            @Suppress("DEPRECATION") MediaStore.Audio.Media.DATA
+        }
+        val recordingColumn = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+            MediaStore.Audio.Media.IS_RECORDING
+        } else {
+            null
+        }
+        val projection = listOfNotNull(
             MediaStore.Audio.Media._ID,
             MediaStore.Audio.Media.DISPLAY_NAME,
             MediaStore.Audio.Media.TITLE,
@@ -134,8 +146,10 @@ class AlbumImportRepository @Inject constructor(
             MediaStore.Audio.Media.TRACK,
             MediaStore.Audio.Media.YEAR,
             MediaStore.Audio.Media.DURATION,
-            MediaStore.Audio.Media.MIME_TYPE
-        )
+            MediaStore.Audio.Media.MIME_TYPE,
+            pathColumn,
+            recordingColumn
+        ).toTypedArray()
 
         val grouped = LinkedHashMap<String, MutableList<TrackMetadata>>()
         val albumNames = HashMap<String, Pair<String?, String?>>()
@@ -159,6 +173,8 @@ class AlbumImportRepository @Inject constructor(
             val yearCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.YEAR)
             val durationCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.DURATION)
             val mimeCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.MIME_TYPE)
+            val pathCol = cursor.getColumnIndex(pathColumn)
+            val recordingCol = recordingColumn?.let { cursor.getColumnIndex(it) } ?: -1
 
             while (cursor.moveToNext()) {
                 val uri = ContentUris.withAppendedId(
@@ -169,11 +185,28 @@ class AlbumImportRepository @Inject constructor(
 
                 val album = cursor.getStringOrNull(albumCol)
                 val artist = cursor.getStringOrNull(artistCol)
+
+                // **Not every audio file on a phone is a record** (0.7.4, ScanTidy). Voice notes
+                // and recordings are never offered. An untagged file in Download or Music is
+                // offered on its own, as a single — MediaStore would otherwise name an album after
+                // the folder and offer "Download" — and unless it is long enough to be a song.
+                val rawPath = if (pathCol >= 0) cursor.getStringOrNull(pathCol) else null
+                val relativePath = if (pathColumn == MediaStore.Audio.Media.RELATIVE_PATH) rawPath
+                else rawPath?.substringBeforeLast('/', "")
+                val isRecording = recordingCol >= 0 && (cursor.getIntOrNull(recordingCol) ?: 0) != 0
+                if (ScanTidy.isNeverMusic(relativePath, isRecording)) continue
+                val loose = ScanTidy.isFolderAlbum(album, relativePath)
+                val durationMs = cursor.getLongOrNull(durationCol) ?: 0L
+                if (loose && durationMs in 1 until ScanTidy.LOOSE_MIN_MS) continue
+
                 // Album id groups a real album correctly even when it spans folders. Falling
                 // back to the names keeps loose files together sensibly rather than making
-                // every one of them its own single-track "album".
-                val key = cursor.getLongOrNull(albumIdCol)?.toString()
-                    ?: "name:${album.orEmpty()}/${artist.orEmpty()}"
+                // every one of them its own single-track "album". A loose file is its own.
+                val key = when {
+                    loose -> "loose:$uri"
+                    else -> cursor.getLongOrNull(albumIdCol)?.toString()
+                        ?: "name:${album.orEmpty()}/${artist.orEmpty()}"
+                }
 
                 albumNames.putIfAbsent(key, album to artist)
                 grouped.getOrPut(key) { mutableListOf() }.add(
@@ -202,7 +235,7 @@ class AlbumImportRepository @Inject constructor(
                             ?.takeIf { it > 1000 }
                             ?.let { it / 1000 },
                         year = cursor.getIntOrNull(yearCol)?.takeIf { it > 0 },
-                        durationMs = cursor.getLongOrNull(durationCol) ?: 0L,
+                        durationMs = durationMs,
                         mimeType = cursor.getStringOrNull(mimeCol) ?: "audio/unknown",
                         // Not in the index. Filled in at import — see the KDoc above.
                         sampleRateHz = 0,
@@ -224,7 +257,9 @@ class AlbumImportRepository @Inject constructor(
                 compareBy({ it.discNumber ?: 1 }, { it.trackNumber ?: Int.MAX_VALUE }, { it.displayName })
             )
             val (album, artist) = albumNames[key] ?: (null to null)
-            val title = album?.takeIf { it.isNotBlank() && it != MEDIASTORE_UNKNOWN }
+            // A loose file is a single named for its song: its "album" was only its folder.
+            val title = if (key.startsWith("loose:")) ordered.first().title
+            else album?.takeIf { it.isNotBlank() && it != MEDIASTORE_UNKNOWN }
                 ?: mostCommon(ordered.mapNotNull { it.album })
                 ?: "Untitled Album"
             val artistName = artist?.takeIf { it.isNotBlank() && it != MEDIASTORE_UNKNOWN }

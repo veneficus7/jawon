@@ -48,7 +48,7 @@ Fixed items are struck through; the rest are assigned below.
 | **Settings** | Long single scroll of mono capitals; jargon ("volume levelling", "tidy the library", "how it is running"); tiny 9–10sp text; the owner finds it "unprofessional and hard to understand for someone new" | 0.7.2 |
 | **Room switching** | Each room rebuilds Filament from nothing (~1.25s to first frame), behind a fade; the only way between rooms is Back → showroom → swipe → tap, or Settings | 0.7.2 |
 | Type everywhere | The mono scale bottoms out at 9sp (`JawonType.Fine`) and the commonest size is 10sp — legible on a 6.9" flagship, small on a 6.1" phone and for older eyes | 0.7.2 |
-| Scan results | Rows say "COVER" but show no cover; a `Download` folder is offered as an album; one-track "albums" crowd out real records; Back skips the chooser and lands in the room | 0.7.3 |
+| Scan results | ~~Rows say "COVER" but show no cover; a `Download` folder is offered as an album; one-track "albums" crowd out real records; Back skips the chooser and lands in the room~~ — covers in the rows, recordings and untagged folder-"albums" filtered (`ScanTidy`), singles in a folded section under the albums, Back to the chooser (0.7.4) | done |
 | CD import | A paragraph of jargon ("bus-powered") and a LOOK AGAIN button; no steps, no picture, no automatic detection of a drive being plugged in | 0.7.3 |
 | CD room | ~~Closing a case pauses, and a paused record leaves no bar on the wall~~ — it plays on, its case proud, a real bar at the foot of the wall (0.7.3) | done |
 | CD room | The chrome's labels are 10sp dim mono under icons; only the 48dp icon is the target, not the label | 0.7.2 |

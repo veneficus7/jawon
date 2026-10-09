@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.jawon.app.data.importer.AlbumImportRepository
 import com.jawon.app.data.importer.ImportPreview
+import com.jawon.app.data.importer.ScanTidy
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -20,9 +21,13 @@ class AddAlbumViewModel @Inject constructor(
     private val _uiState = MutableStateFlow<AddAlbumUiState>(AddAlbumUiState.Idle)
     val uiState: StateFlow<AddAlbumUiState> = _uiState.asStateFlow()
 
+    /** The scan in flight, so going back can stop it rather than have it land on the chooser later. */
+    private var scanJob: kotlinx.coroutines.Job? = null
+
     fun onFolderPicked(uri: Uri) {
         _uiState.value = AddAlbumUiState.Scanning
-        viewModelScope.launch {
+        scanJob?.cancel()
+        scanJob = viewModelScope.launch {
             _uiState.value = try {
                 val found = repository.scanTree(uri)
                 when {
@@ -35,13 +40,16 @@ class AddAlbumViewModel @Inject constructor(
                     // up with two copies of a record, and the two are indistinguishable
                     // afterwards. Still listed and still tickable — the user asked for this
                     // folder specifically, and the match is a heuristic that can be wrong.
-                    found.size > 1 -> AddAlbumUiState.MultiPreview(
-                        albums = found,
-                        selected = found.indices
-                            .filterNot { found[it].alreadyInLibrary }
-                            .toSet(),
-                        coversToLookUp = repository.coversToLookUp(found)
-                    )
+                    found.size > 1 -> {
+                        val (ordered, singlesStart) = ordered(found)
+                        val selected = ordered.indices.filterNot { ordered[it].alreadyInLibrary }.toSet()
+                        AddAlbumUiState.MultiPreview(
+                            albums = ordered,
+                            selected = selected,
+                            singlesStart = singlesStart,
+                            coversToLookUp = repository.coversToLookUp(selected.map { ordered[it] })
+                        )
+                    }
                     else -> singlePreview(found.first())
                 }
             } catch (e: Exception) {
@@ -64,13 +72,15 @@ class AddAlbumViewModel @Inject constructor(
      */
     fun onScanDevice() {
         _uiState.value = AddAlbumUiState.Scanning
-        viewModelScope.launch {
+        scanJob?.cancel()
+        scanJob = viewModelScope.launch {
             _uiState.value = try {
                 val found = repository.scanDevice()
                 if (found.isEmpty()) {
                     AddAlbumUiState.Error("No new music found on this phone")
                 } else {
-                    AddAlbumUiState.MultiPreview(albums = found, selected = emptySet())
+                    val (ordered, singlesStart) = ordered(found)
+                    AddAlbumUiState.MultiPreview(albums = ordered, selected = emptySet(), singlesStart = singlesStart)
                 }
             } catch (e: Exception) {
                 AddAlbumUiState.Error(e.message ?: "Couldn't read this phone's music")
@@ -78,14 +88,37 @@ class AddAlbumViewModel @Inject constructor(
         }
     }
 
-    /** Tick or untick everything at once — the only sane control for a list this long. */
-    fun onToggleAll() {
+    /**
+     * Tick or untick every album at once — the only sane control for a list this long. The albums
+     * only: the singles under them have a switch of their own ([onToggleSingles]), since "all of my
+     * records" rarely means every stray song on the phone too.
+     */
+    fun onToggleAll() = toggleRange { (0 until it.singlesStart).toList() }
+
+    /** Tick or untick every single. */
+    fun onToggleSingles() = toggleRange { (it.singlesStart until it.albums.size).toList() }
+
+    private fun toggleRange(range: (AddAlbumUiState.MultiPreview) -> List<Int>) {
         val current = _uiState.value
         if (current !is AddAlbumUiState.MultiPreview) return
-        val selected = if (current.selected.size == current.albums.size) emptySet()
-        else current.albums.indices.toSet()
+        val these = range(current)
+        val selected = if (these.all { it in current.selected }) current.selected - these.toSet()
+        else current.selected + these
         _uiState.value = current.copy(selected = selected, coversToLookUp = coverCount(current, selected))
     }
+
+    /**
+     * Back to the four ways in (0.7.4). Back from what a scan found used to leave for the room,
+     * which threw the scan away to try a folder instead.
+     */
+    fun backToStart() {
+        scanJob?.cancel()
+        scanJob = null
+        _uiState.value = AddAlbumUiState.Idle
+    }
+
+    private fun ordered(found: List<ImportPreview>): Pair<List<ImportPreview>, Int> =
+        ScanTidy.albumsThenSingles(found, { it.tracks.size }, { it.suggestedTitle })
 
     fun onToggleAlbum(index: Int) {
         val current = _uiState.value

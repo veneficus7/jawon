@@ -12,6 +12,7 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
@@ -36,6 +37,13 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Slider
@@ -129,14 +137,20 @@ fun AddAlbumScreen(
             .background(CrateBlack)
             .statusBarsPadding()
     ) {
+        // **Back goes back a step** (0.7.4): from what a scan found, or a folder's album, or a
+        // problem, to the four ways in — not out to the room, which threw the scan away. From the
+        // ways in themselves, to the room.
+        val atStart = uiState is AddAlbumUiState.Idle || uiState is AddAlbumUiState.Saving ||
+            uiState is AddAlbumUiState.Done || uiState is AddAlbumUiState.DoneMany
+        BackHandler(enabled = !atStart) { viewModel.backToStart() }
         ScreenBar(
             title = when (uiState) {
                 is AddAlbumUiState.MultiPreview -> "WHAT WAS FOUND"
                 is AddAlbumUiState.Preview -> "ONE ALBUM"
                 else -> "ADD ALBUM"
             },
-            onBack = onCancel,
-            backDescription = "Back to the room"
+            onBack = { if (atStart) onCancel() else viewModel.backToStart() },
+            backDescription = if (atStart) "Back to the room" else "Back to the ways to add music"
         )
 
         when (val state = uiState) {
@@ -166,6 +180,7 @@ fun AddAlbumScreen(
                 state = state,
                 onToggle = viewModel::onToggleAlbum,
                 onToggleAll = viewModel::onToggleAll,
+                onToggleSingles = viewModel::onToggleSingles,
                 onImport = viewModel::onImportSelected
             )
             is AddAlbumUiState.DoneMany -> {
@@ -175,7 +190,7 @@ fun AddAlbumScreen(
             }
             is AddAlbumUiState.Saving -> Working("PUTTING THEM ON THE SHELF")
             is AddAlbumUiState.Done -> Unit // handled by LaunchedEffect above
-            is AddAlbumUiState.Error -> Problem(state.message, onBack = onCancel)
+            is AddAlbumUiState.Error -> Problem(state.message, onBack = viewModel::backToStart)
         }
     }
 }
@@ -377,7 +392,7 @@ private fun Problem(message: String, onBack: () -> Unit) {
                 .padding(horizontal = 16.dp, vertical = 9.dp)
         ) {
             Text(
-                "BACK TO THE ROOM",
+                "TRY ANOTHER WAY",
                 fontFamily = JetBrainsMonoFamily,
                 fontWeight = FontWeight.Bold,
                 fontSize = JawonType.Body,
@@ -401,9 +416,16 @@ private fun MultiPreviewContent(
     state: AddAlbumUiState.MultiPreview,
     onToggle: (Int) -> Unit,
     onToggleAll: () -> Unit,
+    onToggleSingles: () -> Unit,
     onImport: () -> Unit
 ) {
-    val allTicked = state.selectedCount == state.albums.size
+    val albumIndices = 0 until state.singlesStart
+    val singleIndices = state.singlesStart until state.albums.size
+    val allTicked = state.albumCount > 0 && albumIndices.all { it in state.selected }
+    val allSinglesTicked = state.singleCount > 0 && singleIndices.all { it in state.selected }
+    // The singles start folded away when there are albums to look at, and open when they are all
+    // there is.
+    var singlesOpen by rememberSaveable { mutableStateOf(state.albumCount == 0) }
 
     Column(modifier = Modifier.fillMaxSize()) {
         Row(
@@ -414,7 +436,11 @@ private fun MultiPreviewContent(
         ) {
             Column(Modifier.weight(1f)) {
                 Text(
-                    text = "${state.albums.size} ALBUMS",
+                    text = when {
+                        state.albumCount == 0 -> if (state.singleCount == 1) "1 SINGLE" else "${state.singleCount} SINGLES"
+                        state.albumCount == 1 -> "1 ALBUM"
+                        else -> "${state.albumCount} ALBUMS"
+                    },
                     fontFamily = ArchivoFamily,
                     fontWeight = FontWeight.ExtraBold,
                     fontSize = JawonType.Heading,
@@ -428,20 +454,22 @@ private fun MultiPreviewContent(
             // A phone scan can return hundreds. Ticking them one at a time is not a
             // reasonable thing to ask, and this is also the fastest route to "all of it",
             // which is what someone setting the app up for the first time wants.
-            Row(
-                modifier = Modifier
-                    .border(1.dp, CrateEdge)
-                    .clickable(onClick = onToggleAll)
-                    .padding(horizontal = 12.dp, vertical = 8.dp)
-            ) {
-                Text(
-                    text = if (allTicked) "NONE" else "ALL",
-                    fontFamily = JetBrainsMonoFamily,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = JawonType.Body,
-                    letterSpacing = 1.6.sp,
-                    color = LampAmber
-                )
+            if (state.albumCount > 0) {
+                Row(
+                    modifier = Modifier
+                        .border(1.dp, CrateEdge)
+                        .clickable(onClick = onToggleAll)
+                        .padding(horizontal = 12.dp, vertical = 8.dp)
+                ) {
+                    Text(
+                        text = if (allTicked) "NONE" else "ALL",
+                        fontFamily = JetBrainsMonoFamily,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = JawonType.Body,
+                        letterSpacing = 1.6.sp,
+                        color = LampAmber
+                    )
+                }
             }
         }
 
@@ -450,16 +478,44 @@ private fun MultiPreviewContent(
                 .weight(1f)
                 .padding(horizontal = 24.dp)
         ) {
-            itemsIndexed(state.albums) { index, album ->
+            items(state.albumCount, key = { "album-$it" }) { index ->
+                val album = state.albums[index]
                 AlbumChoice(
                     title = album.suggestedTitle,
                     artist = album.suggestedArtist,
                     trackCount = album.tracks.size,
-                    hasCover = album.embeddedCoverUri != null,
+                    cover = album.embeddedCoverUri,
                     alreadyInLibrary = album.alreadyInLibrary,
                     checked = index in state.selected,
                     onToggle = { onToggle(index) }
                 )
+            }
+            if (state.singleCount > 0) {
+                item(key = "singles") {
+                    SinglesHeader(
+                        count = state.singleCount,
+                        ticked = singleIndices.count { it in state.selected },
+                        open = singlesOpen,
+                        allTicked = allSinglesTicked,
+                        onOpen = { singlesOpen = !singlesOpen },
+                        onToggleAll = onToggleSingles
+                    )
+                }
+                if (singlesOpen) {
+                    items(state.singleCount, key = { "single-$it" }) { k ->
+                        val index = state.singlesStart + k
+                        val single = state.albums[index]
+                        AlbumChoice(
+                            title = single.suggestedTitle,
+                            artist = single.suggestedArtist,
+                            trackCount = single.tracks.size,
+                            cover = single.embeddedCoverUri,
+                            alreadyInLibrary = single.alreadyInLibrary,
+                            checked = index in state.selected,
+                            onToggle = { onToggle(index) }
+                        )
+                    }
+                }
             }
         }
 
@@ -495,10 +551,17 @@ private fun MultiPreviewContent(
                 horizontalArrangement = Arrangement.Center
             ) {
                 Text(
-                    text = when {
-                        state.selectedCount == 0 -> "NOTHING TICKED"
-                        state.selectedCount == 1 -> "ADD 1 ALBUM"
-                        else -> "ADD ${state.selectedCount} ALBUMS"
+                    // Albums, singles, or "records" for a mix of the two.
+                    text = run {
+                        val singles = state.selected.count { it >= state.singlesStart }
+                        val albums = state.selectedCount - singles
+                        val n = state.selectedCount
+                        when {
+                            n == 0 -> "NOTHING TICKED"
+                            singles == 0 -> if (n == 1) "ADD 1 ALBUM" else "ADD $n ALBUMS"
+                            albums == 0 -> if (n == 1) "ADD 1 SINGLE" else "ADD $n SINGLES"
+                            else -> "ADD $n RECORDS"
+                        }
                     },
                     fontFamily = JetBrainsMonoFamily,
                     fontWeight = FontWeight.Bold,
@@ -511,13 +574,82 @@ private fun MultiPreviewContent(
     }
 }
 
+/**
+ * The Singles section's header (0.7.4): how many there are, folded away by default under the
+ * albums, with its own tick-all. A phone collects stray songs — a download here, a file someone
+ * sent there — and listed among the albums they buried the records someone came to add.
+ */
+@Composable
+private fun SinglesHeader(
+    count: Int,
+    ticked: Int,
+    open: Boolean,
+    allTicked: Boolean,
+    onOpen: () -> Unit,
+    onToggleAll: () -> Unit
+) {
+    Column(Modifier.padding(top = 18.dp, bottom = 6.dp)) {
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .height(1.dp)
+                .background(CrateEdge)
+        )
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable(onClick = onOpen)
+                .padding(top = 14.dp, bottom = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text(
+                    text = if (count == 1) "1 SINGLE" else "$count SINGLES",
+                    fontFamily = ArchivoFamily,
+                    fontWeight = FontWeight.ExtraBold,
+                    fontSize = JawonType.Subhead,
+                    color = LabelCream
+                )
+                Text(
+                    text = "Songs with no album of their own" + if (ticked > 0) " · $ticked ticked" else "",
+                    style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = JawonType.Caption)
+                )
+            }
+            if (open) {
+                Row(
+                    modifier = Modifier
+                        .padding(end = 10.dp)
+                        .border(1.dp, CrateEdge)
+                        .clickable(onClick = onToggleAll)
+                        .padding(horizontal = 12.dp, vertical = 8.dp)
+                ) {
+                    Text(
+                        text = if (allTicked) "NONE" else "ALL",
+                        fontFamily = JetBrainsMonoFamily,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = JawonType.Body,
+                        letterSpacing = 1.6.sp,
+                        color = LampAmber
+                    )
+                }
+            }
+            Icon(
+                imageVector = if (open) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                contentDescription = if (open) "Fold the singles away" else "Show the singles",
+                tint = LabelDim
+            )
+        }
+    }
+}
+
 /** One album in the found list. The whole row toggles; the box is an indicator, not a target. */
 @Composable
 private fun AlbumChoice(
     title: String,
     artist: String,
     trackCount: Int,
-    hasCover: Boolean,
+    /** The art found in its files, shown — the row used to say "COVER" and show nothing. */
+    cover: Uri?,
     /** The library already holds this title and artist. See [ImportPreview.alreadyInLibrary]. */
     alreadyInLibrary: Boolean,
     checked: Boolean,
@@ -547,6 +679,31 @@ private fun AlbumChoice(
                 )
             }
         }
+        // The cover, or a plain sleeve where the files carry none — the lookup fills those in
+        // on import, as the line under the list says.
+        Box(
+            modifier = Modifier
+                .size(46.dp)
+                .clip(RoundedCornerShape(3.dp))
+                .background(CrateRaised)
+                .border(1.dp, CrateEdge, RoundedCornerShape(3.dp)),
+            contentAlignment = Alignment.Center
+        ) {
+            if (cover != null) {
+                AsyncImage(
+                    model = cover,
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize()
+                )
+            } else {
+                com.jawon.app.ui.common.JawonMark(
+                    size = 22.dp,
+                    color = LabelDim.copy(alpha = 0.45f),
+                    contentDescription = null
+                )
+            }
+        }
         Column(Modifier.weight(1f)) {
             Text(
                 text = title,
@@ -562,8 +719,7 @@ private fun AlbumChoice(
                 // change someone's mind about the row.
                 text = (if (alreadyInLibrary) "ALREADY ON A SHELF · " else "") +
                     artist.uppercase(Locale.ROOT) + " · " + trackCount +
-                    (if (trackCount == 1) " TRACK" else " TRACKS") +
-                    (if (hasCover) " · COVER" else ""),
+                    (if (trackCount == 1) " TRACK" else " TRACKS"),
                 style = JawonTextStyle.mono.copy(
                     color = if (alreadyInLibrary) LampAmber else LabelDim,
                     fontSize = JawonType.Caption
