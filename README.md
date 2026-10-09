@@ -28,7 +28,7 @@ cassette rooms still to come.
 | | |
 |---|---|
 | Kotlin | 47,685 lines across 172 files in `main` |
-| Tests | 791 across 72 files, all on the JVM, every package covered |
+| Tests | 795 across 73 files, all on the JVM, every package covered |
 | minSdk / target | 28 / 37 |
 | Database | Room, schema 6, five hand-written migrations, no destructive fallback |
 
