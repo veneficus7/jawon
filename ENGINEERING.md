@@ -36,7 +36,9 @@ Phase 1 (a complete 2D music player) and Phase 2 (the room: M5–M9) are done.
 real rather than merely rendered. **On 2026-09-21 the owner called the CD room
 finished**, and the next work is the other formats — vinyl, cassette and a pocket
 player — planned in `docs/formats.md`. **The pocket player is under way**: its model is
-committed and its room renders (debug builds only, Settings → THE ROOM).
+committed, its room renders, and **it shipped to testers in 0.7.1 (2026-10-10)** — chosen in Settings →
+THE ROOM or from the showroom (Back from the wall, or a tap on the neon sign). The roadmap to 1.0 is
+`docs/roadmap.md`.
 
 ### Working, and checked on a device
 
@@ -548,6 +550,7 @@ trap 11 and trap 15 in three different files, each correct in the era it was wri
 
 | Read when | Document |
 |---|---|
+| **What to build next, and in what order — the road to 1.0 on Google Play** | `docs/roadmap.md` — the milestones (0.7.x polish and switching, 0.8 vinyl, 0.9 cassette, 1.0 Play), the UI audit, the standing rules for the road, and the privacy ledger that relaxes the same-commit rule until 1.0 |
 | Orienting in the code — what each file does | `docs/architecture.md` |
 | Touching the case, disc or beam models | `docs/models.md` |
 | Touching `dust.mat` or any shader | `docs/materials.md` |

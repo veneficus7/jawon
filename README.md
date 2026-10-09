@@ -15,15 +15,15 @@ atomic unit: there is no cross-album shuffle, no feed, and no account.
 
 ## State
 
-**0.7 beta.** Runs on 15+ devices, from a Galaxy S25 Ultra down to a Redmi 9 and a
+**0.7.1 beta.** Runs on 15+ devices, from a Galaxy S25 Ultra down to a Redmi 9 and a
 Galaxy Note 8. Distributed as a signed APK through a separate public repository, with an
 in-app updater; not on Play yet. See `docs/release.md` §5 for what is still outstanding
 before a store listing.
 
-A second room is being built: a **pocket player** with a working click wheel, where the
-phone's whole display is the player's face. It is behind a build flag until it is finished
-(`docs/formats.md`), and so are the showroom that moves between rooms and the vinyl and
-cassette rooms still to come.
+A second room shipped in 0.7.1: a **pocket player** with a working click wheel, where the
+phone's whole display is the player's face, reached through a showroom that moves between
+rooms. Vinyl (0.8) and cassette (0.9) are next, then Google Play at 1.0 — see
+`docs/roadmap.md`.
 
 | | |
 |---|---|
