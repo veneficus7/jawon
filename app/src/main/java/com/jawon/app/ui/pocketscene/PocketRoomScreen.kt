@@ -445,7 +445,9 @@ fun PocketRoomScreen(
             lyricsView(lyricsState, positionMs, device.lyricTop.value, device.lyricsFollowing.value)
         } else {
             null
-        }
+        },
+        searchLetter = device.searchLetter.intValue,
+        searchInResults = device.searchInResults.value
     )
     // Where the lyrics page is actually showing from, for the wheel's first turn on it.
     device.lyricShownTop = (screen as? LcdScreen.NowPlaying)?.lyrics?.top ?: 0

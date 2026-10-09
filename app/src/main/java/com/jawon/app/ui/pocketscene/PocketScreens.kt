@@ -46,7 +46,10 @@ internal fun lcdScreenFor(
     bar: LcdScreen.Bar,
     volume: Float,
     scrubMs: Long,
-    lyrics: LcdScreen.LyricsView?
+    lyrics: LcdScreen.LyricsView?,
+    /** Search's letter cursor, and whether the wheel is up in its results. */
+    searchLetter: Int = 0,
+    searchInResults: Boolean = false
 ): LcdScreen {
     val key = nav.current.key
     if (key == MenuKey.NowPlaying && pending != null) {
@@ -119,6 +122,22 @@ internal fun lcdScreenFor(
         return LcdScreen.CoverFlow(covers, albumsInOrder[centre].title, albumsInOrder[centre].artist, back)
     }
     if (key == MenuKey.Brick) return LcdScreen.Brick
+    if (key is MenuKey.Search) {
+        val rows = PocketSearch.results(key.query, library)
+        val selected = nav.current.selected.coerceIn(0, (rows.size - 1).coerceAtLeast(0))
+        // Its own window: five rows above the letters, not a whole screen's eight.
+        val top = (selected - SEARCH_ROWS + 1).coerceAtLeast(0)
+            .coerceAtMost((rows.size - SEARCH_ROWS).coerceAtLeast(0))
+        val window = rows.drop(top).take(SEARCH_ROWS)
+        return LcdScreen.Search(
+            query = key.query,
+            letter = searchLetter,
+            rows = window.map { LcdRow(it.label, it.leadsOn, it.value) },
+            selected = if (searchInResults && rows.isNotEmpty()) selected - top else -1,
+            top = top,
+            total = rows.size
+        )
+    }
     if (key is MenuKey.Adjust) {
         val control = key.control
         val position = settings.sound[control] ?: 0f

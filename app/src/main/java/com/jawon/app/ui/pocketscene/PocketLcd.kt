@@ -11,6 +11,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.basicMarquee
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -208,6 +209,21 @@ sealed interface LcdScreen {
         override val title: String get() = "Cover Flow"
     }
 
+    /**
+     * Search: what has been typed, the strip of letters with the cursor on [letter], and what it
+     * finds, windowed as a list is. [selected] is −1 while the wheel is on the letters.
+     */
+    data class Search(
+        val query: String,
+        val letter: Int,
+        val rows: List<LcdRow>,
+        val selected: Int,
+        val top: Int,
+        val total: Int
+    ) : LcdScreen {
+        override val title: String get() = "Search"
+    }
+
     /** Brick — the game is drawn from a [BrickFrame] handed in each frame, not from this. */
     data object Brick : LcdScreen {
         override val title: String get() = "Brick"
@@ -301,6 +317,7 @@ fun PocketLcd(
                         is LcdScreen.NowPlaying -> NowPlayingBody(s)
                         is LcdScreen.Slider -> SliderBody(s)
                         is LcdScreen.Brick -> BrickBody(brick)
+                        is LcdScreen.Search -> SearchBody(s)
                         is LcdScreen.CoverFlow -> Unit
                     }
                 }
@@ -1124,6 +1141,145 @@ private fun BatteryGlyph(level: Float, charging: Boolean, modifier: Modifier) {
                 close()
             }
             drawPath(bolt, LcdInk)
+        }
+    }
+}
+
+/** Rows of results Search shows above its letters. */
+internal const val SEARCH_ROWS = 5
+
+/** Letters of the strip shown either side of the cursor. */
+private const val STRIP_SIDE = 4
+
+/**
+ * **Search**, drawn as the classic drew it: what it finds as a list across the top, and along the
+ * foot what has been typed over a strip of letters, the one under the cursor lit. While the wheel
+ * is on the letters no result is highlighted; ▶▶ takes it up into the list.
+ */
+@Composable
+private fun SearchBody(search: LcdScreen.Search) {
+    val density = LocalDensity.current
+    fun px(v: Int): Dp = with(density) { v.toDp() }
+    Column(modifier = Modifier.fillMaxSize()) {
+        Box(modifier = Modifier.fillMaxWidth().weight(1f)) {
+            if (search.rows.isEmpty()) {
+                Text(
+                    text = if (search.query.isBlank()) "Turn to a letter, press the centre" else "Nothing found",
+                    fontFamily = InterFamily,
+                    fontWeight = FontWeight.Medium,
+                    fontSize = lcdSp(22),
+                    color = LcdDim,
+                    modifier = Modifier.align(Alignment.Center)
+                )
+            } else {
+                Column(modifier = Modifier.fillMaxSize()) {
+                    search.rows.forEachIndexed { i, row ->
+                        val on = i == search.selected
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(px(ROW_PX))
+                                .then(
+                                    if (on) Modifier.background(Brush.verticalGradient(listOf(SelectTop, SelectBottom)))
+                                    else Modifier
+                                )
+                                .padding(horizontal = px(18)),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = row.label,
+                                fontFamily = InterFamily,
+                                fontWeight = if (on) FontWeight.SemiBold else FontWeight.Medium,
+                                fontSize = lcdSp(23),
+                                color = if (on) Color.White else LcdInk,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f)
+                            )
+                            row.value?.let {
+                                Text(
+                                    text = it,
+                                    fontFamily = InterFamily,
+                                    fontSize = lcdSp(19),
+                                    color = if (on) Color.White.copy(alpha = 0.8f) else LcdDim,
+                                    modifier = Modifier.padding(start = px(10))
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        // What has been typed, as a field.
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(px(2))
+                .background(TitleRule)
+        )
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(Brush.verticalGradient(listOf(TrackTop, TrackBottom)))
+                .padding(horizontal = px(18), vertical = px(8)),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = search.query.ifEmpty { " " } + "▏",
+                fontFamily = InterFamily,
+                fontWeight = FontWeight.SemiBold,
+                fontSize = lcdSp(24),
+                color = LcdInk,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f)
+            )
+            Text(
+                text = "${search.total}",
+                fontFamily = InterFamily,
+                fontSize = lcdSp(19),
+                color = LcdDim
+            )
+        }
+        // The strip, the cursor's letter lit and a few either side.
+        // Lifted off the screen's foot, which the window's lip shades.
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(LcdWhite)
+                .padding(start = px(10), end = px(10), bottom = px(12))
+                .height(px(52)),
+            horizontalArrangement = Arrangement.SpaceEvenly,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            for (offset in -STRIP_SIDE..STRIP_SIDE) {
+                val i = search.letter + offset
+                val letter = PocketSearch.LETTERS.getOrNull(i)
+                val on = offset == 0 && search.selected < 0
+                Box(
+                    modifier = Modifier
+                        .size(px(48), px(44))
+                        .then(
+                            if (on) Modifier.background(Brush.verticalGradient(listOf(SelectTop, SelectBottom)))
+                            else Modifier
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (letter != null) {
+                        Text(
+                            text = letter,
+                            fontFamily = InterFamily,
+                            fontWeight = if (offset == 0) FontWeight.Bold else FontWeight.Medium,
+                            fontSize = lcdSp(if (offset == 0) 27 else 23),
+                            color = when {
+                                on -> Color.White
+                                offset == 0 -> LcdInk
+                                else -> LcdDim.copy(alpha = 1f - kotlin.math.abs(offset) * 0.16f)
+                            }
+                        )
+                    }
+                }
+            }
         }
     }
 }

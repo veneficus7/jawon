@@ -236,6 +236,7 @@ class PocketMenuTest {
             .open(MenuKey.Settings).open(MenuKey.About).open(MenuKey.Choice(PocketSetting.CLICKER))
             .open(MenuKey.Sound).open(MenuKey.Adjust(SoundControl.ECHO_TIME))
             .open(MenuKey.Choice(PocketSetting.MOTION)).open(MenuKey.Extras).move(0, 1).open(MenuKey.Brick)
+            .open(MenuKey.Search("RA | DIO"))
         val restored = nav.stack.map { PocketNav.encode(it) }.map { PocketNav.decode(it) }
         assertEquals(nav.stack, restored)
     }

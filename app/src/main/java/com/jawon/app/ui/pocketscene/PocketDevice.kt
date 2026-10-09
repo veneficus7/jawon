@@ -105,6 +105,10 @@ internal class PocketDevice(
     private var brickWasOver = false
     var brickBest = 0
 
+    /** Search: which letter of the strip the cursor is on, and whether the wheel is up in the results. */
+    val searchLetter = androidx.compose.runtime.mutableIntStateOf(0)
+    val searchInResults = mutableStateOf(false)
+
     var library = PocketLibrary()
     var trackTitles: Map<String, List<String>> = emptyMap()
     var settings = PocketSettings()
@@ -608,6 +612,15 @@ internal class PocketDevice(
         PocketMenus.rows(nav.value.current.key, library, trackTitles, hasNowPlaying, settings)
 
     private fun turn(turn: WheelGesture.Event.Turn, now: Long) {
+        // On Search's letters the wheel moves along the strip; up in the results it is a list.
+        if (nav.value.current.key is MenuKey.Search && !searchInResults.value) {
+            val next = (searchLetter.intValue + turn.steps).coerceIn(0, PocketSearch.LETTERS.lastIndex)
+            if (next != searchLetter.intValue) {
+                searchLetter.intValue = next
+                step(now)
+            }
+            return
+        }
         if (nav.value.current.key == MenuKey.Brick) {
             brick.movePaddle(turn.steps * BrickGame.PADDLE_PER_STEP)
             step(now)
@@ -742,6 +755,32 @@ internal class PocketDevice(
         press()
         val key = nav.value.current.key
         val onNowPlaying = key == MenuKey.NowPlaying && deck.tracks.isNotEmpty()
+        // Search's own buttons: the centre types, ◀◀ takes a letter back, ▶▶ goes up into what was
+        // found, and MENU from there comes back down to the letters.
+        if (key is MenuKey.Search) {
+            when {
+                button == ClickWheel.Button.MENU && searchInResults.value -> {
+                    searchInResults.value = false
+                    return
+                }
+                button == ClickWheel.Button.SELECT && !searchInResults.value -> {
+                    typeLetter(key, PocketSearch.LETTERS[searchLetter.intValue])
+                    return
+                }
+                button == ClickWheel.Button.PREVIOUS && !searchInResults.value -> {
+                    typeLetter(key, PocketSearch.DELETE)
+                    return
+                }
+                button == ClickWheel.Button.NEXT && !searchInResults.value -> {
+                    if (rows().isNotEmpty()) {
+                        searchInResults.value = true
+                        nav.value = nav.value.clamp(rows().size)
+                    }
+                    return
+                }
+                else -> Unit
+            }
+        }
         when (button) {
             ClickWheel.Button.MENU -> back(silent = true)
             ClickWheel.Button.SELECT -> {
@@ -823,9 +862,16 @@ internal class PocketDevice(
         if (hasNowPlaying) viewModel.setPlaying(true)
     }
 
+    private fun typeLetter(key: MenuKey.Search, letter: String) {
+        val query = PocketSearch.type(key.query, letter)
+        if (query != key.query) nav.value = nav.value.retop(MenuKey.Search(query))
+    }
+
     private fun act(action: RowAction) {
         when (action) {
             is RowAction.Open -> {
+                // Into Search on the letters, whatever was left the last time.
+                if (action.key is MenuKey.Search) searchInResults.value = false
                 if (action.key == MenuKey.NowPlaying) bar.value = LcdScreen.Bar.PROGRESS
                 var next = nav.value.open(action.key)
                 if (action.key is MenuKey.Choice) {
