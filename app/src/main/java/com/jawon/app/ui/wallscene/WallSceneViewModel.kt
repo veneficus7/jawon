@@ -99,6 +99,20 @@ class WallSceneViewModel @Inject constructor(
     private val rack: com.jawon.app.playback.RackState
 ) : ViewModel() {
 
+    /**
+     * The rooms' artwork, kept **here** rather than in the rooms (0.7.2). A room is rebuilt every
+     * time you switch to it, and with the art in the room's own `remember` every rebuild baked
+     * every case and decoded every cover again — the slowest part of arriving, and fresh bitmaps
+     * each time for the GPU to upload and hold until a garbage collection got round to the old
+     * ones. Measured on the owner's phone as GL memory climbing ~35MB per CD-and-back. This view
+     * model outlives both rooms (it is the activity's), so the art is made once.
+     */
+    internal var caseArtCache: CaseArtCache? = null
+
+    /** The pocket player's decoded covers, by album id — kept across rebuilds for the same reason. */
+    internal val pocketCoverArt = androidx.compose.runtime.mutableStateMapOf<String, androidx.compose.ui.graphics.ImageBitmap?>()
+
+
 
     /** What colour the room is lit in. The scene reads this and writes it onto the lights. */
     val roomScheme: StateFlow<RoomScheme> = preferences.roomScheme

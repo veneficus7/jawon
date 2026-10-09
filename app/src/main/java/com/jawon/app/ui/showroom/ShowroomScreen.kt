@@ -1,5 +1,7 @@
 package com.jawon.app.ui.showroom
 
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.SideEffect
 import com.jawon.app.ui.theme.JawonType
 import android.graphics.Bitmap
 import android.os.SystemClock
@@ -78,7 +80,7 @@ import io.github.sceneview.node.Node
 import io.github.sceneview.node.PlaneNode
 import io.github.sceneview.node.RenderableNode
 import io.github.sceneview.rememberCameraNode
-import io.github.sceneview.rememberEngine
+import com.jawon.app.ui.common.rememberRoomEngine
 import io.github.sceneview.rememberEnvironmentLoader
 import io.github.sceneview.rememberMaterialLoader
 import io.github.sceneview.rememberModelInstance
@@ -193,11 +195,22 @@ fun ShowroomScreen(
     onLeave: () -> Unit,
     /** Back: leave the app, as Back from an app's top level does. */
     onExit: () -> Unit,
+    /**
+     * Whether the showroom is the place on screen. Kept alive between visits by the stage
+     * (`JawonNavHost`, 0.7.2): parked off-screen, it renders nothing and takes no Back.
+     */
+    active: Boolean = true,
+    /**
+     * Counts the visits. Everything that belongs to *arriving* — where you came from, the camera's
+     * director, the departure — is made fresh for each, while the gallery, the models and the light
+     * stay loaded from the first.
+     */
+    visit: Int = 0,
     viewModel: ShowroomViewModel = hiltViewModel()
 ) {
     val context = LocalContext.current
     val tier = remember(context) { com.jawon.app.ui.wallscene.QualityTier.detect(context) }
-    val engine = rememberEngine()
+    val engine = rememberRoomEngine() // not SceneView's: see RoomEngine, its teardown leaked the GL context
     val modelLoader = rememberModelLoader(engine)
     val materialLoader = rememberMaterialLoader(engine)
     val environmentLoader = rememberEnvironmentLoader(engine)
@@ -231,16 +244,22 @@ fun ShowroomScreen(
     val pocketFinish by viewModel.pocketFinish.collectAsStateWithLifecycle()
     // The room you came from: where you arrive, and where back goes. Read once — choosing another
     // room changes the preference before this screen has gone.
-    val from = remember { Exhibit.of(viewModel.format.value).ordinal }
+    val from = remember(visit) { Exhibit.of(viewModel.format.value).ordinal }
     val showUnbuilt = BuildConfig.DEBUG || BuildConfig.SHOW_FORMATS
     val haptics = remember(context) { RoomHaptics(context) }
-    val director = remember { ShowroomDirector(haptics, from, showUnbuilt) }
+    val director = remember(visit) { ShowroomDirector(haptics, from, showUnbuilt) }
     DisposableEffect(director) { onDispose { director.close() } }
+    // **The director changes with each visit, and SceneView keeps the callbacks it was first handed.**
+    // So touches, frames and the exhibits' nodes reach it through these, which outlive a visit: a tap
+    // on the second visit otherwise went to the first visit's director, already closed (0.7.2).
+    val currentDirector = rememberUpdatedState(director)
+    val exhibitNodes = remember { arrayOfNulls<io.github.sceneview.node.Node>(Exhibit.entries.size) }
+    SideEffect { exhibitNodes.forEachIndexed { i, node -> if (node != null) director.exhibitNodes[i] = node } }
 
     // **Leaving**: the push into a room ends in black, and only then does the app change rooms —
     // and it waits to see the change arrive before going back, so the room it goes back to is
     // composed once, as the new one, never for a frame as the old.
-    var leavingFor by remember { mutableStateOf<Exhibit?>(null) }
+    var leavingFor by remember(visit) { mutableStateOf<Exhibit?>(null) }
     director.onDeparted = { leavingFor = it }
     LaunchedEffect(leavingFor) {
         val chosen = leavingFor?.format ?: return@LaunchedEffect
@@ -251,7 +270,7 @@ fun ShowroomScreen(
         }
         onLeave()
     }
-    BackHandler { if (!director.back()) onExit() }
+    BackHandler(enabled = active) { if (!director.back()) onExit() }
 
     val cadence = remember(context) {
         RoomCadence().apply {
@@ -259,7 +278,7 @@ fun ShowroomScreen(
         }
     }
     val publishedDivisor = remember { intArrayOf(0) }
-    val lastFrameAt = remember { longArrayOf(0L) }
+    val lastFrameAt = remember(visit) { longArrayOf(0L) }
 
     val showroom = rememberModelInstance(modelLoader, SHOWROOM_ASSET)
     val tray = rememberModelInstance(modelLoader, CASE_TRAY_ASSET)
@@ -319,6 +338,7 @@ fun ShowroomScreen(
         SceneView(
             modifier = Modifier.fillMaxSize(),
             engine = engine,
+            isRendering = active,
             modelLoader = modelLoader,
             materialLoader = materialLoader,
             environmentLoader = environmentLoader,
@@ -331,13 +351,14 @@ fun ShowroomScreen(
             cameraManipulator = null,
             autoCenterContent = false,
             viewNodeWindowManager = viewNodeManager,
-            onTouchEvent = { event, _ -> director.onTouch(event) },
+            onTouchEvent = { event, _ -> currentDirector.value.onTouch(event) },
             onFrame = {
                 if (!ShowroomAtmosphere.isApplied(filamentView)) ShowroomAtmosphere.apply(filamentView, tier)
                 val now = SystemClock.uptimeMillis()
                 val dt = if (lastFrameAt[0] == 0L) 0f else (now - lastFrameAt[0]) / 1000f
                 lastFrameAt[0] = now
                 // Shown once the room you came from's object is in, the gallery round it and its light.
+                val director = currentDirector.value
                 director.loaded = lit && showroom != null && director.exhibitNodes[from] != null
                 director.onFrame(dt)
                 // Drawn at 60 while it stands still, every vsync while anything moves — the pocket
@@ -409,7 +430,10 @@ fun ShowroomScreen(
             // **The CD**: the held case's tray and lid, shut, with the record you played last
             // behind the clear front — assembled as `ActiveCaseNodes` assembles it.
             if (tray != null && lid != null) {
-                Node(apply = { director.exhibitNodes[Exhibit.CD.ordinal] = this }) {
+                Node(apply = {
+                    exhibitNodes[Exhibit.CD.ordinal] = this
+                    currentDirector.value.exhibitNodes[Exhibit.CD.ordinal] = this
+                }) {
                     ModelNode(
                         tray,
                         apply = {
@@ -464,7 +488,10 @@ fun ShowroomScreen(
 
             // **The pocket player**, its screen dark, its steel back the room's own material.
             pocket?.let { device ->
-                Node(apply = { director.exhibitNodes[Exhibit.POCKET.ordinal] = this }) {
+                Node(apply = {
+                    exhibitNodes[Exhibit.POCKET.ordinal] = this
+                    currentDirector.value.exhibitNodes[Exhibit.POCKET.ordinal] = this
+                }) {
                     ModelNode(
                         device,
                         apply = {
@@ -514,7 +541,9 @@ fun ShowroomScreen(
                     .graphicsLayer {
                         val d = i - director.position.floatValue
                         translationX = d * widthPx * CAPTION_SPACING
-                        alpha = (1f - abs(d) * 0.8f).coerceIn(0f, 1f)
+                        // Gone before it reaches the edge (0.7.2): at a fifth's opacity a neighbour's caption
+                        // sat cut off by the screen's edge and read as a layout fault, not a hint.
+                        alpha = (1f - abs(d) * 1.6f).coerceIn(0f, 1f)
                     },
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {

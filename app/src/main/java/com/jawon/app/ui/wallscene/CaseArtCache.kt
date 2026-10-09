@@ -31,7 +31,7 @@ data class CaseArtwork(
  * megabytes it would save.
  */
 class CaseArtCache(
-    private val fonts: CaseArt.Fonts,
+    internal val fonts: CaseArt.Fonts,
     /**
      * What to print on an album's back inlay — its track titles, runtime and format.
      * Injected as a function rather than a DAO so this class stays free of the data layer,

@@ -1,35 +1,61 @@
 package com.jawon.app.navigation
 
+import com.jawon.app.ui.wallscene.QualityTier
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.key
+import androidx.compose.runtime.SideEffect
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.BoxWithConstraints
 import android.app.Activity
 import android.content.Context
 import android.content.ContextWrapper
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.core.net.toUri
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import com.jawon.app.Format
 import com.jawon.app.ui.addalbum.AddAlbumScreen
-import androidx.compose.runtime.getValue
-import androidx.core.net.toUri
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.jawon.app.ui.cd.CdImportScreen
 import com.jawon.app.ui.archive.RecordShopScreen
+import com.jawon.app.ui.cd.CdImportScreen
 import com.jawon.app.ui.editalbum.EditAlbumScreen
 import com.jawon.app.ui.listening.ListeningScreen
+import com.jawon.app.ui.pocketscene.PocketRoomScreen
 import com.jawon.app.ui.settings.SettingsScreen
 import com.jawon.app.ui.shelfmanager.ShelfManagerScreen
-import com.jawon.app.Format
-import com.jawon.app.ui.pocketscene.PocketRoomScreen
 import com.jawon.app.ui.showroom.ShowroomScreen
 import com.jawon.app.ui.wallscene.WallSceneScreen
 
@@ -49,11 +75,6 @@ private const val RIPPED_FOLDER = "ripped_folder"
  * and back was that, which is slow enough to feel like the app thinking rather than the app
  * moving. Out is quicker than in, which is the usual asymmetry: arriving wants to be seen,
  * leaving wants to be over.
- *
- * There is a second reason to be brief here, and it is the one from trap 28. Both destinations
- * are composed for the whole transition, so a cross-fade keeps the Filament room rendering
- * underneath a 2D screen for the entire duration — and the room is the most expensive thing the
- * phone draws. 700ms of that on every navigation is heat for nothing.
  */
 private const val PANEL_IN_MS = 260
 private const val PANEL_OUT_MS = 200
@@ -62,197 +83,317 @@ private const val PANEL_OUT_MS = 200
  * How far a panel travels, as a fraction of the screen.
  *
  * A tenth. Far enough that the eye reads a direction — this came *up* over the room, and goes
- * back *down* off it — and short enough that it is not a drawer being hauled about. The motion
- * is a hint of where the thing went, not a journey.
+ * back *down* off it — and short enough that it is not a drawer being hauled about.
  */
 private const val PANEL_TRAVEL = 10
 
 /**
- * How long the room takes to fade back up, and how long the panel covers for first.
+ * The curtain between the room and the showroom: down in this long, up in that.
  *
- * Measured from a 30fps capture of a real back press: black until ~230ms, blank covers until
- * ~430ms, artwork at ~630ms. These are set to cover that — hold the panel briefly, then bring
- * the room up across the window where it is still assembling itself.
+ * Only the hand-over is covered — the showroom's own camera does the arriving (it opens black and
+ * eases back from the room's object) and its push into a room ends in black — so the curtain is
+ * brief, and quicker down than up for the same reason a panel is.
  */
-private const val ROOM_RETURN_MS = 420
-private const val ROOM_RETURN_DELAY_MS = 140
+private const val CURTAIN_DOWN_MS = 120
+private const val CURTAIN_UP_MS = 260
 
 /**
- * How long the showroom takes to come up over the room it was pinched out of.
+ * Jawon's whole surface: **the stage**, where the rooms and the showroom live, and over it the 2D
+ * panels — Settings, Add Album, the shelf list and the rest.
  *
- * Not the panel's slide: the showroom is not a panel lifted over the room but the place the room
- * pulls back into, and its own camera does the moving — it arrives close on the room's object and
- * eases back. A fade is all the hand-over needs, over a room already dimmed by the pinch.
+ * **The rooms are not destinations any more (0.7.2).** Until then the room was the NavHost's start
+ * destination, and Navigation disposes a destination that is covered: every trip to Settings or
+ * the shelf list destroyed the SceneView, every Filament resource in it and every baked cover, and
+ * coming back rebuilt them — measured from a 30fps capture as ~230ms of black, then ~200ms of blank
+ * grey plates, artwork at ~630ms, all hidden behind a fade that the code itself called "a mask, not
+ * a fix". Now the stage sits *under* the NavHost and is never disposed by it: a panel covers the
+ * room, the covered room stops rendering ([RoomStage]'s `covered`, which parks SceneView's loop),
+ * and taking the panel away uncovers a room that never went anywhere.
+ *
+ * The NavHost's start destination draws nothing, so the stage shows through it; every other
+ * destination is a [Panel], which is opaque and keeps touches from reaching the room under it.
  */
-private const val SHOWROOM_IN_MS = 380
-
 @Composable
 fun JawonNavHost(
     /**
-     * Which room the start destination is.
+     * Which room the stage holds.
      *
      * **The seam for every format, and deliberately the only one.** A new format is a sibling
-     * room here, not a branch inside `WallSceneScreen` — that file is 3,000 lines of finished
-     * CD room and does not grow a `when` at every one of them (`ENGINEERING.md`, "Building a new
-     * format room"). Switching costs nothing extra to apply either: leaving a room already
-     * destroys its SceneView and coming back rebuilds it, so a format chosen in Settings is
-     * simply what gets rebuilt.
+     * room in [RoomStage], not a branch inside `WallSceneScreen` (`ENGINEERING.md`, "Building a new
+     * format room").
      */
     format: Format = Format.CD,
     navController: NavHostController = rememberNavController()
 ) {
-    NavHost(
-        navController = navController,
-        startDestination = JawonDestination.Wall.route,
-        // **The room holds still and the panel moves over it.**
-        //
-        // A cross-fade is the wrong gesture for this app: it dissolves one place into another,
-        // and at the halfway point both are half-transparent over black, which is the mush the
-        // default produced. The room is not a *screen* the app is showing, it is where the app
-        // lives — so it stays exactly where it is, at full opacity, and Add Album or Settings
-        // is drawn up in front of it like a panel being lifted into view.
-        //
-        // Hence `ExitTransition.None` going out and `EnterTransition.None` coming back: the
-        // room is never animated at all, only covered and uncovered. That is also the cheapest
-        // thing it can do, which matters for a surface this expensive.
-        enterTransition = {
-            slideInVertically(
-                initialOffsetY = { it / PANEL_TRAVEL },
-                animationSpec = tween(PANEL_IN_MS, easing = FastOutSlowInEasing)
-            ) + fadeIn(tween(PANEL_IN_MS, easing = FastOutSlowInEasing))
-        },
-        exitTransition = { ExitTransition.None },
-        // **Coming back is a cross-fade, and that is deliberate — it is hiding a rebuild.**
-        //
-        // The first version slid the panel back down over a room that held still, which is the
-        // symmetric gesture and was wrong for a reason only a device could show. Recorded at
-        // 30fps and stepped through: the panel vanished in a single frame, then the room area
-        // was **pure black for ~230ms** with only its 2D chrome on top, then the shelf appeared
-        // with every cover a blank grey plate for ~200ms more, and the artwork did not land
-        // until ~630ms after the back press.
-        //
-        // Navigating away disposes this destination, which destroys the SceneView and every
-        // Filament resource in it, and `CaseArtCache` is a `remember` inside the composable so
-        // the covers are re-decoded and re-baked too. Returning is not a transition, it is a
-        // reconstruction. And the room is drawn *above* the outgoing panel and paints itself
-        // opaque black before Filament has anything to show — which is why sliding the panel
-        // out underneath it was invisible, and why fading the panel out cannot help either.
-        //
-        // So the room fades up *over* the panel instead. Settings stays put and fully opaque
-        // underneath, and by the time the room is opaque it has geometry and artwork in it.
-        // The black flash and the blank plates both happen behind a screen that is still there.
-        //
-        // This is a mask, not a fix. The fix is for the room not to be destroyed at all.
-        popEnterTransition = {
-            fadeIn(tween(ROOM_RETURN_MS, delayMillis = ROOM_RETURN_DELAY_MS, easing = FastOutSlowInEasing))
-        },
-        popExitTransition = { ExitTransition.None }
-    ) {
-        composable(JawonDestination.Wall.route) {
-            when (format) {
-                Format.CD -> WallSceneScreen(
-                    onAddAlbum = { navController.navigate(JawonDestination.AddAlbum.route) },
-                    onOpenShelfManager = {
-                        navController.navigate(JawonDestination.ShelfManager.route)
-                    },
-                    onOpenSettings = { navController.navigate(JawonDestination.Settings.route) },
-                    onEditAlbum = { albumId ->
-                        navController.navigate(JawonDestination.EditAlbum.routeFor(albumId))
-                    },
-                    onOpenShowroom = { navController.openShowroom() }
-                )
+    val entry by navController.currentBackStackEntryAsState()
+    // A panel is up whenever the NavHost is anywhere but its empty start.
+    val route = entry?.destination?.route
+    val covered = route != null && route != JawonDestination.Wall.route
+    val activity = LocalContext.current.findActivity()
 
-                Format.POCKET -> PocketRoomScreen(
-                    onOpenSettings = { navController.navigate(JawonDestination.Settings.route) },
-                    onAddAlbum = { navController.navigate(JawonDestination.AddAlbum.route) },
-                    onOpenShowroom = { navController.openShowroom() }
-                )
+    // Room or showroom. Saved, so a rotation or a trip through the background returns to the same
+    // one; never a Navigation route, so its Back is the stage's to decide and nothing can stack two.
+    var showroomWanted by rememberSaveable { mutableStateOf(false) }
+
+    Box(Modifier.fillMaxSize()) {
+        RoomStage(
+            format = format,
+            showroomWanted = showroomWanted,
+            covered = covered,
+            onOpenShowroom = { showroomWanted = true },
+            onLeaveShowroom = { showroomWanted = false },
+            // The showroom is the app's top (a room's Back comes here), so its Back leaves: to the
+            // background, as Back from a launcher activity's root does since Android 12, with the
+            // room still under it for when the app is opened again.
+            onExit = { activity?.moveTaskToBack(true) },
+            onAddAlbum = { navController.navigate(JawonDestination.AddAlbum.route) },
+            onOpenShelfManager = { navController.navigate(JawonDestination.ShelfManager.route) },
+            onOpenSettings = { navController.navigate(JawonDestination.Settings.route) },
+            onEditAlbum = { albumId ->
+                navController.navigate(JawonDestination.EditAlbum.routeFor(albumId))
             }
-        }
-        composable(
-            JawonDestination.Showroom.route,
+        )
+
+        NavHost(
+            navController = navController,
+            startDestination = JawonDestination.Wall.route,
+            // **A panel comes up over the room and goes back down off it.** The room under it is
+            // never animated at all — it is still there, so there is nothing to hide any more:
+            // until 0.7.2 the way back was a fade *up* of the room over the panel, because the room
+            // was being rebuilt from nothing behind it.
             enterTransition = {
-                fadeIn(tween(SHOWROOM_IN_MS, easing = FastOutSlowInEasing))
+                slideInVertically(
+                    initialOffsetY = { it / PANEL_TRAVEL },
+                    animationSpec = tween(PANEL_IN_MS, easing = FastOutSlowInEasing)
+                ) + fadeIn(tween(PANEL_IN_MS, easing = FastOutSlowInEasing))
+            },
+            exitTransition = { ExitTransition.None },
+            popEnterTransition = { EnterTransition.None },
+            popExitTransition = {
+                slideOutVertically(
+                    targetOffsetY = { it / PANEL_TRAVEL },
+                    animationSpec = tween(PANEL_OUT_MS, easing = FastOutSlowInEasing)
+                ) + fadeOut(tween(PANEL_OUT_MS, easing = FastOutSlowInEasing))
             }
         ) {
-            val activity = LocalContext.current.findActivity()
-            ShowroomScreen(
-                onLeave = { navController.popBackStack() },
-                // The showroom is the app's top now (a room's Back comes here), so its Back leaves:
-                // to the background, as Back from a launcher activity's root does since Android 12,
-                // with the room still under it for when the app is opened again.
-                onExit = { activity?.moveTaskToBack(true) }
-            )
-        }
-        composable(JawonDestination.AddAlbum.route) { entry ->
-            // The CD screen hands its finished folder back through this entry's saved state,
-            // which is Navigation's own way of returning a result — the alternative is a shared
-            // ViewModel scoped above both screens, which is a lot of machinery for one Uri.
-            val ripped by entry.savedStateHandle
-                .getStateFlow<String?>(RIPPED_FOLDER, null)
-                .collectAsStateWithLifecycle()
+            // The stage shows through: nothing here, and nothing to catch a touch.
+            composable(JawonDestination.Wall.route) { }
 
-            AddAlbumScreen(
-                onDone = { navController.popBackStack() },
-                onCancel = { navController.popBackStack() },
-                onBrowseArchive = { navController.navigate(JawonDestination.RecordShop.route) },
-                onImportCd = { navController.navigate(JawonDestination.ImportCd.route) },
-                rippedFolder = ripped?.toUri(),
-                onRippedFolderConsumed = { entry.savedStateHandle[RIPPED_FOLDER] = null }
-            )
-        }
-        composable(JawonDestination.ImportCd.route) {
-            CdImportScreen(
-                onBack = { navController.popBackStack() },
-                onImportFolder = { uri ->
-                    navController.previousBackStackEntry
-                        ?.savedStateHandle?.set(RIPPED_FOLDER, uri.toString())
-                    navController.popBackStack()
+            composable(JawonDestination.AddAlbum.route) { entry ->
+                // The CD screen hands its finished folder back through this entry's saved state,
+                // which is Navigation's own way of returning a result — the alternative is a shared
+                // ViewModel scoped above both screens, which is a lot of machinery for one Uri.
+                val ripped by entry.savedStateHandle
+                    .getStateFlow<String?>(RIPPED_FOLDER, null)
+                    .collectAsStateWithLifecycle()
+
+                Panel {
+                    AddAlbumScreen(
+                        onDone = { navController.popBackStack() },
+                        onCancel = { navController.popBackStack() },
+                        onBrowseArchive = { navController.navigate(JawonDestination.RecordShop.route) },
+                        onImportCd = { navController.navigate(JawonDestination.ImportCd.route) },
+                        rippedFolder = ripped?.toUri(),
+                        onRippedFolderConsumed = { entry.savedStateHandle[RIPPED_FOLDER] = null }
+                    )
                 }
-            )
-        }
-        composable(JawonDestination.RecordShop.route) {
-            RecordShopScreen(onBack = { navController.popBackStack() })
-        }
-        composable(JawonDestination.ShelfManager.route) {
-            ShelfManagerScreen(
-                onBack = { navController.popBackStack() },
-                onEditAlbum = { albumId ->
-                    navController.navigate(JawonDestination.EditAlbum.routeFor(albumId))
-                },
-                onOpenListening = { navController.navigate(JawonDestination.Listening.route) }
-            )
-        }
-        composable(JawonDestination.Listening.route) {
-            ListeningScreen(
-                onBack = { navController.popBackStack() },
-                onOpenAlbum = { albumId ->
-                    navController.navigate(JawonDestination.EditAlbum.routeFor(albumId))
+            }
+            composable(JawonDestination.ImportCd.route) {
+                Panel {
+                    CdImportScreen(
+                        onBack = { navController.popBackStack() },
+                        onImportFolder = { uri ->
+                            navController.previousBackStackEntry
+                                ?.savedStateHandle?.set(RIPPED_FOLDER, uri.toString())
+                            navController.popBackStack()
+                        }
+                    )
                 }
-            )
-        }
-        composable(
-            route = JawonDestination.EditAlbum.route,
-            arguments = listOf(navArgument("albumId") { type = NavType.StringType })
-        ) {
-            EditAlbumScreen(
-                onDone = { navController.popBackStack() },
-                onCancel = { navController.popBackStack() }
-            )
-        }
-        composable(JawonDestination.Settings.route) {
-            SettingsScreen(onBack = { navController.popBackStack() })
+            }
+            composable(JawonDestination.RecordShop.route) {
+                Panel { RecordShopScreen(onBack = { navController.popBackStack() }) }
+            }
+            composable(JawonDestination.ShelfManager.route) {
+                Panel {
+                    ShelfManagerScreen(
+                        onBack = { navController.popBackStack() },
+                        onEditAlbum = { albumId ->
+                            navController.navigate(JawonDestination.EditAlbum.routeFor(albumId))
+                        },
+                        onOpenListening = { navController.navigate(JawonDestination.Listening.route) }
+                    )
+                }
+            }
+            composable(JawonDestination.Listening.route) {
+                Panel {
+                    ListeningScreen(
+                        onBack = { navController.popBackStack() },
+                        onOpenAlbum = { albumId ->
+                            navController.navigate(JawonDestination.EditAlbum.routeFor(albumId))
+                        }
+                    )
+                }
+            }
+            composable(
+                route = JawonDestination.EditAlbum.route,
+                arguments = listOf(navArgument("albumId") { type = NavType.StringType })
+            ) {
+                Panel {
+                    EditAlbumScreen(
+                        onDone = { navController.popBackStack() },
+                        onCancel = { navController.popBackStack() }
+                    )
+                }
+            }
+            composable(JawonDestination.Settings.route) {
+                Panel { SettingsScreen(onBack = { navController.popBackStack() }) }
+            }
         }
     }
 }
 
 /**
- * Into the showroom — once. A second Back, or a pinch that keeps closing after it has let go of
- * the room, must not stack a second showroom on the first.
+ * The room, or the showroom — whichever is wanted — under a curtain for the moment between them.
+ *
+ * **Spam-proof by construction.** A change of [showroomWanted] restarts one effect, which carries
+ * the curtain from wherever it is: down, swap which place is active, up. Changing your mind halfway
+ * is the same curtain turning round, never a second transition queued behind the first, and
+ * flicking back and forth as fast as a thumb can only ever leave the stage on the last thing asked
+ * for.
+ *
+ * **And a place, once built, is kept (0.7.2).** Building a room is the expensive part of arriving —
+ * a Filament engine, its models, its light, every cover — and, measured on the owner's phone, each
+ * build also left ~35MB of GPU memory behind that nothing was ever going to return: twelve switches
+ * between the CD room and the pocket player took GL memory from 153 to 393MB. So the CD room, the
+ * pocket player and the showroom are each built the first time they are wanted and then *parked*
+ * when another is on screen: still composed, moved off-screen, not rendering, deaf to touches and to
+ * Back. Switching back is a cut, not a construction, and switching a hundred times builds nothing
+ * after the first visit to each.
+ *
+ * Phones on the lowest quality tier keep only the place on screen: there the memory is worth more
+ * than the speed.
  */
-private fun NavHostController.openShowroom() {
-    if (currentDestination?.route == JawonDestination.Showroom.route) return
-    navigate(JawonDestination.Showroom.route) { launchSingleTop = true }
+@Composable
+private fun RoomStage(
+    format: Format,
+    showroomWanted: Boolean,
+    covered: Boolean,
+    onOpenShowroom: () -> Unit,
+    onLeaveShowroom: () -> Unit,
+    onExit: () -> Unit,
+    onAddAlbum: () -> Unit,
+    onOpenShelfManager: () -> Unit,
+    onOpenSettings: () -> Unit,
+    onEditAlbum: (String) -> Unit
+) {
+    val context = LocalContext.current
+    val keepPlaces = remember(context) { QualityTier.detect(context) != QualityTier.LOW }
+
+    var showing by rememberSaveable { mutableStateOf(showroomWanted) }
+    // Each visit to the showroom is a new arrival (ShowroomScreen's `visit`).
+    var showroomVisit by rememberSaveable { mutableIntStateOf(0) }
+    val curtain = remember { Animatable(0f) }
+    LaunchedEffect(showroomWanted) {
+        if (showroomWanted != showing) {
+            curtain.animateTo(1f, tween(CURTAIN_DOWN_MS, easing = LinearOutSlowInEasing))
+            if (showroomWanted) showroomVisit++
+            showing = showroomWanted
+            // One frame for the place to take the stage under the curtain.
+            withFrameNanos { }
+        }
+        curtain.animateTo(0f, tween(CURTAIN_UP_MS, easing = FastOutSlowInEasing))
+    }
+
+    val active = if (showing) Place.SHOWROOM else Place.of(format)
+    // Every place built so far, in the order they were first wanted.
+    var built by remember { mutableStateOf(listOf(active)) }
+    val places = if (!keepPlaces) listOf(active) else if (active in built) built else built + active
+    SideEffect { if (places != built) built = places }
+
+    BoxWithConstraints(
+        Modifier
+            .fillMaxSize()
+            // Under a panel the room is out of sight, and out of TalkBack's reach with it.
+            .then(if (covered) Modifier.clearAndSetSemantics { } else Modifier)
+    ) {
+        // A parked place stands a screen and a half to the right: laid out, its surface alive and
+        // its last frame kept, but nowhere the eye or a finger can reach.
+        val parkX = (constraints.maxWidth * 3) / 2
+        places.forEach { place ->
+            key(place) {
+                val isActive = place == active
+                Box(
+                    Modifier
+                        .fillMaxSize()
+                        .offset { IntOffset(if (isActive) 0 else parkX, 0) }
+                        .then(if (isActive) Modifier else Modifier.clearAndSetSemantics { })
+                ) {
+                    when (place) {
+                        Place.SHOWROOM -> ShowroomScreen(
+                            onLeave = onLeaveShowroom,
+                            onExit = onExit,
+                            active = isActive,
+                            visit = showroomVisit
+                        )
+                        Place.CD -> WallSceneScreen(
+                            onAddAlbum = onAddAlbum,
+                            onOpenShelfManager = onOpenShelfManager,
+                            onOpenSettings = onOpenSettings,
+                            onEditAlbum = onEditAlbum,
+                            onOpenShowroom = onOpenShowroom,
+                            covered = covered || !isActive
+                        )
+                        Place.POCKET -> PocketRoomScreen(
+                            onOpenSettings = onOpenSettings,
+                            onAddAlbum = onAddAlbum,
+                            onOpenShowroom = onOpenShowroom,
+                            covered = covered || !isActive
+                        )
+                    }
+                }
+            }
+        }
+
+        // Composed only while it is showing anything (trap 14: a full-screen translucent layer
+        // still costs the compositor every frame its alpha changes).
+        if (curtain.value > 0f) {
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .graphicsLayer { alpha = curtain.value }
+                    .background(Color.Black)
+            )
+        }
+    }
+}
+
+/** The places the stage can hold: a room per format, and the showroom between them. */
+private enum class Place {
+    CD, POCKET, SHOWROOM;
+
+    companion object {
+        fun of(format: Format): Place = when (format) {
+            Format.CD -> CD
+            Format.POCKET -> POCKET
+        }
+    }
+}
+
+/**
+ * A 2D screen over the stage: opaque (every screen paints its own ground), and **a wall for
+ * touches**. A background alone catches nothing in Compose, so a tap on an empty stretch of a panel
+ * would otherwise fall through to the room under it — and the room opens a case on a tap.
+ * Registering a pointer handler here is what makes the panel the thing that was hit; the screen's
+ * own buttons and lists sit inside it and are hit first, as before.
+ */
+@Composable
+private fun Panel(content: @Composable BoxScope.() -> Unit) {
+    Box(
+        Modifier
+            .fillMaxSize()
+            .pointerInput(Unit) { awaitPointerEventScope { while (true) awaitPointerEvent() } },
+        content = content
+    )
 }
 
 /** The activity behind a composition's context, through any wrappers a theme put round it. */

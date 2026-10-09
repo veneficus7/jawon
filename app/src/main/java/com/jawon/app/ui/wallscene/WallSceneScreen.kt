@@ -40,6 +40,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -149,7 +150,7 @@ import io.github.sceneview.math.Rotation
 import io.github.sceneview.math.Scale
 import io.github.sceneview.math.Size
 import io.github.sceneview.rememberCameraNode
-import io.github.sceneview.rememberEngine
+import com.jawon.app.ui.common.rememberRoomEngine
 import io.github.sceneview.rememberEnvironmentLoader
 import io.github.sceneview.rememberMaterialLoader
 import io.github.sceneview.rememberModelInstance
@@ -1096,6 +1097,12 @@ fun WallSceneScreen(
     onEditAlbum: (String) -> Unit,
     /** Back while browsing, or a tap on the neon sign: the showroom between formats. */
     onOpenShowroom: () -> Unit = {},
+    /**
+     * A 2D panel is up over the room (`JawonNavHost`). The room stays composed under it — that is
+     * the point, it is not rebuilt on the way back — but it is out of sight, so it stops rendering
+     * and its Back handlers stand aside for the panel's.
+     */
+    covered: Boolean = false,
     viewModel: WallSceneViewModel = hiltViewModel()
 ) {
     val layout by viewModel.layout.collectAsStateWithLifecycle()
@@ -1198,7 +1205,7 @@ fun WallSceneScreen(
             }
         }
 
-        val engine = rememberEngine()
+        val engine = rememberRoomEngine() // not SceneView's: see RoomEngine, its teardown leaked the GL context
         val materialLoader = rememberMaterialLoader(engine)
         val environmentLoader = rememberEnvironmentLoader(engine)
         val viewNodeManager = rememberViewNodeManager()
@@ -1644,8 +1651,11 @@ fun WallSceneScreen(
                 .bitmap(mask, TextureType.DATA)
                 .build(engine)
         }
+        // The view model's, so a rebuilt room finds its art already baked (see caseArtCache).
         val artCache = remember(fonts) {
-            CaseArtCache(fonts, backInlay = { viewModel.backInlay(it) })
+            viewModel.caseArtCache?.takeIf { it.fonts == fonts }
+                ?: CaseArtCache(fonts, backInlay = { viewModel.backInlay(it) })
+                    .also { viewModel.caseArtCache = it }
         }
 
         // Push the open album's art onto the permanently-mounted active case, and hide the
@@ -2269,6 +2279,9 @@ fun WallSceneScreen(
             environmentLoader = environmentLoader,
             view = filamentView,
             renderer = renderer,
+            // Under a panel: park the loop. The last frame stays on the surface for the panel to
+            // slide over, and nothing is drawn behind a screen nobody can see through.
+            isRendering = !covered,
             // Replaces SceneView's default main and fill lights. Those are a neutral studio
             // rig — exactly the "flatly-lit scene" DESIGN.md's Do-not list ends on.
             environment = environment,
@@ -4001,15 +4014,15 @@ fun WallSceneScreen(
         // Back closes an open case. While browsing it goes up a level, to the showroom between
         // formats, in a build that has one; in one that does not, it is left alone and exits the
         // app as it always has. The showroom's own Back is what leaves the app from there.
-        BackHandler(enabled = selectedAlbumId != null) { closeCase() }
-        BackHandler(enabled = selectedAlbumId == null && showroomReachable) { onOpenShowroom() }
+        BackHandler(enabled = !covered && selectedAlbumId != null) { closeCase() }
+        BackHandler(enabled = !covered && selectedAlbumId == null && showroomReachable) { onOpenShowroom() }
 
         // Search is opened from the chrome row and takes its place while it is up. Declared
         // after the two above so that, while it is open, Back closes it and nothing else.
         var searchOpen by remember { mutableStateOf(false) }
         // A case opened some other way — tapped above the open panel — takes search down with it.
         LaunchedEffect(selectedAlbumId) { if (selectedAlbumId != null) searchOpen = false }
-        BackHandler(enabled = searchOpen) { searchOpen = false }
+        BackHandler(enabled = !covered && searchOpen) { searchOpen = false }
 
         // **What happens when the record finishes.**
         //
@@ -4736,11 +4749,19 @@ private fun ChromeAction(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    Column(modifier = modifier, horizontalAlignment = Alignment.CenterHorizontally) {
-        IconButton(onClick = onClick, modifier = Modifier.size(48.dp)) {
-            Icon(icon, contentDescription = label, tint = LabelDim)
+    // The whole column is the target (0.7.2): it used to be the 48dp icon alone, so a thumb landing
+    // on the word under it did nothing. A shade brighter than dim, too — it sits on the room's dark.
+    Column(
+        modifier = modifier
+            .clip(androidx.compose.foundation.shape.RoundedCornerShape(12.dp))
+            .clickable(role = androidx.compose.ui.semantics.Role.Button, onClick = onClick)
+            .padding(vertical = 4.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Box(Modifier.size(40.dp), contentAlignment = Alignment.Center) {
+            Icon(icon, contentDescription = null, tint = LabelCream.copy(alpha = 0.82f))
         }
-        Text(text = label, style = JawonTextStyle.mono.copy(color = LabelDim))
+        Text(text = label, style = JawonTextStyle.mono.copy(color = LabelCream.copy(alpha = 0.72f)))
     }
 }
 

@@ -57,7 +57,7 @@ import io.github.sceneview.node.ModelNode
 import io.github.sceneview.node.PlaneNode
 import io.github.sceneview.node.Node
 import io.github.sceneview.rememberCameraNode
-import io.github.sceneview.rememberEngine
+import com.jawon.app.ui.common.rememberRoomEngine
 import io.github.sceneview.rememberEnvironmentLoader
 import io.github.sceneview.rememberMaterialLoader
 import io.github.sceneview.rememberModelInstance
@@ -133,10 +133,12 @@ fun PocketRoomScreen(
     onAddAlbum: () -> Unit,
     /** Back at the main menu, or two fingers pinched together: the showroom between formats. */
     onOpenShowroom: () -> Unit = {},
+    /** A 2D panel is up over the room: it stays composed, stops rendering, and its Back stands aside. */
+    covered: Boolean = false,
     viewModel: WallSceneViewModel = hiltViewModel()
 ) {
     val context = LocalContext.current
-    val engine = rememberEngine()
+    val engine = rememberRoomEngine() // not SceneView's: see RoomEngine, its teardown leaked the GL context
     val modelLoader = rememberModelLoader(engine)
     val materialLoader = rememberMaterialLoader(engine)
     val environmentLoader = rememberEnvironmentLoader(engine)
@@ -274,7 +276,8 @@ fun PocketRoomScreen(
         val level = if (currentKey is MenuKey.Flipped) nav.stack[nav.stack.size - 2] else nav.current
         level.selected
     }
-    val coverArt = remember { mutableStateMapOf<String, ImageBitmap?>() }
+    // The view model's, so the covers survive the room being rebuilt (see pocketCoverArt).
+    val coverArt = viewModel.pocketCoverArt
     val albumsInOrder = remember(library) { PocketMenus.albumsInOrder(library) }
     LaunchedEffect(inFlow, flowCentre, albumsInOrder) {
         if (!inFlow || albumsInOrder.isEmpty()) return@LaunchedEffect
@@ -301,7 +304,7 @@ fun PocketRoomScreen(
     }
     val slideIndex = remember { mutableIntStateOf(0) }
     val slideClock = remember { mutableFloatStateOf(SLIDE_FADE_S) }
-    val showingSlides = onMain && slideOrder.isNotEmpty() && device.awake.value && device.backlight.value
+    val showingSlides = onMain && slideOrder.isNotEmpty() && device.awake.value && device.backlight.value && !covered
     LaunchedEffect(showingSlides) {
         if (!showingSlides) return@LaunchedEffect
         // Twenty steps a second: each is a redraw of the whole screen in software (trap 33), and
@@ -449,17 +452,18 @@ fun PocketRoomScreen(
         }
     }
 
-    BackHandler(enabled = nav.stack.size > 1) { device.back() }
+    BackHandler(enabled = !covered && nav.stack.size > 1) { device.back() }
     // At the main menu, Back goes up out of the player to the showroom between formats, in a build
     // that has one — the same way out as the CD room's, so the two rooms leave alike.
-    BackHandler(enabled = nav.stack.size <= 1 && device.showroomReachable) { device.onOpenShowroom() }
+    BackHandler(enabled = !covered && nav.stack.size <= 1 && device.showroomReachable) { device.onOpenShowroom() }
 
     // **The phone is the player**, so tilting it turns the player against the room: the room's
     // reflections slide across the face and the glass — first-order, twice the tilt, as a turned
     // mirror's do. Only the change from how it is held counts (TiltFilter). Listening only while
     // the room is on screen: a sensor left running in the background is battery for nothing.
     val tilt = remember { TiltFilter() }
-    LifecycleResumeEffect(context) {
+    // Keyed on `covered` too (0.7.2): a room parked off the stage, or under a panel, listens to nothing.
+    LifecycleResumeEffect(context, covered) {
         val sensors = context.getSystemService(SensorManager::class.java)
         val rotation = sensors?.getDefaultSensor(Sensor.TYPE_GAME_ROTATION_VECTOR)
         val quat = FloatArray(4)
@@ -479,7 +483,7 @@ fun PocketRoomScreen(
         // Back from the background the surface is new and holds nothing: draw through a warm-up
         // again rather than waiting on a change that may not come for a second.
         drawState[ENTERED_AT] = 0L
-        if (sensors != null && rotation != null) {
+        if (!covered && sensors != null && rotation != null) {
             sensors.registerListener(listener, rotation, SensorManager.SENSOR_DELAY_GAME)
         }
         onPauseOrDispose { sensors?.unregisterListener(listener) }
@@ -513,6 +517,8 @@ fun PocketRoomScreen(
             modifier = Modifier.fillMaxSize(),
             engine = engine,
             modelLoader = modelLoader,
+            // Under a panel: park the loop, and leave the last frame for the panel to slide over.
+            isRendering = !covered,
             materialLoader = materialLoader,
             environmentLoader = environmentLoader,
             view = filamentView,

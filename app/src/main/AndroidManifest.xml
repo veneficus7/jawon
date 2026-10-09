@@ -93,6 +93,13 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.Jawon">
+        <!--
+            Profileable from the shell, in release builds too: what lets `atrace -a com.jawon.app`
+            see the app's own trace sections and simpleperf sample it on the owner's phone, which
+            only ever runs the release-signed build (ENGINEERING.md, trap 31). It grants nothing to
+            other apps; it is the setting Google recommends for measuring a shipped build.
+        -->
+        <profileable android:shell="true" />
         <activity
             android:name=".MainActivity"
             android:exported="true"

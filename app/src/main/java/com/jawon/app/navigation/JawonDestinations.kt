@@ -5,6 +5,7 @@ package com.jawon.app.navigation
  * is no separate Deck destination. The rest are 2D utility screens reached from its chrome.
  */
 sealed class JawonDestination(val route: String) {
+    /** The empty start: the stage under the NavHost shows through it (`JawonNavHost`). */
     data object Wall : JawonDestination("wall")
     data object AddAlbum : JawonDestination("add_album")
     data object ShelfManager : JawonDestination("shelf_manager")
@@ -33,13 +34,6 @@ sealed class JawonDestination(val route: String) {
      * a way of getting a record onto a shelf. The room's chrome stays three even thirds.
      */
     data object ImportCd : JawonDestination("import_cd")
-
-    /**
-     * The showroom between formats (`docs/formats.md` §7, step 5b): a gallery with each format on
-     * a plinth, reached by pinching out of a room. Choosing one changes the format and comes back
-     * to [Wall] — which is whichever room the format now says.
-     */
-    data object Showroom : JawonDestination("showroom")
 
     /** Editing one album. Reached from the room's long-press and from the shelf list. */
     data object EditAlbum : JawonDestination("edit_album/{albumId}") {
