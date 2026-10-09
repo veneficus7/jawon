@@ -1,5 +1,6 @@
 package com.jawon.app.ui.wallscene
 
+import io.github.sceneview.safeDestroyEnvironment
 import android.os.SystemClock
 import android.provider.Settings
 import android.util.Log
@@ -1097,6 +1098,8 @@ fun WallSceneScreen(
     onEditAlbum: (String) -> Unit,
     /** Back while browsing, or a tap on the neon sign: the showroom between formats. */
     onOpenShowroom: () -> Unit = {},
+    /** ROOMS in the bar: the room switcher (JawonNavHost). */
+    onOpenRooms: () -> Unit = {},
     /**
      * A 2D panel is up over the room (`JawonNavHost`). The room stays composed under it — that is
      * the point, it is not rebuilt on the way back — but it is out of sight, so it stops rendering
@@ -1230,9 +1233,24 @@ fun WallSceneScreen(
 
         // The room's image-based lighting, generated rather than loaded — see RoomLighting.
         // Filament's own prefilter turns the procedural cubemap into a roughness mip chain.
-        val environment = remember(engine, environmentLoader) {
+        //
+        // **Keyed on the light too (0.7.2).** It was made once, from the light the room was built
+        // in, and that never mattered while the room was rebuilt behind every visit to Settings.
+        // Kept alive, the room went on reflecting Officina's green after the owner had switched to
+        // another mode. The one it replaces is destroyed half a second later, by when the scene
+        // has taken the new one — never while the scene might still be sampling it.
+        val environment = remember(engine, environmentLoader, roomScheme) {
             RoomLighting.createEnvironment(engine, initialTier.cubemapPx, roomScheme) { cubemap ->
                 environmentLoader.iblPrefilter.specularFilter(cubemap)
+            }
+        }
+        DisposableEffect(environment) {
+            onDispose {
+                val retired = environment
+                android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(
+                    { runCatching { engine.safeDestroyEnvironment(retired) } },
+                    ENVIRONMENT_RETIRE_MS
+                )
             }
         }
 
@@ -4191,6 +4209,23 @@ fun WallSceneScreen(
                         Icons.Default.Search, "FIND", { searchOpen = true }, Modifier.weight(1f)
                     )
                 }
+                // ROOMS, in the middle, wearing Jawon's own mark (0.7.2): the brand is the door between
+                // the rooms. Not shown in a build with only one room to go to.
+                if (showroomReachable) {
+                    ChromeAction(
+                        icon = null,
+                        label = "ROOMS",
+                        onClick = onOpenRooms,
+                        modifier = Modifier.weight(1f),
+                        iconContent = {
+                            com.jawon.app.ui.common.JawonMark(
+                                size = 24.dp,
+                                color = LabelCream.copy(alpha = 0.82f),
+                                contentDescription = null
+                            )
+                        }
+                    )
+                }
                 ChromeAction(
                     Icons.AutoMirrored.Filled.List, "SHELVES", onOpenShelfManager,
                     Modifier.weight(1f)
@@ -4489,6 +4524,9 @@ private fun WallSearchPanel(
  */
 private const val SEARCH_MIN_ALBUMS = 2
 
+/** How long a replaced lighting environment waits before it is destroyed — see `environment`. */
+private const val ENVIRONMENT_RETIRE_MS = 500L
+
 /**
  * The crate flip — a thumb rail down the right edge that runs the wall past you.
  *
@@ -4744,10 +4782,12 @@ private const val RAIL_THUMB_FRACTION = 0.085f
 /** One room-chrome action: a real 48dp target with a quiet mono label under it. */
 @Composable
 private fun ChromeAction(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    icon: androidx.compose.ui.graphics.vector.ImageVector?,
     label: String,
     onClick: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    /** Drawn in place of [icon] — the ROOMS button wears the mark, which is no vector. */
+    iconContent: (@Composable () -> Unit)? = null
 ) {
     // The whole column is the target (0.7.2): it used to be the 48dp icon alone, so a thumb landing
     // on the word under it did nothing. A shade brighter than dim, too — it sits on the room's dark.
@@ -4759,7 +4799,8 @@ private fun ChromeAction(
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Box(Modifier.size(40.dp), contentAlignment = Alignment.Center) {
-            Icon(icon, contentDescription = null, tint = LabelCream.copy(alpha = 0.82f))
+            if (iconContent != null) iconContent()
+            else if (icon != null) Icon(icon, contentDescription = null, tint = LabelCream.copy(alpha = 0.82f))
         }
         Text(text = label, style = JawonTextStyle.mono.copy(color = LabelCream.copy(alpha = 0.72f)))
     }

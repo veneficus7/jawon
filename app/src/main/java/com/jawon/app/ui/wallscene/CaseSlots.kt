@@ -1,5 +1,6 @@
 package com.jawon.app.ui.wallscene
 
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.key
@@ -451,6 +452,11 @@ private const val BEAM_SATURATION = 0.62f
 class CaseSlots {
     val slots = mutableListOf<CaseSlot>()
 
+    // What [bind] last applied, so [reapply] can put it back. See [reapply].
+    internal var lastBindings: List<Pair<CaseLayout, CaseArtwork?>>? = null
+    internal var lastSelected: String? = null
+    internal var lastNowPlaying: String? = null
+
     /** Grows to [size], never shrinks — see [WallSceneScreen]'s pool sizing. */
     fun ensure(size: Int) {
         while (slots.size < size) slots += CaseSlot()
@@ -577,6 +583,9 @@ fun CaseSlots.bind(
     selectedAlbumId: String?,
     nowPlayingAlbumId: String?
 ) {
+    lastBindings = bindings
+    lastSelected = selectedAlbumId
+    lastNowPlaying = nowPlayingAlbumId
     // Which slot each album should land on.
     //
     // **An album keeps the slot it is already on**, and only albums new to the wall take
@@ -931,4 +940,21 @@ fun SceneScope.CaseSlotNodes(
             }
         }
     }
+    // After the nodes above, so it runs after their SideEffects reset the art. See [reapply].
+    SideEffect { slots.reapply() }
+}
+
+/**
+ * Puts every slot's art back as [bind] last left it.
+ *
+ * **Why this exists (0.7.2).** SceneView's `ImageNode` composable ends in `SideEffect { node.bitmap
+ * = bitmap }`, so *any* recomposition of [CaseSlotNodes] writes the composable's argument — the
+ * blank placeholder — back over the art [bind] uploaded, and nothing called [bind] again. It never
+ * showed while the room was rebuilt behind every visit to Settings; once the room stayed alive,
+ * changing its light (a theme change, which recomposes everything) blanked every cover on the wall.
+ * [CaseSlotNodes] calls this from a SideEffect declared after the nodes, so it runs after theirs.
+ */
+fun CaseSlots.reapply() {
+    val bindings = lastBindings ?: return
+    bind(bindings, lastSelected, lastNowPlaying)
 }
