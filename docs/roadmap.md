@@ -52,7 +52,7 @@ Fixed items are struck through; the rest are assigned below.
 | CD import | A paragraph of jargon ("bus-powered") and a LOOK AGAIN button; no steps, no picture, no automatic detection of a drive being plugged in | 0.7.3 |
 | CD room | ~~Closing a case pauses, and a paused record leaves no bar on the wall~~ — it plays on, its case proud, a real bar at the foot of the wall (0.7.3) | done |
 | CD room | The chrome's labels are 10sp dim mono under icons; only the 48dp icon is the target, not the label | 0.7.2 |
-| Deck | At the resting height only ~2 tracklist rows show; long titles truncate in the plate | 0.7.3 |
+| Deck | ~~At the resting height only ~2 tracklist rows show; long titles truncate in the plate~~ — four rows (one spec line, slimmer transport, 40dp rows), and a long title runs along the glass (0.7.4) | done |
 | Edit album | "UNDERLIGHT" names a light the room no longer has (it is the glow pool now) | 0.7.2 |
 | Remove album | ~~A dialog, then gone: no undo~~ — the case still breaks, then UNDO for seven seconds before anything is deleted (0.7.4) | done |
 | Showroom | Neighbouring captions peek in clipped at the screen edges ("DS", "CA") and read as a layout fault | 0.7.2 |

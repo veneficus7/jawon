@@ -6,6 +6,7 @@ import androidx.compose.foundation.gestures.rememberDraggableState
 import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.background
+import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -506,7 +507,7 @@ fun DeckOverlay(
                 modifier = Modifier
                     .fillMaxWidth()
                     .fillMaxHeight()
-                    .padding(top = 12.dp)
+                    .padding(top = 6.dp)
             ) {
                 // Above the tracklist rather than beside a menu, and only for a streamed
                 // record — this is a fact about the whole album, and the tracklist is the one
@@ -550,7 +551,9 @@ fun DeckOverlay(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(28.dp)
         ) {
-            IconButton(onClick = onPrevious, modifier = Modifier.size(56.dp)) {
+            // 60 and 52 rather than 68 and 56 (0.7.4): still well over the 48dp a thumb needs, and
+            // the difference is a tracklist row at the deck's resting height.
+            IconButton(onClick = onPrevious, modifier = Modifier.size(52.dp)) {
                 Icon(
                     Icons.Default.SkipPrevious,
                     contentDescription = "Previous track",
@@ -558,15 +561,15 @@ fun DeckOverlay(
                     modifier = Modifier.size(30.dp)
                 )
             }
-            IconButton(onClick = onPlayPause, modifier = Modifier.size(68.dp)) {
+            IconButton(onClick = onPlayPause, modifier = Modifier.size(60.dp)) {
                 Icon(
                     imageVector = if (deck.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
                     contentDescription = if (deck.isPlaying) "Pause" else "Play",
                     tint = finish.accent,
-                    modifier = Modifier.size(40.dp)
+                    modifier = Modifier.size(38.dp)
                 )
             }
-            IconButton(onClick = onNext, modifier = Modifier.size(56.dp)) {
+            IconButton(onClick = onNext, modifier = Modifier.size(52.dp)) {
                 Icon(
                     Icons.Default.SkipNext,
                     contentDescription = "Next track",
@@ -592,23 +595,28 @@ private fun ScrubOrQuality(scrubReadout: State<ScrubReadout?>, deck: DeckState) 
     val scrub = scrubReadout.value
     if (scrub != null) {
         val track = deck.tracks.getOrNull(scrub.trackIndex)
-        Text(
-            text = (if (scrub.forward) "▶▶  " else "◀◀  ") +
-                formatDuration(scrub.positionMs) + " / " +
-                formatDuration(track?.durationMs ?: 0L),
-            // Live, and the only thing on the plate that is. Tabular, because this counts
-            // through every digit at about twelve updates a second while the disc is turning
-            // and proportional figures make the whole line shuffle as it goes.
-            style = JawonTextStyle.mono.copy(fontFeatureSettings = "tnum"),
-            modifier = Modifier.padding(top = 10.dp)
-        )
-        Text(
-            text = track?.title.orEmpty().uppercase(Locale.ROOT),
-            style = JawonTextStyle.mono.copy(color = finish.plateDim),
-            modifier = Modifier.padding(top = 2.dp),
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
+        // One line, as the spec it stands in for is (0.7.4): two lines here and one there made
+        // the tracklist jump every time a finger touched the disc.
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = (if (scrub.forward) "▶▶  " else "◀◀  ") +
+                    formatDuration(scrub.positionMs) + " / " +
+                    formatDuration(track?.durationMs ?: 0L),
+                // Live, and the only thing on the plate that is. Tabular, because this counts
+                // through every digit at about twelve updates a second while the disc is turning
+                // and proportional figures make the whole line shuffle as it goes.
+                style = JawonTextStyle.mono.copy(fontFeatureSettings = "tnum")
+            )
+            Text(
+                text = "  ·  " + track?.title.orEmpty().uppercase(Locale.ROOT),
+                style = JawonTextStyle.mono.copy(color = finish.plateDim),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
         return
     }
     deck.currentTrack?.let { track ->
@@ -622,15 +630,15 @@ private fun ScrubOrQuality(scrubReadout: State<ScrubReadout?>, deck: DeckState) 
         //
         // Same treatment as the brand and model marks at the top of the window, deliberately:
         // one printing process for everything printed.
+        //
+        // **One line since 0.7.4**, the file and where it is going side by side: at the deck's
+        // resting height the two lines cost the tracklist most of a row, and the audit found only
+        // two tracks showing there.
         Silkscreen(
-            text = qualityReadoutSource(track).uppercase(Locale.ROOT),
-            modifier = Modifier.padding(top = 12.dp)
-        )
-        Silkscreen(
-            text = qualityReadoutOutput(
-                track, deck.routeLabel, deck.outputSampleRateHz
-            ).uppercase(Locale.ROOT),
-            modifier = Modifier.padding(top = 3.dp)
+            text = (qualityReadoutSource(track) + "  ·  " +
+                qualityReadoutOutput(track, deck.routeLabel, deck.outputSampleRateHz))
+                .uppercase(Locale.ROOT),
+            modifier = Modifier.padding(top = 10.dp)
         )
     }
 }
@@ -984,7 +992,7 @@ private fun TrackRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .height(42.dp)
+            .height(TRACK_ROW_H)
             .clickable(onClick = onClick),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp)
@@ -1484,11 +1492,14 @@ private fun DeckWindow(
                 // The *track*, not the record. The album's name is on the spine, on the front of
                 // the case and on the shelf label — you just chose it. What you cannot see
                 // anywhere else is which of its tracks is playing, and that is what a deck is for.
+                // A title longer than the glass runs along it, as a display's would, rather than
+                // stopping at "…" (0.7.4) — the audit's long titles cut short in the plate.
                 DisplayText(
                     text = (deck.currentTrack?.title?.takeIf { it.isNotBlank() } ?: title)
                         .uppercase(Locale.ROOT),
                     size = finish.displaySize,
-                    weight = FontWeight.Bold
+                    weight = FontWeight.Bold,
+                    scrolls = true
                 )
                 if (!compact) {
                     // Whoever is actually singing, which on a compilation is not who the shelf is
@@ -1573,7 +1584,9 @@ private fun DisplayText(
     text: String,
     size: androidx.compose.ui.unit.TextUnit,
     weight: FontWeight,
-    dim: Boolean = false
+    dim: Boolean = false,
+    /** Run along the glass when too long for it, instead of ending in "…". */
+    scrolls: Boolean = false
 ) {
     val finish = LocalDeckFinish.current
     val colour = if (dim) finish.displayInk.copy(alpha = 0.6f) else finish.displayInk
@@ -1583,7 +1596,19 @@ private fun DisplayText(
         text = text,
         color = colour,
         maxLines = 1,
-        overflow = TextOverflow.Ellipsis,
+        overflow = if (scrolls) TextOverflow.Clip else TextOverflow.Ellipsis,
+        // A pause at each end, then a slow run — read, not chased. Moves only when the text is
+        // wider than its slot, and in the draw phase, so it recomposes nothing.
+        modifier = if (scrolls) {
+            Modifier.basicMarquee(
+                iterations = Int.MAX_VALUE,
+                initialDelayMillis = 1_800,
+                repeatDelayMillis = 2_400,
+                velocity = 34.dp
+            )
+        } else {
+            Modifier
+        },
         style = TextStyle(
             fontFamily = finish.display,
             fontSize = size,
@@ -1611,6 +1636,9 @@ private fun DisplayText(
 
 /** How much smaller the second line in the window is than the first. */
 private const val SECONDARY_SCALE = 0.58f
+
+/** A tracklist row: 40dp, two under the old 42, which across a resting deck is most of a row. */
+private val TRACK_ROW_H = 40.dp
 
 // How far the window's light spills past its own frame, and how strong it is at the centre.
 // **Deliberately loud.** The first pass at these was so restrained the owner could not see the
