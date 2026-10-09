@@ -691,7 +691,9 @@ private fun UnderlightPicker(hue: Float, onHueChanged: (Float) -> Unit) {
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            FieldLabel("UNDERLIGHT")
+            // "UNDERLIGHT" until 0.7.2 — a light the room no longer has. What this colours now is the
+            // pool of glow the record floats over.
+            FieldLabel("GLOW")
             Text(
                 text = if (chosen) "USE THE COVER'S" else "FROM THE COVER",
                 style = JawonTextStyle.mono.copy(

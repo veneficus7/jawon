@@ -16,19 +16,23 @@ import androidx.compose.ui.unit.sp
  * The Archivo steps jump, because a sleeve's lettering is meant to be seen across a room.
  *
  * Sizes only: weight, tracking and colour stay with the call site, where they carry meaning.
+ * **One step up in 0.7.2** (Fine 9 → 10, Caption 10 → 11, Body 11 → 12, Title 13 → 14): the scale
+ * was tuned on a 6.9-inch flagship, and its 9 and 10sp mono — the commonest sizes in the app —
+ * were small on a 6.1-inch phone and for older eyes. The steps between roles are unchanged.
+ *
  * The in-room deck is not on this scale — each [DeckFinish] sets its own period lettering.
  */
 object JawonType {
     // Mono — JetBrains Mono, the hi-fi display language.
 
     /** Tags, field labels, status lines and footnotes: the smallest thing still meant to be read. */
-    val Fine = 9.sp
+    val Fine = 10.sp
     /** Captions, secondary lines, section labels. The commonest size in the app. */
-    val Caption = 10.sp
+    val Caption = 11.sp
     /** Row text and values. */
-    val Body = 11.sp
+    val Body = 12.sp
     /** A screen's name in its bar, text being typed, and sentences meant to be read through. */
-    val Title = 13.sp
+    val Title = 14.sp
 
     // Display — Archivo Expanded, the sleeve.
 
