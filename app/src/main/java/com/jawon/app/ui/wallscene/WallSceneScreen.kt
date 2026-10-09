@@ -4007,7 +4007,8 @@ fun WallSceneScreen(
         // Search is opened from the chrome row and takes its place while it is up. Declared
         // after the two above so that, while it is open, Back closes it and nothing else.
         var searchOpen by remember { mutableStateOf(false) }
-        if (selectedAlbumId != null) searchOpen = false
+        // A case opened some other way — tapped above the open panel — takes search down with it.
+        LaunchedEffect(selectedAlbumId) { if (selectedAlbumId != null) searchOpen = false }
         BackHandler(enabled = searchOpen) { searchOpen = false }
 
         // **What happens when the record finishes.**
