@@ -150,6 +150,7 @@ internal class PocketDevice(
         if (finishShown == finish || frontMaterial == null) return
         finish.applyTo(frontMaterial, wheelMaterial, buttonMaterial, printMaterial)
         finishShown = finish
+        sceneChanged = true
     }
     private var lastFrameAt = 0L
     private var rockWasMoving = false
@@ -282,11 +283,46 @@ internal class PocketDevice(
         buttonMaterial = material("pocket_button")
         printMaterial = material("pocket_print")
         showFinish()
+        sceneChanged = true
     }
 
     /** A thumb on the wheel, the wheel still moving from one, or a pinch: drawn every vsync. */
     val interacting: Boolean
         get() = gesture.isDown || rock.isMoving || pullOut.isMoving
+
+    // ---- whether there is anything new to draw ----------------------------------------------
+
+    /** Something this device wrote into the scene — a part posed, a finish, the camera — since the room last drew. */
+    private var sceneChanged = true
+    private var drawnPitch = Float.NaN
+    private var drawnYaw = Float.NaN
+    private var posedZ = Float.NaN
+
+    /**
+     * Whether the face would look any different from the frame the room drew last, as far as this
+     * device knows: something it wrote into the scene, or the phone tilted far enough to move the
+     * reflections. The screen's own picture is the room's to check (`LcdPanel.framesDelivered`).
+     *
+     * The tilt counts only past [TURN_EPS_RAD], measured from what was *drawn*, so a slow drift
+     * still arrives once it adds up, and a phone lying on a table — whose sensor still murmurs —
+     * stops asking for frames.
+     */
+    val changedSinceDrawn: Boolean
+        get() = sceneChanged || turnedSinceDrawn()
+
+    private fun turnedSinceDrawn(): Boolean {
+        if (turnPitch.isNaN()) return false
+        if (drawnPitch.isNaN()) return true
+        return kotlin.math.abs(turnPitch - drawnPitch) > TURN_EPS_RAD ||
+            kotlin.math.abs(turnYaw - drawnYaw) > TURN_EPS_RAD
+    }
+
+    /** The room drew a frame: everything up to now is on the glass. */
+    fun drawn() {
+        sceneChanged = false
+        drawnPitch = turnPitch
+        drawnYaw = turnYaw
+    }
 
     fun onFrame(now: Long) {
         if (lastInputAt == 0L) lastInputAt = now
@@ -374,7 +410,12 @@ internal class PocketDevice(
      */
     private fun pose() {
         val camera = cameraNode ?: return
-        camera.position = Position(0f, 0f, cameraZ * (1f + PULL_BACK * pullOut.progress))
+        val z = cameraZ * (1f + PULL_BACK * pullOut.progress)
+        if (z != posedZ) {
+            posedZ = z
+            sceneChanged = true
+        }
+        camera.position = Position(0f, 0f, z)
         camera.rotation = LEVEL
     }
 
@@ -422,6 +463,7 @@ internal class PocketDevice(
             translation(Float3(0f, -y, -z))
         for (part in wheelParts) part.transform = ring
         buttonPart?.transform = translation(Float3(0f, 0f, -rock.buttonMm / 1000f))
+        sceneChanged = true
     }
 
     // ---- behaviour --------------------------------------------------------------------------
@@ -792,6 +834,12 @@ internal class PocketDevice(
 
     private companion object {
         const val CLICK_MIN_INTERVAL_MS = 18L
+
+        /**
+         * A tilt worth drawing, in radians: 0.06 degrees, which turns a reflection 0.11 — far under
+         * what the studio's soft lights could show, and over a still phone's sensor noise.
+         */
+        const val TURN_EPS_RAD = 0.001f
         const val LYRICS_FOLLOW_AFTER_MS = 4_000L
         val X_AXIS = Float3(1f, 0f, 0f)
         val Y_AXIS = Float3(0f, 1f, 0f)

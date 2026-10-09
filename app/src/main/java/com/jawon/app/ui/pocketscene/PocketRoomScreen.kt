@@ -74,6 +74,17 @@ private const val PULL_DIM = 0.75f
 /** The rate the room is drawn at when nobody is touching it — see the note in onFrame. */
 private const val POCKET_IDLE_FPS = 60f
 
+/** At rest the room draws only on a change — see onFrame — but never less often than this. */
+private const val REDRAW_AT_LEAST_MS = 1_000L
+
+/** Drawn every frame for this long after the room opens, while the face and its shaders arrive. */
+private const val WARM_UP_MS = 2_500L
+
+// Slots in the room's `drawState`.
+private const val LCD_DRAWN = 0
+private const val DRAWN_AT = 1
+private const val ENTERED_AT = 2
+
 /** How often the main menu's slideshow moves on. */
 private const val SLIDE_TICK_MS = 50L
 
@@ -150,6 +161,8 @@ fun PocketRoomScreen(
         }
     }
     val publishedDivisor = remember { intArrayOf(0) }
+    // What the room last put on the glass: the screen's frame count, when, and when it opened.
+    val drawState = remember { LongArray(3) }
     // What renders Compose into the scene. See `docs/realism.md` §1.4: a SurfaceTexture feeding
     // a Filament Stream — the path video takes — so the screen is live UI, not a baked image.
     val viewNodeManager = rememberViewNodeManager()
@@ -460,6 +473,9 @@ fun PocketRoomScreen(
             override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) = Unit
         }
         tilt.reset()
+        // Back from the background the surface is new and holds nothing: draw through a warm-up
+        // again rather than waiting on a change that may not come for a second.
+        drawState[ENTERED_AT] = 0L
         if (sensors != null && rotation != null) {
             sensors.registerListener(listener, rotation, SensorManager.SENSOR_DELAY_GAME)
         }
@@ -515,7 +531,8 @@ fun PocketRoomScreen(
             onFrame = {
                 cameraNode.rotation = LEVEL
                 // The grade, re-applied if SceneView's own preset has undone it — see PocketAtmosphere.
-                if (!PocketAtmosphere.isApplied(filamentView)) PocketAtmosphere.apply(filamentView)
+                val regraded = !PocketAtmosphere.isApplied(filamentView)
+                if (regraded) PocketAtmosphere.apply(filamentView)
                 device.onFrame(SystemClock.uptimeMillis())
                 // **Drawn at 60 unless a thumb is on the wheel.** SceneView renders every vsync —
                 // 120 a second on the owner's phone — and nothing in this room moves fast enough
@@ -524,18 +541,36 @@ fun PocketRoomScreen(
                 // before and only the rasterising drops to 60, which is half the GPU work on a
                 // 120Hz panel (traps 28-30: the CD room's problem is heat, not jank). A finger
                 // down or the wheel still rocking is back to every vsync on the next frame.
-                val divisor = if (device.interacting) {
-                    RoomCadence.LIVE
-                } else {
-                    cadence.divisorForFps(POCKET_IDLE_FPS)
-                }
+                val live = device.interacting
+                val divisor = if (live) RoomCadence.LIVE else cadence.divisorForFps(POCKET_IDLE_FPS)
                 if (divisor != publishedDivisor[0]) {
                     publishedDivisor[0] = divisor
                     renderer.frameRateOptions = Renderer.FrameRateOptions().apply {
                         interval = divisor.toFloat()
                     }
                 }
-                if (!cadence.shouldDraw(divisor)) renderer.skipNextFrames(1)
+                // **And at rest, drawn only when there is something new to show.** Untouched, the
+                // face changes in exactly two ways — the screen's picture, and the reflections when
+                // the phone tilts — and between those a fresh frame is the last one again. It was
+                // drawn at 60 regardless: 0.60 of a core and the GPU 85% busy on the owner's phone,
+                // for a still menu. So a frame is drawn when the screen has delivered one, when the
+                // device says the scene moved, through a warm-up while the model and the first
+                // shaders arrive, and once a second whatever happens, in case anything slipped by.
+                val now = SystemClock.uptimeMillis()
+                if (drawState[ENTERED_AT] == 0L) drawState[ENTERED_AT] = now
+                val lcdFrames = lcdPanel.framesDelivered
+                val fresh = live || regraded ||
+                    device.changedSinceDrawn ||
+                    lcdFrames != drawState[LCD_DRAWN] ||
+                    now - drawState[DRAWN_AT] >= REDRAW_AT_LEAST_MS ||
+                    now - drawState[ENTERED_AT] < WARM_UP_MS
+                if (cadence.shouldDraw(divisor) && fresh) {
+                    device.drawn()
+                    drawState[LCD_DRAWN] = lcdFrames
+                    drawState[DRAWN_AT] = now
+                } else {
+                    renderer.skipNextFrames(1)
+                }
             }
         ) {
             // **The key**: a spot above and behind you, over your left shoulder. The face is metal

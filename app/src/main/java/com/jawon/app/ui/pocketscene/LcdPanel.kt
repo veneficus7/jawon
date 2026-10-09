@@ -5,6 +5,8 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.PorterDuff
 import android.graphics.SurfaceTexture
+import android.os.Handler
+import android.os.Looper
 import android.view.Surface
 import android.view.View
 import android.widget.FrameLayout
@@ -54,9 +56,22 @@ class LcdPanel(
      */
     private val supersample: Float = 1f
 ) {
+    /**
+     * Frames that have reached the texture — counted when the GPU has finished one and queued it,
+     * not when it was asked for, because a room that drew the moment a redraw was *requested*
+     * would sample the frame before. The pocket room compares this with what it last drew, and
+     * draws only when the screen has something new on it.
+     *
+     * Ours to listen on: Filament's stream polls `updateTexImage` and sets no listener of its
+     * own (checked in libfilament-jni 1.72.1). Counted on the main thread, where it is read.
+     */
+    var framesDelivered = 0L
+        private set
+
     private val surfaceTexture = SurfaceTexture(0).apply {
         detachFromGLContext()
         setDefaultBufferSize((widthPx * supersample).toInt(), (heightPx * supersample).toInt())
+        setOnFrameAvailableListener({ framesDelivered++ }, Handler(Looper.getMainLooper()))
     }
     private val surface = Surface(surfaceTexture)
     private var stream: Stream? = Stream.Builder().stream(surfaceTexture).build(engine)
@@ -85,6 +100,7 @@ class LcdPanel(
         stream?.let { engine.destroyStream(it) }
         stream = null
         surface.release()
+        surfaceTexture.setOnFrameAvailableListener(null)
         surfaceTexture.release()
     }
 

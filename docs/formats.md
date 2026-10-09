@@ -236,10 +236,15 @@ effect on the way back — no mid-session teardown, and no brush with trap 1.
     phone.
   - **Pages hesitated.** The title changed on the press while the list, eased in, sat still for
     50ms. It leaves at once now and slows into place.
-  - **Every click froze the room for 42–67ms** — the one found and not yet fixed. It follows every
-    step of the wheel and every button alike; the likeliest cause is the click's `AudioTrack`
-    restarting on the main thread, and a system trace on the phone decides it before anything
-    changes.
+  - **Every click froze the room for 42–67ms** — fixed on 2026-10-09, and it was the click. A
+    system trace on the owner's phone (`atrace` with `sched` and `binder_driver`, read as text —
+    there is no trace processor on this machine and none is needed) put the main thread asleep in
+    a synchronous binder call to `audioserver` on every step: `AudioTrack.play()` starting the
+    output that the static track had let go when its last click ended. 3.8ms with the phone on
+    silent; with a speaker to wake, the 42–67ms. `ClickPlayer` now does all of it on a thread of
+    its own at audio priority and the wheel only posts; traced again, the main thread made no
+    call to `audioserver` in an eight-step turn and a step's touch handling fell from 5.2ms to
+    under 1.8ms.
 - **The bar is "as realistic and high quality as possible" — decided.** What that means here:
   - **It is seen closer than anything in the CD room.** At life size, filling the screen, every
     seam, bevel, the wheel's slight recess and the screen's inset glass is on show, so the model
@@ -547,8 +552,15 @@ One thing at a time, checked on the owner's phone between each (the working agre
      everything a thumb touches**: the wheel and its clicks, the menus, Cover Flow, Now Playing and
      its lyrics, the device's Settings and Sound, the three finishes, the backlight, and the pinch
      out to the showroom, where the whole device still stands (`pocket.glb`, `PocketObject`).
-   **Not yet**: on the phone — the look, the wheel's size under a real thumb, and the cost, which
-   should be well under the train's.
+   **On the phone since 2026-10-09** (a release build with `-Pjawon.showFormats=true`): the face
+   renders as the Cycles previews said it would, the wheel's touch mapping lands — an injected
+   eight-step turn moved the highlight row by row and stopped at the end of the list — and Cover
+   Flow and the showroom's exhibit both work. **The cost was not under the train's**: idle on the
+   main menu it took 0.60 of a core (Filament 0.30, main 0.16) with the GPU 85% busy, against the
+   carriage's 0.54 — because it was still drawn at 60 a second for a picture that, untouched,
+   changes only when the screen does or the phone tilts. It is now drawn only then (the room's
+   `onFrame`, `LcdPanel.framesDelivered`, `PocketDevice.changedSinceDrawn`).
+   **Still the owner's to judge**: the look, and whether a 51mm wheel suits his thumb.
 9. **Vinyl** (§5), then **cassette** (§6), each its own room and built the same way.
 
 Each of 3–8 is about a session's work. **Measure every tier as it lands** (traps 28–30).
