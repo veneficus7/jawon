@@ -5,6 +5,10 @@ import android.media.AudioAttributes
 import android.media.AudioFormat
 import android.media.AudioManager
 import android.media.AudioTrack
+import android.os.Handler
+import android.os.HandlerThread
+import android.os.Message
+import android.os.Process
 import kotlin.math.PI
 import kotlin.math.abs
 import kotlin.math.cos
@@ -85,12 +89,35 @@ object ClickSound {
  * phone's system-sounds volume and goes quiet in silent mode, where the step's haptic tick
  * carries on alone. Tied to the music's volume instead, turning the volume down on Now Playing
  * would fade out the very clicks that are telling you it is turning.
+ *
+ * **Never on the main thread.** `play()` is a blocking call into `audioserver`, which starts the
+ * output for each click and lets it go when the buffer ends. Measured on the owner's S25 Ultra
+ * (2026-10-09, system trace): 3.8ms of the main thread asleep in that call per step with the
+ * phone on silent, and with the speaker to wake up it was the 42–67ms freeze that followed every
+ * click in the carriage room. So the track is built, rewound and started on a thread of its own
+ * at audio priority, and [click] only posts to it. Clicks that arrive while one is still being
+ * started collapse into one — a click late by a start is a click, a queue of them is a rattle.
  */
 class ClickPlayer(context: Context) : AutoCloseable {
 
-    private val track: AudioTrack? = runCatching { build(context) }.getOrNull()
+    private val thread = HandlerThread("JawonClick", Process.THREAD_PRIORITY_URGENT_AUDIO)
+        .apply { start() }
+    private val handler = Handler(thread.looper)
+
+    /** Touched only on [thread]. */
+    private var track: AudioTrack? = null
+
+    init {
+        val app = context.applicationContext
+        handler.post { track = runCatching { build(app) }.getOrNull() }
+    }
 
     fun click() {
+        if (handler.hasMessages(CLICK)) return
+        handler.sendMessage(Message.obtain(handler, Runnable { play() }).apply { what = CLICK })
+    }
+
+    private fun play() {
         val t = track ?: return
         runCatching {
             // A static track rewinds only while stopped or paused.
@@ -101,7 +128,12 @@ class ClickPlayer(context: Context) : AutoCloseable {
     }
 
     override fun close() {
-        track?.let { runCatching { it.stop() }; it.release() }
+        handler.removeCallbacksAndMessages(null)
+        handler.post {
+            track?.let { runCatching { it.stop() }; it.release() }
+            track = null
+        }
+        thread.quitSafely()
     }
 
     private fun build(context: Context): AudioTrack {
@@ -130,5 +162,9 @@ class ClickPlayer(context: Context) : AutoCloseable {
             .build()
         track.write(pcm, 0, pcm.size)
         return track
+    }
+
+    private companion object {
+        const val CLICK = 1
     }
 }
