@@ -1,6 +1,7 @@
 package com.jawon.app.ui.wallscene
 
 import io.github.sceneview.safeDestroyEnvironment
+import kotlinx.coroutines.flow.first
 import android.os.SystemClock
 import android.provider.Settings
 import android.util.Log
@@ -1110,6 +1111,7 @@ fun WallSceneScreen(
 ) {
     val layout by viewModel.layout.collectAsStateWithLifecycle()
     val nowPlaying by viewModel.nowPlaying.collectAsStateWithLifecycle()
+    val removed by viewModel.removed.collectAsStateWithLifecycle()
     val roomScheme by viewModel.roomScheme.collectAsStateWithLifecycle()
     val caseSpin by viewModel.caseSpin.collectAsStateWithLifecycle()
     val eqAvailable by viewModel.eqAvailable.collectAsStateWithLifecycle()
@@ -1953,7 +1955,8 @@ fun WallSceneScreen(
             if (slot == null || discardNodes.isRunning) {
                 // Nothing on screen to animate, or one is already running � the discard owns
                 // a single set of nodes, so a second would fight it for them. Delete outright.
-                viewModel.deleteAlbum(case.albumId)
+                // Through the same undo window as the animated removal.
+                viewModel.scheduleDiscard(case.albumId, 0L)
                 return
             }
             // The shelved case hides for the whole removal and the *held* case takes over
@@ -4065,6 +4068,19 @@ fun WallSceneScreen(
         // Deliberately no autoplay. The album is the atomic unit (PLAN §2), and rolling into
         // another record is the shuffle-a-huge-library behaviour this app exists not to have.
         // The wall is the offer; tapping the next case is the user's move.
+        // A record UNDO put back: the wall turns to it, on the magnet's spring, once it is in the
+        // layout again — so it is in front of you, not somewhere along the shelf.
+        LaunchedEffect(Unit) {
+            viewModel.restored.collect { albumId ->
+                val target = kotlinx.coroutines.withTimeoutOrNull(2_000L) {
+                    androidx.compose.runtime.snapshotFlow { layout.cases.firstOrNull { it.albumId == albumId } }
+                        .first { it != null }
+                } ?: return@collect
+                scope.launch { panX.animateTo(target.x, animationSpec = FLIP_SPRING) }
+                scope.launch { panY.animateTo(target.y, animationSpec = FLIP_SPRING) }
+            }
+        }
+
         LaunchedEffect(Unit) {
             viewModel.albumEnded.collect {
                 // Guarded because the event fires whether or not a case is open — a record can
@@ -4189,6 +4205,14 @@ fun WallSceneScreen(
                     .align(Alignment.CenterHorizontally)
                     .widthIn(max = CHROME_MAX_W)
             ) {
+            // A record just taken off the wall, for as long as it can still come back.
+            removed?.let { r ->
+                RemovedBar(
+                    removed = r,
+                    windowMs = WallSceneViewModel.UNDO_WINDOW_MS,
+                    onUndo = viewModel::undoRemove
+                )
+            }
             nowPlaying?.let { playing ->
                 NowPlayingBar(
                     nowPlaying = playing,

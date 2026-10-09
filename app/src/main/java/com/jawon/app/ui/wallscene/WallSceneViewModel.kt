@@ -124,6 +124,12 @@ class WallSceneViewModel @Inject constructor(
     val caseSpin: StateFlow<Float> = preferences.caseSpin
 
     /**
+     * Albums taken off the wall and waiting out their undo window — see [removed]. Declared
+     * before [layout], which reads it as it is built.
+     */
+    private val _removing = MutableStateFlow<Set<String>>(emptySet())
+
+    /**
      * The wall, including how played-in each case looks.
      *
      * `albumTotals()` re-emits on every write to `PlayEvent`, which is often while music is
@@ -137,8 +143,11 @@ class WallSceneViewModel @Inject constructor(
             shelfDao.getAll(),
             albumDao.getAll(),
             playEventDao.albumTotals(),
-            preferences.wallSort
-        ) { shelves, albums, totals, sortName ->
+            preferences.wallSort,
+            _removing
+        ) { shelves, all, totals, sortName, removing ->
+            // Albums in their undo window are off the wall while still in the database.
+            val albums = if (removing.isEmpty()) all else all.filter { it.id !in removing }
             val albumsByShelf = albums.groupBy { it.shelfId }
             // One read of the totals, two uses: the quantised wear the cases are drawn with,
             // and the raw milliseconds MOST PLAYED orders by. Deriving both here keeps the
@@ -535,8 +544,29 @@ class WallSceneViewModel @Inject constructor(
         albumRemover.remove(albumId)
     }
 
-    /** Outstanding [scheduleDiscard] timers, so [skipDiscard] can cut one short. */
+    /**
+     * Outstanding removals — the animation's length, then the undo window — so [skipDiscard] can
+     * cut one short and [undoRemove] can call one off.
+     */
     private val discardJobs = mutableMapOf<String, Job>()
+
+    /** A record taken off the wall and waiting out its undo window. */
+    data class Removed(val albumId: String, val title: String)
+
+    private val _removed = MutableStateFlow<Removed?>(null)
+
+    /**
+     * **The undo** (0.7.4): the record just taken off the wall, for as long as it can still come
+     * back. Removing an album was a dialog and then gone; now the case still breaks apart and
+     * leaves the shelf, but the album is only hidden ([_removing]) and the bar under the wall
+     * offers UNDO for [UNDO_WINDOW_MS]. Only when that runs out is anything deleted.
+     *
+     * Hidden rather than deleted and restored, because restoring is the hard and risky half:
+     * `AlbumRemover` takes the tracks, the listening history and the cover files with it. And if
+     * the app is killed inside the window, nothing has been deleted — the record is simply back
+     * on its shelf next time, which is the safe way for that to go wrong (ENGINEERING.md trap 31).
+     */
+    val removed: StateFlow<Removed?> = _removed.asStateFlow()
 
     /**
      * Deletes [albumId] after [afterMs] rather than immediately — this is what lets the wall
@@ -553,15 +583,52 @@ class WallSceneViewModel @Inject constructor(
         discardJobs[albumId]?.cancel()
         discardJobs[albumId] = viewModelScope.launch {
             delay(afterMs)
-            deleteAlbum(albumId)
-            discardJobs.remove(albumId)
+            takeOff(albumId)
         }
     }
 
     /** A second tap on a case already breaking apart — finish now instead of waiting it out. */
     fun skipDiscard(albumId: String) {
         discardJobs.remove(albumId)?.cancel()
-        deleteAlbum(albumId)
+        discardJobs[albumId] = viewModelScope.launch { takeOff(albumId) }
+    }
+
+    private val _restored = kotlinx.coroutines.flow.MutableSharedFlow<String>(extraBufferCapacity = 1)
+
+    /** A record UNDO just put back, for the wall to turn to. */
+    val restored: kotlinx.coroutines.flow.SharedFlow<String> = _restored
+
+    /** UNDO: the record goes back on its shelf, untouched. */
+    fun undoRemove() {
+        val r = _removed.value ?: return
+        discardJobs.remove(r.albumId)?.cancel()
+        _removing.value = _removing.value - r.albumId
+        _removed.value = null
+        _restored.tryEmit(r.albumId)
+    }
+
+    /**
+     * Off the wall, into the undo window, and — if it is not called back — deleted. One undo at a
+     * time: a second removal inside the first's window finishes the first.
+     */
+    private suspend fun takeOff(albumId: String) {
+        if (_nowPlayingAlbumId.value == albumId) stop()
+        _removed.value?.takeIf { it.albumId != albumId }?.let { previous ->
+            discardJobs.remove(previous.albumId)?.cancel()
+            viewModelScope.launch { finishRemoval(previous.albumId) }
+        }
+        val title = albumDao.findById(albumId)?.title.orEmpty()
+        _removing.value = _removing.value + albumId
+        _removed.value = Removed(albumId, title)
+        delay(UNDO_WINDOW_MS)
+        discardJobs.remove(albumId)
+        finishRemoval(albumId)
+    }
+
+    private suspend fun finishRemoval(albumId: String) {
+        removeAlbum(albumId)
+        _removing.value = _removing.value - albumId
+        if (_removed.value?.albumId == albumId) _removed.value = null
     }
 
     /**
@@ -914,9 +981,12 @@ class WallSceneViewModel @Inject constructor(
     fun onEqPreset(index: Int) = equalizer.usePreset(index)
     fun onEqReset() = equalizer.reset()
 
-    private companion object {
+    companion object {
         /** Within this of the end of the last track, the album counts as finished. */
         const val FINISHED_TAIL_MS = 5_000L
+
+        /** How long a removed record can still be called back — see [removed]. */
+        const val UNDO_WINDOW_MS = 7_000L
 
         /**
          * The shortest gap between two changes to playback speed or pitch.
