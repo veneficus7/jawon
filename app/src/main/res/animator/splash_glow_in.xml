@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    The glow on the wall behind the sign, coming up as the tube fills.
+-->
+<objectAnimator xmlns:android="http://schemas.android.com/apk/res/android"
+    android:duration="900">
+    <propertyValuesHolder android:propertyName="fillAlpha" android:valueType="floatType">
+        <keyframe android:fraction="0" android:value="0" />
+        <keyframe android:fraction="0.2" android:value="0" />
+        <keyframe
+            android:fraction="1"
+            android:value="1"
+            android:interpolator="@android:interpolator/decelerate_quad" />
+    </propertyValuesHolder>
+</objectAnimator>

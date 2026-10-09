@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-    The status-bar and notification small icon.
+    The status-bar and notification small icon: Jawon's mark.
 
     Media3 otherwise ships its own generic music note here, which is why Jawon's
     notification looked anonymous next to other players. The app *name* comes free — Android
@@ -10,14 +10,12 @@
     different framing rules. An adaptive icon's monochrome layer is a 108dp canvas with 18dp
     of safe-zone padding on every side, since the system masks it; a notification icon is a
     24dp canvas that is *not* masked and is expected to fill its box. Pointing the
-    notification at the launcher layer would draw the disc at about half the size it should
+    notification at the launcher layer would draw the mark at about half the size it should
     be, floating in the middle of the status bar.
 
-    The platform hard-tints small icons to a single opaque colour and keeps only alpha, so
-    the design here is entirely in the alpha channel — the same constraint the themed
-    launcher icon works under, and the same solution: a broken ring, whose gap and whose
-    difference in stroke weight survive being flattened because they are shape rather than
-    value. Reading at 24dp also means fewer, heavier strokes than the 108dp version has.
+    `JawonMark.Geometry` at a width of 22, centred on (12,12), with the rim a little heavier
+    than its proportion (1.6 rather than 1.2): the platform flattens this to one colour, and
+    at 24dp a hairline rim is the first thing to go.
 -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="24dp"
@@ -26,17 +24,16 @@
     android:viewportHeight="24"
     android:tint="#FFFFFF">
 
-    <!-- The disc, centre hole knocked out in one even-odd path. -->
     <path
-        android:fillType="evenOdd"
-        android:pathData="M12,12 m-10,0 a10,10 0 1,0 20,0 a10,10 0 1,0 -20,0 M12,12 m-3.2,0 a3.2,3.2 0 1,0 6.4,0 a3.2,3.2 0 1,0 -6.4,0"
-        android:fillColor="#FFFFFF"
-        android:fillAlpha="0.45" />
-
-    <!-- The light sweep. Full weight, so the mark still has its one gesture at 24dp. -->
-    <path
-        android:pathData="M13.3,4.3 A7.8,7.8 0 0,1 18.3,15.1"
+        android:pathData="M12,12 m-10.1,0 a10.1,10.1 0 1,0 20.2,0 a10.1,10.1 0 1,0 -20.2,0"
         android:strokeColor="#FFFFFF"
-        android:strokeWidth="2.6"
+        android:strokeWidth="1.6" />
+    <path
+        android:pathData="M15.74,3.4 L15.74,12 A3.74,3.74 0 0,1 9.135,14.404"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="2.3"
         android:strokeLineCap="round" />
+    <path
+        android:pathData="M12,12 m-1.65,0 a1.65,1.65 0 1,0 3.3,0 a1.65,1.65 0 1,0 -3.3,0"
+        android:fillColor="#FFFFFF" />
 </vector>

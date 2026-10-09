@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-    The disc arriving: a small scale-up under the system's own icon reveal.
+    The mark arriving: a small scale-up under the system's own icon reveal.
 
     Deliberately subtle. The splash icon is already masked and scaled by the platform, and a
     big scale gesture on top of that reads as two animations fighting.

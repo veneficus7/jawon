@@ -11,7 +11,7 @@
 
         XmlPullParserException: <bitmap> requires a valid 'src' attribute
 
-    `<bitmap>` decodes a raster; `ic_splash_disc` is a VectorDrawable, and handing one to
+    `<bitmap>` decodes a raster; `ic_splash_mark` is a VectorDrawable, and handing one to
     `android:src` is not a fallback that degrades, it is an inflation failure. It surfaces as
     `Resources$NotFoundException` on `windowBackground`, which the framework resolves inside
     `PhoneWindow.generateLayout` before `onCreate` returns, so the process dies before a single
@@ -27,7 +27,7 @@
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
     <item android:drawable="@color/crate_black" />
     <item
-        android:drawable="@drawable/ic_splash_disc"
+        android:drawable="@drawable/ic_splash_mark"
         android:gravity="center"
         android:width="160dp"
         android:height="160dp" />

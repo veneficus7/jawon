@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    The rim lighting round, from where the J hangs, clockwise back to it: the first half of
+    the splash. Accelerating, so the pen is moving when it reaches the top and runs straight
+    on into the J (`splash_j_draw`) — one stroke, not two.
+-->
+<objectAnimator xmlns:android="http://schemas.android.com/apk/res/android"
+    android:duration="900">
+    <propertyValuesHolder android:propertyName="trimPathEnd" android:valueType="floatType">
+        <keyframe android:fraction="0" android:value="0" />
+        <keyframe
+            android:fraction="0.5"
+            android:value="1"
+            android:interpolator="@android:interpolator/accelerate_quad" />
+        <keyframe android:fraction="1" android:value="1" />
+    </propertyValuesHolder>
+</objectAnimator>

@@ -1,40 +1,29 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-    Launcher foreground: a disc, hard-lit.
+    Launcher foreground: Jawon's mark — a J whose hook catches a disc's centre hole — lit as
+    the room's neon sign is (0.7.3).
 
-    The first attempt drew a disc emerging from a case edge — literal, and it read as any
-    media player with a rectangle bolted on. The second was this disc, but softly lit: a
-    cream face, four barely-there groove rings and a translucent amber sweep. Faithful to the
-    room and **weak at icon size**, where the grooves vanished entirely and the whole mark
-    collapsed into a pale beige circle with a smudge on it.
+    It replaced a hard-lit cream disc with an amber sweep, which said "a disc" and nothing
+    about whose. The mark says both: the rim and the hole are the object every format shares,
+    and the letter hanging from the rim is the name. It is also what every screen in the app
+    now wears beside its title, so the icon on the home screen and the thing in the corner of
+    Settings are visibly the same mark.
 
-    This is the same object with the contrast turned up until it survives 48px.
+    Geometry is `JawonMark.Geometry` at a width of 60, centred on (54,54) — keep the two in
+    step, the Kotlin is the source:
 
-    What changed, and why:
+        rim     r = 0.46 × 60 = 27.6, stroke 0.055 × 60 = 3.3
+        hole    r = 0.075 × 60 = 4.5
+        J       stroke 0.10 × 60 = 6, stem at x = 54 + 0.17 × 60 = 64.2 from
+                y = 54 − 0.40 × 60 = 30 down to the hole's level, then a hook of
+                r = 10.2 turning 140° round the hole, ending at (46.19, 60.56)
 
-    - **The face is split, not shaded.** A near-white lit side falls to a deep brown shadow
-      side over a short distance rather than a long soft ramp. A gradient that spends its
-      whole length in mid-tones has no contrast anywhere; one that spends most of its length
-      at the two ends has contrast everywhere it matters.
-    - **The sweep is opaque and twice as thick.** It was 5.5 wide at 92% alpha over a pale
-      face, which is a highlight *on* cream — barely a value change. Now it is solid amber at
-      full strength across the dark half, where it actually separates.
-    - **The grooves are gone.** Four rings at 0.7 wide and 22–45% alpha are invisible below
-      about 96px and are mud above it. The disc reads as a disc from its shape, its hub and
-      its sweep; it never needed texture to do that.
-    - **The hole is bigger and pure black.** The strongest small-scale cue that this is a
-      disc rather than a coin or a button, so it gets the hardest edge in the mark.
+    The rim's outside edge sits at r = 29.25 and the halo at about 32: inside the 33 an
+    adaptive icon keeps under its tightest mask, so no launcher clips it.
 
-    It still earns the animation: the sweep is a named group, so `ic_splash_disc_animated.xml`
-    walks the highlight round without redrawing any of this — the launcher icon and the splash
-    remain the same object.
-
-    Geometry: 108 canvas, adaptive mask keeps only the centre ~72, and launchers may crop to
-    a circle inside that. Everything sits within r=29 of centre (54,54), so no mask clips it.
-
-    Palette stays DESIGN.md's — labelCream pushed to its brightest, lampAmber at full
-    saturation, crateBlack for the hole, oxideTeal for the cool counter-sweep so the mark is
-    not monochrome amber.
+    Lit in three passes, as a tube is: a wide faint halo, the amber stroke, and a thin warm
+    core down the middle. Below ~48px the core and halo fall away into the stroke and what
+    is left is the plain amber mark, which is the version that has to survive.
 -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:aapt="http://schemas.android.com/aapt"
@@ -43,58 +32,64 @@
     android:viewportWidth="108"
     android:viewportHeight="108">
 
-    <!--
-        The disc face. The stops are bunched at the ends on purpose: 0 to 0.30 holds near
-        white, 0.62 to 1 holds the deep shadow, and the whole transition happens across the
-        middle third. That is what makes it read as a hard-lit object rather than a gradient.
-    -->
-    <path android:pathData="M54,54 m-29,0 a29,29 0 1,0 58,0 a29,29 0 1,0 -58,0">
+    <!-- The glow the sign throws on the wall behind it. -->
+    <path android:pathData="M54,54 m-34,0 a34,34 0 1,0 68,0 a34,34 0 1,0 -68,0">
         <aapt:attr name="android:fillColor">
             <gradient
-                android:type="linear"
-                android:startX="32"
-                android:startY="29"
-                android:endX="79"
-                android:endY="80">
-                <item android:offset="0.0" android:color="#FFFBF2" />
-                <item android:offset="0.30" android:color="#F3E7CE" />
-                <item android:offset="0.52" android:color="#8A7A61" />
-                <item android:offset="0.62" android:color="#4A3E30" />
-                <item android:offset="1.0" android:color="#2A2119" />
+                android:type="radial"
+                android:centerX="54"
+                android:centerY="54"
+                android:gradientRadius="34">
+                <item android:offset="0.0" android:color="#2EFFB43C" />
+                <item android:offset="0.62" android:color="#1FFFB43C" />
+                <item android:offset="0.84" android:color="#14FFB43C" />
+                <item android:offset="1.0" android:color="#00FFB43C" />
             </gradient>
         </aapt:attr>
     </path>
 
-    <!--
-        The lamp's streak, and a cool counter-sweep opposite it.
+    <!-- Halo. -->
+    <path
+        android:pathData="M54,54 m-27.6,0 a27.6,27.6 0 1,0 55.2,0 a27.6,27.6 0 1,0 -55.2,0"
+        android:strokeColor="#FFB43C"
+        android:strokeAlpha="0.22"
+        android:strokeWidth="7.5" />
+    <path
+        android:pathData="M64.2,30 L64.2,54 A10.2,10.2 0 0,1 46.19,60.56"
+        android:strokeColor="#FFB43C"
+        android:strokeAlpha="0.22"
+        android:strokeWidth="11"
+        android:strokeLineCap="round" />
+    <path
+        android:pathData="M54,54 m-7,0 a7,7 0 1,0 14,0 a7,7 0 1,0 -14,0"
+        android:fillColor="#FFB43C"
+        android:fillAlpha="0.22" />
 
-        Both sit on the dark half where they carry maximum separation. The amber is solid —
-        an alpha'd highlight over a pale face was the single biggest reason the old mark went
-        flat at small sizes.
-    -->
-    <group android:name="sweep">
-        <path
-            android:pathData="M63.2,31.6 A24,24 0 0,1 77.4,64.8"
-            android:strokeColor="#FFB43C"
-            android:strokeWidth="9"
-            android:strokeLineCap="round" />
-        <path
-            android:pathData="M43.4,76.6 A24,24 0 0,1 30.4,56.2"
-            android:strokeColor="#3FA396"
-            android:strokeWidth="5"
-            android:strokeAlpha="0.9"
-            android:strokeLineCap="round" />
-    </group>
+    <!-- The mark. -->
+    <path
+        android:pathData="M54,54 m-27.6,0 a27.6,27.6 0 1,0 55.2,0 a27.6,27.6 0 1,0 -55.2,0"
+        android:strokeColor="#FFB43C"
+        android:strokeWidth="3.3" />
+    <path
+        android:pathData="M64.2,30 L64.2,54 A10.2,10.2 0 0,1 46.19,60.56"
+        android:strokeColor="#FFB43C"
+        android:strokeWidth="6"
+        android:strokeLineCap="round" />
+    <path
+        android:pathData="M54,54 m-4.5,0 a4.5,4.5 0 1,0 9,0 a4.5,4.5 0 1,0 -9,0"
+        android:fillColor="#FFB43C" />
 
-    <!-- Hub: the clear stacking ring, then the hole. A hard rim so it cuts at any size. -->
+    <!-- The core, where a tube is hottest. -->
     <path
-        android:pathData="M54,54 m-11.5,0 a11.5,11.5 0 1,0 23,0 a11.5,11.5 0 1,0 -23,0"
-        android:fillColor="#FFF8EA" />
+        android:pathData="M54,54 m-27.6,0 a27.6,27.6 0 1,0 55.2,0 a27.6,27.6 0 1,0 -55.2,0"
+        android:strokeColor="#FFEBC7"
+        android:strokeWidth="1.1" />
     <path
-        android:pathData="M54,54 m-11.5,0 a11.5,11.5 0 1,0 23,0 a11.5,11.5 0 1,0 -23,0"
-        android:strokeColor="#241C15"
-        android:strokeWidth="1.2" />
+        android:pathData="M64.2,30 L64.2,54 A10.2,10.2 0 0,1 46.19,60.56"
+        android:strokeColor="#FFEBC7"
+        android:strokeWidth="2.2"
+        android:strokeLineCap="round" />
     <path
-        android:pathData="M54,54 m-6.5,0 a6.5,6.5 0 1,0 13,0 a6.5,6.5 0 1,0 -13,0"
-        android:fillColor="#0B0907" />
+        android:pathData="M54,54 m-2,0 a2,2 0 1,0 4,0 a2,2 0 1,0 -4,0"
+        android:fillColor="#FFEBC7" />
 </vector>

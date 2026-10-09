@@ -1,16 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-    Themed-icon layer (Android 13+).
+    Themed-icon layer (Android 13+): Jawon's mark, flat.
 
-    The system discards these colours and tints the layer from the wallpaper palette, so
-    **only alpha carries the design**. The colour mark relies on an amber streak against
-    cream to read; flattened to one tint, that streak would vanish into the disc.
-
-    So the silhouette says the same thing structurally instead: a broken ring — a disc with
-    a gap where the light crosses it — and the hole knocked out by an even-odd fill. The
-    weight difference between the thick sweep and the disc body survives tinting because it
-    is shape, not value — and the sweep got heavier here too, for the same reason the colour
-    mark did: it is the one gesture, so it should carry.
+    The system discards these colours and tints the layer from the wallpaper palette, so only
+    alpha carries the design. The mark needs nothing else — it was drawn as a line in one
+    colour from the start — so this is the foreground's middle pass alone, at full alpha:
+    the rim, the hole, and the J hanging from one round the other. Same geometry as
+    `ic_launcher_foreground.xml` (`JawonMark.Geometry` at a width of 60).
 -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
@@ -19,23 +15,16 @@
     android:viewportHeight="108"
     android:tint="#FFFFFF">
 
-    <!-- The disc as a ring, centre hole knocked out. -->
     <path
-        android:fillType="evenOdd"
-        android:pathData="M54,54 m-29,0 a29,29 0 1,0 58,0 a29,29 0 1,0 -58,0 M54,54 m-11.5,0 a11.5,11.5 0 1,0 23,0 a11.5,11.5 0 1,0 -23,0"
-        android:fillColor="#FFFFFF"
-        android:fillAlpha="0.34" />
-
-    <!-- The light sweep, at full weight so it reads as the mark's one gesture. -->
-    <path
-        android:pathData="M63.2,31.6 A24,24 0 0,1 77.4,64.8"
+        android:pathData="M54,54 m-27.6,0 a27.6,27.6 0 1,0 55.2,0 a27.6,27.6 0 1,0 -55.2,0"
         android:strokeColor="#FFFFFF"
-        android:strokeWidth="9"
-        android:strokeLineCap="round" />
-
-    <!-- Centre hole, punched back out of the ring above. -->
+        android:strokeWidth="3.3" />
     <path
-        android:pathData="M54,54 m-5.5,0 a5.5,5.5 0 1,0 11,0 a5.5,5.5 0 1,0 -11,0"
-        android:fillColor="#FFFFFF"
-        android:fillAlpha="0" />
+        android:pathData="M64.2,30 L64.2,54 A10.2,10.2 0 0,1 46.19,60.56"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="6"
+        android:strokeLineCap="round" />
+    <path
+        android:pathData="M54,54 m-4.5,0 a4.5,4.5 0 1,0 9,0 a4.5,4.5 0 1,0 -9,0"
+        android:fillColor="#FFFFFF" />
 </vector>

@@ -1,0 +1,96 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    The splash icon's artwork — the launcher mark, named so that it can be drawn on.
+
+    Kept separate from `ic_launcher_foreground.xml` because an AnimatedVectorDrawable can only
+    drive paths and `<group>`s that carry `android:name`, and groups need explicit pivots at
+    the centre or they scale about the canvas origin. The art is otherwise identical, so the
+    thing that writes itself on the splash and the thing on the home screen are the same mark.
+
+    **The one difference is where the rim starts.** The launcher's circles begin at the left,
+    as circles do; here the rim begins where the J's stem meets it, (64.2, 28.35), and runs
+    clockwise all the way round back to that point — so on the splash the rim and the letter
+    are one line: the pen goes round the disc, arrives at the top, drops into the J and hooks
+    round the hole (`ic_splash_mark_animated.xml`).
+
+    The values here are the finished mark, because API 28–30 have no animated splash and show
+    this drawable still (`splash_static.xml`); the animators start every path from nothing.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <group android:name="mark" android:pivotX="54" android:pivotY="54">
+
+        <path
+            android:name="glow"
+            android:pathData="M54,54 m-34,0 a34,34 0 1,0 68,0 a34,34 0 1,0 -68,0">
+            <aapt:attr name="android:fillColor">
+                <gradient
+                    android:type="radial"
+                    android:centerX="54"
+                    android:centerY="54"
+                    android:gradientRadius="34">
+                    <item android:offset="0.0" android:color="#2EFFB43C" />
+                    <item android:offset="0.62" android:color="#1FFFB43C" />
+                    <item android:offset="0.84" android:color="#14FFB43C" />
+                    <item android:offset="1.0" android:color="#00FFB43C" />
+                </gradient>
+            </aapt:attr>
+        </path>
+
+        <path
+            android:name="rim_halo"
+            android:pathData="M64.2,28.35 A27.6,27.6 0 0,1 43.8,79.65 A27.6,27.6 0 0,1 64.2,28.35"
+            android:strokeColor="#FFB43C"
+            android:strokeAlpha="0.22"
+            android:strokeWidth="7.5" />
+        <path
+            android:name="j_halo"
+            android:pathData="M64.2,30 L64.2,54 A10.2,10.2 0 0,1 46.19,60.56"
+            android:strokeColor="#FFB43C"
+            android:strokeAlpha="0.22"
+            android:strokeWidth="11"
+            android:strokeLineCap="round" />
+
+        <path
+            android:name="rim"
+            android:pathData="M64.2,28.35 A27.6,27.6 0 0,1 43.8,79.65 A27.6,27.6 0 0,1 64.2,28.35"
+            android:strokeColor="#FFB43C"
+            android:strokeWidth="3.3" />
+        <path
+            android:name="j"
+            android:pathData="M64.2,30 L64.2,54 A10.2,10.2 0 0,1 46.19,60.56"
+            android:strokeColor="#FFB43C"
+            android:strokeWidth="6"
+            android:strokeLineCap="round" />
+
+        <path
+            android:name="rim_core"
+            android:pathData="M64.2,28.35 A27.6,27.6 0 0,1 43.8,79.65 A27.6,27.6 0 0,1 64.2,28.35"
+            android:strokeColor="#FFEBC7"
+            android:strokeWidth="1.1" />
+        <path
+            android:name="j_core"
+            android:pathData="M64.2,30 L64.2,54 A10.2,10.2 0 0,1 46.19,60.56"
+            android:strokeColor="#FFEBC7"
+            android:strokeWidth="2.2"
+            android:strokeLineCap="round" />
+
+        <group android:name="hole" android:pivotX="54" android:pivotY="54">
+            <path
+                android:pathData="M54,54 m-7,0 a7,7 0 1,0 14,0 a7,7 0 1,0 -14,0"
+                android:fillColor="#FFB43C"
+                android:fillAlpha="0.22" />
+            <path
+                android:pathData="M54,54 m-4.5,0 a4.5,4.5 0 1,0 9,0 a4.5,4.5 0 1,0 -9,0"
+                android:fillColor="#FFB43C" />
+            <path
+                android:pathData="M54,54 m-2,0 a2,2 0 1,0 4,0 a2,2 0 1,0 -4,0"
+                android:fillColor="#FFEBC7" />
+        </group>
+    </group>
+</vector>

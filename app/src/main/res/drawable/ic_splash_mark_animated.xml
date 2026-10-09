@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    The animated splash icon — Jawon's mark writing itself, as a sign's tube lights along its
+    length: round the rim from the top, down into the J, round the hole, and the hole lighting
+    last, the way the needle finds the centre.
+
+    Wired to `windowSplashScreenAnimatedIcon` in `values-v31/themes.xml`. Android 12+ plays
+    this in place of the static icon on the system splash, so it replaces the launch flash
+    rather than adding a second screen after it.
+
+    Constraints the platform imposes, all of which shaped it:
+    - It is masked to a circle, so nothing may rely on the corners.
+    - It must finish inside a second; `windowSplashScreenAnimationDuration` is 900ms and
+      every animator here is exactly 900ms long. The system does not wait for a longer one.
+    - Each animator holds its path at nothing with keyframes until its turn, rather than
+      waiting on a `startOffset`: a delayed animator leaves the drawable's own value — the
+      finished mark — on screen until it starts, and the J would show whole and then vanish.
+-->
+<animated-vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:drawable="@drawable/ic_splash_mark">
+    <target android:name="mark" android:animation="@animator/splash_mark_in" />
+    <target android:name="glow" android:animation="@animator/splash_glow_in" />
+    <target android:name="rim_halo" android:animation="@animator/splash_rim_draw" />
+    <target android:name="rim" android:animation="@animator/splash_rim_draw" />
+    <target android:name="rim_core" android:animation="@animator/splash_rim_draw" />
+    <target android:name="j_halo" android:animation="@animator/splash_j_draw" />
+    <target android:name="j" android:animation="@animator/splash_j_draw" />
+    <target android:name="j_core" android:animation="@animator/splash_j_draw" />
+    <target android:name="hole" android:animation="@animator/splash_hole_in" />
+</animated-vector>
