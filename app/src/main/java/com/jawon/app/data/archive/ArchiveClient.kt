@@ -120,13 +120,37 @@ class ArchiveClient @Inject constructor() {
         private fun resultOf(json: JSONObject?): ArchiveResult? {
             if (json == null) return null
             val id = json.optString("identifier").takeIf { it.isNotBlank() } ?: return null
+            val creator = firstString(json, "creator") ?: "Unknown"
             return ArchiveResult(
                 identifier = id,
-                title = firstString(json, "title") ?: id,
-                creator = firstString(json, "creator") ?: "Unknown",
+                title = firstString(json, "title")?.let { withoutCreator(it, creator) } ?: id,
+                creator = creator,
                 year = json.optInt("year").takeIf { it in 1000..2999 }
             )
         }
+
+        /**
+         * A title without the performer's name in front of it, since the performer is always
+         * shown beside it — under the title in the shop, and as the artist on the case.
+         *
+         * The Live Music Archive titles every show "<band> Live at <venue> on <date>", so each
+         * result read "Widespread Panic Live at Red Rocks…" above "Widespread Panic · 2026", and
+         * the band's name took the first line of a two-line title. Left alone when what would
+         * remain is too short to be a title, or the title does not start with the name at all.
+         */
+        fun withoutCreator(title: String, creator: String): String {
+            val name = creator.trim()
+            if (name.isEmpty() || name == "Unknown" || !title.startsWith(name, ignoreCase = true)) {
+                return title
+            }
+            val rest = title.substring(name.length).trimStart(' ', '-', '–', '—', ':', ',', '_')
+            // "Phish" must not be taken off "Phishbowl Sessions": the name has to end at a break.
+            val atBreak = title.length > name.length && !title[name.length].isLetterOrDigit()
+            if (!atBreak || rest.length < MIN_TITLE_CHARS) return title
+            return rest.replaceFirstChar { it.uppercaseChar() }
+        }
+
+        private const val MIN_TITLE_CHARS = 6
 
         /**
          * A field that is sometimes a string and sometimes an array of them.
@@ -157,10 +181,11 @@ class ArchiveClient @Inject constructor() {
             // rather than putting an empty case on the wall.
             if (tracks.isEmpty()) return null
 
+            val creator = firstString(metadata, "creator") ?: "Unknown"
             return ArchiveAlbum(
                 identifier = identifier,
-                title = firstString(metadata, "title") ?: identifier,
-                creator = firstString(metadata, "creator") ?: "Unknown",
+                title = firstString(metadata, "title")?.let { withoutCreator(it, creator) } ?: identifier,
+                creator = creator,
                 year = firstString(metadata, "date")?.take(4)?.toIntOrNull()?.takeIf { it in 1000..2999 },
                 tracks = tracks
             )

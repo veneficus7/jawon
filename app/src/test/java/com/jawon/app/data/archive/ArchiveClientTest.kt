@@ -27,6 +27,32 @@ class ArchiveClientTest {
      * found 0 items, `mediatype:(etree)` 295,627. One shared `audio` filter emptied the live tab.
      */
     @Test
+    fun `a show's title loses the band's name, which is shown beside it`() {
+        assertEquals(
+            "Live at Red Rocks Amphitheater, Morrison, CO on 2026-06-28",
+            ArchiveClient.withoutCreator(
+                "Widespread Panic Live at Red Rocks Amphitheater, Morrison, CO on 2026-06-28",
+                "Widespread Panic"
+            )
+        )
+        assertEquals("Intergalactic EP", ArchiveClient.withoutCreator("Marino69 - Intergalactic EP", "Marino69"))
+        // Read through to the parsed result, from the live fixture.
+        assertEquals(
+            "Live at Boondocks 2025-11-01",
+            ArchiveClient.withoutCreator("Sunshine Daydream Live at Boondocks 2025-11-01", "Sunshine Daydream")
+        )
+    }
+
+    @Test
+    fun `a title is left alone unless the name ends at a break and leaves a real title`() {
+        assertEquals("Phishbowl Sessions", ArchiveClient.withoutCreator("Phishbowl Sessions", "Phish"))
+        assertEquals("Phish", ArchiveClient.withoutCreator("Phish", "Phish"))
+        assertEquals("Phish - Live", ArchiveClient.withoutCreator("Phish - Live", "Phish"))
+        assertEquals("Another Band Live", ArchiveClient.withoutCreator("Another Band Live", "Phish"))
+        assertEquals("Unknown Live at X", ArchiveClient.withoutCreator("Unknown Live at X", "Unknown"))
+    }
+
+    @Test
     fun `each collection asks for the mediatype its items actually have`() {
         assertTrue(ArchiveCollection.LIVE_MUSIC.query.contains("mediatype:(etree)"))
         assertTrue(ArchiveCollection.NETLABELS.query.contains("mediatype:(audio)"))
