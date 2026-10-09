@@ -308,6 +308,13 @@ once, so the hole rims become the window's and the recess's walls. `docs/models.
 boolean warning above is why: a 1.1mm plate is exactly the thickness that leaves slivers
 for the bevel to explode.
 
+**Open: this plate may carry the face's folds.** It is filled with the same `triangle_fill`
+that put four faint lines across `pocket_face.glb` (see "The face" above, fixed there by
+`plate_triangles()`), and nobody has checked it since. It is seen only on the showroom's plinth,
+small and turning, which is why it has not been noticed rather than proof it is clean. Run the
+face's one-number check on it before touching anything — every front-face corner normal within
+0.5° of +Z (Blender −Y) — and swap in `plate_triangles()` only if it fails.
+
 ## `disc_shards.glb` — the disc, cracked
 
 Eight wedges, one object each, for the deletion animation. Built by
