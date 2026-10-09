@@ -1,6 +1,7 @@
 package com.jawon.app.ui.showroom
 
 import com.google.android.filament.View
+import com.jawon.app.ui.wallscene.QualityTier
 
 /**
  * How the showroom is photographed: the grade on Filament's `View`.
@@ -31,10 +32,11 @@ object ShowroomAtmosphere {
     private const val AO_POWER = 1.2f
     private const val AO_BIAS_M = 0.0005f
 
-    fun apply(view: View) {
+    /** At what [tier] can afford: LOW drops the ambient occlusion and halves the MSAA, as the pocket room does. */
+    fun apply(view: View, tier: QualityTier) {
         view.multiSampleAntiAliasingOptions = View.MultiSampleAntiAliasingOptions().apply {
             enabled = true
-            sampleCount = 4
+            sampleCount = if (tier == QualityTier.LOW) 2 else 4
         }
         view.antiAliasing = View.AntiAliasing.NONE
         view.bloomOptions = View.BloomOptions().apply {
@@ -51,7 +53,7 @@ object ShowroomAtmosphere {
             color = floatArrayOf(0f, 0f, 0f, 1f)
         }
         view.ambientOcclusionOptions = View.AmbientOcclusionOptions().apply {
-            enabled = true
+            enabled = tier.ambientOcclusion
             radius = AO_RADIUS_M
             intensity = AO_INTENSITY
             power = AO_POWER

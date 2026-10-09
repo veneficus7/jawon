@@ -196,6 +196,7 @@ fun ShowroomScreen(
     viewModel: ShowroomViewModel = hiltViewModel()
 ) {
     val context = LocalContext.current
+    val tier = remember(context) { com.jawon.app.ui.wallscene.QualityTier.detect(context) }
     val engine = rememberEngine()
     val modelLoader = rememberModelLoader(engine)
     val materialLoader = rememberMaterialLoader(engine)
@@ -332,7 +333,7 @@ fun ShowroomScreen(
             viewNodeWindowManager = viewNodeManager,
             onTouchEvent = { event, _ -> director.onTouch(event) },
             onFrame = {
-                if (!ShowroomAtmosphere.isApplied(filamentView)) ShowroomAtmosphere.apply(filamentView)
+                if (!ShowroomAtmosphere.isApplied(filamentView)) ShowroomAtmosphere.apply(filamentView, tier)
                 val now = SystemClock.uptimeMillis()
                 val dt = if (lastFrameAt[0] == 0L) 0f else (now - lastFrameAt[0]) / 1000f
                 lastFrameAt[0] = now

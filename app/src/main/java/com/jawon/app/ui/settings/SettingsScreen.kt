@@ -1,6 +1,7 @@
 package com.jawon.app.ui.settings
 
 import androidx.compose.ui.text.input.ImeAction
+import com.jawon.app.ui.common.FieldLabel
 import com.jawon.app.ui.common.JawonTextField
 import com.jawon.app.ui.theme.JawonType
 import com.jawon.app.ui.common.ScreenBar
@@ -271,12 +272,12 @@ private fun TextChip(text: String, onClick: () -> Unit) {
  * instead of hidden, because in a debug build being able to open one is the point.
  */
 @Composable
-private fun FormatPicker(current: Format, onPick: (Format) -> Unit) {
+private fun FormatPicker(formats: List<Format>, current: Format, onPick: (Format) -> Unit) {
     Column(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        Format.entries.forEach { format ->
+        formats.forEach { format ->
             val selected = format == current
             Row(
                 modifier = Modifier
@@ -305,10 +306,6 @@ private fun FormatPicker(current: Format, onPick: (Format) -> Unit) {
                 }
             }
         }
-        Text(
-            text = "Debug builds only until a second room is finished.",
-            style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = JawonType.Fine)
-        )
     }
 }
 
@@ -1516,17 +1513,20 @@ fun SettingsScreen(
 
             SectionHeader("THE ROOM")
 
-            // **Debug builds only, until a second room is finished.** The format decides which
-            // room the app opens in, and an unfinished one is worth working on for weeks
-            // without ever being one tap away for somebody holding a release build. When the
-            // pocket player is done, this gate comes off and it becomes an ordinary setting.
-            // SHOW_FORMATS is the one exception: a release build cut for testing on the owner's
-            // phone, which only a release-signed build can reach (see app/build.gradle.kts).
-            if (BuildConfig.DEBUG || BuildConfig.SHOW_FORMATS) {
+            // **Which room the app opens in**, once there is more than one finished room to choose
+            // between — the pocket player since 0.7.1. Unfinished rooms are still offered only by a
+            // debug build, or a release build cut with SHOW_FORMATS for the owner's phone (see
+            // app/build.gradle.kts), and are marked IN PROGRESS when they are.
+            val showUnbuilt = BuildConfig.DEBUG || BuildConfig.SHOW_FORMATS
+            val offered = Format.entries.filter { it.built || showUnbuilt }
+            if (offered.size > 1) {
                 FormatPicker(
+                    formats = offered,
                     current = format,
                     onPick = viewModel::onFormatChanged
                 )
+                // The four modes are the CD room's light and nothing else (ENGINEERING.md, room style).
+                Box(Modifier.padding(top = 18.dp)) { FieldLabel("THE CD ROOM'S LIGHT") }
             }
 
             SchemePicker(

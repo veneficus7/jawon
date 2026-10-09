@@ -42,6 +42,7 @@ import com.jawon.app.BuildConfig
 import com.jawon.app.data.lyrics.LyricsState
 import com.jawon.app.ui.showroom.Exhibit
 import com.jawon.app.ui.wallscene.CaseArt
+import com.jawon.app.ui.wallscene.QualityTier
 import com.jawon.app.ui.wallscene.RoomCadence
 import com.jawon.app.ui.wallscene.RoomHaptics
 import com.jawon.app.ui.wallscene.WallSceneViewModel
@@ -154,6 +155,8 @@ fun PocketRoomScreen(
 
     val faceModel = rememberModelInstance(modelLoader, POCKET_FACE_ASSET)
     val ydpi = remember(context) { max(context.resources.displayMetrics.ydpi, 1f) }
+    // The same guess the CD room starts from (RAM and API level), so a phone gets one tier everywhere.
+    val tier = remember(context) { QualityTier.detect(context) }
     // How often the room is actually drawn — the CD room's cadence, reused by call. See onFrame.
     val cadence = remember(context) {
         RoomCadence().apply {
@@ -532,7 +535,7 @@ fun PocketRoomScreen(
                 cameraNode.rotation = LEVEL
                 // The grade, re-applied if SceneView's own preset has undone it — see PocketAtmosphere.
                 val regraded = !PocketAtmosphere.isApplied(filamentView)
-                if (regraded) PocketAtmosphere.apply(filamentView)
+                if (regraded) PocketAtmosphere.apply(filamentView, tier)
                 device.onFrame(SystemClock.uptimeMillis())
                 // **Drawn at 60 unless a thumb is on the wheel.** SceneView renders every vsync —
                 // 120 a second on the owner's phone — and nothing in this room moves fast enough

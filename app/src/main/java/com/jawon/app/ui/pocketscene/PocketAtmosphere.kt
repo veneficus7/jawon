@@ -1,6 +1,7 @@
 package com.jawon.app.ui.pocketscene
 
 import com.google.android.filament.View
+import com.jawon.app.ui.wallscene.QualityTier
 
 /**
  * How the pocket player's room is *photographed*: the grade on Filament's `View`.
@@ -33,10 +34,16 @@ object PocketAtmosphere {
     private const val VIGNETTE_ROUNDNESS = 0.5f
     private const val VIGNETTE_FEATHER = 0.85f
 
-    fun apply(view: View) {
+    /**
+     * The grade, at what [tier] can afford. **LOW drops the ambient occlusion and halves the
+     * MSAA** — the two per-pixel costs here — and keeps the bloom and vignette, which are cheap
+     * and are most of the look. Until 0.7.1 this room ignored the tier entirely: it was only
+     * ever drawn on flagships, and 0.7.1 is the release that puts it on a Redmi 9.
+     */
+    fun apply(view: View, tier: QualityTier) {
         view.multiSampleAntiAliasingOptions = View.MultiSampleAntiAliasingOptions().apply {
             enabled = true
-            sampleCount = 4
+            sampleCount = if (tier == QualityTier.LOW) 2 else 4
         }
         view.antiAliasing = View.AntiAliasing.NONE
         view.bloomOptions = View.BloomOptions().apply {
@@ -63,7 +70,7 @@ object PocketAtmosphere {
         // — the wheel's recess included — within 0.2 of 255. The radius is ~70 pixels at life
         // size, far above anything half resolution can lose.
         view.ambientOcclusionOptions = View.AmbientOcclusionOptions().apply {
-            enabled = true
+            enabled = tier.ambientOcclusion
             radius = AO_RADIUS_M
             intensity = AO_INTENSITY
             power = AO_POWER
