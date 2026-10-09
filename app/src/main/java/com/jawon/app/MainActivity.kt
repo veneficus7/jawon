@@ -71,7 +71,9 @@ class MainActivity : ComponentActivity() {
             val format by preferences.format.collectAsStateWithLifecycle()
             JawonTheme(roomScheme = roomScheme) {
                 Surface(modifier = Modifier.fillMaxSize()) {
-                    JawonNavHost(format = format)
+                    JawonNavHost(
+                        format = Format.openable(format, BuildConfig.DEBUG || BuildConfig.SHOW_FORMATS)
+                    )
 
                     // Over the NavHost rather than before it, so the room is being built
                     // underneath while the card is up — the scene's cubemap, models and first

@@ -30,5 +30,18 @@ enum class Format(val displayName: String, val built: Boolean) {
          * reach.
          */
         fun fromName(name: String?): Format = entries.firstOrNull { it.name == name } ?: CD
+
+        /**
+         * The room to open for what was [stored]: itself, unless it is unbuilt and this build
+         * does not offer unbuilt rooms, in which case the CD room.
+         *
+         * **"Nothing can store what it cannot reach" stopped being true** once release builds
+         * could be cut with `-Pjawon.showFormats=true` for the owner's phone: those stored
+         * POCKET, and a published build reading it would open a room it offers no way out of —
+         * no showroom, no picker. The stored value is left alone, so a later test build still
+         * returns to the room it was on.
+         */
+        fun openable(stored: Format, showUnbuilt: Boolean): Format =
+            if (stored.built || showUnbuilt) stored else CD
     }
 }
