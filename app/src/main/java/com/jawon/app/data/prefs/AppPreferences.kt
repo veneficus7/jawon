@@ -251,6 +251,19 @@ class AppPreferences @Inject constructor(@param:ApplicationContext context: Cont
         _shakeToSwitch.value = enabled
     }
 
+    /**
+     * Whether closing a case leaves the record playing (0.7.3). On by default: the room is for
+     * browsing while you listen, the case sits proud in its slot and the bar at the foot of the
+     * wall carries the record. Off is the room's old behaviour — the disc goes back in its case
+     * and the music pauses — kept for anyone who liked it; the bar stays either way.
+     */
+    private val _keepPlayingOnClose = MutableStateFlow(prefs.getBoolean(KEY_KEEP_PLAYING_ON_CLOSE, true))
+    val keepPlayingOnClose: StateFlow<Boolean> = _keepPlayingOnClose.asStateFlow()
+    fun setKeepPlayingOnClose(enabled: Boolean) {
+        prefs.edit { putBoolean(KEY_KEEP_PLAYING_ON_CLOSE, enabled) }
+        _keepPlayingOnClose.value = enabled
+    }
+
     private val _fetchLyrics = MutableStateFlow(prefs.getBoolean(KEY_FETCH_LYRICS, true))
 
     /**
@@ -477,6 +490,7 @@ class AppPreferences @Inject constructor(@param:ApplicationContext context: Cont
         const val KEY_FETCH_COVER_ART = "fetch_cover_art"
         const val KEY_FETCH_LYRICS = "fetch_lyrics"
         const val KEY_SHAKE_TO_SWITCH = "shake_to_switch"
+        const val KEY_KEEP_PLAYING_ON_CLOSE = "keep_playing_on_close"
         const val KEY_PREFER_ONLINE_LYRICS = "prefer_online_lyrics"
         const val KEY_ROOM_SCHEME = "room_scheme"
         const val KEY_FORMAT = "format"

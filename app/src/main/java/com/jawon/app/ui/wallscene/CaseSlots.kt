@@ -240,6 +240,29 @@ class CaseSlot {
         }
     }
 
+    /**
+     * Whether a tap can land on this case.
+     *
+     * **Hiding a node does not stop it being picked** (the disc's note in `ActiveCase` found the
+     * same of the held disc). A spare slot is hidden and nameless but stays wherever its last
+     * album hung — so when the wall's visible set moved on, a parked slot could sit exactly over
+     * a case that was now on show, invisible, catching every tap on it and handing the tap
+     * handler a chain with no album in it: the tap did nothing. Found on 2026-10-09 when the
+     * first record on the emulator's wall would not open from its middle. A parked slot is now
+     * unpickable, and a bound one pickable again.
+     */
+    fun setPickable(pickable: Boolean) {
+        body?.let { setTouchableDeep(it, pickable) }
+        spineArt?.isTouchable = pickable
+        coverArt?.isTouchable = pickable
+        backArt?.isTouchable = pickable
+    }
+
+    private fun setTouchableDeep(node: Node, on: Boolean) {
+        node.isTouchable = on
+        node.childNodes.forEach { setTouchableDeep(it, on) }
+    }
+
     /** Put this case where it belongs immediately, with no travel. */
     fun snapToTarget() {
         baseX = targetX
@@ -624,12 +647,16 @@ fun CaseSlots.bind(
             slot.body?.name = null
             slot.occupied = false
             slot.setBeamVisible(false)
+            slot.setPickable(false)
             return@forEachIndexed
         }
 
         val (case, artwork) = binding
         slot.occupied = true
         slot.setBeamVisible(true)
+        // Not while its own case is out in the room: hidden there too, and a tap meant for the
+        // open case's surroundings must not land on the empty slot behind it.
+        slot.setPickable(case.albumId != selectedAlbumId)
 
         // Undo anything the discard animation did to this slot's scale.
         //

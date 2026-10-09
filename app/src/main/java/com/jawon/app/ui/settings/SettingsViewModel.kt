@@ -197,6 +197,9 @@ class SettingsViewModel @Inject constructor(
     val shakeToSwitch: StateFlow<Boolean> = preferences.shakeToSwitch
     fun onShakeToSwitchChanged(enabled: Boolean) = preferences.setShakeToSwitch(enabled)
 
+    val keepPlayingOnClose: StateFlow<Boolean> = preferences.keepPlayingOnClose
+    fun onKeepPlayingOnCloseChanged(enabled: Boolean) = preferences.setKeepPlayingOnClose(enabled)
+
     val roomScheme: StateFlow<RoomScheme> = preferences.roomScheme
 
     fun onFetchCoverArtChanged(enabled: Boolean) = preferences.setFetchCoverArt(enabled)

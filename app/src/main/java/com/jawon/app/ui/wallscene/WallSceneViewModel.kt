@@ -576,6 +576,16 @@ class WallSceneViewModel @Inject constructor(
         viewModelScope.launch {
             val tracks = trackDao.getForAlbum(albumId).first()
             if (tracks.isEmpty()) return@launch
+            // The record already on (0.7.3): closing a case no longer stops it, so opening it
+            // again from the bar or the shelf finds it playing. Loading it afresh would cut the
+            // music and jump back to the last saved place, up to five seconds behind — so it is
+            // only asked to play, from exactly where it is.
+            if (_nowPlayingAlbumId.value == albumId &&
+                playbackRepository.playback.value.queuedTrackIds == tracks.map { it.id }
+            ) {
+                playbackRepository.setPlaying(true)
+                return@launch
+            }
             _nowPlayingAlbumId.value = albumId
 
             val album = albumDao.findById(albumId)
@@ -626,10 +636,10 @@ class WallSceneViewModel @Inject constructor(
     /**
      * Take on whatever album the player already has queued, if this view model has none.
      *
-     * The pocket player's Now Playing is the player's, as the classic's was: come back to the
-     * room while music played on in the background and it should know what is on. This view
-     * model otherwise learns it only by starting it — fine for the CD room, where a record is
-     * "on" because its case is open, so only the pocket room calls this.
+     * Come back to a room while music played on in the background and it should know what is
+     * on. The pocket player's Now Playing has always needed this; the CD room does too since
+     * 0.7.3, when closing a case stopped stopping the record — its bar and its proud case are
+     * the room saying what is on.
      */
     fun adoptPlayingAlbum() {
         viewModelScope.launch {
@@ -641,7 +651,20 @@ class WallSceneViewModel @Inject constructor(
         }
     }
 
-    /** Called when the case closes. */
+    /**
+     * Called when the case closes. The record stays the one that is on either way — its case sits
+     * proud and the bar carries it — and only the music's state depends on the owner's choice:
+     * playing on (the default) or paused, as a disc put back in its box would be.
+     */
+    fun onCaseClosed() {
+        if (preferences.keepPlayingOnClose.value) return
+        viewModelScope.launch { playbackRepository.setPlaying(false) }
+    }
+
+    /**
+     * Put the record away: pause it and let the wall forget it, so the bar goes and its case
+     * settles back into its slot. The bar's swipe down, and removing the album that is on.
+     */
     fun stop() {
         viewModelScope.launch {
             if (playbackRepository.playback.value.isPlaying) playbackRepository.playPause()

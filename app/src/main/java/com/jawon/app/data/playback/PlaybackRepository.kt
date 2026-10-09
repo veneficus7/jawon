@@ -384,7 +384,20 @@ class PlaybackRepository @Inject constructor(
 
     suspend fun playPause() {
         val controller = ensureController()
-        if (controller.isPlaying) controller.pause() else controller.play()
+        if (controller.isPlaying) controller.pause() else playFromWhereItIs(controller)
+    }
+
+    /**
+     * Play — and a record that has played to its end starts again from its first track, rather
+     * than sitting at the end ignoring the request. A finished album is still the one on in a
+     * room that keeps it (the CD room's bar, the pocket player's Now Playing), and Play on it
+     * means "again".
+     */
+    private fun playFromWhereItIs(controller: MediaController) {
+        if (controller.playbackState == Player.STATE_ENDED && controller.mediaItemCount > 0) {
+            controller.seekTo(0, 0L)
+        }
+        controller.play()
     }
 
     /**
@@ -417,7 +430,7 @@ class PlaybackRepository @Inject constructor(
      */
     suspend fun setPlaying(playing: Boolean) {
         val controller = ensureController()
-        if (playing) controller.play() else controller.pause()
+        if (playing) playFromWhereItIs(controller) else controller.pause()
     }
 
     suspend fun seekToNext() = ensureController().seekToNextMediaItem()

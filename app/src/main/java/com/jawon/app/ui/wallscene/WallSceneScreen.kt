@@ -1122,6 +1122,12 @@ fun WallSceneScreen(
     val isPlaying = deck.isPlaying
     val context = LocalContext.current
 
+    // A room rebuilt while a record played on without it — the activity recreated, the service
+    // still going — should still know what is on: its case proud, its bar at the foot (0.7.3).
+    LaunchedEffect(Unit) { viewModel.adoptPlayingAlbum() }
+    // For handlers set up once, which must read whether the room is on screen as it is now.
+    val currentCovered = androidx.compose.runtime.rememberUpdatedState(covered)
+
     BoxWithConstraints(
         modifier = Modifier
             .fillMaxSize()
@@ -1928,7 +1934,9 @@ fun WallSceneScreen(
 
         fun closeCase() {
             sequence.direction = -1
-            viewModel.stop()
+            // Not a stop since 0.7.3: the record plays on (or pauses, by the owner's choice) and
+            // the bar at the foot of the wall carries it. See NowPlayingBar.
+            viewModel.onCaseClosed()
         }
 
         /**
@@ -4063,6 +4071,11 @@ fun WallSceneScreen(
                 // end while the deck is closed and the room is being browsed, and closing an
                 // already-closed case would run the sequence backwards from nothing.
                 if (selectedAlbumId != null) closeCase()
+                // And the record is over, so it is put away and the bar goes — but only by this
+                // room while it is the one on screen. Parked behind the pocket player (the stage
+                // keeps it), it would otherwise reach into the shared view model and take the
+                // pocket player's Now Playing away the moment an album ended there.
+                if (!currentCovered.value) viewModel.stop()
             }
         }
 
@@ -4177,9 +4190,13 @@ fun WallSceneScreen(
                     .widthIn(max = CHROME_MAX_W)
             ) {
             nowPlaying?.let { playing ->
-                NowPlayingDisc(
+                NowPlayingBar(
                     nowPlaying = playing,
+                    trackTitle = deck.currentTrack?.title,
                     isPlaying = deck.isPlaying,
+                    durationMs = deck.durationMs,
+                    position = viewModel.positionMs.collectAsStateWithLifecycle(),
+                    haptics = haptics,
                     onOpen = {
                         // Pan to the record first, for the same reason search does — see the
                         // note on FRONT_GAP in `openCase`. Without it the sequence starts from
@@ -4190,7 +4207,10 @@ fun WallSceneScreen(
                         }
                         openCase(playing.albumId)
                     },
-                    onPlayPause = viewModel::onPlayPause
+                    onPlayPause = viewModel::onPlayPause,
+                    onNext = { viewModel.onNext() },
+                    onPrevious = { viewModel.onPrevious() },
+                    onPutAway = viewModel::stop
                 )
             }
             Row(
@@ -5019,116 +5039,6 @@ private fun WaitingForRecords(onAddAlbum: () -> Unit, modifier: Modifier = Modif
                 fontSize = 14.sp,
                 letterSpacing = 1.6.sp,
                 color = LampAmber
-            )
-        }
-    }
-}
-
-/**
- * The record that is still on, turning at the bottom of the wall while you browse.
- *
- * **The gap this fills.** Closing a case closed the only thing that said what was playing. The
- * music kept going — the notification knew, the shelf's case sat proud in its slot — but the room
- * itself gave you nothing to look at and nothing to tap, so getting back to the record you were
- * listening to meant finding its case again by eye. That is a poor trade for an app whose whole
- * argument is that a library is a place you can look around in.
- *
- * The disc is [DiscArt.bakeFace]'s own bake, the same one the room mounts on the spindle, turning
- * at [OpenSequence.SPIN_DEG_PER_S] — the same rate. So this is not an icon standing in for the
- * record; it is the record, seen small and further away, and the two are physically consistent
- * if you close a case and watch it shrink into the corner.
- *
- * ## How it is animated, and why not the obvious way
- *
- * The angle is a `MutableFloatState` advanced from `withFrameNanos`, read **only inside
- * `graphicsLayer`**. That deferred read is what keeps a 60-times-a-second value out of
- * composition: Compose skips straight to the draw phase and re-rasterises one small layer.
- * `rememberInfiniteTransition` would be the tidier-looking answer and is worse here, because it
- * keeps running when the music stops — and a disc that spins while the record is paused says
- * something false.
- *
- * ENGINEERING.md trap 14 is the reason for the size discipline as well as the read discipline: a
- * *large* translucent animated layer costs the compositor a re-blend every frame however little
- * it recomposes. This one is 44dp.
- */
-@Composable
-private fun NowPlayingDisc(
-    nowPlaying: WallSceneViewModel.NowPlaying,
-    isPlaying: Boolean,
-    onOpen: () -> Unit,
-    onPlayPause: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    val angle = remember { mutableFloatStateOf(0f) }
-
-    // Advances only while the record is actually turning, and keeps its angle when it stops —
-    // resuming picks up where it left off rather than snapping to zero, which is what a platter
-    // does.
-    LaunchedEffect(isPlaying) {
-        if (!isPlaying) return@LaunchedEffect
-        var previous = 0L
-        while (true) {
-            withFrameNanos { now ->
-                if (previous != 0L) {
-                    val seconds = (now - previous) / 1_000_000_000f
-                    angle.floatValue =
-                        (angle.floatValue + seconds * OpenSequence.SPIN_DEG_PER_S) % 360f
-                }
-                previous = now
-            }
-        }
-    }
-
-    Row(
-        modifier = modifier
-            .fillMaxWidth()
-            .clickable(onClick = onOpen)
-            .padding(horizontal = 20.dp, vertical = 6.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        val disc = nowPlaying.disc
-        if (disc != null) {
-            Image(
-                bitmap = disc.asImageBitmap(),
-                contentDescription = null,
-                modifier = Modifier
-                    .size(44.dp)
-                    .graphicsLayer { rotationZ = angle.floatValue }
-            )
-        } else {
-            // Artwork can still be baking, and a row that changed height when it arrived would
-            // shove the chrome down a frame after appearing.
-            Spacer(Modifier.size(44.dp))
-        }
-
-        Column(
-            modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(2.dp)
-        ) {
-            Text(
-                text = nowPlaying.title.uppercase(Locale.ROOT),
-                style = JawonTextStyle.mono.copy(fontSize = 10.sp),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            Text(
-                text = nowPlaying.artist,
-                style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = 9.sp),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-        }
-
-        // Its own target, and deliberately not the row's: pausing without losing your place on
-        // the wall is the thing you want most often from a bar like this, and making the whole
-        // row open the deck would put a case in the way of it.
-        IconButton(onClick = onPlayPause, modifier = Modifier.size(40.dp)) {
-            Icon(
-                imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                contentDescription = if (isPlaying) "Pause" else "Play",
-                tint = LampAmber,
-                modifier = Modifier.size(22.dp)
             )
         }
     }

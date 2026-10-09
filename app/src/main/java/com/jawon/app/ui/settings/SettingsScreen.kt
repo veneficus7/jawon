@@ -1,6 +1,7 @@
 package com.jawon.app.ui.settings
 
 import androidx.compose.material.icons.rounded.Vibration
+import androidx.compose.material.icons.rounded.PlayCircle
 import com.jawon.app.ui.theme.LocalPalette
 import com.jawon.app.ui.theme.InterFamily
 import com.jawon.app.ui.common.JawonMark
@@ -1442,6 +1443,7 @@ fun SettingsScreen(
     val fetchCoverArt by viewModel.fetchCoverArt.collectAsStateWithLifecycle()
     val fetchLyrics by viewModel.fetchLyrics.collectAsStateWithLifecycle()
     val shakeToSwitch by viewModel.shakeToSwitch.collectAsStateWithLifecycle()
+    val keepPlayingOnClose by viewModel.keepPlayingOnClose.collectAsStateWithLifecycle()
     val preferOnlineLyrics by viewModel.preferOnlineLyrics.collectAsStateWithLifecycle()
     val roomScheme by viewModel.roomScheme.collectAsStateWithLifecycle()
     val format by viewModel.format.collectAsStateWithLifecycle()
@@ -1575,6 +1577,19 @@ fun SettingsScreen(
                     }
 
                     SettingsGroup(header = "Playback") {
+                        SettingsSwitchRow(
+                            icon = Icons.Rounded.PlayCircle,
+                            title = "Keep playing when a case closes",
+                            summary = "Browse the wall while the record plays on.",
+                            detail = "Close a case and its record keeps playing: the case sits " +
+                                "proud in its slot and the bar at the foot of the wall carries it — " +
+                                "tap the bar to open it again, swipe it sideways to change track, " +
+                                "swipe it down to put the record away. Off, closing a case pauses " +
+                                "the music, as a disc put back in its box would.",
+                            checked = keepPlayingOnClose,
+                            onCheckedChange = viewModel::onKeepPlayingOnCloseChanged
+                        )
+                        SettingsDivider()
                         SettingsNavRow(
                             icon = Icons.Rounded.Tune,
                             title = "Crossfade",
