@@ -26,6 +26,11 @@ class ShowroomViewModel @Inject constructor(
     /** The pocket player's colour, as its own Settings chose it — the plinth's wears the same. */
     val pocketFinish: StateFlow<String?> = preferences.pocketFinish
 
+    /** Whether the showroom's first-run hint has been put away (0.7.4). */
+    val hintsSeen: StateFlow<Set<String>> = preferences.hintsSeen
+
+    fun onHintSeen(id: String) = preferences.markHintSeen(id)
+
     /** Whether a shake flips rooms (Settings → Room). */
     val shakeToSwitch: StateFlow<Boolean> = preferences.shakeToSwitch
 

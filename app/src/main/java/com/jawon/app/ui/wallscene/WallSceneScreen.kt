@@ -1101,6 +1101,8 @@ fun WallSceneScreen(
     onOpenShowroom: () -> Unit = {},
     /** ROOMS in the bar: the room switcher (JawonNavHost). */
     onOpenRooms: () -> Unit = {},
+    /** Settings' Guide, on this room's page — from the first-run hint. */
+    onOpenGuide: () -> Unit = {},
     /**
      * A 2D panel is up over the room (`JawonNavHost`). The room stays composed under it — that is
      * the point, it is not rebuilt on the way back — but it is out of sight, so it stops rendering
@@ -1112,6 +1114,7 @@ fun WallSceneScreen(
     val layout by viewModel.layout.collectAsStateWithLifecycle()
     val nowPlaying by viewModel.nowPlaying.collectAsStateWithLifecycle()
     val removed by viewModel.removed.collectAsStateWithLifecycle()
+    val hintsSeen by viewModel.hintsSeen.collectAsStateWithLifecycle()
     val roomScheme by viewModel.roomScheme.collectAsStateWithLifecycle()
     val caseSpin by viewModel.caseSpin.collectAsStateWithLifecycle()
     val eqAvailable by viewModel.eqAvailable.collectAsStateWithLifecycle()
@@ -4205,6 +4208,20 @@ fun WallSceneScreen(
                     .align(Alignment.CenterHorizontally)
                     .widthIn(max = CHROME_MAX_W)
             ) {
+            // The first time on the wall, and only once there is a record to open.
+            if (com.jawon.app.ui.common.Hints.CD !in hintsSeen && layout.cases.isNotEmpty() && !covered) {
+                com.jawon.app.ui.common.FirstRunHint(
+                    title = "This is your wall",
+                    body = "Tap a record to open it, then turn the spinning disc to scratch. " +
+                        "Press and hold a case to edit or remove it.",
+                    onGotIt = { viewModel.onHintSeen(com.jawon.app.ui.common.Hints.CD) },
+                    onGuide = {
+                        viewModel.onHintSeen(com.jawon.app.ui.common.Hints.CD)
+                        onOpenGuide()
+                    },
+                    modifier = Modifier.align(Alignment.CenterHorizontally)
+                )
+            }
             // A record just taken off the wall, for as long as it can still come back.
             removed?.let { r ->
                 RemovedBar(

@@ -91,6 +91,17 @@ class AppPreferences @Inject constructor(@param:ApplicationContext context: Cont
         _pocketClicker.value = on
     }
 
+    private val _hintsSeen = MutableStateFlow(prefs.getStringSet(KEY_HINTS_SEEN, emptySet()).orEmpty().toSet())
+
+    /** The rooms whose first-run hint has been seen and put away — see `FirstRunHint` (0.7.4). */
+    val hintsSeen: StateFlow<Set<String>> = _hintsSeen.asStateFlow()
+
+    fun markHintSeen(id: String) {
+        val next = _hintsSeen.value + id
+        prefs.edit { putStringSet(KEY_HINTS_SEEN, next) }
+        _hintsSeen.value = next
+    }
+
     private val _pocketMotion = MutableStateFlow(prefs.getBoolean(KEY_POCKET_MOTION, true))
 
     /**
@@ -522,6 +533,7 @@ class AppPreferences @Inject constructor(@param:ApplicationContext context: Cont
         const val KEY_POCKET_BACKLIGHT_MS = "pocket_backlight_ms"
         const val KEY_POCKET_CLICKER = "pocket_clicker"
         const val KEY_POCKET_MOTION = "pocket_motion"
+        const val KEY_HINTS_SEEN = "hints_seen"
         const val KEY_POCKET_BRICK_BEST = "pocket_brick_best"
         const val KEY_POCKET_FINISH = "pocket_finish"
         const val KEY_EQ_ENABLED = "equalizer_enabled"

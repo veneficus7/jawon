@@ -58,7 +58,7 @@ Fixed items are struck through; the rest are assigned below.
 | Showroom | Neighbouring captions peek in clipped at the screen edges ("DS", "CA") and read as a layout fault | 0.7.2 |
 | Pocket player | ~~No Search menu (the classic had one)~~ — Search, the classic's letter strip (0.7.4); on 60Hz phones and low tiers, unmeasured | 0.7.5 |
 | Android 9 | On the API 28 emulator the pocket player's screen and the CD room's shelf plates render **blank** — both reach the GPU as a `SurfaceTexture` stream; a software canvas instead of the hardware one changed nothing, so it looks like the emulator's GL translator, not the app. Unverified on a real Android 9–11 phone; the room, the cases, playback and an update from 0.4.2 all work there | 0.7.4 |
-| First run | Not re-checked since the rooms and the showroom arrived: a new user is not told the showroom exists, how to scratch, or that Back leaves the wall | 0.7.3 |
+| First run | ~~Not re-checked since the rooms and the showroom arrived: a new user is not told the showroom exists, how to scratch, or that Back leaves the wall~~ — a first-run card in each room and the showroom, and Settings → Guide (0.7.4) | done |
 | Heat | The CD room holds the GPU near 100% even untouched (trap 28) — fine for an evening, a Play review waiting to happen on a hot day | 0.7.4 |
 
 The audit is not finished: the deck's SOUND and LYRICS pages, shelf editing, the music-server

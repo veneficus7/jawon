@@ -946,6 +946,11 @@ class WallSceneViewModel @Inject constructor(
 
     fun onPocketClickerChanged(on: Boolean) = preferences.setPocketClicker(on)
 
+    /** Which rooms' first-run hints have been put away (0.7.4). */
+    val hintsSeen: StateFlow<Set<String>> = preferences.hintsSeen
+
+    fun onHintSeen(id: String) = preferences.markHintSeen(id)
+
     /** Tilt & Turn — see `AppPreferences.pocketMotion`. */
     val pocketMotion: StateFlow<Boolean> = preferences.pocketMotion
 

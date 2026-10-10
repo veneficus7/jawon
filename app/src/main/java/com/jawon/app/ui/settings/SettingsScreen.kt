@@ -1967,8 +1967,10 @@ private enum class SettingsPage {
     GUIDE_CD, GUIDE_POCKET, GUIDE_ROOMS, GUIDE_MUSIC
 }
 
-/** The Guide's pocket-player page, by name, for the pocket player's own Guide row. */
+/** The Guide's pages by name, for the rooms that open Settings on one of them. */
 const val GUIDE_POCKET_PAGE = "GUIDE_POCKET"
+const val GUIDE_CD_PAGE = "GUIDE_CD"
+const val GUIDE_ROOMS_PAGE = "GUIDE_ROOMS"
 
 private fun guidePageFor(topic: GuideTopic): SettingsPage = when (topic) {
     GuideTopic.CD -> SettingsPage.GUIDE_CD

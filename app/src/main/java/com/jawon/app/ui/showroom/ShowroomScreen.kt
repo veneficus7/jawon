@@ -22,6 +22,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -206,8 +207,11 @@ fun ShowroomScreen(
      * stay loaded from the first.
      */
     visit: Int = 0,
+    /** Settings' Guide, on its page about moving between rooms — from the first-run hint. */
+    onOpenGuide: () -> Unit = {},
     viewModel: ShowroomViewModel = hiltViewModel()
 ) {
+    val hintsSeen by viewModel.hintsSeen.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val tier = remember(context) { com.jawon.app.ui.wallscene.QualityTier.detect(context) }
     val engine = rememberRoomEngine() // not SceneView's: see RoomEngine, its teardown leaked the GL context
@@ -570,6 +574,24 @@ fun ShowroomScreen(
                         .background(if (exhibit.format == format) LampAmber else Color.Transparent)
                 )
             }
+        }
+
+        // The first visit: what this place is, over the top, clear of the captions.
+        if (active && com.jawon.app.ui.common.Hints.SHOWROOM !in hintsSeen && !director.darkShown.value) {
+            com.jawon.app.ui.common.FirstRunHint(
+                title = "Every room, side by side",
+                body = "Swipe along them and tap one to go in. From inside a room, ROOMS or a " +
+                    "shake switches rooms, and Back brings you here.",
+                onGotIt = { viewModel.onHintSeen(com.jawon.app.ui.common.Hints.SHOWROOM) },
+                onGuide = {
+                    viewModel.onHintSeen(com.jawon.app.ui.common.Hints.SHOWROOM)
+                    onOpenGuide()
+                },
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .statusBarsPadding()
+                    .padding(top = 12.dp)
+            )
         }
 
         // The black the showroom is revealed from, and the black a departure ends in. Only there

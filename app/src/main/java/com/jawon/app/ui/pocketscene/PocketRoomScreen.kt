@@ -15,6 +15,9 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -221,6 +224,7 @@ fun PocketRoomScreen(
     val clickerOn by viewModel.pocketClicker.collectAsStateWithLifecycle()
     val finishName by viewModel.pocketFinish.collectAsStateWithLifecycle()
     val motionOn by viewModel.pocketMotion.collectAsStateWithLifecycle()
+    val hintsSeen by viewModel.hintsSeen.collectAsStateWithLifecycle()
     val brickBest by viewModel.pocketBrickBest.collectAsStateWithLifecycle()
     val finish = PocketFinish.fromName(finishName)
     val songCount by viewModel.trackCount.collectAsStateWithLifecycle()
@@ -817,6 +821,24 @@ fun PocketRoomScreen(
         // No chrome over the room: the device *is* the interface, and the phone app's Settings
         // are on its own menu (Settings → All Settings). The debug line and a SETTINGS link used
         // to sit under the device and were the first thing that said "screen", not "object".
+
+        // The first time in the player: over the window, clear of the wheel a thumb needs.
+        if (com.jawon.app.ui.common.Hints.POCKET !in hintsSeen && !covered && !sidewaysUp) {
+            com.jawon.app.ui.common.FirstRunHint(
+                title = "Your phone is the player",
+                body = "Slide your thumb round the wheel and press the centre to choose; MENU, at " +
+                    "the top of the wheel, goes back. Turn the phone on its side for Cover Flow.",
+                onGotIt = { viewModel.onHintSeen(com.jawon.app.ui.common.Hints.POCKET) },
+                onGuide = {
+                    viewModel.onHintSeen(com.jawon.app.ui.common.Hints.POCKET)
+                    onOpenGuide()
+                },
+                modifier = Modifier
+                    .align(androidx.compose.ui.Alignment.TopCenter)
+                    .statusBarsPadding()
+                    .padding(top = 24.dp)
+            )
+        }
 
         // **Sideways**: Cover Flow over the whole screen, turned to meet the phone.
         androidx.compose.animation.AnimatedVisibility(

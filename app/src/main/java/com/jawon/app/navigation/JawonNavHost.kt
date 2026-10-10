@@ -59,7 +59,9 @@ import com.jawon.app.ui.cd.CdImportScreen
 import com.jawon.app.ui.editalbum.EditAlbumScreen
 import com.jawon.app.ui.listening.ListeningScreen
 import com.jawon.app.ui.pocketscene.PocketRoomScreen
+import com.jawon.app.ui.settings.GUIDE_CD_PAGE
 import com.jawon.app.ui.settings.GUIDE_POCKET_PAGE
+import com.jawon.app.ui.settings.GUIDE_ROOMS_PAGE
 import com.jawon.app.ui.settings.SettingsScreen
 import com.jawon.app.ui.shelfmanager.ShelfManagerScreen
 import com.jawon.app.ui.showroom.ShowroomScreen
@@ -382,6 +384,7 @@ private fun RoomStage(
                         Place.SHOWROOM -> ShowroomScreen(
                             onLeave = onLeaveShowroom,
                             onExit = onExit,
+                            onOpenGuide = { onOpenGuide(GUIDE_ROOMS_PAGE) },
                             active = isActive,
                             visit = showroomVisit
                         )
@@ -389,6 +392,7 @@ private fun RoomStage(
                             onAddAlbum = onAddAlbum,
                             onOpenShelfManager = onOpenShelfManager,
                             onOpenSettings = onOpenSettings,
+                            onOpenGuide = { onOpenGuide(GUIDE_CD_PAGE) },
                             onEditAlbum = onEditAlbum,
                             onOpenShowroom = onOpenShowroom,
                             onOpenRooms = onOpenRooms,
