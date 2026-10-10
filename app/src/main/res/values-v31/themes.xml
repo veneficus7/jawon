@@ -11,11 +11,16 @@
 
         `windowSplashScreenAnimationDuration` must match the AVD, and the platform caps what
         it will wait for at around a second; the animators are 900ms.
+
+        **And it is the first 0.9s of the opening, not an opening of its own** (0.7.6). The app
+        takes this splash in hand (`MainActivity.takeOverSplash`) and its title sequence carries
+        on from the finished mark, in the same place, on the same black — `opening_black`, which
+        is why the ground here is not the crate's black.
     -->
     <style name="Theme.Jawon" parent="android:Theme.DeviceDefault.DayNight">
         <item name="android:windowNoTitle">true</item>
         <item name="android:windowActionBar">false</item>
-        <item name="android:windowSplashScreenBackground">@color/crate_black</item>
+        <item name="android:windowSplashScreenBackground">@color/opening_black</item>
         <item name="android:windowSplashScreenAnimatedIcon">@drawable/ic_splash_mark_animated</item>
         <item name="android:windowSplashScreenAnimationDuration">900</item>
         <item name="android:statusBarColor">@android:color/transparent</item>

@@ -1,22 +1,31 @@
 package com.jawon.app
 
 import android.graphics.Color
+import android.os.Build
 import android.os.Bundle
+import androidx.annotation.RequiresApi
 import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Surface
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.jawon.app.data.prefs.AppPreferences
 import com.jawon.app.navigation.JawonNavHost
+import com.jawon.app.ui.common.LocalRoomParked
+import com.jawon.app.ui.intro.IntroKind
 import com.jawon.app.ui.intro.IntroOverlay
+import com.jawon.app.ui.intro.SplashHandOver
 import com.jawon.app.ui.theme.JawonTheme
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
@@ -64,6 +73,22 @@ class MainActivity : ComponentActivity() {
             statusBarStyle = SystemBarStyle.dark(Color.TRANSPARENT),
             navigationBarStyle = SystemBarStyle.dark(Color.TRANSPARENT)
         )
+
+        // **One opening, once.** The title sequence belongs to launching Jawon, not to building
+        // this activity: it plays the first time the process puts a window up, and coming back to
+        // an app that is still in memory — Back out of the showroom and in again, a theme change —
+        // goes straight to the room. A phone that had put Jawon to sleep and is restoring it gets
+        // the short one, as does anyone who asked for it in Settings.
+        val intro = when {
+            openingPlayed -> null
+            savedInstanceState != null || preferences.shortIntro.value -> IntroKind.QUICK
+            else -> IntroKind.FULL
+        }
+        openingPlayed = true
+        val systemSplash = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+        val handOver = SplashHandOver(waiting = intro != null && systemSplash, markShown = true)
+        if (intro != null && systemSplash) takeOverSplash(handOver)
+
         setContent {
             val roomScheme by preferences.roomScheme.collectAsStateWithLifecycle()
             // Which room the app opens in. Read here, above the NavHost, because it decides the
@@ -71,23 +96,102 @@ class MainActivity : ComponentActivity() {
             val format by preferences.format.collectAsStateWithLifecycle()
             JawonTheme(roomScheme = roomScheme) {
                 Surface(modifier = Modifier.fillMaxSize()) {
-                    JawonNavHost(
-                        format = Format.openable(format, BuildConfig.DEBUG || BuildConfig.SHOW_FORMATS)
-                    )
+                    var introUp by remember { mutableStateOf(intro != null) }
+                    var parked by remember { mutableStateOf(false) }
 
-                    // Over the NavHost rather than before it, so the room is being built
-                    // underneath while the card is up — the scene's cubemap, models and first
-                    // artwork all take time, and this is what that time looks like.
-                    //
-                    // `rememberSaveable` so a rotation or a theme change does not replay it:
-                    // the intro belongs to launching the app, not to composing this screen.
-                    var introDone by rememberSaveable { mutableStateOf(false) }
-                    if (!introDone) {
-                        IntroOverlay(onFinished = { introDone = true })
+                    // Under the card the room is out of TalkBack's reach: it would otherwise read
+                    // out a wall nobody can see yet.
+                    Box(
+                        Modifier
+                            .fillMaxSize()
+                            .then(if (introUp) Modifier.clearAndSetSemantics { } else Modifier)
+                    ) {
+                        CompositionLocalProvider(LocalRoomParked provides parked) {
+                            JawonNavHost(
+                                format = Format.openable(format, BuildConfig.DEBUG || BuildConfig.SHOW_FORMATS)
+                            )
+                        }
+                    }
+
+                    // Over the stage rather than before it, so the room is being built underneath
+                    // while the card is up — the scene's cubemap, models and first artwork all
+                    // take time, and this is what that time looks like.
+                    if (introUp && intro != null) {
+                        IntroOverlay(
+                            kind = intro,
+                            handOver = handOver,
+                            onPark = { parked = it },
+                            onFinished = {
+                                parked = false
+                                introUp = false
+                            }
+                        )
                     }
                 }
             }
         }
+    }
+
+    /**
+     * Takes the system's splash in hand, so that the opening carries on from it instead of
+     * following it.
+     *
+     * Left to itself the platform cross-fades its splash into the app's first frame, which is what
+     * made the mark and the title card read as two intros. With an exit listener the splash is
+     * the app's to remove: it stays up until the mark has finished writing itself and the room
+     * has finished building, the card under it draws the same mark in the same place
+     * ([SplashHandOver.rect], read off the splash's own icon), and then the splash is simply taken
+     * away — with nothing on the screen changing as it goes.
+     */
+    @RequiresApi(Build.VERSION_CODES.S)
+    private fun takeOverSplash(handOver: SplashHandOver) {
+        splashScreen.setOnExitAnimationListener { splash ->
+            val icon = splash.iconView
+            if (icon != null && icon.width > 0 && icon.height > 0) {
+                val at = IntArray(2).also(icon::getLocationInWindow)
+                handOver.rect = Rect(
+                    at[0].toFloat(),
+                    at[1].toFloat(),
+                    (at[0] + icon.width).toFloat(),
+                    (at[1] + icon.height).toFloat()
+                )
+            } else {
+                // A launch the system drew no mark for — from a notification, say: the card
+                // writes it instead.
+                handOver.markShown = false
+            }
+            val start = splash.iconAnimationStart
+            val length = splash.iconAnimationDuration
+            val left = if (start != null && length != null) {
+                java.time.Duration.between(java.time.Instant.now(), start.plus(length)).toMillis()
+            } else {
+                0L
+            }
+            // Never sooner than a few frames: the card has to have drawn the mark under the
+            // splash before the splash goes.
+            val now = android.os.SystemClock.uptimeMillis()
+            handOver.writtenAt = now + left.coerceIn(SPLASH_MIN_HOLD_MS, SPLASH_MAX_HOLD_MS)
+            if (start != null) {
+                handOver.startedAt = now - java.time.Duration.between(start, java.time.Instant.now()).toMillis()
+            }
+            if (handOver.waiting) {
+                // The card takes it off when the room under it has finished building.
+                handOver.uncover = { splash.alpha = 0f }
+                handOver.release = { splash.remove() }
+                handOver.claimed = true
+            } else {
+                // The card gave up waiting and has started without it.
+                splash.remove()
+            }
+        }
+    }
+
+    private companion object {
+        /** Whether this process has played its opening — see `onCreate`. */
+        var openingPlayed = false
+
+        const val SPLASH_MIN_HOLD_MS = 80L
+        const val SPLASH_MAX_HOLD_MS = 1200L
     }
 }
 

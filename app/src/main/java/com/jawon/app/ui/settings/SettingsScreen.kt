@@ -1,6 +1,7 @@
 package com.jawon.app.ui.settings
 
 import androidx.compose.material.icons.rounded.Vibration
+import androidx.compose.material.icons.rounded.Bolt
 import androidx.compose.material.icons.rounded.PlayCircle
 import com.jawon.app.ui.theme.LocalPalette
 import com.jawon.app.ui.theme.InterFamily
@@ -1450,6 +1451,7 @@ fun SettingsScreen(
     val fetchLyrics by viewModel.fetchLyrics.collectAsStateWithLifecycle()
     val shakeToSwitch by viewModel.shakeToSwitch.collectAsStateWithLifecycle()
     val keepPlayingOnClose by viewModel.keepPlayingOnClose.collectAsStateWithLifecycle()
+    val shortIntro by viewModel.shortIntro.collectAsStateWithLifecycle()
     val graphicsName by viewModel.graphics.collectAsStateWithLifecycle()
     val graphics = com.jawon.app.ui.wallscene.Graphics.fromName(graphicsName)
     val preferOnlineLyrics by viewModel.preferOnlineLyrics.collectAsStateWithLifecycle()
@@ -1590,6 +1592,17 @@ fun SettingsScreen(
                             title = "Graphics",
                             value = graphicsLabel(graphics),
                             onClick = { page = SettingsPage.GRAPHICS }
+                        )
+                        SettingsDivider()
+                        SettingsSwitchRow(
+                            icon = Icons.Rounded.Bolt,
+                            title = "Short intro",
+                            summary = "Open straight into the room.",
+                            detail = "Jawon opens with its sign lighting, its name, and the way in " +
+                                "through the hole in the disc. On, the sign lights and the room is " +
+                                "there at once. A tap skips the intro either way.",
+                            checked = shortIntro,
+                            onCheckedChange = viewModel::onShortIntroChanged
                         )
                         if (offeredFormats.size > 1) {
                             SettingsDivider()

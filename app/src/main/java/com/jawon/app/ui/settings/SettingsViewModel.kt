@@ -202,6 +202,11 @@ class SettingsViewModel @Inject constructor(
     fun onGraphicsChanged(name: String) = preferences.setGraphics(name)
 
     val keepPlayingOnClose: StateFlow<Boolean> = preferences.keepPlayingOnClose
+
+    /** The short opening instead of the whole title sequence — see `IntroTimeline`. */
+    val shortIntro: StateFlow<Boolean> = preferences.shortIntro
+
+    fun onShortIntroChanged(enabled: Boolean) = preferences.setShortIntro(enabled)
     fun onKeepPlayingOnCloseChanged(enabled: Boolean) = preferences.setKeepPlayingOnClose(enabled)
 
     val roomScheme: StateFlow<RoomScheme> = preferences.roomScheme

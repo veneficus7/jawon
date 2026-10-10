@@ -142,6 +142,32 @@ Tested in `ShowroomTest` (the row, the pinch, the plinths, the camera) and `Show
 
 ---
 
+## `ui/intro` — the opening
+
+**One sequence, not two** (0.7.6). Until then the system's splash wrote the mark in 0.9s, cut to a
+different black, and a second card faded a wordmark up and away — testers called it "two intros,
+and both of them fast". Now the splash is the first beat of one opening: `MainActivity.takeOverSplash`
+takes the system's splash in hand (an exit listener), the card under it draws the same mark in the
+same place, and the splash is taken away with nothing on the screen changing. Then the tube catches,
+light laps the rim and runs down the J into the hole, the name arrives, and the way out is through
+the hole — it opens onto the room.
+
+| File | Owns |
+|---|---|
+| `IntroTimeline.kt` | **Pure.** Every beat as a function of milliseconds, split into two clocks (`beat`, `exit`) so a tap reaches the way out from any moment; `MarkPath`, the mark's line as something a light can run along; and `splashGlow`, the splash animator's breath again in code, so the card picks the glow up where the splash left it. |
+| `IntroOverlay.kt` | The card: one `Canvas` reading one clock. It holds the lit mark still until the frames under it run evenly (`awaitCalm` — the room is building), parks the room while the card is whole (`LocalRoomParked`), and uncovers it a moment before the hole opens. `SplashHandOver` is what `MainActivity` tells it about the system's splash. |
+
+Three things the captures found, all in the hand-over: the system draws its mark **1.5× larger
+than the view it reports** (a 288dp drawing through a 192dp view); removing the splash outright
+leaves **one black frame** (its icon lives on a surface of its own, released at once), so it is
+made see-through first and removed a few frames later; and the splash's ground has to be the
+card's black (`opening_black`), not the crate's. Played once per process — coming back to an app
+still in memory goes straight to the room — and Settings → Short intro, or a tap, cuts it to the
+mark catching and the hole opening. With the phone's animations removed the card is shown whole,
+held and faded. Tested in `IntroTimelineTest`.
+
+---
+
 ## `data` — the library and playback
 
 | File | Owns |

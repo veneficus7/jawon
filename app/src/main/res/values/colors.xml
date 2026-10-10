@@ -2,4 +2,12 @@
 <resources>
     <!-- DESIGN.md section 2. Warm near-black, deliberately never #000000. -->
     <color name="crate_black">#17120F</color>
+    <!--
+        The ground the app opens on: the splash, the title card over the room, and the still
+        splash below Android 12. Pure black, the one place it is right - there is no room yet and
+        nothing is lit, and on an OLED panel these are pixels that never come on, so the lit mark
+        hangs in front of the phone instead of being printed on it. One colour for all three, or
+        the hand-over between the system's splash and the card shows as a step.
+    -->
+    <color name="opening_black">#000000</color>
 </resources>

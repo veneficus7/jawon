@@ -3,8 +3,9 @@
     The pre-first-frame window background for API 28-30, which have no SplashScreen API.
 
     A layer-list rather than a plain colour so those versions still get the mark rather than a
-    black rectangle: crateBlack ground, disc centred and held to a fixed size so it matches the
-    scale the platform splash uses on 31+.
+    black rectangle: the opening's black, the mark centred and held to 288dp - the size the
+    platform's splash draws it at on 31+ (a 288dp drawing seen through a 192dp view), and the
+    size the title card takes it over at (`IntroOverlay`, SPLASH_MARK_DP).
 
     **Do not wrap the disc in `<bitmap>`.** It was written that way and it crashed the app on
     launch — every device below API 31, every release from 0.2 to 0.4.1 — with
@@ -25,10 +26,10 @@
     since API 23, which is below the floor, so the size is set here rather than by wrapping.
 -->
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
-    <item android:drawable="@color/crate_black" />
+    <item android:drawable="@color/opening_black" />
     <item
         android:drawable="@drawable/ic_splash_mark"
         android:gravity="center"
-        android:width="160dp"
-        android:height="160dp" />
+        android:width="288dp"
+        android:height="288dp" />
 </layer-list>

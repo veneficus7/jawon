@@ -315,6 +315,19 @@ class AppPreferences @Inject constructor(@param:ApplicationContext context: Cont
         _keepPlayingOnClose.value = enabled
     }
 
+    private val _shortIntro = MutableStateFlow(prefs.getBoolean(KEY_SHORT_INTRO, false))
+
+    /**
+     * Whether Jawon opens with the short intro — the mark lights and the room is there — instead of
+     * the whole title sequence (0.7.6). Off by default: the sequence was asked for, by testers who
+     * found two quick intros worse than one made properly; this is for the fifth launch of the day.
+     */
+    val shortIntro: StateFlow<Boolean> = _shortIntro.asStateFlow()
+    fun setShortIntro(enabled: Boolean) {
+        prefs.edit { putBoolean(KEY_SHORT_INTRO, enabled) }
+        _shortIntro.value = enabled
+    }
+
     private val _fetchLyrics = MutableStateFlow(prefs.getBoolean(KEY_FETCH_LYRICS, true))
 
     /**
@@ -542,6 +555,7 @@ class AppPreferences @Inject constructor(@param:ApplicationContext context: Cont
         const val KEY_FETCH_LYRICS = "fetch_lyrics"
         const val KEY_SHAKE_TO_SWITCH = "shake_to_switch"
         const val KEY_KEEP_PLAYING_ON_CLOSE = "keep_playing_on_close"
+        const val KEY_SHORT_INTRO = "short_intro"
         const val KEY_PREFER_ONLINE_LYRICS = "prefer_online_lyrics"
         const val KEY_ROOM_SCHEME = "room_scheme"
         const val KEY_FORMAT = "format"

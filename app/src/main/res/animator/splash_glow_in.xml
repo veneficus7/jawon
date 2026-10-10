@@ -1,15 +1,34 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-    The glow on the wall behind the sign, coming up as the tube fills.
+    The glow on the wall behind the sign: coming up as the tube fills, and then breathing.
+
+    The breath is for the phones that need it. The app keeps this splash on screen until the room
+    under it has finished building (`MainActivity.takeOverSplash`), which is no time at all on a
+    fast phone and seconds on a slow one, and a vector's animators run off the main thread: so
+    however busy the room keeps the app, the sign is visibly lit and alive rather than frozen.
+    The title card takes over from wherever it has got to: `IntroTimeline.splashGlow` is this
+    curve again, in code, and `IntroTimelineTest` holds the two to the same numbers. Change one
+    and change the other.
 -->
-<objectAnimator xmlns:android="http://schemas.android.com/apk/res/android"
-    android:duration="900">
-    <propertyValuesHolder android:propertyName="fillAlpha" android:valueType="floatType">
-        <keyframe android:fraction="0" android:value="0" />
-        <keyframe android:fraction="0.2" android:value="0" />
-        <keyframe
-            android:fraction="1"
-            android:value="1"
-            android:interpolator="@android:interpolator/decelerate_quad" />
-    </propertyValuesHolder>
-</objectAnimator>
+<set xmlns:android="http://schemas.android.com/apk/res/android"
+    android:ordering="sequentially">
+    <objectAnimator android:duration="900">
+        <propertyValuesHolder android:propertyName="fillAlpha" android:valueType="floatType">
+            <keyframe android:fraction="0" android:value="0" />
+            <keyframe android:fraction="0.2" android:value="0" />
+            <keyframe
+                android:fraction="1"
+                android:value="1"
+                android:interpolator="@android:interpolator/decelerate_quad" />
+        </propertyValuesHolder>
+    </objectAnimator>
+    <objectAnimator
+        android:propertyName="fillAlpha"
+        android:valueFrom="1"
+        android:valueTo="0.55"
+        android:valueType="floatType"
+        android:duration="1100"
+        android:repeatCount="infinite"
+        android:repeatMode="reverse"
+        android:interpolator="@android:interpolator/accelerate_decelerate" />
+</set>

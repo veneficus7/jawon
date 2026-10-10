@@ -712,7 +712,7 @@ fun PocketRoomScreen(
             engine = engine,
             modelLoader = modelLoader,
             // Under a panel, or behind sideways Cover Flow: park the loop, and leave the last frame.
-            isRendering = !covered && !sidewaysUp,
+            isRendering = !covered && !sidewaysUp && !com.jawon.app.ui.common.LocalRoomParked.current,
             materialLoader = materialLoader,
             environmentLoader = environmentLoader,
             view = filamentView,

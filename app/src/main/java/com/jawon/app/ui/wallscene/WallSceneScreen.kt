@@ -1135,6 +1135,8 @@ fun WallSceneScreen(
     LaunchedEffect(Unit) { viewModel.adoptPlayingAlbum() }
     // For handlers set up once, which must read whether the room is on screen as it is now.
     val currentCovered = androidx.compose.runtime.rememberUpdatedState(covered)
+    // Under the opening card the room is built and then rests until the card is about to open.
+    val parked = com.jawon.app.ui.common.LocalRoomParked.current
 
     BoxWithConstraints(
         modifier = Modifier
@@ -2327,7 +2329,7 @@ fun WallSceneScreen(
             renderer = renderer,
             // Under a panel: park the loop. The last frame stays on the surface for the panel to
             // slide over, and nothing is drawn behind a screen nobody can see through.
-            isRendering = !covered,
+            isRendering = !covered && !parked,
             // Replaces SceneView's default main and fill lights. Those are a neutral studio
             // rig — exactly the "flatly-lit scene" DESIGN.md's Do-not list ends on.
             environment = environment,

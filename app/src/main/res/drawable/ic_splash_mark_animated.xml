@@ -6,12 +6,15 @@
 
     Wired to `windowSplashScreenAnimatedIcon` in `values-v31/themes.xml`. Android 12+ plays
     this in place of the static icon on the system splash, so it replaces the launch flash
-    rather than adding a second screen after it.
+    rather than adding a second screen after it - and since 0.7.6 it is the first beat of the
+    one opening: the title card (`ui/intro/`) carries on from this mark, where it stands.
 
     Constraints the platform imposes, all of which shaped it:
     - It is masked to a circle, so nothing may rely on the corners.
-    - It must finish inside a second; `windowSplashScreenAnimationDuration` is 900ms and
-      every animator here is exactly 900ms long. The system does not wait for a longer one.
+    - The writing must finish inside a second; `windowSplashScreenAnimationDuration` is 900ms
+      and every animator here writes for exactly 900ms. The system does not wait for longer.
+      Only the glow goes on after that - breathing, for as long as the app keeps the splash up
+      while its room builds (`splash_glow_in.xml`, `MainActivity.takeOverSplash`).
     - Each animator holds its path at nothing with keyframes until its turn, rather than
       waiting on a `startOffset`: a delayed animator leaves the drawable's own value — the
       finished mark — on screen until it starts, and the J would show whole and then vanish.
