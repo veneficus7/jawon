@@ -1,7 +1,7 @@
 package com.jawon.app.data.prefs
 
 import android.content.Context
-import com.jawon.app.playback.ResumeButtonReceiver
+import com.jawon.app.playback.HeadphoneResume
 import androidx.core.content.edit
 import com.jawon.app.BuildConfig
 import com.jawon.app.Format
@@ -316,7 +316,7 @@ class AppPreferences @Inject constructor(@param:ApplicationContext context: Cont
         _keepPlayingOnClose.value = enabled
     }
 
-    private val _resumeWithHeadphones = MutableStateFlow(prefs.getBoolean(ResumeButtonReceiver.KEY, false))
+    private val _resumeWithHeadphones = MutableStateFlow(prefs.getBoolean(HeadphoneResume.KEY, false))
 
     /**
      * Whether headphones may start the music (0.7.6). **Off by default, and everything that could
@@ -326,11 +326,11 @@ class AppPreferences @Inject constructor(@param:ApplicationContext context: Cont
      * thing a player can do, so nothing does until this is switched on.
      *
      * Read by a broadcast receiver as well, straight from the file — which is why its key lives
-     * with that receiver.
+     * with the rule ([HeadphoneResume]).
      */
     val resumeWithHeadphones: StateFlow<Boolean> = _resumeWithHeadphones.asStateFlow()
     fun setResumeWithHeadphones(enabled: Boolean) {
-        prefs.edit { putBoolean(ResumeButtonReceiver.KEY, enabled) }
+        prefs.edit { putBoolean(HeadphoneResume.KEY, enabled) }
         _resumeWithHeadphones.value = enabled
     }
 

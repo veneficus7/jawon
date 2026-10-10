@@ -29,11 +29,8 @@ class ResumeButtonReceiver : MediaButtonReceiver() {
         allowed(context)
 
     companion object {
-        /** `AppPreferences`' file, and the key the switch is saved under. */
-        const val PREFS_FILE = "jawon"
-        const val KEY = "resume_with_headphones"
-
         fun allowed(context: Context): Boolean =
-            context.getSharedPreferences(PREFS_FILE, Context.MODE_PRIVATE).getBoolean(KEY, false)
+            context.getSharedPreferences(HeadphoneResume.PREFS_FILE, Context.MODE_PRIVATE)
+                .getBoolean(HeadphoneResume.KEY, false)
     }
 }

@@ -1,5 +1,6 @@
 package com.jawon.app.ui.showroom
 
+import com.jawon.app.ui.common.displayRefreshHz
 import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -281,7 +282,7 @@ fun ShowroomScreen(
 
     val cadence = remember(context) {
         RoomCadence().apply {
-            refreshHz = context.display?.refreshRate ?: RoomCadence.DEFAULT_REFRESH_HZ
+            refreshHz = context.displayRefreshHz(RoomCadence.DEFAULT_REFRESH_HZ)
             maxFps = tier.maxFps
         }
     }

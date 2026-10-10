@@ -110,7 +110,7 @@ object Id3Lyrics {
         }
         if (at >= end) return null
         return String(bytes, at, end - at, charset)
-            .trim('\u0000', '﻿', ' ', '\n', '\r')
+            .trim('\u0000', '\uFEFF', ' ', '\n', '\r')
             .takeIf { it.isNotBlank() }
     }
 

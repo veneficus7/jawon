@@ -168,6 +168,37 @@ held and faded. Tested in `IntroTimelineTest`.
 
 ---
 
+## Outside the rooms — the player as other things reach it (0.7.6)
+
+Until 0.7.6 only a room could start a record. Now a car, the assistant, the system's media
+controls, a widget, a tile, a shortcut and a file handed over by another app all can, and each
+has to end with the **same queue a room would have built** — the deck, the listening record and
+the resume point all read the queue.
+
+| File | Owns |
+|---|---|
+| `data/playback/QueueBuilder.kt` | A record as media items and a place to start. The one place a queue is made, for every caller. |
+| `data/playback/ResumePoint.kt` | **Pure.** Where a record picks up: where it was left, unless that is the last breath of its last track. |
+| `data/playback/LibraryTree.kt` | **Pure.** The library as a tree to browse: recently played, shelves → records → tracks. A track keeps the id the queue knows it by. |
+| `data/playback/LibrarySearch.kt` | **Pure.** What a spoken request means here: a record, a song's record from that song, an artist's, something off a shelf, or — for no words — the record that was on. Compared as speech arrives. |
+| `playback/LibraryCallback.kt` | The session's callback: who may connect, browsing, turning a bare id or a query into a queue, resumption. |
+| `playback/SessionGate.kt` | **Pure.** Who may connect: Jawon, a car, what the phone already trusts with media. Narrower than Media3's default, because the service is exported. |
+| `playback/CoverProvider.kt` | A record's cover as `content://com.jawon.app.covers/<album id>`. Exported, read-only, nothing to list. |
+| `playback/ResumeButtonReceiver.kt`, `HeadphoneResume.kt` | The one opt-in behind everything that could start music without a touch. |
+| `surfaces/Surfaces.kt` | One listener keeping the widget, the tile and the shortcuts in step with the player. Started with the process, which a tap on any of them may be what starts. |
+| `surfaces/RecordWidget.kt`, `WidgetArt.kt` | The widget: `RemoteViews`, and the record drawn as a jewel case into a bitmap. |
+| `surfaces/PlayerTile.kt`, `Shortcuts.kt`, `SurfaceState.kt` | The tile (an *active* tile), the icon's shortcuts, and what all three show — including the record that was on last, when nothing is running. |
+| `Launch.kt`, `MainActivity.act` | The ways in that are not the icon, as intent actions; `singleTask`, so a file opened from another app does not build a second Jawon in that app's task. |
+| `data/importer/OpenedMusic.kt`, `OpenedPlan.kt` | "Open with Jawon". The plan is **pure**: an archive's paths only ever group files into albums, never decide where anything is written. |
+
+`PlaybackRepository` takes on a queue it did not build (`adoptQueue`), so a record started from
+a car is counted and has its place remembered, and `PlaybackService` wakes the repository
+itself, since no room may ever open. **Everything a caller outside a room can reach runs on the
+player's thread** (`onPlayerThread`): a `MediaController` may only be touched on the thread it was
+built on, and a widget's buttons arrive off it.
+
+---
+
 ## `data` — the library and playback
 
 | File | Owns |

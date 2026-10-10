@@ -1,5 +1,6 @@
 package com.jawon.app.ui.pocketscene
 
+import com.jawon.app.ui.common.displayRefreshHz
 import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -211,7 +212,7 @@ fun PocketRoomScreen(
     // How often the room is actually drawn — the CD room's cadence, reused by call. See onFrame.
     val cadence = remember(context) {
         RoomCadence().apply {
-            refreshHz = context.display?.refreshRate ?: RoomCadence.DEFAULT_REFRESH_HZ
+            refreshHz = context.displayRefreshHz(RoomCadence.DEFAULT_REFRESH_HZ)
             maxFps = tier.maxFps
         }
     }

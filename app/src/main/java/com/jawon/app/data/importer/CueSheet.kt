@@ -117,7 +117,7 @@ object CueParser {
         for (raw in text.lineSequence()) {
             // A BOM survives the decode and would otherwise make the very first command
             // unrecognisable — which, since that is usually PERFORMER or FILE, loses the album.
-            val line = raw.removePrefix("﻿").trim()
+            val line = raw.removePrefix("\uFEFF").trim()
             if (line.isEmpty()) continue
 
             val command = line.substringBefore(' ').uppercase()

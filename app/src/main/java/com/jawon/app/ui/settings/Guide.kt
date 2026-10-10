@@ -10,6 +10,7 @@ import androidx.compose.material.icons.rounded.Album
 import androidx.compose.material.icons.rounded.LibraryMusic
 import androidx.compose.material.icons.rounded.SwapHoriz
 import androidx.compose.material.icons.rounded.TouchApp
+import androidx.compose.material.icons.rounded.Widgets
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
@@ -110,6 +111,7 @@ internal enum class GuideTopic(
                     Tip("Search", "Turn to a letter and press the centre to type it. ◀◀ deletes a letter, ▶▶ goes up to what was found, MENU comes back to the letters."),
                     Tip("Shuffle Albums", "Plays a whole record, picked at random."),
                     Tip("Extras → Brick", "The classic game. Press the centre to serve; move the paddle with the wheel, or by leaning the phone."),
+                    Tip("Extras → Sleep Timer", "Stops the music at the end of this record, or after a number of minutes."),
                     Tip("Its screen", "It dims a little in a dark room, and the battery at the top is your phone's own."),
                     Tip("Its colour", "Settings → Colour: silver, black or red.")
                 )
@@ -134,7 +136,37 @@ internal enum class GuideTopic(
                 "If it runs slowly or warm",
                 listOf(
                     Tip("Graphics", "Settings → Graphics. Balanced is the normal setting. Light draws the rooms more simply and at most 30 times a second, for older phones or to save battery — and it comes on by itself when your phone's battery saver is on. Best looking is the full detail, for the newest phones."),
-                    Tip("A room at rest", "Leave the wall alone for a little while and it slowly goes still, to save your battery. Touch it and it comes back to life.")
+                    Tip("A room at rest", "Leave the wall alone for a little while and it slowly goes still, to save your battery. Touch it and it comes back to life."),
+                    Tip("The intro", "Tap anywhere to skip it. Settings → Short intro opens straight into the room every time.")
+                )
+            )
+        )
+    ),
+    OUTSIDE(
+        title = "Without opening Jawon",
+        summary = "The widget, your car, your voice",
+        icon = Icons.Rounded.Widgets,
+        sections = listOf(
+            GuideSection(
+                "On your home screen",
+                listOf(
+                    Tip("The widget", "Press and hold an empty part of your home screen, choose Widgets, and find Jawon. It shows the record that is on, with play, pause and next. Drag its edge to make it narrow and it becomes the case on its own."),
+                    Tip("From the icon", "Press and hold Jawon's icon for three shortcuts: Resume the record you were on, play A record from your shelves, or Add music."),
+                    Tip("The quick tile", "Pull down from the top of the screen twice, tap the pencil, and drag Jawon up among your tiles. One tap plays or pauses.")
+                )
+            ),
+            GuideSection(
+                "In the car, and by voice",
+                listOf(
+                    Tip("Android Auto", "Jawon appears in your car's music apps: your shelves, the records on them, and their songs. If it is missing, open Android Auto's settings on the phone, tap Version ten times, then choose Developer settings from the menu and turn on Unknown sources — Android Auto hides apps that were not installed from the Play Store."),
+                    Tip("Ask for it", "Say “Play Loveless on Jawon” to your phone's assistant, with the name of a record, a song or an artist. Say only “Play music on Jawon” and it carries on with the record you were on.")
+                )
+            ),
+            GuideSection(
+                "Headphones",
+                listOf(
+                    Tip("Resume with headphones", "Off unless you turn it on in Settings → Playback. On: if your headphones cut out and come back within ten minutes, the music carries on; and pressing play on a headset, or connecting to a car that asks for music, puts your last record on even if Jawon was closed."),
+                    Tip("Nothing starts by itself", "With that switch off, Jawon never plays unless you start it on the phone.")
                 )
             )
         )
@@ -149,7 +181,8 @@ internal enum class GuideTopic(
                 listOf(
                     Tip("Scan this phone", "Finds the music already on your phone. Tick what you want on your shelves. Songs that have no album of their own are listed as Singles, under the albums."),
                     Tip("Choose a folder", "For music on a memory card or in cloud storage, which a scan cannot see."),
-                    Tip("Import a CD", "With a USB CD drive plugged in, Jawon reads the disc, finds what it is, and puts it on a shelf."),
+                    Tip("Import a CD", "Plug in a USB CD drive and Jawon notices it. The screen draws what to connect and walks through five steps, from plugging in to the record on your shelf. Most drives need their own power lead."),
+                    Tip("Open with Jawon", "In your Files app or your downloads, tap a song — or an album you bought as a ZIP — and choose Jawon. It is copied into the Music/Jawon folder on your phone, put on a shelf, and played."),
                     Tip("The record shop", "Free live recordings and releases from the Internet Archive.")
                 )
             ),

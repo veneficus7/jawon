@@ -1,5 +1,6 @@
 package com.jawon.app.ui.wallscene
 
+import com.jawon.app.ui.common.displayRefreshHz
 import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -1282,7 +1283,7 @@ fun WallSceneScreen(
         // Told what the panel is actually doing, rather than assuming the test device's 120.
         // Every interval in the cadence is derived from this; see RoomCadence.refreshHz for what
         // went wrong while it was assumed.
-        val displayRefreshHz = LocalContext.current.display?.refreshRate ?: RoomCadence.DEFAULT_REFRESH_HZ
+        val displayRefreshHz = LocalContext.current.displayRefreshHz(RoomCadence.DEFAULT_REFRESH_HZ)
         val cadence = remember { RoomCadence() }
         // The wall's idle life, on a clock that winds down when nothing happens. See RoomSettle.
         val idleLife = remember { RoomSettle() }

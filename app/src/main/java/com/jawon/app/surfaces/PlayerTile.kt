@@ -63,8 +63,9 @@ class PlayerTile : TileService() {
         tile.updateTile()
     }
 
-    /** Opens the app from the shade — the one-argument form is gone from Android 14. */
+    /** Opens the app from the shade — the one-argument form is refused from Android 14. */
     @Suppress("DEPRECATION")
+    @android.annotation.SuppressLint("StartActivityAndCollapseDeprecated")
     private fun open() {
         val intent = Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {

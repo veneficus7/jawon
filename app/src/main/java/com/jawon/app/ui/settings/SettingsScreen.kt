@@ -1930,7 +1930,8 @@ fun SettingsScreen(
                 )
             }
 
-            SettingsPage.GUIDE_CD, SettingsPage.GUIDE_POCKET, SettingsPage.GUIDE_ROOMS, SettingsPage.GUIDE_MUSIC -> {
+            SettingsPage.GUIDE_CD, SettingsPage.GUIDE_POCKET, SettingsPage.GUIDE_ROOMS,
+            SettingsPage.GUIDE_OUTSIDE, SettingsPage.GUIDE_MUSIC -> {
                 val topic = guideTopicOf(shown)
                 SettingsPage(title = topic.title, onBack = { page = null }) { GuideTopicContent(topic) }
             }
@@ -2032,7 +2033,7 @@ fun SettingsScreen(
 /** The pages under Settings' list. */
 private enum class SettingsPage {
     UPDATES, ROOM, LIGHT, GRAPHICS, CROSSFADE, LOUDNESS, TIDY, BACKUP, SERVER, PERFORMANCE, PROBLEMS, PRIVACY,
-    GUIDE_CD, GUIDE_POCKET, GUIDE_ROOMS, GUIDE_MUSIC
+    GUIDE_CD, GUIDE_POCKET, GUIDE_ROOMS, GUIDE_OUTSIDE, GUIDE_MUSIC
 }
 
 private fun graphicsLabel(g: com.jawon.app.ui.wallscene.Graphics): String = when (g) {
@@ -2062,12 +2063,14 @@ private fun guidePageFor(topic: GuideTopic): SettingsPage = when (topic) {
     GuideTopic.CD -> SettingsPage.GUIDE_CD
     GuideTopic.POCKET -> SettingsPage.GUIDE_POCKET
     GuideTopic.ROOMS -> SettingsPage.GUIDE_ROOMS
+    GuideTopic.OUTSIDE -> SettingsPage.GUIDE_OUTSIDE
     GuideTopic.MUSIC -> SettingsPage.GUIDE_MUSIC
 }
 
 private fun guideTopicOf(page: SettingsPage): GuideTopic = when (page) {
     SettingsPage.GUIDE_POCKET -> GuideTopic.POCKET
     SettingsPage.GUIDE_ROOMS -> GuideTopic.ROOMS
+    SettingsPage.GUIDE_OUTSIDE -> GuideTopic.OUTSIDE
     SettingsPage.GUIDE_MUSIC -> GuideTopic.MUSIC
     else -> GuideTopic.CD
 }

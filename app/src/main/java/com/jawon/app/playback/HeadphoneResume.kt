@@ -16,6 +16,14 @@ package com.jawon.app.playback
  */
 object HeadphoneResume {
 
+    /**
+     * The switch itself: `AppPreferences`' file, and the key it is saved under. Here, with the
+     * rule, because the receiver that reads it is built by the system with nothing of the app
+     * around it and has to open the file itself.
+     */
+    const val PREFS_FILE = "jawon"
+    const val KEY = "resume_with_headphones"
+
     /** How long after the drop-out a reconnection still means "carry on". */
     const val WINDOW_MS = 10 * 60_000L
 
