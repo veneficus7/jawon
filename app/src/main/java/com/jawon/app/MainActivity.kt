@@ -1,8 +1,12 @@
 package com.jawon.app
 
+import android.app.SearchManager
+import android.content.Intent
 import android.graphics.Color
 import android.os.Build
 import android.os.Bundle
+import android.provider.MediaStore
+import android.widget.Toast
 import androidx.annotation.RequiresApi
 import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
@@ -20,6 +24,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.lifecycleScope
+import com.jawon.app.data.playback.LibrarySearch
+import com.jawon.app.data.playback.PlaybackRepository
+import kotlinx.coroutines.launch
 import com.jawon.app.data.prefs.AppPreferences
 import com.jawon.app.navigation.JawonNavHost
 import com.jawon.app.ui.common.LocalRoomParked
@@ -40,8 +48,21 @@ class MainActivity : ComponentActivity() {
     @Inject
     lateinit var preferences: AppPreferences
 
+    /**
+     * The player, for the ways in that only start music — a shortcut's Resume, a spoken request.
+     * They are done here rather than in a room because no room may be on screen yet, and the
+     * rooms follow the player whoever set it going.
+     */
+    @Inject
+    lateinit var playback: PlaybackRepository
+
+    /** What this launch was for, when it needs a screen. Taken by the stage, once. */
+    private var request by mutableStateOf<LaunchRequest?>(null)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Only a launch that is new: a rebuilt activity must not play its shortcut again.
+        if (savedInstanceState == null) act(intent)
 
         // **Ask the display for 60Hz, not 120.**
         //
@@ -108,7 +129,9 @@ class MainActivity : ComponentActivity() {
                     ) {
                         CompositionLocalProvider(LocalRoomParked provides parked) {
                             JawonNavHost(
-                                format = Format.openable(format, BuildConfig.DEBUG || BuildConfig.SHOW_FORMATS)
+                                format = Format.openable(format, BuildConfig.DEBUG || BuildConfig.SHOW_FORMATS),
+                                request = request,
+                                onRequestTaken = { request = null }
                             )
                         }
                     }
@@ -129,6 +152,53 @@ class MainActivity : ComponentActivity() {
                     }
                 }
             }
+        }
+    }
+
+    /** An intent arriving at a Jawon that is already open: `singleTop` brings it here. */
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        act(intent)
+    }
+
+    /**
+     * Does what a launch was for — see [Launch]. A plain launch does nothing here.
+     *
+     * Coming back from recents re-delivers the intent that first started the task; that is a
+     * return, not a second request, so it is left alone.
+     */
+    private fun act(intent: Intent?) {
+        intent ?: return
+        if (intent.flags and Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY != 0) return
+        when (intent.action) {
+            Launch.ACTION_RESUME -> play("Nothing to resume yet — open a record first.") { playback.resume() }
+            Launch.ACTION_PLAY_SOMETHING -> play("Your shelves are empty — add some music first.") {
+                playback.playSomething()
+            }
+            Launch.ACTION_ADD_MUSIC -> request = LaunchRequest.AddMusic
+            // "Play ⟨something⟩ on Jawon", asked of the phone itself.
+            MediaStore.INTENT_ACTION_MEDIA_PLAY_FROM_SEARCH -> {
+                val words = intent.getStringExtra(SearchManager.QUERY)
+                val hints = LibrarySearch.Hints(
+                    album = intent.getStringExtra(MediaStore.EXTRA_MEDIA_ALBUM),
+                    artist = intent.getStringExtra(MediaStore.EXTRA_MEDIA_ARTIST),
+                    title = intent.getStringExtra(MediaStore.EXTRA_MEDIA_TITLE)
+                )
+                val asked = words?.takeIf { it.isNotBlank() } ?: hints.album ?: hints.title ?: hints.artist
+                play(
+                    if (asked == null) "Your shelves are empty — add some music first."
+                    else "Nothing on your shelves matches “$asked”."
+                ) { playback.playFromSearch(words, hints) }
+            }
+        }
+    }
+
+    /** Starts something, and says so in a line if there was nothing to start. */
+    private fun play(otherwise: String, start: suspend () -> Boolean) {
+        lifecycleScope.launch {
+            val started = runCatching { start() }.getOrDefault(false)
+            if (!started) Toast.makeText(this@MainActivity, otherwise, Toast.LENGTH_LONG).show()
         }
     }
 

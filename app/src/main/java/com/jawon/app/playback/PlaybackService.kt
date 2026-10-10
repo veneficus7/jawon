@@ -11,8 +11,8 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.audio.DefaultAudioSink
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.session.DefaultMediaNotificationProvider
+import androidx.media3.session.MediaLibraryService
 import androidx.media3.session.MediaSession
-import androidx.media3.session.MediaSessionService
 import com.jawon.app.MainActivity
 import com.jawon.app.R
 import com.jawon.app.data.playback.EqualizerController
@@ -27,12 +27,65 @@ import javax.inject.Inject
  * Owns the real ExoPlayer + MediaSession — this is the only place they're
  * constructed. Everything else in the app talks to playback through
  * data/playback/PlaybackRepository.kt's MediaController, never directly.
+ *
+ * **A library service since 0.7.6**, and exported: a car, the assistant and the system's own
+ * media controls all reach a player by binding to it, browse it and ask it to play things by
+ * name. What it says to them is [LibraryCallback]; who may ask is [SessionGate].
  */
 @UnstableApi
 @AndroidEntryPoint
-class PlaybackService : MediaSessionService() {
+class PlaybackService : MediaLibraryService() {
 
-    private var mediaSession: MediaSession? = null
+    private var mediaSession: MediaLibrarySession? = null
+
+    @Inject
+    lateinit var shelfDao: com.jawon.app.data.local.ShelfDao
+
+    @Inject
+    lateinit var albumDao: com.jawon.app.data.local.AlbumDao
+
+    @Inject
+    lateinit var trackDao: com.jawon.app.data.local.TrackDao
+
+    @Inject
+    lateinit var queues: com.jawon.app.data.playback.QueueBuilder
+
+    /**
+     * The app's own view of the player. Held here only to be *woken*: a record started from a car
+     * with the rooms never opened still has to be counted as listened to and have its place
+     * remembered, and the repository does both by listening to this session.
+     */
+    @Inject
+    lateinit var repository: com.jawon.app.data.playback.PlaybackRepository
+
+    /** When the headphones going away paused the record; null if anything else did. */
+    private var droppedOutAt: Long? = null
+
+    /**
+     * Headphones arriving — see [HeadphoneResume] for the one case in which that starts anything.
+     * The platform calls this once on registering, with everything already plugged in, which is
+     * not an arrival.
+     */
+    private val outputs = object : android.media.AudioDeviceCallback() {
+        private var listed = false
+
+        override fun onAudioDevicesAdded(added: Array<out android.media.AudioDeviceInfo>) {
+            if (!listed) {
+                listed = true
+                return
+            }
+            if (added.none { it.isSink && HeadphoneResume.isHeadphones(it.type) }) return
+            val player = mediaSession?.player ?: return
+            val resume = HeadphoneResume.resumes(
+                optedIn = preferences.resumeWithHeadphones.value,
+                hasQueue = player.mediaItemCount > 0,
+                playing = player.playWhenReady,
+                droppedAtMs = droppedOutAt,
+                nowMs = android.os.SystemClock.elapsedRealtime()
+            )
+            if (resume) player.play()
+        }
+    }
 
     /**
      * The equaliser is attached to the player's audio session, and this service is the only
@@ -194,6 +247,18 @@ class PlaybackService : MediaSessionService() {
                 crashLog.record("playback:${error.errorCodeName}", error)
             }
 
+            // Remembered only when it was the output going away that paused the record: that
+            // is the one pause headphones coming back may undo.
+            override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
+                droppedOutAt = if (!playWhenReady &&
+                    reason == Player.PLAY_WHEN_READY_CHANGE_REASON_AUDIO_BECOMING_NOISY
+                ) {
+                    android.os.SystemClock.elapsedRealtime()
+                } else {
+                    null
+                }
+            }
+
             override fun onAudioSessionIdChanged(audioSessionId: Int) {
                 equalizer.attach(audioSessionId)
                 nativeEffects.attach(audioSessionId)
@@ -236,7 +301,15 @@ class PlaybackService : MediaSessionService() {
             }
         )
 
-        mediaSession = MediaSession.Builder(this, player)
+        val library = LibraryCallback(
+            context = this,
+            scope = serviceScope,
+            shelfDao = shelfDao,
+            albumDao = albumDao,
+            trackDao = trackDao,
+            queues = queues
+        )
+        mediaSession = MediaLibrarySession.Builder(this, player, library)
             // Tapping the notification opens the room. Without this the notification is
             // inert — the one thing every other player does that Jawon did not.
             //
@@ -253,9 +326,15 @@ class PlaybackService : MediaSessionService() {
                 )
             )
             .build()
+
+        getSystemService(android.media.AudioManager::class.java)
+            ?.registerAudioDeviceCallback(outputs, null)
+
+        // After the session exists: connecting is how the repository finds it.
+        serviceScope.launch { runCatching { repository.attach() } }
     }
 
-    override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? = mediaSession
+    override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaLibrarySession? = mediaSession
 
     override fun onTaskRemoved(rootIntent: Intent?) {
         val session = mediaSession ?: return
@@ -268,6 +347,8 @@ class PlaybackService : MediaSessionService() {
         // Before the player goes: the effect is attached to that player's session, and one
         // left behind holds an audio effect slot the next player may need.
         serviceScope.cancel()
+        getSystemService(android.media.AudioManager::class.java)
+            ?.unregisterAudioDeviceCallback(outputs)
         crossfadeEngine?.release()
         crossfadeEngine = null
         equalizer.release()

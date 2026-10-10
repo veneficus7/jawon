@@ -110,6 +110,7 @@
         <activity
             android:name=".MainActivity"
             android:exported="true"
+            android:launchMode="singleTop"
             android:screenOrientation="portrait"
             android:theme="@style/Theme.Jawon"
             android:windowSoftInputMode="adjustResize"
@@ -118,6 +119,17 @@
                 <action android:name="android.intent.action.MAIN" />
 
                 <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+
+            <!--
+                "Play <something> on Jawon." The assistant only offers an app that says it can be
+                asked; the words arrive here when the phone itself is asked, and through the
+                player's session when a car is. Both end in `LibrarySearch`.
+            -->
+            <intent-filter>
+                <action android:name="android.media.action.MEDIA_PLAY_FROM_SEARCH" />
+
+                <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
         </activity>
 
@@ -138,14 +150,50 @@
                 android:resource="@xml/file_paths" />
         </provider>
 
+        <!--
+            The player. **Exported since 0.7.6**, because that is how a car, the assistant and the
+            system's own media controls reach a player: they bind to this service, browse it and
+            ask it to play. Exported means any app can try, so who is let in is decided in code -
+            `SessionGate`: Jawon itself, a car, and what the phone already trusts with media.
+        -->
         <service
             android:name=".playback.PlaybackService"
-            android:exported="false"
+            android:exported="true"
             android:foregroundServiceType="mediaPlayback">
             <intent-filter>
-                <action android:name="androidx.media3.session.MediaSessionService" />
+                <action android:name="androidx.media3.session.MediaLibraryService" />
+                <action android:name="android.media.browse.MediaBrowserService" />
             </intent-filter>
         </service>
+
+        <!--
+            A "play" button reaching a Jawon that is closed - a headset's, a car's. Declared so the
+            system can offer to resume the last record from its own media controls, and answers
+            only if the owner has switched on Settings > Resume with headphones. See the class.
+        -->
+        <receiver
+            android:name=".playback.ResumeButtonReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MEDIA_BUTTON" />
+            </intent-filter>
+        </receiver>
+
+        <!--
+            A record's cover, for whoever is drawing what is playing - a car's screen, the lock
+            screen. Read-only, one cover per album id, nothing to list. See the class for why it
+            is exported and why that is all it can do.
+        -->
+        <provider
+            android:name=".playback.CoverProvider"
+            android:authorities="${applicationId}.covers"
+            android:exported="true"
+            tools:ignore="ExportedContentProvider" />
+
+        <!-- Android Auto: Jawon is a media app. -->
+        <meta-data
+            android:name="com.google.android.gms.car.application"
+            android:resource="@xml/automotive_app_desc" />
     </application>
 
 </manifest>

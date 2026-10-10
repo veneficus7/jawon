@@ -32,6 +32,10 @@ interface AlbumDao {
     @Query("SELECT * FROM Album WHERE id = :id")
     suspend fun findById(id: String): Album?
 
+    /** The record that was on last — what "resume" means when nothing is loaded. */
+    @Query("SELECT * FROM Album WHERE lastPlayedAt IS NOT NULL ORDER BY lastPlayedAt DESC LIMIT 1")
+    suspend fun lastPlayed(): Album?
+
     @Query("DELETE FROM Album WHERE id = :id")
     suspend fun deleteById(id: String)
 

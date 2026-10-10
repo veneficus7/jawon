@@ -13,6 +13,16 @@ interface TrackDao {
     fun getForAlbum(albumId: String): Flow<List<Track>>
 
     /** Which album a track belongs to — for finding the record the player already has queued. */
+    @Query("SELECT * FROM Track WHERE id = :id")
+    suspend fun findById(id: String): Track?
+
+    /**
+     * The tracks behind a queue someone else set — a car, the system's resume button. In no
+     * particular order: the caller has the ids in the order that matters.
+     */
+    @Query("SELECT * FROM Track WHERE id IN (:ids)")
+    suspend fun byIds(ids: List<String>): List<Track>
+
     @Query("SELECT albumId FROM Track WHERE id = :id")
     suspend fun albumIdOf(id: String): String?
 

@@ -190,6 +190,23 @@ class WallSceneViewModel @Inject constructor(
     private val _nowPlayingAlbumId = MutableStateFlow<String?>(null)
     val nowPlayingAlbumId: StateFlow<String?> = _nowPlayingAlbumId.asStateFlow()
 
+    init {
+        // **The rooms follow the player, whoever set it going** (0.7.6). A record can be started
+        // from a car, the widget, a shortcut or by asking for it out loud, and the wall has to
+        // show that record proud and carry it on the bar exactly as if a case had been opened.
+        // Keyed on the queue's first track, which changes only when the record does: putting a
+        // record away ([stop]) leaves the queue as it is, so it stays put away.
+        viewModelScope.launch {
+            playbackRepository.playback
+                .map { it.queuedTrackIds.firstOrNull() }
+                .distinctUntilChanged()
+                .collect { first ->
+                    val albumId = first?.let { trackDao.albumIdOf(it) } ?: return@collect
+                    if (_nowPlayingAlbumId.value != albumId) _nowPlayingAlbumId.value = albumId
+                }
+        }
+    }
+
     // ---- Sleep timer -----------------------------------------------------------------
 
     val sleepMode: StateFlow<SleepTimer.Mode> = playbackRepository.sleepMode
@@ -659,22 +676,18 @@ class WallSceneViewModel @Inject constructor(
             _nowPlayingAlbumId.value = albumId
 
             val album = albumDao.findById(albumId)
-            val index = album?.lastTrackIndex?.coerceIn(0, tracks.lastIndex) ?: 0
-            val position = album?.lastPositionMs ?: 0L
-            val finished = index == tracks.lastIndex &&
-                position > 0L &&
-                position >= tracks[index].durationMs - FINISHED_TAIL_MS
-
-            if (finished) {
-                playbackRepository.playAlbum(tracks, albumArtist = album?.artist)
-            } else {
-                playbackRepository.playAlbum(
-                    tracks,
-                    startIndex = index,
-                    startPositionMs = position,
-                    albumArtist = album?.artist
-                )
-            }
+            // One rule for every way a record is put back on — see ResumePoint.
+            val at = com.jawon.app.data.playback.ResumePoint.of(
+                lastTrackIndex = album?.lastTrackIndex ?: 0,
+                lastPositionMs = album?.lastPositionMs ?: 0L,
+                durationsMs = tracks.map { it.durationMs }
+            )
+            playbackRepository.playAlbum(
+                tracks,
+                startIndex = at.index,
+                startPositionMs = at.positionMs,
+                albumArtist = album?.artist
+            )
         }
     }
 
@@ -987,9 +1000,6 @@ class WallSceneViewModel @Inject constructor(
     fun onEqReset() = equalizer.reset()
 
     companion object {
-        /** Within this of the end of the last track, the album counts as finished. */
-        const val FINISHED_TAIL_MS = 5_000L
-
         /** How long a removed record can still be called back — see [removed]. */
         const val UNDO_WINDOW_MS = 7_000L
 

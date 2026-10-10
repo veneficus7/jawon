@@ -2,6 +2,7 @@ package com.jawon.app.ui.settings
 
 import androidx.compose.material.icons.rounded.Vibration
 import androidx.compose.material.icons.rounded.Bolt
+import androidx.compose.material.icons.rounded.Headphones
 import androidx.compose.material.icons.rounded.PlayCircle
 import com.jawon.app.ui.theme.LocalPalette
 import com.jawon.app.ui.theme.InterFamily
@@ -1452,6 +1453,7 @@ fun SettingsScreen(
     val shakeToSwitch by viewModel.shakeToSwitch.collectAsStateWithLifecycle()
     val keepPlayingOnClose by viewModel.keepPlayingOnClose.collectAsStateWithLifecycle()
     val shortIntro by viewModel.shortIntro.collectAsStateWithLifecycle()
+    val resumeWithHeadphones by viewModel.resumeWithHeadphones.collectAsStateWithLifecycle()
     val graphicsName by viewModel.graphics.collectAsStateWithLifecycle()
     val graphics = com.jawon.app.ui.wallscene.Graphics.fromName(graphicsName)
     val preferOnlineLyrics by viewModel.preferOnlineLyrics.collectAsStateWithLifecycle()
@@ -1631,6 +1633,19 @@ fun SettingsScreen(
                                 "the music, as a disc put back in its box would.",
                             checked = keepPlayingOnClose,
                             onCheckedChange = viewModel::onKeepPlayingOnCloseChanged
+                        )
+                        SettingsDivider()
+                        SettingsSwitchRow(
+                            icon = Icons.Rounded.Headphones,
+                            title = "Resume with headphones",
+                            summary = "Headphones and cars may start the music.",
+                            detail = "On: if your headphones drop out and come back within ten " +
+                                "minutes, the record carries on; and pressing play on a headset, " +
+                                "or connecting to a car that asks for music, puts the last record " +
+                                "back on even if Jawon was closed. Off, nothing ever starts " +
+                                "playing unless you start it on the phone.",
+                            checked = resumeWithHeadphones,
+                            onCheckedChange = viewModel::onResumeWithHeadphonesChanged
                         )
                         SettingsDivider()
                         SettingsNavRow(

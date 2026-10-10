@@ -131,8 +131,24 @@ fun JawonNavHost(
      * format room").
      */
     format: Format = Format.CD,
+    /**
+     * What Jawon was opened to do, when it was not simply opened — a shortcut's "Add music", a
+     * file handed over by another app. Taken once: [onRequestTaken] clears it.
+     */
+    request: com.jawon.app.LaunchRequest? = null,
+    onRequestTaken: () -> Unit = {},
     navController: NavHostController = rememberNavController()
 ) {
+    androidx.compose.runtime.LaunchedEffect(request) {
+        when (request) {
+            null -> return@LaunchedEffect
+            // Both end at the same screen: Add music either asks where from, or finds what was
+            // handed over already waiting for it (`OpenedFiles`).
+            com.jawon.app.LaunchRequest.AddMusic, is com.jawon.app.LaunchRequest.Open ->
+                navController.navigate(JawonDestination.AddAlbum.route) { launchSingleTop = true }
+        }
+        onRequestTaken()
+    }
     val entry by navController.currentBackStackEntryAsState()
     // A panel is up whenever the NavHost is anywhere but its empty start.
     val route = entry?.destination?.route

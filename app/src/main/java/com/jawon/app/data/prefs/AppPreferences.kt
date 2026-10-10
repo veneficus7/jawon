@@ -1,6 +1,7 @@
 package com.jawon.app.data.prefs
 
 import android.content.Context
+import com.jawon.app.playback.ResumeButtonReceiver
 import androidx.core.content.edit
 import com.jawon.app.BuildConfig
 import com.jawon.app.Format
@@ -313,6 +314,24 @@ class AppPreferences @Inject constructor(@param:ApplicationContext context: Cont
     fun setKeepPlayingOnClose(enabled: Boolean) {
         prefs.edit { putBoolean(KEY_KEEP_PLAYING_ON_CLOSE, enabled) }
         _keepPlayingOnClose.value = enabled
+    }
+
+    private val _resumeWithHeadphones = MutableStateFlow(prefs.getBoolean(ResumeButtonReceiver.KEY, false))
+
+    /**
+     * Whether headphones may start the music (0.7.6). **Off by default, and everything that could
+     * start a record without a touch on the phone is behind it**: headphones that dropped out
+     * coming back (`HeadphoneResume`), and a button on a headset or a car's "play" reaching a
+     * Jawon that is closed (`ResumeButtonReceiver`). A player that starts by itself is the worst
+     * thing a player can do, so nothing does until this is switched on.
+     *
+     * Read by a broadcast receiver as well, straight from the file — which is why its key lives
+     * with that receiver.
+     */
+    val resumeWithHeadphones: StateFlow<Boolean> = _resumeWithHeadphones.asStateFlow()
+    fun setResumeWithHeadphones(enabled: Boolean) {
+        prefs.edit { putBoolean(ResumeButtonReceiver.KEY, enabled) }
+        _resumeWithHeadphones.value = enabled
     }
 
     private val _shortIntro = MutableStateFlow(prefs.getBoolean(KEY_SHORT_INTRO, false))

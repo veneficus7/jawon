@@ -279,7 +279,8 @@ the policy is rewritten from this list once, before 1.0.
 | planned | Bluetooth connection events (resume when headphones connect) | no |
 | planned | Scrobbling to ListenBrainz / Last.fm | yes — what played, to the user's own account |
 | planned | Credits and awards lookups (MusicBrainz, Wikidata) | yes — title and artist |
-| planned | Android Auto, voice search | no (system services) |
+| 0.7.6 | **The player is reachable from outside the app**: the playback service is exported, so a car (Android Auto), the assistant and the system's media controls can browse shelves → records → tracks, see titles and covers, and start a record. Who is let in is `SessionGate`: Jawon, a car, and what the phone already trusts with media (the system; apps given notification access). A record's cover is readable by its album id through `CoverProvider`. Nothing goes to a server of Jawon's; what a car or the assistant does with a title is theirs | to other apps on the phone, and to a connected car |
+| 0.7.6 | Resume with headphones (opt-in): an audio-output listener while the player is alive — **no Bluetooth permission**, so the planned row above is not needed — and a media-button receiver that answers only with the switch on | no |
 | planned | Play Billing (Play build only) | yes — Google's purchase flow |
 
 ---

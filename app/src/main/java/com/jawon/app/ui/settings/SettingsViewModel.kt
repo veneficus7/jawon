@@ -203,6 +203,11 @@ class SettingsViewModel @Inject constructor(
 
     val keepPlayingOnClose: StateFlow<Boolean> = preferences.keepPlayingOnClose
 
+    /** Whether headphones may start the music — see `AppPreferences.resumeWithHeadphones`. */
+    val resumeWithHeadphones: StateFlow<Boolean> = preferences.resumeWithHeadphones
+
+    fun onResumeWithHeadphonesChanged(enabled: Boolean) = preferences.setResumeWithHeadphones(enabled)
+
     /** The short opening instead of the whole title sequence — see `IntroTimeline`. */
     val shortIntro: StateFlow<Boolean> = preferences.shortIntro
 

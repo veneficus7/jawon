@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    What Jawon is to a car: something that plays media. Android Auto reads this to list the app,
+    then talks to `PlaybackService` - the shelves, the records on them, the tracks on a record.
+-->
+<automotiveApp>
+    <uses name="media" />
+</automotiveApp>

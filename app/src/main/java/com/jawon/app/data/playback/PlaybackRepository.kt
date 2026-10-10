@@ -6,19 +6,17 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackParameters
 import com.jawon.app.playback.SleepTimer
 import com.jawon.app.playback.Varispeed
-import androidx.media3.common.MediaMetadata
 import androidx.media3.common.Player
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
 import com.google.common.util.concurrent.MoreExecutors
 import android.content.pm.ApplicationInfo
+import com.jawon.app.data.local.Album
 import com.jawon.app.data.local.AlbumDao
+import com.jawon.app.data.local.TrackDao
 import com.jawon.app.data.local.PlayEvent
 import com.jawon.app.data.local.PlayEventDao
 import com.jawon.app.data.local.Track
-import com.jawon.app.data.prefs.AppPreferences
-import com.jawon.app.data.remote.SubsonicClient
-import com.jawon.app.data.remote.SubsonicServer
 import com.jawon.app.playback.PlaybackService
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
@@ -32,6 +30,9 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.sync.Mutex
@@ -51,14 +52,10 @@ import kotlin.coroutines.resumeWithException
 class PlaybackRepository @Inject constructor(
     @param:ApplicationContext private val context: Context,
     private val albumDao: AlbumDao,
+    private val trackDao: TrackDao,
     private val playEventDao: PlayEventDao,
-    /**
-     * Only ever asked to *build a URL*, never to fetch anything. Resolving a streamed track to
-     * an address is a string operation — see [SubsonicClient.streamUrl] — so this stays off the
-     * network and the queue is assembled as fast for a remote album as for a local one.
-     */
-    private val subsonic: SubsonicClient,
-    private val preferences: AppPreferences
+    /** Builds the queue — the same one for the rooms, a car, the widget and a voice. */
+    private val queues: QueueBuilder
 ) {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
@@ -86,6 +83,41 @@ class PlaybackRepository @Inject constructor(
      * from the notification — do not all come through a call that knows the album.
      */
     private var queuedTracks: List<Track> = emptyList()
+        set(value) {
+            field = value
+            val albumId = value.firstOrNull()?.albumId
+            if (albumId == null) {
+                _queuedAlbum.value = null
+            } else if (albumId != _queuedAlbum.value?.id) {
+                scope.launch {
+                    val album = albumDao.findById(albumId)
+                    if (field.firstOrNull()?.albumId == albumId) _queuedAlbum.value = album
+                }
+            }
+        }
+
+    private val _queuedAlbum = MutableStateFlow<Album?>(null)
+
+    /**
+     * What is on, for everything that shows it without being a room: the widget, the tile, the
+     * shortcuts. Null when nothing is loaded.
+     *
+     * The rooms have their own view of this through the view model; this is the same fact for the
+     * surfaces that live outside the activity and may be all of the app that is running.
+     */
+    val onNow: StateFlow<OnNow?> by lazy {
+        combine(_queuedAlbum, playback) { album, state ->
+            album?.let {
+                OnNow(
+                    album = it,
+                    trackTitle = queuedTracks.getOrNull(state.currentIndex)?.title,
+                    isPlaying = state.isPlaying
+                )
+            }
+        }.stateIn(scope, SharingStarted.Eagerly, null)
+    }
+
+    data class OnNow(val album: Album, val trackTitle: String?, val isPlaying: Boolean)
 
     /** The stretch of listening in progress: which track, when it began, where it began. */
     private var segment: Segment? = null
@@ -145,6 +177,9 @@ class PlaybackRepository @Inject constructor(
 
     private val playerListener = object : Player.Listener {
         override fun onEvents(player: Player, events: Player.Events) {
+            // A queue this did not build — a car's, the system's resume, a spoken request — is
+            // taken on before anything is counted against it.
+            if (events.contains(Player.EVENT_TIMELINE_CHANGED)) adoptQueue(player)
             // Before the state is replaced, so the *previous* index is still readable.
             noteTransition(player)
             updatePlaybackState(player)
@@ -204,6 +239,36 @@ class PlaybackRepository @Inject constructor(
         // killed without notice — a swipe from recents, a low-memory kill — and a resume
         // point only written on a clean exit is a resume point that is usually missing.
         rememberPosition(index, position)
+    }
+
+    /**
+     * Takes on a queue that was set from outside the rooms (0.7.6).
+     *
+     * Everything this class writes — what was listened to, where a record was left — is looked
+     * up through [queuedTracks], which until now only [playAlbum] ever set. A record started from
+     * a car's screen would otherwise have been counted against whatever the rooms played last, or
+     * against nothing at all.
+     *
+     * The stretch of listening in progress is closed first, against the record it belongs to, at
+     * the last position this saw of it: by the time the player says its queue changed, the old
+     * record is already gone from it.
+     */
+    private fun adoptQueue(player: Player) {
+        val ids = (0 until player.mediaItemCount).map { player.getMediaItemAt(it).mediaId }
+        if (ids == queuedTracks.map { it.id }) return
+        segment?.let { recordSegment(it, _positionMs.value) }
+        segment = null
+        queuedTracks = emptyList()
+        if (ids.isEmpty()) return
+        scope.launch {
+            val found = trackDao.byIds(ids).associateBy { it.id }
+            val tracks = ids.mapNotNull { found[it] }
+            // Only if it is still the queue, and all of it is ours: a queue of something this
+            // library does not hold is not one to keep accounts for.
+            val current = controller ?: return@launch
+            val now = (0 until current.mediaItemCount).map { current.getMediaItemAt(it).mediaId }
+            if (now == ids && tracks.size == ids.size) queuedTracks = tracks
+        }
     }
 
     private fun recordSegment(seg: Segment, endedAtMs: Long) {
@@ -350,8 +415,10 @@ class PlaybackRepository @Inject constructor(
         segment?.let { recordSegment(it, _positionMs.value) }
         segment = null
         queuedTracks = tracks
+        // The record's own cover and title ride along, for the notification and a car's screen.
+        val album = tracks.firstOrNull()?.let { albumDao.findById(it.albumId) }
         controller.setMediaItems(
-            tracks.map { mediaItemFor(it, albumArtist) },
+            tracks.map { queues.item(it, album) },
             startIndex.coerceIn(0, (tracks.size - 1).coerceAtLeast(0)),
             startPositionMs.coerceAtLeast(0L)
         )
@@ -360,26 +427,52 @@ class PlaybackRepository @Inject constructor(
     }
 
     /**
-     * Turns one track into something the player can open, wherever it happens to live.
-     *
-     * The branch is on [Track.remoteId] rather than on the album's `sourceId`, because this is
-     * handed a list of tracks and not the album they came from — and because the track is the
-     * thing that knows whether it has a file behind it.
-     *
-     * A remote track with no server configured falls through to the local path and gets an empty
-     * URI, which the player reports as an error rather than failing silently. That is the right
-     * outcome for a state that should not be reachable: the only way to reach it is to remove
-     * the server while its albums are still on the wall, and a track that cannot say where it
-     * is should say so.
+     * Start a record by its id — for everything that is not a room: the widget, the tile, a
+     * shortcut, "open with". The rooms notice through the queue, as they do for a car's.
      */
-    private fun mediaItemFor(track: Track, albumArtist: String?): MediaItem {
-        val remoteId = track.remoteId
-        val server = preferences.musicServer.value
-        return if (remoteId != null && server.isConfigured) {
-            track.toStreamedMediaItem(albumArtist, subsonic.streamUrl(server, remoteId))
-        } else {
-            track.toMediaItem(albumArtist)
+    suspend fun play(albumId: String, from: QueueBuilder.From = QueueBuilder.From.WhereItWasLeft): Boolean =
+        start(queues.album(albumId, from))
+
+    /**
+     * **Resume**: if a record is loaded, play it from where it is; if nothing is, put the record
+     * that was on last back on, where it stopped. False if there is nothing to resume — a library
+     * nothing has been played from.
+     */
+    suspend fun resume(): Boolean {
+        val controller = ensureController()
+        if (controller.mediaItemCount > 0) {
+            playFromWhereItIs(controller)
+            return true
         }
+        return start(queues.lastPlayed())
+    }
+
+    /** What a spoken or typed request asks for — see `LibrarySearch`. False if nothing answers it. */
+    suspend fun playFromSearch(query: String?, hints: LibrarySearch.Hints = LibrarySearch.Hints()): Boolean =
+        start(queues.forSearch(query, hints))
+
+    /**
+     * A whole record at random, from its first track — never the one already on, when there is
+     * another. The album stays the unit (PLAN §2); this only chooses which.
+     */
+    suspend fun playSomething(): Boolean {
+        val albums = albumDao.listAll()
+        if (albums.isEmpty()) return false
+        val on = queuedTracks.firstOrNull()?.albumId
+        val choice = albums.filter { it.id != on }.ifEmpty { albums }.random()
+        return start(queues.album(choice.id, QueueBuilder.From.TheTop))
+    }
+
+    private suspend fun start(queue: QueueBuilder.Queue?): Boolean {
+        queue ?: return false
+        val controller = ensureController()
+        segment?.let { recordSegment(it, _positionMs.value) }
+        segment = null
+        queuedTracks = queue.tracks
+        controller.setMediaItems(queue.items, queue.startIndex, queue.startPositionMs)
+        controller.prepare()
+        controller.play()
+        return true
     }
 
     suspend fun playPause() {
@@ -470,54 +563,3 @@ class PlaybackRepository @Inject constructor(
         const val POSITION_SAVE_EVERY_TICKS = 10
     }
 }
-
-/**
- * [albumArtist] is the fallback, not the answer: a track carries its own credit on a
- * compilation, and the notification should name whoever is actually singing. Files that
- * carry no per-track tag — and every track imported before that column existed — fall back
- * to the record's artist, which is the best thing known about them.
- */
-private fun Track.toMediaItem(albumArtist: String?): MediaItem =
-    MediaItem.Builder()
-        .setMediaId(id)
-        .setUri(fileUri)
-        .setMediaMetadata(
-            MediaMetadata.Builder()
-                .setTitle(title)
-                .setArtist(artist?.takeIf { it.isNotBlank() } ?: albumArtist)
-                .build()
-        )
-        .build()
-
-/**
- * The same, for a track that lives on a music server.
- *
- * Two things differ from the local case, and both matter.
- *
- * **The URI is built now, not stored.** A Subsonic stream URL carries a one-shot authentication
- * salt (see [SubsonicServer]), so it is only valid as long as it takes to use it. Storing one in
- * the database would mean storing something already stale, and storing the credentials in every
- * row would mean rewriting every row when the password changes.
- *
- * **The cache key is the track, not the URL.** This is the line that makes streaming usable at
- * all. `CacheDataSource` keys on the URI unless told otherwise, and because the salt is fresh
- * every time, the same track would arrive under a different key on every play — a cache that
- * fills up and never once hits, and a scratch gesture that goes to the network for every seek.
- * Pinning the key to Jawon's own stable track id is what makes the second play, and every
- * scrub, come off local disk.
- */
-private fun Track.toStreamedMediaItem(
-    albumArtist: String?,
-    streamUrl: String
-): MediaItem =
-    MediaItem.Builder()
-        .setMediaId(id)
-        .setUri(streamUrl)
-        .setCustomCacheKey(id)
-        .setMediaMetadata(
-            MediaMetadata.Builder()
-                .setTitle(title)
-                .setArtist(artist?.takeIf { it.isNotBlank() } ?: albumArtist)
-                .build()
-        )
-        .build()
