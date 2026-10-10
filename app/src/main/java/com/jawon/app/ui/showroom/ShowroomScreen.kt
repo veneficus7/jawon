@@ -169,7 +169,7 @@ private const val LID_ALPHA = 0.05f
 private const val INLAY_Z_M = 0.0026f
 
 /** The rate the room is drawn at when nothing in it is moving. */
-private const val SHOWROOM_IDLE_FPS = 60f
+private const val SHOWROOM_IDLE_FPS = 30f
 
 /** A full swipe across the screen carries the row this much further than one plinth. */
 private const val SWIPE_PER_PLINTH = 0.85f

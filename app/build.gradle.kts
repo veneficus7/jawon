@@ -89,6 +89,15 @@ android {
         )
     }
 
+    // **SceneView's stock environment stays out of the APK** (0.7.5): 3.7MB of KTX that only its
+    // default `environment` argument loads, and every room passes its own (RoomLighting,
+    // PocketLighting, ShowroomLighting). The rest of the pattern is AGP's own default, which a
+    // custom pattern replaces rather than extends.
+    androidResources {
+        ignoreAssetsPattern = "!neutral_ibl.ktx:!neutral_skybox.ktx:" +
+            "!.svn:!.git:!.ds_store:!*.scc:.*:<dir>_*:!CVS:!thumbs.db:!picasa.ini:!*~"
+    }
+
     // Room writes each schema version here as JSON, and the directory is committed. It is
     // what a hand-written migration gets checked against — the database is built with no
     // destructive fallback, so a migration that disagrees with the entities throws on first
@@ -110,6 +119,19 @@ android {
 
     buildTypes {
         release {
+            // **ARM only** (0.7.5). Filament, gltfio and their utils are ~7MB of native code per
+            // ABI, and the universal APK carried four: x86 and x86_64 exist only for emulators,
+            // and were a third of the 41MB download. arm64-v8a for every current phone,
+            // armeabi-v7a for the old 32-bit ones (the budget Redmis the owner wants Jawon to run
+            // on). A release check on an x86_64 emulator builds with the emulator's back in:
+            //
+            //     ./gradlew assembleRelease -Pjawon.emulatorAbi=true
+            //
+            // Never published that way.
+            ndk {
+                abiFilters += listOf("arm64-v8a", "armeabi-v7a")
+                if (project.findProperty("jawon.emulatorAbi") == "true") abiFilters += "x86_64"
+            }
             // R8 on, with rules in proguard-rules.pro. Most of that file is Filament: its
             // JNI resolves Java fields by NAME, so obfuscating them does not fail to build,
             // it fails to render — read the file before trimming anything from it.

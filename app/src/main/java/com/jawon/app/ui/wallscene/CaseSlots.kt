@@ -606,6 +606,7 @@ fun CaseSlots.bind(
     selectedAlbumId: String?,
     nowPlayingAlbumId: String?
 ) {
+    com.jawon.app.ui.common.PerfProbe.count("bind")
     lastBindings = bindings
     lastSelected = selectedAlbumId
     lastNowPlaying = nowPlayingAlbumId
@@ -982,6 +983,7 @@ fun SceneScope.CaseSlotNodes(
  * [CaseSlotNodes] calls this from a SideEffect declared after the nodes, so it runs after theirs.
  */
 fun CaseSlots.reapply() {
+    com.jawon.app.ui.common.PerfProbe.count("reapply")
     val bindings = lastBindings ?: return
     bind(bindings, lastSelected, lastNowPlaying)
 }

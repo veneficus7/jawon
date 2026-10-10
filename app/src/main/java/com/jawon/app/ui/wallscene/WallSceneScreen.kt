@@ -1279,6 +1279,8 @@ fun WallSceneScreen(
         // went wrong while it was assumed.
         val displayRefreshHz = LocalContext.current.display?.refreshRate ?: RoomCadence.DEFAULT_REFRESH_HZ
         val cadence = remember { RoomCadence() }
+        // The wall's idle life, on a clock that winds down when nothing happens. See RoomSettle.
+        val idleLife = remember { RoomSettle() }
         cadence.refreshHz = displayRefreshHz
 
         // **Tell Filament what a frame is actually worth, because nothing else does.**
@@ -2424,6 +2426,17 @@ fun WallSceneScreen(
                 sequence.lastFrameNanos = frameNanos
                 sequence.clock += dt
 
+                // **The idle life winds down when the wall is left alone** (RoomSettle, 0.7.5).
+                // Anything happening keeps it awake: a hand on the glass, something still moving
+                // from the last frame, a record open, a removal in flight.
+                val nowMs = SystemClock.uptimeMillis()
+                if (cadence.pointerDown || cadence.wasMoving || frame.selected != null ||
+                    discardNodes.isRunning
+                ) {
+                    idleLife.keepAwake(nowMs)
+                }
+                idleLife.step(dt, nowMs)
+
                 // Nothing is known to be moving until something in this pass says so — but the
                 // decision is taken *here*, from the previous frame, not at the tail.
                 //
@@ -2448,7 +2461,8 @@ fun WallSceneScreen(
                         frame.isPlaying &&
                         !scratch.active &&
                         !reduceMotion,
-                    ambientMotion = !reduceMotion
+                    ambientMotion = !reduceMotion && !idleLife.settled,
+                    settled = idleLife.settled
                 )
                 val draw = cadence.shouldDraw(divisor)
 
@@ -2503,14 +2517,14 @@ fun WallSceneScreen(
 
                 // The dust's whole animation, in one uniform write per frame — no CPU work
                 // per mote, which is what DESIGN.md asks for.
-                if (!reduceMotion) dustMaterial.setParameter("time", sequence.clock)
+                if (!reduceMotion) dustMaterial.setParameter("time", idleLife.clock)
 
                 // The fog drifts with the clock and is dragged and stirred by the pan — three
                 // uniform writes, and FogAir's few lines of arithmetic. Held still with reduced
                 // motion: the fog stays, its movement goes.
                 if (fogSteps > 0 && !reduceMotion) {
-                    fogAir.update(sequence.clock, panX.value, panY.value)
-                    fogMaterial.setParameter("time", sequence.clock)
+                    fogAir.update(idleLife.clock, panX.value, panY.value)
+                    fogMaterial.setParameter("time", idleLife.clock)
                     fogMaterial.setParameter("wind", fogAir.windX, fogAir.windY)
                     fogMaterial.setParameter("stir", fogAir.stir)
                 }
@@ -2644,7 +2658,8 @@ fun WallSceneScreen(
                 // writes root.position at all, so skipping it entirely under reduced motion
                 // would leave every case stacked at the wall's origin.
                 run {
-                    val t = if (reduceMotion) 0f else sequence.clock
+                    // The idle clock, not the frame clock: it winds down when the wall is left alone.
+                    val t = if (reduceMotion) 0f else idleLife.clock
                     // How lit the pool of an album being removed still is. Computed once here
                     // because this pass runs before the removal is driven.
                     val discardBeamGlow = discardNodes.clock
@@ -2888,6 +2903,7 @@ fun WallSceneScreen(
                     }
                 }
 
+                com.jawon.app.ui.common.PerfProbe.count(if (draw) "drawn" else "skipped")
                 if (!draw) renderer.skipNextFrames(1)
                 diagnostics.onFrameDrawn(draw)
 

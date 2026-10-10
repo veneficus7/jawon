@@ -104,10 +104,13 @@ class RoomCadence {
      * @param ambientMotion the room's idle life is running — false only under reduced motion,
      *   where DESIGN.md §4 drops the rotation, the parallax and the dust.
      */
-    fun divisorFor(discTurning: Boolean, ambientMotion: Boolean): Int = when {
+    fun divisorFor(discTurning: Boolean, ambientMotion: Boolean, settled: Boolean = false): Int = when {
         pointerDown || moving || wasMoving -> LIVE
         discTurning -> divisorForFps(TURNING_FPS)
         ambientMotion -> divisorForFps(DRIFTING_FPS)
+        // A room that has wound down (RoomSettle): nothing in it changes until something wakes
+        // it, so a heartbeat is all it needs (0.7.5).
+        settled -> divisorForFps(SETTLED_FPS)
         else -> divisorForFps(STILL_FPS)
     }
 
@@ -198,5 +201,12 @@ class RoomCadence {
          * needing an explicit invalidate path.
          */
         const val STILL_FPS = 15f
+
+        /**
+         * A room left alone until its idle life has wound down (RoomSettle, 0.7.5): nothing on
+         * the wall moves until a touch wakes it, which goes straight back to [LIVE], so this
+         * only has to keep the picture current — the clock's hand, a playing record's case.
+         */
+        const val SETTLED_FPS = 4f
     }
 }
