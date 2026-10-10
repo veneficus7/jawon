@@ -4,6 +4,7 @@ import com.jawon.app.ui.theme.JawonType
 import com.jawon.app.ui.common.ScreenBar
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -26,6 +27,16 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -37,6 +48,7 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.jawon.app.data.cd.CdRip
 import com.jawon.app.ui.common.READING_MAX_W
+import com.jawon.app.ui.theme.ArchivoFamily
 import com.jawon.app.ui.theme.CrateBlack
 import com.jawon.app.ui.theme.CrateEdge
 import com.jawon.app.ui.theme.CrateRaised
@@ -97,35 +109,48 @@ fun CdImportScreen(
                 .widthIn(max = READING_MAX_W)
                 .align(Alignment.CenterHorizontally)
                 .navigationBarsPadding()
-                .padding(horizontal = 24.dp, vertical = 20.dp)
+                .padding(horizontal = 24.dp, vertical = 16.dp)
         ) {
+            // The journey, shown whole (0.7.6): what to connect, drawn, and the five steps with
+            // this one marked. A failure stays at the step it happened in — "try again" means
+            // that step again, not the beginning.
+            val stage = state.stage()
+            var reached by remember { mutableStateOf(CdStep.DRIVE) }
+            val step = CdSteps.stepOf(stage, before = reached)
+            LaunchedEffect(step) { reached = step }
+
+            CdDrawing(stage, Modifier.padding(horizontal = 6.dp))
+            Steps(now = step, modifier = Modifier.padding(top = 14.dp, bottom = 18.dp))
+
             when (val current = state) {
                 is CdState.NoDrive -> Note(
-                    title = "NO DRIVE",
-                    body = "Connect a USB CD drive. Most need their own power — a phone will " +
-                        "not supply enough on its own for a bus-powered one, which shows up as " +
-                        "a drive that appears and then stops answering.",
+                    title = "WAITING FOR A DRIVE",
+                    body = "Plug a USB CD drive into your phone — Jawon notices it by itself. " +
+                        "Most drives need their own power, the second lead in the drawing: a " +
+                        "phone cannot run one alone, and a drive that lights up and then stops " +
+                        "answering is one that is short of power.",
                     action = "LOOK AGAIN",
                     onAction = viewModel::look
                 )
 
                 is CdState.NeedsPermission -> Note(
                     title = "DRIVE FOUND",
-                    body = "Android has to ask before an app can talk to it.",
+                    body = "Android asks before any app may use something plugged into the " +
+                        "phone. Allow it, and Jawon reads the disc.",
                     action = "ALLOW THE DRIVE",
                     onAction = { viewModel.requestPermission(current.device) }
                 )
 
                 is CdState.Reading -> Note(
-                    title = "READING",
-                    body = "Waiting for the disc to spin up and reading its table of contents."
+                    title = "READING THE DISC",
+                    body = "Waiting for it to spin up, then reading what is on it. A few seconds."
                 )
 
                 is CdState.NoDisc -> Note(
-                    title = "NO DISC",
-                    body = "The drive is working but there is nothing readable in it. A disc " +
-                        "with only data on it will read as empty here, which is correct — " +
-                        "Jawon rips audio tracks.",
+                    title = "NO DISC TO READ",
+                    body = "The drive is answering but there is no music disc in it. Put one " +
+                        "in, label up, close the tray and look again. A disc of files — photos, " +
+                        "MP3s — reads as empty here: this copies audio CDs.",
                     action = "LOOK AGAIN",
                     onAction = viewModel::look
                 )
@@ -138,8 +163,8 @@ fun CdImportScreen(
                 is CdState.Ripping -> RippingView(current, viewModel::cancelRip)
 
                 is CdState.Done -> Note(
-                    title = "RIPPED",
-                    body = "${current.tracks} tracks written. Opening the importer."
+                    title = "COPIED",
+                    body = "${current.tracks} tracks copied. Putting it on a shelf."
                 )
 
                 is CdState.Failed -> Note(
@@ -149,6 +174,79 @@ fun CdImportScreen(
                     onAction = viewModel::look
                 )
             }
+        }
+    }
+}
+
+/**
+ * The five steps in a row, this one marked: done steps filled, this one ringed and named, the
+ * rest waiting. How far along, and how much is left, at a glance.
+ */
+@Composable
+private fun Steps(now: CdStep, modifier: Modifier = Modifier) {
+    val amber = LampAmber
+    val waiting = CrateEdge
+    val ground = CrateBlack
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .semantics(mergeDescendants = true) {
+                contentDescription =
+                    "Step ${now.ordinal + 1} of ${CdStep.entries.size}: ${now.title}"
+            },
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        Canvas(Modifier.fillMaxWidth().height(22.dp)) {
+            val count = CdStep.entries.size
+            val radius = 9.dp.toPx()
+            val y = size.height / 2f
+            val first = radius + 1.dp.toPx()
+            val gap = (size.width - 2f * first) / (count - 1)
+            // The line between the dots, lit as far as this step.
+            drawLine(waiting, Offset(first, y), Offset(size.width - first, y), 2.dp.toPx())
+            drawLine(amber, Offset(first, y), Offset(first + gap * now.ordinal, y), 2.dp.toPx())
+            for (step in CdStep.entries) {
+                val centre = Offset(first + gap * step.ordinal, y)
+                when (CdSteps.mark(step, now)) {
+                    CdSteps.Mark.DONE -> {
+                        drawCircle(amber, radius, centre)
+                        // A tick, in the ground's colour.
+                        val tick = Path().apply {
+                            moveTo(centre.x - radius * 0.42f, centre.y + radius * 0.02f)
+                            lineTo(centre.x - radius * 0.10f, centre.y + radius * 0.34f)
+                            lineTo(centre.x + radius * 0.44f, centre.y - radius * 0.30f)
+                        }
+                        drawPath(tick, ground, style = Stroke(2.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round))
+                    }
+                    CdSteps.Mark.NOW -> {
+                        drawCircle(ground, radius, centre)
+                        drawCircle(amber, radius - 1.dp.toPx(), centre, style = Stroke(2.dp.toPx()))
+                        drawCircle(amber, radius * 0.38f, centre)
+                    }
+                    CdSteps.Mark.TO_DO -> {
+                        drawCircle(ground, radius, centre)
+                        drawCircle(waiting, radius - 1.dp.toPx(), centre, style = Stroke(2.dp.toPx()))
+                    }
+                }
+            }
+        }
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text(
+                text = "STEP ${now.ordinal + 1} OF ${CdStep.entries.size}",
+                fontFamily = JetBrainsMonoFamily,
+                fontSize = JawonType.Fine,
+                letterSpacing = 1.6.sp,
+                color = LabelDim
+            )
+            Text(
+                text = now.title,
+                fontFamily = ArchivoFamily,
+                fontWeight = FontWeight.ExtraBold,
+                fontSize = JawonType.Subhead,
+                color = LabelCream,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
         }
     }
 }

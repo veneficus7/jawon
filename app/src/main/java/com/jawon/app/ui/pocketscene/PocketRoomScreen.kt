@@ -239,6 +239,7 @@ fun PocketRoomScreen(
     val eqPresets by viewModel.eqPresets.collectAsStateWithLifecycle()
     val replayGainMode by viewModel.replayGainMode.collectAsStateWithLifecycle()
     val backlightMs by viewModel.pocketBacklightMs.collectAsStateWithLifecycle()
+    val sleepMode by viewModel.sleepMode.collectAsStateWithLifecycle()
     val clickerOn by viewModel.pocketClicker.collectAsStateWithLifecycle()
     val finishName by viewModel.pocketFinish.collectAsStateWithLifecycle()
     val motionOn by viewModel.pocketMotion.collectAsStateWithLifecycle()
@@ -284,6 +285,7 @@ fun PocketRoomScreen(
         },
         backlightMs = backlightMs,
         clicker = clickerOn,
+        sleep = PocketSettings.sleepIndex(sleepMode),
         albums = library.albums.size,
         songs = songCount,
         shelves = library.shelves.size,

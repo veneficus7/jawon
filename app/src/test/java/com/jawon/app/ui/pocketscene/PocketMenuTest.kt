@@ -74,6 +74,33 @@ class PocketMenuTest {
     }
 
     @Test
+    fun `the sleep timer is in Extras, and the end of the record is its first real choice`() {
+        val row = PocketMenus.rows(MenuKey.Extras, library, emptyMap(), false).last()
+        assertEquals(RowAction.Open(MenuKey.Choice(PocketSetting.SLEEP)), row.action)
+        // Off says nothing at the right of its row; a timer that is set says which.
+        assertEquals(null, row.value)
+        val set = PocketMenus.rows(MenuKey.Extras, library, emptyMap(), false, PocketSettings(sleep = 1)).last()
+        assertEquals("End of Record", set.value)
+
+        val choices = PocketMenus.rows(MenuKey.Choice(PocketSetting.SLEEP), library, emptyMap(), false, PocketSettings(sleep = 1))
+        assertEquals(listOf("Off", "End of Record"), choices.take(2).map { it.label })
+        assertEquals(listOf(false, true), choices.take(2).map { it.checked })
+        assertEquals(RowAction.Choose(PocketSetting.SLEEP, 1), choices[1].action)
+    }
+
+    @Test
+    fun `every sleep choice sets a timer that reads back as that choice`() {
+        for (option in PocketSettings.SLEEP_OPTIONS.indices) {
+            assertEquals(option, PocketSettings.sleepIndex(PocketSettings.sleepMode(option)))
+        }
+        assertEquals(com.jawon.app.playback.SleepTimer.Mode.Off, PocketSettings.sleepMode(0))
+        assertEquals(com.jawon.app.playback.SleepTimer.Mode.EndOfAlbum, PocketSettings.sleepMode(1))
+        assertEquals(com.jawon.app.playback.SleepTimer.Mode.After(15), PocketSettings.sleepMode(2))
+        // A choice that is not there is no timer, not a crash.
+        assertEquals(com.jawon.app.playback.SleepTimer.Mode.Off, PocketSettings.sleepMode(99))
+    }
+
+    @Test
     fun `Shuffle Albums is offered once there is an album to shuffle, and Extras holds Brick`() {
         assertTrue("Shuffle Albums" in labels(MenuKey.Main))
         val empty = PocketMenus.rows(MenuKey.Main, PocketLibrary(), emptyMap(), false).map { it.label }
@@ -82,8 +109,8 @@ class PocketMenuTest {
         val shuffle = PocketMenus.rows(MenuKey.Main, library, emptyMap(), false).first { it.label == "Shuffle Albums" }
         assertEquals(RowAction.ShuffleAlbums, shuffle.action)
         assertFalse(shuffle.leadsOn)
-        assertEquals(listOf("Brick"), labels(MenuKey.Extras))
-        assertEquals(RowAction.Open(MenuKey.Brick), PocketMenus.rows(MenuKey.Extras, library, emptyMap(), false).single().action)
+        assertEquals(listOf("Brick", "Sleep Timer"), labels(MenuKey.Extras))
+        assertEquals(RowAction.Open(MenuKey.Brick), PocketMenus.rows(MenuKey.Extras, library, emptyMap(), false).first().action)
         assertTrue(labels(MenuKey.Brick).isEmpty())
     }
 

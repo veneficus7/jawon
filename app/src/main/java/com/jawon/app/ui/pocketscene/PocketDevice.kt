@@ -931,6 +931,7 @@ internal class PocketDevice(
             PocketSetting.FINISH -> PocketFinish.entries.getOrNull(option)
                 ?.let { viewModel.onPocketFinishChanged(it.name) }
             PocketSetting.MOTION -> viewModel.onPocketMotionChanged(option == 0)
+            PocketSetting.SLEEP -> viewModel.onSleepModeChange(PocketSettings.sleepMode(option))
             PocketSetting.REVERB -> {
                 if (option > 0) viewModel.engage(com.jawon.app.playback.RackChannel.SPACE)
                 viewModel.onReverbChange(option)

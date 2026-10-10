@@ -52,7 +52,13 @@ enum class PocketSetting(val title: String) {
     REVERB("Reverb"),
     FINISH("Colour"),
     /** Turning the phone sideways for Cover Flow, and leaning it to browse the covers. */
-    MOTION("Tilt & Turn")
+    MOTION("Tilt & Turn"),
+
+    /**
+     * The classic kept its sleep timer under Extras, and so does this (0.7.6). The same timer the
+     * CD room's deck sets with its moon — one timer, whichever room set it.
+     */
+    SLEEP("Sleep Timer")
 }
 
 /** What choosing a row does. */
@@ -117,9 +123,36 @@ data class PocketSettings(
     /** Which of `PocketFinish`'s colours the device is — which one you bought. */
     val finish: Int = 0,
     /** Tilt & Turn: sideways Cover Flow, and leaning through the covers. */
-    val motion: Boolean = true
+    val motion: Boolean = true,
+    /** Index into [SLEEP_OPTIONS]. */
+    val sleep: Int = 0
 ) {
     companion object {
+        /**
+         * The sleep timer's choices: off, **the end of this record** — the one a record player has
+         * that a clock does not, and the one worth having first — and then the minutes
+         * `SleepTimer` offers everywhere.
+         */
+        val SLEEP_OPTIONS: List<String> =
+            listOf("Off", "End of Record") + com.jawon.app.playback.SleepTimer.OFFERED_MINUTES.map { "$it Minutes" }
+
+        /** Which of [SLEEP_OPTIONS] a timer is. */
+        fun sleepIndex(mode: com.jawon.app.playback.SleepTimer.Mode): Int = when (mode) {
+            com.jawon.app.playback.SleepTimer.Mode.Off -> 0
+            com.jawon.app.playback.SleepTimer.Mode.EndOfAlbum -> 1
+            is com.jawon.app.playback.SleepTimer.Mode.After ->
+                2 + com.jawon.app.playback.SleepTimer.OFFERED_MINUTES.indexOf(mode.minutes).coerceAtLeast(0)
+        }
+
+        /** The timer a choice sets. */
+        fun sleepMode(option: Int): com.jawon.app.playback.SleepTimer.Mode = when (option) {
+            0 -> com.jawon.app.playback.SleepTimer.Mode.Off
+            1 -> com.jawon.app.playback.SleepTimer.Mode.EndOfAlbum
+            else -> com.jawon.app.playback.SleepTimer.OFFERED_MINUTES.getOrNull(option - 2)
+                ?.let { com.jawon.app.playback.SleepTimer.Mode.After(it) }
+                ?: com.jawon.app.playback.SleepTimer.Mode.Off
+        }
+
         /** Sound Check's choices — Jawon's ReplayGain modes, in `ReplayGain.Mode` order of meaning. */
         val SOUND_CHECK_OPTIONS = listOf("Off", "Album", "Track")
 
@@ -266,7 +299,14 @@ object PocketMenus {
         }
         // A slider has no rows: the wheel moves its value, and MENU or the centre goes back.
         is MenuKey.Adjust -> emptyList()
-        MenuKey.Extras -> listOf(MenuRow("Brick", RowAction.Open(MenuKey.Brick)))
+        MenuKey.Extras -> listOf(
+            MenuRow("Brick", RowAction.Open(MenuKey.Brick)),
+            MenuRow(
+                "Sleep Timer",
+                RowAction.Open(MenuKey.Choice(PocketSetting.SLEEP)),
+                value = PocketSettings.SLEEP_OPTIONS.getOrNull(settings.sleep).takeIf { settings.sleep != 0 }
+            )
+        )
         // The game is the whole screen; the wheel is its paddle.
         MenuKey.Brick -> emptyList()
         is MenuKey.Search -> PocketSearch.results(key.query, library)
@@ -306,6 +346,7 @@ object PocketMenus {
             PocketSetting.REVERB -> settings.reverbOptions
             PocketSetting.FINISH -> PocketFinish.entries.map { it.title }
             PocketSetting.MOTION -> listOf("On", "Off")
+            PocketSetting.SLEEP -> PocketSettings.SLEEP_OPTIONS
         }
         val current = when (setting) {
             PocketSetting.EQ -> settings.eqChosen
@@ -315,6 +356,7 @@ object PocketMenus {
             PocketSetting.REVERB -> settings.reverb
             PocketSetting.FINISH -> settings.finish
             PocketSetting.MOTION -> if (settings.motion) 0 else 1
+            PocketSetting.SLEEP -> settings.sleep
         }
         return labels.mapIndexed { i, label ->
             MenuRow(label, RowAction.Choose(setting, i), checked = i == current)

@@ -35,6 +35,18 @@ import javax.inject.Inject
  * "nothing plugged in" unless the screen can tell them apart — and they need three different
  * sentences.
  */
+/** Where on the journey a state is — see [CdSteps]. */
+internal fun CdState.stage(): CdSteps.Stage = when (this) {
+    is CdState.NoDrive -> CdSteps.Stage.NO_DRIVE
+    is CdState.NeedsPermission -> CdSteps.Stage.NEEDS_PERMISSION
+    is CdState.Reading -> CdSteps.Stage.READING
+    is CdState.NoDisc -> CdSteps.Stage.NO_DISC
+    is CdState.Ready -> CdSteps.Stage.READY
+    is CdState.Ripping -> CdSteps.Stage.RIPPING
+    is CdState.Done -> CdSteps.Stage.DONE
+    is CdState.Failed -> CdSteps.Stage.FAILED
+}
+
 sealed interface CdState {
     /** Nothing plugged in, or nothing that answers as a drive. */
     data object NoDrive : CdState
@@ -106,11 +118,58 @@ class CdImportViewModel @Inject constructor(
         }
     }
 
+    /**
+     * **The drive, the moment it is plugged in — and the moment it is pulled out** (0.7.6).
+     *
+     * The screen used to learn about a drive only when LOOK AGAIN was pressed, which made the
+     * first thing anyone did with it — plug the drive in while looking at "NO DRIVE" — appear to
+     * do nothing. Android announces both; listening is all it takes. A drive pulled out mid-copy
+     * says so at once, instead of the copy failing a read later with something less plain.
+     */
+    private val plugReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            when (intent?.action) {
+                UsbManager.ACTION_USB_DEVICE_ATTACHED -> {
+                    // Only when it is a drive being waited for: one plugged in mid-copy is not
+                    // a reason to start again.
+                    val waiting = _state.value
+                    if (waiting is CdState.NoDrive || waiting is CdState.Failed) look()
+                }
+                UsbManager.ACTION_USB_DEVICE_DETACHED -> {
+                    if (CdDrive.findDrive(usb) != null) return
+                    val was = _state.value
+                    ripJob?.cancel()
+                    ripJob = null
+                    runCatching { drive?.close() }
+                    drive = null
+                    _state.value = if (was is CdState.Ripping) {
+                        CdState.Failed(
+                            "The drive was unplugged. What was already copied is still in the " +
+                                "folder you chose."
+                        )
+                    } else {
+                        CdState.NoDrive
+                    }
+                }
+            }
+        }
+    }
+
     init {
         ContextCompat.registerReceiver(
             context,
             permissionReceiver,
             IntentFilter(ACTION_PERMISSION),
+            ContextCompat.RECEIVER_NOT_EXPORTED
+        )
+        ContextCompat.registerReceiver(
+            context,
+            plugReceiver,
+            IntentFilter().apply {
+                addAction(UsbManager.ACTION_USB_DEVICE_ATTACHED)
+                addAction(UsbManager.ACTION_USB_DEVICE_DETACHED)
+            },
+            // The system's own announcements; nothing else may send them.
             ContextCompat.RECEIVER_NOT_EXPORTED
         )
         look()
@@ -216,6 +275,7 @@ class CdImportViewModel @Inject constructor(
     override fun onCleared() {
         ripJob?.cancel()
         runCatching { context.unregisterReceiver(permissionReceiver) }
+        runCatching { context.unregisterReceiver(plugReceiver) }
         // Releasing the interface matters more than usual: a claimed USB device stays claimed
         // until the process lets go, so a drive left open here cannot be used by anything else —
         // including this app on its next visit to the screen.
