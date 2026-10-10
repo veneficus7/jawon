@@ -3,7 +3,12 @@ package com.jawon.app.ui.theme
 import androidx.compose.foundation.background
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.drawWithCache
+import androidx.compose.ui.graphics.ImageShader
+import androidx.compose.ui.graphics.ShaderBrush
+import androidx.compose.ui.graphics.TileMode
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -308,56 +313,50 @@ fun Modifier.deckPlate(finish: DeckFinish, sheetFraction: Float): Modifier =
                 .coerceIn(0.06f, 0.30f) to finish.plate.copy(alpha = finish.plateOpacity * 0.9f),
             1f to finish.plateLow.copy(alpha = finish.plateOpacity)
         )
-    ).drawBehind {
-        when (finish.texture) {
-            // A machined front: fine vertical hairlines. Cheap, and most of what says "metal".
-            SurfaceTexture.GRAIN -> {
-                var x = 0f
-                while (x < size.width) {
-                    drawLine(
-                        color = Color.White.copy(alpha = GRAIN_ALPHA * finish.plateOpacity),
-                        start = Offset(x, 0f),
-                        end = Offset(x, size.height),
-                        strokeWidth = 1f
-                    )
-                    x += GRAIN_SPACING_PX
-                }
+    ).drawWithCache {
+        // **One tile, repeated, in one call** (0.7.5). The grain was drawn as a line every 3px
+        // (~480 lines across the panel) and the workbench's grid as a circle every 20px (~6,500),
+        // all of them again on every repaint of the deck — the clock's twice a second, the
+        // scrubbing, the scrolling title's every frame. The same pattern is one small bitmap
+        // repeated by a shader, built once per size here and drawn as a single rectangle.
+        val texture: Brush? = when (finish.texture) {
+            SurfaceTexture.GRAIN -> repeatingTile(GRAIN_SPACING_PX.toInt(), 1) { canvas, paint ->
+                paint.color = Color.White.copy(alpha = GRAIN_ALPHA * finish.plateOpacity).toArgb()
+                canvas.drawRect(0f, 0f, 1f, 1f, paint)
             }
-
-            // A printed dot grid. The workbench mode refuses to gleam, so its surface has to
-            // say something by being *printed* instead of by catching light.
-            SurfaceTexture.DOTS -> {
-                var y = DOT_SPACING_PX
-                while (y < size.height) {
-                    var x = DOT_SPACING_PX
-                    while (x < size.width) {
-                        drawCircle(
-                            color = Color.White.copy(alpha = DOT_ALPHA),
-                            radius = 1.2f,
-                            center = Offset(x, y)
-                        )
-                        x += DOT_SPACING_PX
-                    }
-                    y += DOT_SPACING_PX
-                }
+            SurfaceTexture.DOTS -> repeatingTile(DOT_SPACING_PX.toInt(), DOT_SPACING_PX.toInt()) { canvas, paint ->
+                paint.color = Color.White.copy(alpha = DOT_ALPHA).toArgb()
+                canvas.drawCircle(DOT_SPACING_PX / 2f, DOT_SPACING_PX / 2f, 1.2f, paint)
             }
-
-            SurfaceTexture.NONE -> Unit
+            SurfaceTexture.NONE -> null
         }
-
-        // A raking band of light travelling down the plate. Only metal does this, so on every
-        // other mode the sheen is zero and this costs one comparison.
-        if (finish.sheen > 0f) {
-            drawRect(
-                brush = Brush.verticalGradient(
-                    0f to Color.White.copy(alpha = 0f),
-                    SHEEN_CENTRE to Color.White.copy(alpha = finish.sheen * SHEEN_PEAK),
-                    SHEEN_CENTRE + SHEEN_WIDTH to Color.White.copy(alpha = 0f),
-                    1f to Color.White.copy(alpha = 0f)
-                )
+        // A raking band of light travelling down the plate. Only metal does this.
+        val sheen: Brush? = if (finish.sheen > 0f) {
+            Brush.verticalGradient(
+                0f to Color.White.copy(alpha = 0f),
+                SHEEN_CENTRE to Color.White.copy(alpha = finish.sheen * SHEEN_PEAK),
+                SHEEN_CENTRE + SHEEN_WIDTH to Color.White.copy(alpha = 0f),
+                1f to Color.White.copy(alpha = 0f)
             )
+        } else {
+            null
+        }
+        onDrawBehind {
+            texture?.let { drawRect(it) }
+            sheen?.let { drawRect(it) }
         }
     }
+
+/** A [width]×[height] tile drawn once by [paint], as a brush that repeats it in both directions. */
+private fun repeatingTile(
+    width: Int,
+    height: Int,
+    paint: (android.graphics.Canvas, android.graphics.Paint) -> Unit
+): Brush {
+    val bitmap = android.graphics.Bitmap.createBitmap(width, height, android.graphics.Bitmap.Config.ARGB_8888)
+    paint(android.graphics.Canvas(bitmap), android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG))
+    return ShaderBrush(ImageShader(bitmap.asImageBitmap(), TileMode.Repeated, TileMode.Repeated))
+}
 
 /** How far down the screen the plate finishes fading in. Tuned, not derived. */
 private const val SCRIM_FADE_FRACTION = 0.22f

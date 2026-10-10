@@ -1603,7 +1603,8 @@ private fun DisplayText(
         // A pause at each end, then a slow run — read, not chased. Moves only when the text is
         // wider than its slot, and in the draw phase, so it recomposes nothing.
         modifier = if (scrolls) {
-            Modifier.basicMarquee(
+            // A layer of its own, so the run repaints the title and not the deck around it.
+            Modifier.graphicsLayer().basicMarquee(
                 iterations = Int.MAX_VALUE,
                 initialDelayMillis = 1_800,
                 repeatDelayMillis = 2_400,
