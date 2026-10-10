@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A record from your shelves: a disc - its rim, a groove, the hole. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="48dp"
+    android:height="48dp"
+    android:viewportWidth="48"
+    android:viewportHeight="48">
+    <path android:fillColor="#1E1713" android:pathData="M24,24 m-22,0 a22,22 0 1,0 44,0 a22,22 0 1,0 -44,0" />
+    <path
+        android:pathData="M24,24 m-11.5,0 a11.5,11.5 0 1,0 23,0 a11.5,11.5 0 1,0 -23,0"
+        android:strokeWidth="2.4"
+        android:strokeColor="#FFB43C" />
+    <path
+        android:pathData="M24,24 m-6.6,0 a6.6,6.6 0 1,0 13.2,0 a6.6,6.6 0 1,0 -13.2,0"
+        android:strokeAlpha="0.45"
+        android:strokeWidth="1.2"
+        android:strokeColor="#FFB43C" />
+    <path
+        android:fillColor="#FFB43C"
+        android:pathData="M24,24 m-2.2,0 a2.2,2.2 0 1,0 4.4,0 a2.2,2.2 0 1,0 -4.4,0" />
+</vector>

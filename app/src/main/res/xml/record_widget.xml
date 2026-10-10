@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    The home-screen widget: the record that is on. A row wide by default, and it can be dragged
+    narrower into a jewel case on its own, or taller.
+
+    No update period - `updatePeriodMillis` is 0. The app pushes the widget whenever what is on
+    changes (`Surfaces`), which is the only time it could look different; a timer would wake the
+    app for nothing.
+-->
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:description="@string/widget_description"
+    android:initialLayout="@layout/widget_wide"
+    android:minWidth="250dp"
+    android:minHeight="56dp"
+    android:minResizeWidth="56dp"
+    android:minResizeHeight="56dp"
+    android:previewLayout="@layout/widget_wide"
+    android:resizeMode="horizontal|vertical"
+    android:targetCellWidth="4"
+    android:targetCellHeight="1"
+    android:updatePeriodMillis="0"
+    android:widgetCategory="home_screen"
+    tools:targetApi="s" />

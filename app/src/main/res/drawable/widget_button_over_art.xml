@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The square widget's button sits on the cover, so it carries its own dark disc to be read on. -->
+<ripple xmlns:android="http://schemas.android.com/apk/res/android" android:color="#33F3E9D8">
+    <item>
+        <shape android:shape="oval">
+            <solid android:color="#B3100C0A" />
+        </shape>
+    </item>
+</ripple>

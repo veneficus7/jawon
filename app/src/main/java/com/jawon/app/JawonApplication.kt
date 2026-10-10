@@ -35,6 +35,10 @@ class JawonApplication : Application() {
     @Inject
     lateinit var spotifyCleanup: SpotifyCleanup
 
+    /** The widget, the tile and the shortcuts, kept in step with the player. See its KDoc. */
+    @Inject
+    lateinit var surfaces: com.jawon.app.surfaces.Surfaces
+
     /** Lives as long as the process, which is the honest lifetime for a one-shot at launch. */
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
@@ -53,5 +57,9 @@ class JawonApplication : Application() {
         // Every launch rather than once, unlike the backfill: a backup restored later can bring
         // Spotify albums back. Finds nothing, cheaply, on a phone that never had them.
         scope.launch { spotifyCleanup.run() }
+
+        // Here rather than in a room: the process is not always started by one. A tap on the
+        // widget or the tile starts it too, and each has to leave the others showing the truth.
+        surfaces.start()
     }
 }

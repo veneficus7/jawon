@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    The widget's ground: a rounded card in the room's dark, which code tints with the record's
+    own colour (a colour filter on the ImageView that shows it - a RemoteViews cannot set a
+    shape's colour directly, and the filter replaces whatever colour is here). It is the dark
+    and not white because the launcher's widget picker draws this layout as it stands, before
+    any code has run: on white, the cream lettering was invisible there. The corner is for
+    Android 11 and earlier; from 12 the launcher clips the widget to its own radius.
+-->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <solid android:color="#1E1713" />
+    <corners android:radius="22dp" />
+</shape>

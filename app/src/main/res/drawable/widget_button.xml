@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The widget's transport buttons: a round pressed state, and nothing at rest. -->
+<ripple xmlns:android="http://schemas.android.com/apk/res/android" android:color="#33F3E9D8">
+    <item android:id="@android:id/mask">
+        <shape android:shape="oval">
+            <solid android:color="#FFFFFF" />
+        </shape>
+    </item>
+</ripple>

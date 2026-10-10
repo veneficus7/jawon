@@ -1,3 +1,13 @@
 <resources>
     <string name="app_name">Jawon</string>
+
+    <!-- The home-screen widget (surfaces/RecordWidget) - read by the launcher, not by the app. -->
+    <string name="widget_description">The record that is on: its case, the song, and play.</string>
+    <string name="widget_empty_line">Open to play a record</string>
+    <string name="widget_play">Play</string>
+    <string name="widget_pause">Pause</string>
+    <string name="widget_next">Next track</string>
+
+    <!-- The Quick Settings tile (surfaces/PlayerTile). -->
+    <string name="tile_label">Jawon</string>
 </resources>

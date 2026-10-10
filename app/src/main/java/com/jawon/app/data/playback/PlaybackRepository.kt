@@ -439,12 +439,33 @@ class PlaybackRepository @Inject constructor(
      * nothing has been played from.
      */
     suspend fun resume(): Boolean {
-        val controller = ensureController()
-        if (controller.mediaItemCount > 0) {
-            playFromWhereItIs(controller)
-            return true
+        val loaded = onPlayerThread { controller ->
+            (controller.mediaItemCount > 0).also { if (it) playFromWhereItIs(controller) }
         }
-        return start(queues.lastPlayed())
+        return loaded || start(queues.lastPlayed())
+    }
+
+    /**
+     * Runs [block] with the controller, on the thread the controller lives on.
+     *
+     * **A `MediaController` may only be touched from the thread it was built on — the main one —
+     * and until 0.7.6 nothing here had to say so**, because every caller was a view model. The
+     * widget's buttons are not: they arrive in a broadcast and are handled off the main thread, so
+     * the first press of play on the home screen threw inside the controller, was caught, and did
+     * nothing at all. Everything a caller outside a room can reach goes through here.
+     */
+    private suspend fun <T> onPlayerThread(block: (MediaController) -> T): T =
+        withContext(Dispatchers.Main.immediate) { block(ensureController()) }
+
+    /**
+     * Play if paused, pause if playing — the one button a widget or a tile has. With nothing
+     * loaded it is [resume]. False only when there was nothing to play at all.
+     */
+    suspend fun toggle(): Boolean {
+        val paused = onPlayerThread { controller ->
+            controller.isPlaying.also { if (it) controller.pause() }
+        }
+        return paused || resume()
     }
 
     /** What a spoken or typed request asks for — see `LibrarySearch`. False if nothing answers it. */
@@ -465,13 +486,14 @@ class PlaybackRepository @Inject constructor(
 
     private suspend fun start(queue: QueueBuilder.Queue?): Boolean {
         queue ?: return false
-        val controller = ensureController()
-        segment?.let { recordSegment(it, _positionMs.value) }
-        segment = null
-        queuedTracks = queue.tracks
-        controller.setMediaItems(queue.items, queue.startIndex, queue.startPositionMs)
-        controller.prepare()
-        controller.play()
+        onPlayerThread { controller ->
+            segment?.let { recordSegment(it, _positionMs.value) }
+            segment = null
+            queuedTracks = queue.tracks
+            controller.setMediaItems(queue.items, queue.startIndex, queue.startPositionMs)
+            controller.prepare()
+            controller.play()
+        }
         return true
     }
 
@@ -526,9 +548,9 @@ class PlaybackRepository @Inject constructor(
         if (playing) playFromWhereItIs(controller) else controller.pause()
     }
 
-    suspend fun seekToNext() = ensureController().seekToNextMediaItem()
+    suspend fun seekToNext() = onPlayerThread { it.seekToNextMediaItem() }
 
-    suspend fun seekToPrevious() = ensureController().seekToPreviousMediaItem()
+    suspend fun seekToPrevious() = onPlayerThread { it.seekToPreviousMediaItem() }
 
     suspend fun seekTo(positionMs: Long) = ensureController().seekTo(positionMs)
 
