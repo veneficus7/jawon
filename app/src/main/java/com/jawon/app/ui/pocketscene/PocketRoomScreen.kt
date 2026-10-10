@@ -195,6 +195,7 @@ fun PocketRoomScreen(
     val cadence = remember(context) {
         RoomCadence().apply {
             refreshHz = context.display?.refreshRate ?: RoomCadence.DEFAULT_REFRESH_HZ
+            maxFps = tier.maxFps
         }
     }
     val publishedDivisor = remember { intArrayOf(0) }
@@ -724,7 +725,7 @@ fun PocketRoomScreen(
                 // 120Hz panel (traps 28-30: the CD room's problem is heat, not jank). A finger
                 // down or the wheel still rocking is back to every vsync on the next frame.
                 val live = device.interacting
-                val divisor = if (live) RoomCadence.LIVE else cadence.divisorForFps(POCKET_IDLE_FPS)
+                val divisor = if (live) cadence.live else cadence.divisorForFps(POCKET_IDLE_FPS)
                 if (divisor != publishedDivisor[0]) {
                     publishedDivisor[0] = divisor
                     renderer.frameRateOptions = Renderer.FrameRateOptions().apply {

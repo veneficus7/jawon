@@ -279,6 +279,7 @@ fun ShowroomScreen(
     val cadence = remember(context) {
         RoomCadence().apply {
             refreshHz = context.display?.refreshRate ?: RoomCadence.DEFAULT_REFRESH_HZ
+            maxFps = tier.maxFps
         }
     }
     val publishedDivisor = remember { intArrayOf(0) }
@@ -367,7 +368,7 @@ fun ShowroomScreen(
                 director.onFrame(dt)
                 // Drawn at 60 while it stands still, every vsync while anything moves — the pocket
                 // room's rule, and for the same reason: the clocks advance every vsync regardless.
-                val divisor = if (director.isMoving) RoomCadence.LIVE else cadence.divisorForFps(SHOWROOM_IDLE_FPS)
+                val divisor = if (director.isMoving) cadence.live else cadence.divisorForFps(SHOWROOM_IDLE_FPS)
                 if (divisor != publishedDivisor[0]) {
                     publishedDivisor[0] = divisor
                     renderer.frameRateOptions = Renderer.FrameRateOptions().apply {

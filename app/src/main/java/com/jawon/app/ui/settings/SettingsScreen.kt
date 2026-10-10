@@ -1450,6 +1450,8 @@ fun SettingsScreen(
     val fetchLyrics by viewModel.fetchLyrics.collectAsStateWithLifecycle()
     val shakeToSwitch by viewModel.shakeToSwitch.collectAsStateWithLifecycle()
     val keepPlayingOnClose by viewModel.keepPlayingOnClose.collectAsStateWithLifecycle()
+    val graphicsName by viewModel.graphics.collectAsStateWithLifecycle()
+    val graphics = com.jawon.app.ui.wallscene.Graphics.fromName(graphicsName)
     val preferOnlineLyrics by viewModel.preferOnlineLyrics.collectAsStateWithLifecycle()
     val roomScheme by viewModel.roomScheme.collectAsStateWithLifecycle()
     val format by viewModel.format.collectAsStateWithLifecycle()
@@ -1581,6 +1583,13 @@ fun SettingsScreen(
                             title = "The CD room's light",
                             value = roomScheme.displayName,
                             onClick = { page = SettingsPage.LIGHT }
+                        )
+                        SettingsDivider()
+                        SettingsNavRow(
+                            icon = Icons.Rounded.Speed,
+                            title = "Graphics",
+                            value = graphicsLabel(graphics),
+                            onClick = { page = SettingsPage.GRAPHICS }
                         )
                         if (offeredFormats.size > 1) {
                             SettingsDivider()
@@ -1898,6 +1907,37 @@ fun SettingsScreen(
                 SettingsPage(title = topic.title, onBack = { page = null }) { GuideTopicContent(topic) }
             }
 
+            SettingsPage.GRAPHICS -> SettingsPage(title = "Graphics", onBack = { page = null }) {
+                SettingsGroup(
+                    header = null,
+                    footer = if (com.jawon.app.ui.wallscene.GraphicsChoice.batterySaver) {
+                        "Battery saver is on, so the rooms are using Light until it is off."
+                    } else {
+                        "The rooms are rebuilt with the new setting as soon as you choose it. " +
+                            "Everything you read — the deck, the lists, these pages — stays sharp " +
+                            "whichever you pick."
+                    }
+                ) {
+                    com.jawon.app.ui.wallscene.Graphics.entries.forEachIndexed { i, option ->
+                        if (i > 0) SettingsDivider(inset = false)
+                        SettingsChoiceRow(
+                            title = graphicsLabel(option),
+                            summary = graphicsLine(option),
+                            selected = option == graphics,
+                            onClick = {
+                                if (option != graphics) {
+                                    viewModel.onGraphicsChanged(option.name)
+                                    // Rebuilt at once: the tier, the shadows and the light are
+                                    // fixed as a room is built, so a room that is not rebuilt
+                                    // would go on drawing the old way.
+                                    context.findActivityForRecreate()?.recreate()
+                                }
+                            }
+                        )
+                    }
+                }
+            }
+
             SettingsPage.PERFORMANCE -> SettingsPage(title = "Performance", onBack = { page = null }) {
                 DiagnosticsSection(
                     device = viewModel.deviceLine(),
@@ -1963,8 +2003,26 @@ fun SettingsScreen(
 
 /** The pages under Settings' list. */
 private enum class SettingsPage {
-    UPDATES, ROOM, LIGHT, CROSSFADE, LOUDNESS, TIDY, BACKUP, SERVER, PERFORMANCE, PROBLEMS, PRIVACY,
+    UPDATES, ROOM, LIGHT, GRAPHICS, CROSSFADE, LOUDNESS, TIDY, BACKUP, SERVER, PERFORMANCE, PROBLEMS, PRIVACY,
     GUIDE_CD, GUIDE_POCKET, GUIDE_ROOMS, GUIDE_MUSIC
+}
+
+private fun graphicsLabel(g: com.jawon.app.ui.wallscene.Graphics): String = when (g) {
+    com.jawon.app.ui.wallscene.Graphics.BEST -> "Best looking"
+    com.jawon.app.ui.wallscene.Graphics.BALANCED -> "Balanced"
+    com.jawon.app.ui.wallscene.Graphics.LIGHT -> "Light"
+}
+
+private fun graphicsLine(g: com.jawon.app.ui.wallscene.Graphics): String = when (g) {
+    com.jawon.app.ui.wallscene.Graphics.BEST -> "The rooms at full detail. Your phone works hardest, and gets warmest."
+    com.jawon.app.ui.wallscene.Graphics.BALANCED -> "Nearly the same look, much lighter work. Recommended."
+    com.jawon.app.ui.wallscene.Graphics.LIGHT -> "Simpler light and shadow, at most 30 frames a second. For older phones, or for battery."
+}
+
+private tailrec fun android.content.Context.findActivityForRecreate(): android.app.Activity? = when (this) {
+    is android.app.Activity -> this
+    is android.content.ContextWrapper -> baseContext.findActivityForRecreate()
+    else -> null
 }
 
 /** The Guide's pages by name, for the rooms that open Settings on one of them. */

@@ -105,8 +105,8 @@ class RoomCadence {
      *   where DESIGN.md §4 drops the rotation, the parallax and the dust.
      */
     fun divisorFor(discTurning: Boolean, ambientMotion: Boolean, settled: Boolean = false): Int = when {
-        pointerDown || moving || wasMoving -> LIVE
-        discTurning -> divisorForFps(TURNING_FPS)
+        pointerDown || moving || wasMoving -> live
+        discTurning -> divisorForFps(turningFps)
         ambientMotion -> divisorForFps(DRIFTING_FPS)
         // A room that has wound down (RoomSettle): nothing in it changes until something wakes
         // it, so a heartbeat is all it needs (0.7.5).
@@ -130,6 +130,22 @@ class RoomCadence {
      * Set once from the display; defaults to 120 so a device that will not report a rate behaves
      * as the test hardware does rather than as something slower.
      */
+    /**
+     * The most frames a second this room is ever drawn at — [QualityTier.maxFps], 30 on the bottom
+     * tier (0.7.5). Above the panel's rate it changes nothing.
+     */
+    var maxFps: Float = Float.MAX_VALUE
+
+    /**
+     * How often a turning disc is drawn: [TURNING_FPS] as Best looking, [TURNING_BALANCED_FPS]
+     * otherwise (0.7.5). The disc is the room's one steady motion and the state the app lives in
+     * — a record playing — so its rate is most of what the room costs while you listen.
+     */
+    var turningFps: Float = TURNING_FPS
+
+    /** [LIVE], or as near the [maxFps] cap as the panel allows. */
+    val live: Int get() = if (maxFps < refreshHz) divisorForFps(maxFps) else LIVE
+
     var refreshHz: Float = DEFAULT_REFRESH_HZ
         set(value) {
             // A nonsense rate would produce a nonsense divisor, and this arrives from the
@@ -181,6 +197,12 @@ class RoomCadence {
          * printing at 2.6° a frame, which is where a slow rotation starts to look stepped.
          */
         const val TURNING_FPS = 60f
+
+        /**
+         * The disc's rate under Balanced and Light (0.7.5): 40 on a 120Hz panel, under 2° of turn
+         * a frame at 78°/s, which reads as smooth rotation; 30 on a 60Hz one.
+         */
+        const val TURNING_BALANCED_FPS = 40f
 
         /**
          * Thirty frames a second.

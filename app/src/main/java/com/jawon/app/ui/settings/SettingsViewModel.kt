@@ -197,6 +197,10 @@ class SettingsViewModel @Inject constructor(
     val shakeToSwitch: StateFlow<Boolean> = preferences.shakeToSwitch
     fun onShakeToSwitchChanged(enabled: Boolean) = preferences.setShakeToSwitch(enabled)
 
+    /** Settings → Graphics, by name. */
+    val graphics: StateFlow<String> = preferences.graphics
+    fun onGraphicsChanged(name: String) = preferences.setGraphics(name)
+
     val keepPlayingOnClose: StateFlow<Boolean> = preferences.keepPlayingOnClose
     fun onKeepPlayingOnCloseChanged(enabled: Boolean) = preferences.setKeepPlayingOnClose(enabled)
 

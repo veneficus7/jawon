@@ -204,4 +204,39 @@ class RoomCadenceTest {
         assertTrue(RoomCadence.DRIFTING_FPS > RoomCadence.STILL_FPS)
         assertTrue(RoomCadence.STILL_FPS > 0f)
     }
+
+    @Test
+    fun `the bottom tier is never drawn faster than 30, even with a finger down`() {
+        val c = RoomCadence().apply { refreshHz = 120f; maxFps = QualityTier.LOW.maxFps; pointerDown = true }
+        assertEquals(4, c.divisorFor(discTurning = false, ambientMotion = true))
+        c.refreshHz = 60f
+        assertEquals(2, c.divisorFor(discTurning = false, ambientMotion = true))
+        // Every other tier is uncapped: full rate under a finger.
+        val free = RoomCadence().apply { refreshHz = 120f; maxFps = QualityTier.HIGH.maxFps; pointerDown = true }
+        assertEquals(RoomCadence.LIVE, free.divisorFor(discTurning = false, ambientMotion = true))
+    }
+
+    @Test
+    fun `a settled room is drawn at a heartbeat, below the still room`() {
+        val c = RoomCadence().apply { refreshHz = 120f }
+        val settled = c.divisorFor(discTurning = false, ambientMotion = false, settled = true)
+        val still = c.divisorFor(discTurning = false, ambientMotion = false, settled = false)
+        assertTrue(settled > still)
+        assertEquals(30, settled)
+    }
+
+    @Test
+    fun `Balanced draws the turning disc at 40 on a 120Hz panel, Best at 60`() {
+        val c = RoomCadence().apply { refreshHz = 120f }
+        assertEquals(2, c.divisorFor(discTurning = true, ambientMotion = true))
+        c.turningFps = RoomCadence.TURNING_BALANCED_FPS
+        assertEquals(3, c.divisorFor(discTurning = true, ambientMotion = true))
+    }
+
+    @Test
+    fun `an unknown or missing Graphics choice is Balanced`() {
+        assertEquals(Graphics.BALANCED, Graphics.fromName(null))
+        assertEquals(Graphics.BALANCED, Graphics.fromName("nonsense"))
+        assertEquals(Graphics.LIGHT, Graphics.fromName("LIGHT"))
+    }
 }

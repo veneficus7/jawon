@@ -3,6 +3,7 @@ package com.jawon.app.ui.wallscene
 import android.app.ActivityManager
 import android.content.Context
 import android.os.Build
+import android.os.PowerManager
 
 /**
  * How much of the room's rendering this device gets.
@@ -25,6 +26,37 @@ import android.os.Build
  * more distracting than one that is simply a notch lower, and the thermal case means a
  * device that has slowed once will usually slow again.
  */
+/**
+ * **What the owner chose in Settings → Graphics** (0.7.5), over what the phone can do.
+ *
+ * - [BEST]: the room at its fullest — drawn at the panel's own resolution with the fog at full
+ *   strength, on the phones that reach [QualityTier.HIGH].
+ * - [BALANCED], the default: the same room drawn at 85% of the panel and a little lighter fog.
+ *   About 40% fewer pixels shaded, on a scene that is dark, bloomed and mostly out of focus.
+ * - [LIGHT]: [QualityTier.LOW] on any phone, drawn at most 30 times a second — for an old phone,
+ *   or for battery. Also what the phone's own battery saver turns on.
+ *
+ * The owner reported the room "really struggling" on his S25 Ultra at [BEST]'s settings, which
+ * had been every HIGH phone's since the render-scale ceiling was raised to 1.0.
+ */
+enum class Graphics {
+    BEST, BALANCED, LIGHT;
+
+    companion object {
+        fun fromName(name: String?): Graphics = entries.firstOrNull { it.name == name } ?: BALANCED
+    }
+}
+
+/** The choice in force, as [QualityTier.detect] last read it, and whether battery saver forced [Graphics.LIGHT]. */
+object GraphicsChoice {
+    @Volatile var current: Graphics = Graphics.BALANCED
+    @Volatile var batterySaver: Boolean = false
+
+    /** The preferences file and key the choice is saved under — `AppPreferences`'. */
+    const val PREFS_FILE = "jawon"
+    const val KEY = "graphics"
+}
+
 enum class QualityTier {
     /**
      * Full-resolution ambient occlusion, bent normals, contact-hardening shadows, a 2048
@@ -52,6 +84,13 @@ enum class QualityTier {
 
     /** Depth of field and contact shading off entirely; the room still reads. */
     LOW;
+
+    /**
+     * The most frames a second the room is drawn at, even with a hand on the glass (0.7.5). The
+     * bottom tier is for phones that cannot hold the room at their panel's rate, and a steady 30
+     * reads far better than a stuttering 60 — and it halves the heat.
+     */
+    val maxFps: Float get() = if (this == LOW) 30f else Float.MAX_VALUE
 
     val below: QualityTier?
         get() = when (this) {
@@ -167,7 +206,8 @@ enum class QualityTier {
             // 0.0% slow frames at HIGH, and the tier system is not stepping. Spending it on the
             // one thing the app is *for* is the right call, and the dynamic floor below still
             // catches a hot phone.
-            HIGH -> 1.0f
+            // Full resolution only when asked for, as Best looking (0.7.5) — see [Graphics].
+            HIGH -> if (GraphicsChoice.current == Graphics.BEST) 1.0f else 0.85f
             MEDIUM -> 0.85f
             LOW -> 0.68f
         }
@@ -251,7 +291,8 @@ enum class QualityTier {
      */
     val fogSteps: Int
         get() = when (this) {
-            HIGH -> 9
+            // Nine only as Best looking (0.7.5): seven is MEDIUM's, a coarser grain at a lower cost.
+            HIGH -> if (GraphicsChoice.current == Graphics.BEST) 9 else 7
             MEDIUM -> 7
             LOW -> 0
         }
@@ -293,6 +334,18 @@ enum class QualityTier {
          * wants. [FrameWatch] is what protects devices that cannot hold it.
          */
         fun detect(context: Context): QualityTier {
+            // The owner's choice first (0.7.5): Light, or the phone's battery saver, is the bottom
+            // tier on any phone. Read from the preferences file `AppPreferences` keeps, which the
+            // app has already loaded, so this is a map lookup rather than a disk read.
+            val choice = Graphics.fromName(
+                context.getSharedPreferences(GraphicsChoice.PREFS_FILE, Context.MODE_PRIVATE)
+                    .getString(GraphicsChoice.KEY, null)
+            )
+            val saver = context.getSystemService(PowerManager::class.java)?.isPowerSaveMode == true
+            GraphicsChoice.current = if (saver) Graphics.LIGHT else choice
+            GraphicsChoice.batterySaver = saver && choice != Graphics.LIGHT
+            if (GraphicsChoice.current == Graphics.LIGHT) return LOW
+
             val am = context.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager
                 ?: return MEDIUM
 

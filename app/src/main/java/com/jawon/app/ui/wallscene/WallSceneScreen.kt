@@ -1282,6 +1282,9 @@ fun WallSceneScreen(
         // The wall's idle life, on a clock that winds down when nothing happens. See RoomSettle.
         val idleLife = remember { RoomSettle() }
         cadence.refreshHz = displayRefreshHz
+        cadence.maxFps = initialTier.maxFps
+        cadence.turningFps = if (GraphicsChoice.current == Graphics.BEST) RoomCadence.TURNING_FPS
+        else RoomCadence.TURNING_BALANCED_FPS
 
         // **Tell Filament what a frame is actually worth, because nothing else does.**
         //
