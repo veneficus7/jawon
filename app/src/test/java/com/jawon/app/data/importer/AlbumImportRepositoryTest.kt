@@ -60,7 +60,8 @@ class AlbumImportRepositoryTest {
             albumDao = db.albumDao(),
             trackDao = db.trackDao(),
             coverArtFetcher = CoverArtFetcher(),
-            preferences = preferences
+            preferences = preferences,
+            opened = OpenedMusic(context)
         )
     }
 

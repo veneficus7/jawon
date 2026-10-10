@@ -6,7 +6,8 @@ import androidx.documentfile.provider.DocumentFile
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
-private val AUDIO_EXTENSIONS = setOf("flac", "mp3", "m4a", "mp4", "wav", "ogg", "opus", "aac")
+/** One list of what counts as music, shared with what another app hands over (`OpenedPlan`). */
+private val AUDIO_EXTENSIONS = OpenedPlan.AUDIO_EXTENSIONS
 
 /** Recursively walks a picked SAF tree for files that look like audio. */
 class AudioScanner {

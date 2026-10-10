@@ -3,6 +3,7 @@ package com.jawon.app
 import android.app.SearchManager
 import android.content.Intent
 import android.graphics.Color
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.MediaStore
@@ -25,6 +26,7 @@ import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
+import com.jawon.app.data.importer.OpenedMusic
 import com.jawon.app.data.playback.LibrarySearch
 import com.jawon.app.data.playback.PlaybackRepository
 import kotlinx.coroutines.launch
@@ -55,6 +57,10 @@ class MainActivity : ComponentActivity() {
      */
     @Inject
     lateinit var playback: PlaybackRepository
+
+    /** Music another app hands over, held until Add music takes it up. */
+    @Inject
+    lateinit var opened: OpenedMusic
 
     /** What this launch was for, when it needs a screen. Taken by the stage, once. */
     private var request by mutableStateOf<LaunchRequest?>(null)
@@ -155,7 +161,7 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    /** An intent arriving at a Jawon that is already open: `singleTop` brings it here. */
+    /** An intent arriving at a Jawon that is already open: `singleTask` brings it here. */
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
@@ -177,6 +183,10 @@ class MainActivity : ComponentActivity() {
                 playback.playSomething()
             }
             Launch.ACTION_ADD_MUSIC -> request = LaunchRequest.AddMusic
+            // "Open with Jawon", or shared to it: a song, or an album as a ZIP.
+            Intent.ACTION_VIEW -> open(listOfNotNull(intent.data))
+            Intent.ACTION_SEND -> open(listOfNotNull(streamOf(intent)))
+            Intent.ACTION_SEND_MULTIPLE -> open(streamsOf(intent))
             // "Play ⟨something⟩ on Jawon", asked of the phone itself.
             MediaStore.INTENT_ACTION_MEDIA_PLAY_FROM_SEARCH -> {
                 val words = intent.getStringExtra(SearchManager.QUERY)
@@ -193,6 +203,28 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
+
+    private fun open(uris: List<Uri>) {
+        if (uris.isEmpty()) return
+        opened.offer(uris)
+        request = LaunchRequest.Open(uris)
+    }
+
+    @Suppress("DEPRECATION")
+    private fun streamOf(intent: Intent): Uri? =
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            intent.getParcelableExtra(Intent.EXTRA_STREAM, Uri::class.java)
+        } else {
+            intent.getParcelableExtra(Intent.EXTRA_STREAM)
+        }
+
+    @Suppress("DEPRECATION")
+    private fun streamsOf(intent: Intent): List<Uri> =
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            intent.getParcelableArrayListExtra(Intent.EXTRA_STREAM, Uri::class.java)
+        } else {
+            intent.getParcelableArrayListExtra(Intent.EXTRA_STREAM)
+        }.orEmpty()
 
     /** Starts something, and says so in a line if there was nothing to start. */
     private fun play(otherwise: String, start: suspend () -> Boolean) {

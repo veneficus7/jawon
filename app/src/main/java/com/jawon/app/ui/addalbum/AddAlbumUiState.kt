@@ -6,6 +6,12 @@ import com.jawon.app.data.importer.ImportPreview
 sealed interface AddAlbumUiState {
     data object Idle : AddAlbumUiState
     data object Scanning : AddAlbumUiState
+
+    /**
+     * Bringing in what another app handed over — "Open with Jawon". An archive does not say how
+     * many songs it holds until it has been read through, so the count is of what is in so far.
+     */
+    data class Unpacking(val songs: Int) : AddAlbumUiState
     data class Preview(
         val preview: ImportPreview,
         val title: String,

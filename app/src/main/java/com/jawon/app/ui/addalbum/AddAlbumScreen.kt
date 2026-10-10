@@ -141,6 +141,7 @@ fun AddAlbumScreen(
         // problem, to the four ways in — not out to the room, which threw the scan away. From the
         // ways in themselves, to the room.
         val atStart = uiState is AddAlbumUiState.Idle || uiState is AddAlbumUiState.Saving ||
+            uiState is AddAlbumUiState.Unpacking ||
             uiState is AddAlbumUiState.Done || uiState is AddAlbumUiState.DoneMany
         BackHandler(enabled = !atStart) { viewModel.backToStart() }
         ScreenBar(
@@ -166,6 +167,13 @@ fun AddAlbumScreen(
                 onImportCd = onImportCd
             )
             is AddAlbumUiState.Scanning -> Working("READING YOUR MUSIC")
+            is AddAlbumUiState.Unpacking -> Working(
+                when (state.songs) {
+                    0 -> "OPENING IT"
+                    1 -> "BRINGING IN · 1 SONG"
+                    else -> "BRINGING IN · ${state.songs} SONGS"
+                }
+            )
             is AddAlbumUiState.Preview -> PreviewContent(
                 state = state,
                 onTitleChanged = viewModel::onTitleChanged,

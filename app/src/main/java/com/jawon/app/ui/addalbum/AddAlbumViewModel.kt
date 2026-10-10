@@ -15,7 +15,9 @@ import javax.inject.Inject
 
 @HiltViewModel
 class AddAlbumViewModel @Inject constructor(
-    private val repository: AlbumImportRepository
+    private val repository: AlbumImportRepository,
+    private val opened: com.jawon.app.data.importer.OpenedMusic,
+    private val playback: com.jawon.app.data.playback.PlaybackRepository
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow<AddAlbumUiState>(AddAlbumUiState.Idle)
@@ -23,6 +25,66 @@ class AddAlbumViewModel @Inject constructor(
 
     /** The scan in flight, so going back can stop it rather than have it land on the chooser later. */
     private var scanJob: kotlinx.coroutines.Job? = null
+
+    /** What is being added was handed over by another app, and is played once it is on a shelf. */
+    private var fromOutside = false
+
+    init {
+        // "Open with Jawon": whatever is waiting when this screen comes up, and whatever arrives
+        // while it is up — a second file opened from the file manager lands here too.
+        viewModelScope.launch {
+            opened.pending.collect { waiting ->
+                if (waiting.isNotEmpty()) onOpened(opened.take())
+            }
+        }
+    }
+
+    /**
+     * Music handed over by another app. One song is simply put on a shelf and played — nobody who
+     * taps a song in a file manager wants a form first. Anything more is shown, as a scan is.
+     */
+    private fun onOpened(uris: List<Uri>) {
+        if (uris.isEmpty()) return
+        fromOutside = true
+        _uiState.value = AddAlbumUiState.Unpacking(0)
+        scanJob?.cancel()
+        scanJob = viewModelScope.launch {
+            _uiState.value = try {
+                val found = repository.scanOpened(uris) { songs ->
+                    _uiState.value = AddAlbumUiState.Unpacking(songs)
+                }
+                val only = found.singleOrNull()
+                when {
+                    found.isEmpty() -> AddAlbumUiState.Error("There was no music in that")
+                    only != null && only.tracks.size == 1 -> {
+                        _uiState.value = AddAlbumUiState.Saving
+                        val albumId = repository.commitAsFound(only)
+                        if (albumId == null) {
+                            AddAlbumUiState.Error("Couldn't add that song")
+                        } else {
+                            playback.playOpened(albumId, only.tracks.first().title)
+                            AddAlbumUiState.Done(albumId)
+                        }
+                    }
+                    only != null -> singlePreview(only)
+                    else -> {
+                        val (ordered, singlesStart) = ordered(found)
+                        val selected = ordered.indices.filterNot { ordered[it].alreadyInLibrary }.toSet()
+                        AddAlbumUiState.MultiPreview(
+                            albums = ordered,
+                            selected = selected,
+                            singlesStart = singlesStart,
+                            coversToLookUp = repository.coversToLookUp(selected.map { ordered[it] })
+                        )
+                    }
+                }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                AddAlbumUiState.Error(e.message ?: "Couldn't open that")
+            }
+        }
+    }
 
     fun onFolderPicked(uri: Uri) {
         _uiState.value = AddAlbumUiState.Scanning
@@ -194,6 +256,8 @@ class AddAlbumViewModel @Inject constructor(
                     discFaceUri = current.discFaceUri,
                     spineHue = current.spineHue
                 )
+                // An album opened from outside was opened to be heard.
+                if (fromOutside) playback.play(albumId, com.jawon.app.data.playback.QueueBuilder.From.TheTop)
                 AddAlbumUiState.Done(albumId)
             } catch (e: Exception) {
                 AddAlbumUiState.Error(e.message ?: "Couldn't save that album")

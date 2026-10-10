@@ -434,6 +434,16 @@ class PlaybackRepository @Inject constructor(
         start(queues.album(albumId, from))
 
     /**
+     * A song another app handed over, now on a shelf: its record, from that song. The song is
+     * found by its title because the import may have recognised a record already here, in which
+     * case the track that plays is the one that was on the shelf all along.
+     */
+    suspend fun playOpened(albumId: String, songTitle: String): Boolean {
+        val track = trackDao.listForAlbum(albumId).firstOrNull { it.title.equals(songTitle, ignoreCase = true) }
+        return play(albumId, track?.let { QueueBuilder.From.Track(it.id) } ?: QueueBuilder.From.TheTop)
+    }
+
+    /**
      * **Resume**: if a record is loaded, play it from where it is; if nothing is, put the record
      * that was on last back on, where it stopped. False if there is nothing to resume — a library
      * nothing has been played from.

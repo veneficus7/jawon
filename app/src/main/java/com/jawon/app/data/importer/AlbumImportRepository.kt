@@ -42,7 +42,8 @@ class AlbumImportRepository @Inject constructor(
     private val albumDao: AlbumDao,
     private val trackDao: TrackDao,
     private val coverArtFetcher: CoverArtFetcher,
-    private val preferences: AppPreferences
+    private val preferences: AppPreferences,
+    private val opened: OpenedMusic
 ) {
     private val scanner = AudioScanner()
     private val metadataReader = TrackMetadataReader()
@@ -81,6 +82,45 @@ class AlbumImportRepository @Inject constructor(
             .map { group -> buildPreview(treeUri, group, rootName) }
             .sortedBy { it.suggestedTitle.lowercase() }
     }
+
+    /**
+     * What another app handed over — "Open with Jawon" — as albums ready to put on a shelf.
+     *
+     * The music is brought somewhere that lasts first ([OpenedMusic]); after that it is ordinary
+     * files, and this is the ordinary import. An archive's folders are its albums, as a picked
+     * folder's are. Loose songs handed over together are sorted by the album their own tags name:
+     * the tracks of one record shared in one go arrive as that record, and a song that names no
+     * album is a single, called by its own title.
+     */
+    suspend fun scanOpened(uris: List<Uri>, onProgress: (songs: Int) -> Unit): List<ImportPreview> =
+        withContext(Dispatchers.IO) {
+            val kept = opened.keep(uris, onProgress)
+            if (kept.isEmpty()) return@withContext emptyList()
+
+            val (archived, loose) = kept.partition { it.group.startsWith("zip:") }
+            val previews = mutableListOf<ImportPreview>()
+
+            for ((group, files) in archived.groupBy { it.group }) {
+                val name = group.substringAfterLast('/').ifBlank { null }
+                val preview = buildPreview(Uri.EMPTY, files.map { it.file }, name)
+                // The archive's own picture stands in where the files carry none.
+                previews += if (preview.embeddedCoverUri == null) {
+                    preview.copy(embeddedCoverUri = files.firstNotNullOfOrNull { it.cover })
+                } else {
+                    preview
+                }
+            }
+
+            val tagged = loose.map { it.file to runCatching { metadataReader.read(context, it.file) }.getOrNull() }
+            val byAlbum = tagged.groupBy { (file, tags) ->
+                tags?.album?.takeIf { it.isNotBlank() }?.lowercase() ?: "single:${file.uri}"
+            }
+            for (songs in byAlbum.values) {
+                val single = songs.singleOrNull()?.second
+                previews += buildPreview(Uri.EMPTY, songs.map { it.first }, single?.title)
+            }
+            previews.filter { it.tracks.isNotEmpty() }.sortedBy { it.suggestedTitle.lowercase() }
+        }
 
     /**
      * Finds every album on the phone, without the user pointing at anything.
@@ -482,25 +522,29 @@ class AlbumImportRepository @Inject constructor(
      * should cost that folder, not the other thirty-nine. Returns how many actually landed.
      */
     suspend fun commitAll(previews: List<ImportPreview>): Int = withContext(Dispatchers.IO) {
-        var imported = 0
-        for (preview in previews) {
-            runCatching {
-                commit(
-                    preview = preview,
-                    title = preview.suggestedTitle,
-                    artist = preview.suggestedArtist,
-                    year = preview.suggestedYear,
-                    // Only ever for an album whose own files carry no art, and only when the
-                    // user has left the lookup on. An album that brought its cover with it
-                    // never reaches the network — which, on a normally-tagged library, is
-                    // almost all of them.
-                    caseCoverUri = preview.embeddedCoverUri ?: lookedUpCover(preview),
-                    discFaceUri = null,
-                    spineHue = 0f
-                )
-            }.onSuccess { imported++ }
-        }
-        imported
+        previews.count { commitAsFound(it) != null }
+    }
+
+    /**
+     * One album exactly as it was found — its own title, artist, year and cover — and the id it
+     * was given, or null if it could not be read. What a batch does to each of its albums, and
+     * what a single song handed over by another app gets without a form.
+     */
+    suspend fun commitAsFound(preview: ImportPreview): String? = withContext(Dispatchers.IO) {
+        runCatching {
+            commit(
+                preview = preview,
+                title = preview.suggestedTitle,
+                artist = preview.suggestedArtist,
+                year = preview.suggestedYear,
+                // Only ever for an album whose own files carry no art, and only when the user
+                // has left the lookup on. An album that brought its cover with it never reaches
+                // the network — which, on a normally-tagged library, is almost all of them.
+                caseCoverUri = preview.embeddedCoverUri ?: lookedUpCover(preview),
+                discFaceUri = null,
+                spineHue = 0f
+            )
+        }.getOrNull()
     }
 
     /**
