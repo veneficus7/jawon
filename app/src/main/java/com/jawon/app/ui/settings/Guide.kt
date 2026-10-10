@@ -129,6 +129,13 @@ internal enum class GuideTopic(
                     Tip("Shake", "Shake the phone twice, quickly back and forth, to flip to the next room. It never happens in a pocket. Settings → Shake to switch rooms turns it off."),
                     Tip("The showroom", "Press Back in a room, tap the glowing JAWON sign, or pinch the pocket player, and you are in the showroom: every room on its own stand. Swipe along them and tap one to go in.")
                 )
+            ),
+            GuideSection(
+                "If it runs slowly or warm",
+                listOf(
+                    Tip("Graphics", "Settings → Graphics. Balanced is the normal setting. Light draws the rooms more simply and at most 30 times a second, for older phones or to save battery — and it comes on by itself when your phone's battery saver is on. Best looking is the full detail, for the newest phones."),
+                    Tip("A room at rest", "Leave the wall alone for a little while and it slowly goes still, to save your battery. Touch it and it comes back to life.")
+                )
             )
         )
     ),
