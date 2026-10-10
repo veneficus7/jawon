@@ -197,7 +197,11 @@ val ColdPalette = Palette(
     //
     // The other two were already fine and are left alone: the amber is 6.7:1 on the same
     // ground, and the cream 10.6:1.
-    labelDim = Color(0xFF6E7C8C),
+    //
+    // **And `#788696` since 0.7.5**: 4.5:1 on the ground was 4.06:1 on `crateRaised`, the cards
+    // Settings has been made of since 0.7.2 — under the minimum where most of its small print
+    // now sits. 4.66:1 on a card, 5.2:1 on the ground, still well under the cream.
+    labelDim = Color(0xFF788696),
     lampAmber = Color(0xFFFF6B1A),
     oxideTeal = Color(0xFF8A5A3C),
     // Hotter than it was. The old 0.45 was a striplight travelling across brushed metal; this is

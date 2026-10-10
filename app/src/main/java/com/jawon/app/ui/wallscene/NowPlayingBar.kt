@@ -118,16 +118,24 @@ internal fun NowPlayingBar(
     // Advances only while the record is actually turning, and keeps its angle when it stops —
     // resuming picks up where it left off rather than snapping to zero, which is what a platter
     // does. Not `rememberInfiniteTransition`, which would go on turning a paused record.
+    //
+    // **Thirty steps a second, not every vsync** (0.7.5). Each step repaints the app's window and
+    // has the whole screen composited again, and at 120Hz that was the busiest thing on a settled
+    // wall that the room itself had slowed to a heartbeat. A 46dp disc turning at 78°/s moves 2.6°
+    // a step at 30, which reads as the same smooth turn.
     LaunchedEffect(isPlaying) {
         if (!isPlaying) return@LaunchedEffect
         var previous = 0L
         while (true) {
-            withFrameNanos { now ->
-                if (previous != 0L) {
-                    val seconds = (now - previous) / 1_000_000_000f
-                    angle.floatValue =
-                        (angle.floatValue + seconds * OpenSequence.SPIN_DEG_PER_S) % 360f
-                }
+            val now = withFrameNanos { it }
+            if (previous == 0L) {
+                previous = now
+                continue
+            }
+            val elapsed = now - previous
+            if (elapsed >= BAR_STEP_NS) {
+                angle.floatValue =
+                    (angle.floatValue + elapsed / 1_000_000_000f * OpenSequence.SPIN_DEG_PER_S) % 360f
                 previous = now
             }
         }
@@ -346,6 +354,9 @@ internal fun NowPlayingBar(
 }
 
 private val DISC_SIZE = 46.dp
+
+/** The bar's disc steps at most this often: 30 a second. */
+private const val BAR_STEP_NS = 33_000_000L
 
 /** How far the card has to travel sideways to change track, if it was not flung. */
 private val CHANGE_TRACK_AT = 72.dp

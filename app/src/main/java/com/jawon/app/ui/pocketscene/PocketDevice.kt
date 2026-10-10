@@ -993,6 +993,20 @@ internal class PocketDevice(
 
     // ---- feedback ---------------------------------------------------------------------------
 
+    /**
+     * The wheel's buttons and its turn, for TalkBack's actions (0.7.5): the same behaviour a thumb
+     * gets, with the same click, so a player nobody can see is still a player.
+     */
+    fun accessibilityPress(button: ClickWheel.Button) {
+        val now = SystemClock.uptimeMillis()
+        handle(WheelGesture.Event.Press(button), now)
+    }
+
+    fun accessibilityTurn(steps: Int) {
+        val now = SystemClock.uptimeMillis()
+        handle(WheelGesture.Event.Turn(steps, 0f), now)
+    }
+
     /** A cover passing in sideways Cover Flow: the wheel's own click and tick. */
     fun tick() = step(SystemClock.uptimeMillis())
 

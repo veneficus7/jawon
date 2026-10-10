@@ -1,5 +1,8 @@
 package com.jawon.app.ui.wallscene
 
+import androidx.compose.ui.semantics.customActions
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import io.github.sceneview.safeDestroyEnvironment
 import kotlinx.coroutines.flow.first
 import android.os.SystemClock
@@ -2310,6 +2313,12 @@ fun WallSceneScreen(
         )
 
         SceneView(
+            // **What TalkBack can do with a 3D wall** (0.7.5). The room is a Filament surface, so to
+            // a screen reader it was one blank rectangle: no record could be reached without
+            // seeing it. It says what is in front now, and offers the moves a finger makes — the
+            // next record, the one before, open it, put it away, play or pause. FIND, in the bar,
+            // is the way to a record by name. Read only when accessibility asks: these lambdas are
+            // semantics, not composition, so they cost nothing with TalkBack off.
             modifier = Modifier.fillMaxSize(),
             engine = engine,
             materialLoader = materialLoader,
@@ -4025,6 +4034,48 @@ fun WallSceneScreen(
             )
         }
 
+        // The room, as TalkBack meets it (0.7.5): a layer over the scene carrying its description and
+        // actions — SceneView does not carry semantics on its own modifier. It takes no touches.
+        Box(
+            Modifier
+                .fillMaxSize()
+                .semantics {
+                    val open = selectedCase
+                    val front = focusCase
+                    contentDescription = when {
+                        open != null -> "${open.title} by ${open.artist}, open and on the deck below."
+                        front != null -> "Your wall of records, ${layout.cases.size} on its shelves. " +
+                            "${front.title} by ${front.artist} is in front."
+                        else -> "Your wall of records. It is empty; add music from the bar below."
+                    }
+                    customActions = buildList {
+                        if (open != null) {
+                            add(androidx.compose.ui.semantics.CustomAccessibilityAction("Put the record away") {
+                                closeCase(); true
+                            })
+                            add(androidx.compose.ui.semantics.CustomAccessibilityAction(
+                                if (deck.isPlaying) "Pause" else "Play"
+                            ) { viewModel.onPlayPause(); true })
+                        } else if (front != null) {
+                            add(androidx.compose.ui.semantics.CustomAccessibilityAction("Open ${front.title}") {
+                                openCase(front.albumId); true
+                            })
+                            fun step(by: Int): Boolean {
+                                val ordered = layout.cases.sortedWith(compareBy({ it.row }, { it.col }))
+                                val i = ordered.indexOfFirst { it.albumId == front.albumId }
+                                val target = ordered.getOrNull(i + by) ?: return false
+                                scope.launch { panX.animateTo(target.x, animationSpec = FLIP_SPRING) }
+                                scope.launch { panY.animateTo(target.y, animationSpec = FLIP_SPRING) }
+                                return true
+                            }
+                            add(androidx.compose.ui.semantics.CustomAccessibilityAction("Next record") { step(1) })
+                            add(androidx.compose.ui.semantics.CustomAccessibilityAction("Previous record") { step(-1) })
+                        }
+                    }
+                }
+        )
+
+
         if (layout.isWaiting) {
             // Sits low, under the empty board rather than over the middle of it, so the shelf
             // itself is what the eye lands on first. The room is the pitch; this is the
@@ -4882,9 +4933,28 @@ private fun ChromeAction(
             if (iconContent != null) iconContent()
             else if (icon != null) Icon(icon, contentDescription = null, tint = LabelCream.copy(alpha = 0.82f))
         }
-        Text(text = label, style = JawonTextStyle.mono.copy(color = LabelCream.copy(alpha = 0.72f)))
+        // One line, and grown with the phone's text size only so far (0.7.5): at Android's largest
+        // the five labels broke mid-word ("SHELV / ES"). The icon above carries the meaning; past
+        // 1.3x the word stays at 1.3x and ellipsises before it wraps.
+        val density = LocalDensity.current
+        val base = JawonTextStyle.mono.fontSize
+        val capped = if (density.fontScale > CHROME_TEXT_MAX_SCALE) {
+            (base.value * CHROME_TEXT_MAX_SCALE / density.fontScale).sp
+        } else {
+            base
+        }
+        Text(
+            text = label,
+            style = JawonTextStyle.mono.copy(color = LabelCream.copy(alpha = 0.72f), fontSize = capped),
+            maxLines = 1,
+            softWrap = false,
+            overflow = TextOverflow.Ellipsis
+        )
     }
 }
+
+/** How far the bar's labels grow with the phone's text size. */
+private const val CHROME_TEXT_MAX_SCALE = 1.3f
 
 /**
  * The label plate's content, rendered to a texture by [ViewNode]. Sized in raw pixels rather

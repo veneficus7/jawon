@@ -1,5 +1,8 @@
 package com.jawon.app.ui.pocketscene
 
+import androidx.compose.ui.semantics.customActions
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
@@ -97,6 +100,20 @@ private const val SLIDE_TICK_MS = 50L
 /** Covers drawn either side of the middle one in Cover Flow, and how many are kept decoded. */
 internal const val COVER_WINDOW = 4
 private const val COVER_CACHE_MAX = 40
+
+/** What the player's screen says, in a sentence for TalkBack. */
+internal fun describeForTalkBack(screen: LcdScreen): String = when (screen) {
+    is LcdScreen.Menu -> {
+        val row = screen.rows.getOrNull(screen.selected)?.label
+        if (row != null) "${screen.title}. $row, ${screen.top + screen.selected + 1} of ${screen.total}."
+        else "${screen.title}. ${screen.emptyText}"
+    }
+    is LcdScreen.NowPlaying -> "Now playing ${screen.trackTitle} by ${screen.artist}, from ${screen.album}."
+    is LcdScreen.CoverFlow -> "Cover Flow. ${screen.albumTitle} by ${screen.albumArtist}."
+    is LcdScreen.Slider -> "${screen.title}, ${screen.valueText}."
+    is LcdScreen.Search -> "Search. Typed: ${screen.query.ifBlank { "nothing" }}. ${screen.total} found."
+    is LcdScreen.Brick -> "Brick. Select serves the ball; up and down move the paddle."
+}
 
 /** How often the title bar's battery is read while the room is on screen. */
 private const val BATTERY_READ_MS = 60_000L
@@ -688,6 +705,9 @@ fun PocketRoomScreen(
         device.cameraZ = cameraZ
 
         SceneView(
+            // **The player, for TalkBack** (0.7.5): what its screen says, and the wheel's buttons as
+            // actions — up and down a list, the centre, MENU, play and pause, the track either way.
+            // A click wheel is a gesture on a 3D surface, which a screen reader cannot make.
             modifier = Modifier.fillMaxSize(),
             engine = engine,
             modelLoader = modelLoader,
@@ -818,6 +838,26 @@ fun PocketRoomScreen(
                 }
             }
         }
+
+        // The room, as TalkBack meets it (0.7.5): a layer over the scene carrying its description and
+        // actions — SceneView does not carry semantics on its own modifier. It takes no touches.
+        Box(
+            Modifier
+                .fillMaxSize()
+                .semantics {
+                    contentDescription = describeForTalkBack(lcd.value)
+                    customActions = listOf(
+                        androidx.compose.ui.semantics.CustomAccessibilityAction("Down") { device.accessibilityTurn(1); true },
+                        androidx.compose.ui.semantics.CustomAccessibilityAction("Up") { device.accessibilityTurn(-1); true },
+                        androidx.compose.ui.semantics.CustomAccessibilityAction("Select") { device.accessibilityPress(ClickWheel.Button.SELECT); true },
+                        androidx.compose.ui.semantics.CustomAccessibilityAction("Menu, back") { device.accessibilityPress(ClickWheel.Button.MENU); true },
+                        androidx.compose.ui.semantics.CustomAccessibilityAction("Play or pause") { device.accessibilityPress(ClickWheel.Button.PLAY); true },
+                        androidx.compose.ui.semantics.CustomAccessibilityAction("Next track") { device.accessibilityPress(ClickWheel.Button.NEXT); true },
+                        androidx.compose.ui.semantics.CustomAccessibilityAction("Previous track") { device.accessibilityPress(ClickWheel.Button.PREVIOUS); true }
+                    )
+                }
+        )
+
 
         // No chrome over the room: the device *is* the interface, and the phone app's Settings
         // are on its own menu (Settings → All Settings). The debug line and a SETTINGS link used

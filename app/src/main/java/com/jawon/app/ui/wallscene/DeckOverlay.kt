@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
@@ -990,9 +991,11 @@ private fun TrackRow(
 ) {
     val finish = LocalDeckFinish.current
     Row(
+        // At least a row's height, and taller when the phone's text is large (0.7.5): fixed, the
+        // second row of a large-text tracklist was cut in half.
         modifier = Modifier
             .fillMaxWidth()
-            .height(TRACK_ROW_H)
+            .heightIn(min = TRACK_ROW_H)
             .clickable(onClick = onClick),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp)
