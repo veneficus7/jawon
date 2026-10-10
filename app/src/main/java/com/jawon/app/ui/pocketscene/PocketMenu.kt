@@ -65,6 +65,8 @@ sealed interface RowAction {
     data object OpenRooms : RowAction
     /** The phone app's own Settings, everything the device's menu does not carry. */
     data object OpenSettings : RowAction
+    /** The Guide's page on this player: what the wheel, Tilt & Turn and Hold do (0.7.4). */
+    data object OpenGuide : RowAction
     /** Pick option [option] of [setting]. */
     data class Choose(val setting: PocketSetting, val option: Int) : RowAction
     /** A line of information that goes nowhere — About's rows. */
@@ -86,7 +88,8 @@ data class MenuRow(
     /** Whether the row leads to another list — the chevron. A track plays instead. */
     val leadsOn: Boolean
         get() = action is RowAction.Open || action == RowAction.AddAlbums ||
-            action == RowAction.OpenSettings || action == RowAction.OpenRooms
+            action == RowAction.OpenSettings || action == RowAction.OpenRooms ||
+            action == RowAction.OpenGuide
 }
 
 /**
@@ -231,6 +234,8 @@ object PocketMenus {
                 RowAction.Open(MenuKey.Choice(PocketSetting.MOTION)),
                 value = if (settings.motion) "On" else "Off"
             ),
+            // Under Tilt & Turn, which is the setting that needed explaining (0.7.4).
+            MenuRow("Guide", RowAction.OpenGuide),
             MenuRow("All Settings", RowAction.OpenSettings)
         )
         MenuKey.About -> listOf(

@@ -9,7 +9,14 @@ sealed class JawonDestination(val route: String) {
     data object Wall : JawonDestination("wall")
     data object AddAlbum : JawonDestination("add_album")
     data object ShelfManager : JawonDestination("shelf_manager")
-    data object Settings : JawonDestination("settings")
+    /**
+     * Settings, optionally opened on one of its pages — the pocket player's Guide row opens it on
+     * the Guide's pocket-player page (0.7.4). Navigate with [routeFor], never [route], which holds
+     * the placeholder.
+     */
+    data object Settings : JawonDestination("settings?page={page}") {
+        fun routeFor(page: String? = null) = if (page == null) "settings" else "settings?page=$page"
+    }
 
     /**
      * What the collection has actually been played. Reached from the shelf list rather than

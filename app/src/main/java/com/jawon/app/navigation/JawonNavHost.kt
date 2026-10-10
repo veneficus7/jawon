@@ -59,6 +59,7 @@ import com.jawon.app.ui.cd.CdImportScreen
 import com.jawon.app.ui.editalbum.EditAlbumScreen
 import com.jawon.app.ui.listening.ListeningScreen
 import com.jawon.app.ui.pocketscene.PocketRoomScreen
+import com.jawon.app.ui.settings.GUIDE_POCKET_PAGE
 import com.jawon.app.ui.settings.SettingsScreen
 import com.jawon.app.ui.shelfmanager.ShelfManagerScreen
 import com.jawon.app.ui.showroom.ShowroomScreen
@@ -169,7 +170,8 @@ fun JawonNavHost(
             onExit = { activity?.moveTaskToBack(true) },
             onAddAlbum = { navController.navigate(JawonDestination.AddAlbum.route) },
             onOpenShelfManager = { navController.navigate(JawonDestination.ShelfManager.route) },
-            onOpenSettings = { navController.navigate(JawonDestination.Settings.route) },
+            onOpenSettings = { navController.navigate(JawonDestination.Settings.routeFor()) },
+            onOpenGuide = { page -> navController.navigate(JawonDestination.Settings.routeFor(page)) },
             onEditAlbum = { albumId ->
                 navController.navigate(JawonDestination.EditAlbum.routeFor(albumId))
             }
@@ -266,8 +268,16 @@ fun JawonNavHost(
                     )
                 }
             }
-            composable(JawonDestination.Settings.route) {
-                Panel { SettingsScreen(onBack = { navController.popBackStack() }) }
+            composable(
+                JawonDestination.Settings.route,
+                arguments = listOf(navArgument("page") { type = NavType.StringType; nullable = true; defaultValue = null })
+            ) { entry ->
+                Panel {
+                    SettingsScreen(
+                        onBack = { navController.popBackStack() },
+                        startPage = entry.arguments?.getString("page")
+                    )
+                }
             }
         }
 
@@ -316,6 +326,8 @@ private fun RoomStage(
     onAddAlbum: () -> Unit,
     onOpenShelfManager: () -> Unit,
     onOpenSettings: () -> Unit,
+    /** Settings opened on a page of its Guide — see `SettingsScreen`'s `startPage`. */
+    onOpenGuide: (String) -> Unit,
     onEditAlbum: (String) -> Unit
 ) {
     val context = LocalContext.current
@@ -384,6 +396,7 @@ private fun RoomStage(
                         )
                         Place.POCKET -> PocketRoomScreen(
                             onOpenSettings = onOpenSettings,
+                            onOpenGuide = { onOpenGuide(GUIDE_POCKET_PAGE) },
                             onAddAlbum = onAddAlbum,
                             onOpenShowroom = onOpenShowroom,
                             onOpenRooms = onOpenRooms,

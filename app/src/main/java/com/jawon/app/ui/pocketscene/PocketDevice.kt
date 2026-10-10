@@ -133,6 +133,7 @@ internal class PocketDevice(
     var onOpenSettings: () -> Unit = {}
     var onAddAlbum: () -> Unit = {}
     var onOpenRooms: () -> Unit = {}
+    var onOpenGuide: () -> Unit = {}
 
     // **Pinching out of the room** - two fingers closing, into the showroom between formats
     // (docs/formats.md section 7, step 5b). Nothing else here uses two fingers, and the wheel never
@@ -890,6 +891,7 @@ internal class PocketDevice(
             RowAction.AddAlbums -> onAddAlbum()
             RowAction.OpenRooms -> onOpenRooms()
             RowAction.OpenSettings -> onOpenSettings()
+            RowAction.OpenGuide -> onOpenGuide()
             is RowAction.Choose -> {
                 choose(action.setting, action.option)
                 // The classic went back to Settings once a choice was made.

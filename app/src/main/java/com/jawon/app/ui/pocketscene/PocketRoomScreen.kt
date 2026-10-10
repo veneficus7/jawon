@@ -158,6 +158,8 @@ fun PocketRoomScreen(
     /** Back at the main menu, or two fingers pinched together: the showroom between formats. */
     /** The room switcher (JawonNavHost), from the main menu's Rooms row. */
     onOpenRooms: () -> Unit = {},
+    /** Settings' Guide, on this player's page — from the device's Settings → Guide. */
+    onOpenGuide: () -> Unit = {},
     onOpenShowroom: () -> Unit = {},
     /** A 2D panel is up over the room: it stays composed, stops rendering, and its Back stands aside. */
     covered: Boolean = false,
@@ -285,6 +287,7 @@ fun PocketRoomScreen(
     device.onOpenSettings = onOpenSettings
     device.onAddAlbum = onAddAlbum
     device.onOpenRooms = onOpenRooms
+    device.onOpenGuide = onOpenGuide
     device.onOpenShowroom = onOpenShowroom
     device.showroomReachable = Exhibit.reachable(BuildConfig.DEBUG || BuildConfig.SHOW_FORMATS)
 

@@ -1437,6 +1437,12 @@ private fun Disclosure(
 @Composable
 fun SettingsScreen(
     onBack: () -> Unit,
+    /**
+     * A page to open on instead of the list (0.7.4) — a [SettingsPage] name, such as the pocket
+     * player's Guide page, [GUIDE_POCKET_PAGE]. Back from it comes to the list, as a link into
+     * iOS's Settings does.
+     */
+    startPage: String? = null,
     viewModel: SettingsViewModel = hiltViewModel()
 ) {
     val context = LocalContext.current
@@ -1498,7 +1504,9 @@ fun SettingsScreen(
 
     // **Which page is showing**: the list, or one of its detail pages. Saved, so a rotation or a
     // trip out to grant a permission comes back to the same page.
-    var page by rememberSaveable { mutableStateOf<SettingsPage?>(null) }
+    var page by rememberSaveable {
+        mutableStateOf(startPage?.let { name -> SettingsPage.entries.firstOrNull { it.name == name } })
+    }
     // Held above the pages, so coming back from one finds the list where you left it, as iOS does.
     val listScroll = rememberScrollState()
     // Back steps out one page at a time before it leaves Settings, as iOS's does.
@@ -1544,6 +1552,19 @@ fun SettingsScreen(
                         updateLine = updateLine(updateState),
                         onClick = { page = SettingsPage.UPDATES }
                     )
+
+                    // **The Guide** (0.7.4): how to use the things only Jawon does. Second only to
+                    // the brand card, because a gesture nobody knows about is a feature nobody has.
+                    SettingsGroup(header = "Guide") {
+                        GuideTopic.entries.forEachIndexed { i, topic ->
+                            if (i > 0) SettingsDivider()
+                            SettingsNavRow(
+                                icon = topic.icon,
+                                title = topic.title,
+                                onClick = { page = guidePageFor(topic) }
+                            )
+                        }
+                    }
 
                     SettingsGroup(header = "Room") {
                         if (offeredFormats.size > 1) {
@@ -1872,6 +1893,11 @@ fun SettingsScreen(
                 )
             }
 
+            SettingsPage.GUIDE_CD, SettingsPage.GUIDE_POCKET, SettingsPage.GUIDE_ROOMS, SettingsPage.GUIDE_MUSIC -> {
+                val topic = guideTopicOf(shown)
+                SettingsPage(title = topic.title, onBack = { page = null }) { GuideTopicContent(topic) }
+            }
+
             SettingsPage.PERFORMANCE -> SettingsPage(title = "Performance", onBack = { page = null }) {
                 DiagnosticsSection(
                     device = viewModel.deviceLine(),
@@ -1937,7 +1963,25 @@ fun SettingsScreen(
 
 /** The pages under Settings' list. */
 private enum class SettingsPage {
-    UPDATES, ROOM, LIGHT, CROSSFADE, LOUDNESS, TIDY, BACKUP, SERVER, PERFORMANCE, PROBLEMS, PRIVACY
+    UPDATES, ROOM, LIGHT, CROSSFADE, LOUDNESS, TIDY, BACKUP, SERVER, PERFORMANCE, PROBLEMS, PRIVACY,
+    GUIDE_CD, GUIDE_POCKET, GUIDE_ROOMS, GUIDE_MUSIC
+}
+
+/** The Guide's pocket-player page, by name, for the pocket player's own Guide row. */
+const val GUIDE_POCKET_PAGE = "GUIDE_POCKET"
+
+private fun guidePageFor(topic: GuideTopic): SettingsPage = when (topic) {
+    GuideTopic.CD -> SettingsPage.GUIDE_CD
+    GuideTopic.POCKET -> SettingsPage.GUIDE_POCKET
+    GuideTopic.ROOMS -> SettingsPage.GUIDE_ROOMS
+    GuideTopic.MUSIC -> SettingsPage.GUIDE_MUSIC
+}
+
+private fun guideTopicOf(page: SettingsPage): GuideTopic = when (page) {
+    SettingsPage.GUIDE_POCKET -> GuideTopic.POCKET
+    SettingsPage.GUIDE_ROOMS -> GuideTopic.ROOMS
+    SettingsPage.GUIDE_MUSIC -> GuideTopic.MUSIC
+    else -> GuideTopic.CD
 }
 
 private const val PAGE_PUSH_MS = 280
