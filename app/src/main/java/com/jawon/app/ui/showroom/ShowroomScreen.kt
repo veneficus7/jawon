@@ -1,5 +1,8 @@
 package com.jawon.app.ui.showroom
 
+import androidx.compose.ui.semantics.customActions
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.SideEffect
 import com.jawon.app.ui.theme.JawonType
@@ -534,6 +537,29 @@ fun ShowroomScreen(
                 }
             }
         }
+
+        // The showroom, as TalkBack meets it (0.7.5): what is on the stand in front, and the moves a
+        // finger makes — the next room, the one before, go in. A layer of semantics; no touches.
+        androidx.compose.foundation.layout.Box(
+            Modifier
+                .fillMaxSize()
+                .semantics {
+                    val d = currentDirector.value
+                    val front = d.exhibitInFront
+                    contentDescription = "The showroom, every room on its own stand. In front: " +
+                        "${front.title}, ${front.line.lowercase(Locale.ROOT)}." +
+                        if (d.opensInFront()) "" else " Coming later."
+                    customActions = buildList {
+                        if (d.opensInFront()) {
+                            add(androidx.compose.ui.semantics.CustomAccessibilityAction("Go into the ${front.title} room") {
+                                d.depart(front); true
+                            })
+                        }
+                        add(androidx.compose.ui.semantics.CustomAccessibilityAction("Next room") { d.stepTo(1) })
+                        add(androidx.compose.ui.semantics.CustomAccessibilityAction("Previous room") { d.stepTo(-1) })
+                    }
+                }
+        )
 
         // **The captions**: each format's name under its plinth, in the app's own type, sliding
         // with the row — drawn from the row's position in the draw phase, so nothing recomposes.

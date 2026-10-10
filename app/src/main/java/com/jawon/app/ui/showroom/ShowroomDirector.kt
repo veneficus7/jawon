@@ -146,6 +146,17 @@ internal class ShowroomDirector(
         if (Exhibit.opens(exhibit, showUnbuilt)) depart(exhibit) else haptics.tick()
     }
 
+    /** For TalkBack (0.7.5): the room on the stand in front, whether it opens, and the moves a finger makes. */
+    val exhibitInFront: Exhibit get() = Exhibit.entries[carousel.index]
+    fun opensInFront(): Boolean = Exhibit.opens(exhibitInFront, showUnbuilt)
+    fun stepTo(by: Int): Boolean {
+        val next = carousel.index + by
+        if (next !in Exhibit.entries.indices) return false
+        carousel.goTo(next)
+        haptics.tick()
+        return true
+    }
+
     fun depart(exhibit: Exhibit) {
         if (isLeaving) return
         departing = exhibit
