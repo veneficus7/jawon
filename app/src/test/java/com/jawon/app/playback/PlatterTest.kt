@@ -222,13 +222,13 @@ class PlatterTest {
             if (atSpeedAfter < 0 && platter.atSpeed) atSpeedAfter = t
         }
         // A wind-up you can hear, over before you could be waiting for it.
-        assertTrue("took $atSpeedAfter", atSpeedAfter in 0.12..0.32)
+        assertTrue("took $atSpeedAfter", atSpeedAfter in 0.10..0.20)
     }
 
     @Test
     fun `a record thrown backwards spins back, slows, turns and comes up to speed - a backspin`() {
         val platter = Platter()
-        platter.place(20.0, -3.0, playing = true)
+        platter.place(20.0, -Platter.LET_GO_FASTEST, playing = true)
         var turnedAt = -1.0
         var atSpeedAfter = -1.0
         var furthestBack = 20.0
@@ -237,10 +237,12 @@ class PlatterTest {
             if (turnedAt < 0 && platter.rate >= 0) turnedAt = t
             if (atSpeedAfter < 0 && platter.atSpeed) atSpeedAfter = t
         }
-        assertTrue("turned at $turnedAt", turnedAt in 0.3..0.5)
-        assertTrue("at speed after $atSpeedAfter", atSpeedAfter in 0.5..0.9)
+        // A flick: heard, and over. (It was half a second and more, and that read on the owner's
+        // phone as the music taking a while to come back.)
+        assertTrue("turned at $turnedAt", turnedAt in 0.10..0.20)
+        assertTrue("at speed after $atSpeedAfter", atSpeedAfter in 0.22..0.40)
         // It really did go backwards through the music before coming back.
-        assertTrue(20.0 - furthestBack > 0.4)
+        assertTrue(20.0 - furthestBack > 0.1)
     }
 
     @Test
@@ -321,13 +323,68 @@ class PlatterTest {
                     platter.step(dt)
                     seconds += dt
                 }
-                assertTrue("took $seconds to settle", seconds < 0.8)
-                assertTrue("travelled ${platter.position - from}", abs(platter.position - from) < 1.3)
+                assertTrue("took $seconds to settle", seconds < 0.45)
+                assertTrue("travelled ${platter.position - from}", abs(platter.position - from) < 0.6)
             }
         }
         // And one thrown gently is let go as it was.
         assertEquals(-1.7, Platter.letGoAt(-1.7), 0.0)
         assertEquals(0.3, Platter.letGoAt(0.3), 0.0)
+    }
+
+    @Test
+    fun `set down out of a spin, a record is where it was put - playing at once, or still at once`() {
+        // The owner, after seeking with the disc: "its taking some to exactly continue from the
+        // part of the song that it skipped to, i need it to be instant". Thrown, a record runs
+        // on past where it was let go, or back through it. Set down, it does neither.
+        for (tempo in listOf(1.0, 0.8)) {
+            for (direction in listOf(1.0, -1.0)) {
+                val platter = Platter()
+                platter.place(100.0, 0.0, playing = false, nominal = tempo)
+                platter.grab(0.0)
+                var hand = 0.0
+                platter.run(0.4) {
+                    hand += direction * 9.0 * dt
+                    platter.hand(hand, direction * 9.0)
+                }
+                assertTrue(abs(platter.rate) > 8.0)
+
+                val playing = Platter().also { it.place(platter.position, platter.rate, playing = false, nominal = tempo) }
+                val put = playing.position
+                playing.place(playing = true)
+                assertEquals(tempo, playing.rate, 0.0)
+                assertTrue("at speed the moment it is set down", playing.atSpeed)
+                assertEquals(put, playing.position, 0.0)
+                playing.run(1.0)
+                // A second later it is a second of music further on, and nowhere else.
+                assertEquals(put + tempo, playing.position, 1e-6)
+
+                val still = Platter().also { it.place(platter.position, platter.rate, playing = false, nominal = tempo) }
+                still.place(playing = false)
+                assertEquals(0.0, still.rate, 0.0)
+                assertTrue(still.atRest)
+                still.run(0.5)
+                assertEquals(put, still.position, 0.0)
+            }
+        }
+    }
+
+    @Test
+    fun `a finger that has stopped sets the record down - one still moving throws it`() {
+        // Stopped, or as good as: it has chosen a place.
+        assertTrue(Platter.setDown(0.0, travelling = false))
+        assertTrue(Platter.setDown(0.2, travelling = false))
+        assertTrue(Platter.setDown(-0.2, travelling = false))
+        // Moving: a throw, either way, and what follows is the sound of one.
+        assertFalse(Platter.setDown(0.6, travelling = false))
+        assertFalse(Platter.setDown(-1.5, travelling = false))
+        assertFalse(Platter.setDown(1.0, travelling = false))
+        // Spinning the disc to find a place is never a throw, however fast it was going.
+        assertTrue(Platter.setDown(9.0, travelling = true))
+        assertTrue(Platter.setDown(-9.0, travelling = true))
+        // And still is measured against the speed the record plays at.
+        assertTrue(Platter.setDown(0.3, travelling = false, nominal = 2.0))
+        assertFalse(Platter.setDown(0.3, travelling = false, nominal = 1.0))
     }
 
     @Test
@@ -344,8 +401,8 @@ class PlatterTest {
         }
         val nudge = stopsAfter(1.0)
         val spin = stopsAfter(3.0)
-        assertTrue(nudge in 0.15..0.5)
-        assertTrue(spin > nudge + 0.3)
+        assertTrue("a nudge stops in $nudge", nudge in 0.12..0.30)
+        assertTrue("a spin stops in $spin", spin > nudge + 0.15 && spin < 0.6)
         assertFalse(Platter().apply { place(0.0, 1.0, playing = false) }.atRest)
     }
 

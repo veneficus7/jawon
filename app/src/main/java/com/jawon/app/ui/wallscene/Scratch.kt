@@ -103,6 +103,13 @@ object Scratch {
             against = 0f
         }
 
+        /**
+         * The hand has been going one way long enough to have left a record's gearing behind: it
+         * is finding a place, not scratching. What it lets go of then is *set down* where it is
+         * (`Platter.place`), not thrown.
+         */
+        val travelling: Boolean get() = boost(run) > 1.0
+
         /** The hand has turned [delta] radians. Returns the seconds of music that was. */
         fun turn(delta: Float): Double {
             if (delta == 0f) return 0.0

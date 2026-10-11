@@ -347,7 +347,8 @@ fun ShowroomScreen(
         SceneView(
             modifier = Modifier.fillMaxSize(),
             engine = engine,
-            isRendering = active,
+            // Not while it is parked: the app on its way out of sight (RoomCalm), or the opening card.
+            isRendering = active && !com.jawon.app.ui.common.LocalRoomParked.current,
             modelLoader = modelLoader,
             materialLoader = materialLoader,
             environmentLoader = environmentLoader,
@@ -372,7 +373,12 @@ fun ShowroomScreen(
                 director.onFrame(dt)
                 // Drawn at 60 while it stands still, every vsync while anything moves — the pocket
                 // room's rule, and for the same reason: the clocks advance every vsync regardless.
-                val divisor = if (director.isMoving) cadence.live else cadence.divisorForFps(SHOWROOM_IDLE_FPS)
+                // (And a quarter of the rate while Android is still sliding the app in — RoomCalm.)
+                val arriving = com.jawon.app.ui.common.RoomCalm.frameCap(now)
+                val divisor = maxOf(
+                    if (director.isMoving) cadence.live else cadence.divisorForFps(SHOWROOM_IDLE_FPS),
+                    if (arriving == Float.MAX_VALUE) 1 else cadence.divisorForFps(arriving)
+                )
                 if (divisor != publishedDivisor[0]) {
                     publishedDivisor[0] = divisor
                     renderer.frameRateOptions = Renderer.FrameRateOptions().apply {

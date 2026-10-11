@@ -109,6 +109,21 @@ class Platter {
         drive = if (playing) Drive.MOTOR else Drive.COAST
     }
 
+    /**
+     * The hand sets the record down rather than letting it go: it is where it was put, and
+     * already playing — or already still — with nothing to wind up or run on.
+     *
+     * For a disc that was being spun to *find a place* (0.7.8). A record thrown is a sound; a
+     * record placed is a decision about where the music should be, and the owner's word for how
+     * soon it should be there was "instant": "its taking some to exactly continue from the part
+     * of the song that it skipped to". Let go at speed, the record ran on past the place for a
+     * quarter of a second, or back through it, before it settled — exactly not where it was put.
+     */
+    fun place(playing: Boolean) {
+        rate = if (playing) nominal else 0.0
+        drive = if (playing) Drive.MOTOR else Drive.COAST
+    }
+
     /** At speed under the motor: what comes out is the record playing, and nothing else. */
     val atSpeed: Boolean get() = drive == Drive.MOTOR && abs(rate - nominal) < AT_SPEED
 
@@ -174,14 +189,26 @@ class Platter {
     class Settled(val seconds: Double, val travelled: Double)
 
     companion object {
+        /**
+         * Whether a record let go at [rate] is being *set down* rather than thrown: the hand was
+         * [travelling] — spinning the disc to find a place — or had as good as stopped. A finger
+         * that stops and lifts has chosen a place; one that lifts while moving has thrown the
+         * record, and what the record does next is the sound it was thrown to make.
+         */
+        fun setDown(rate: Double, travelling: Boolean, nominal: Double = 1.0): Boolean =
+            travelling || abs(rate) < STILL_BELOW * nominal
+
+        /** Slower than a quarter of its playing speed, a record under a lifting finger is not being thrown anywhere. */
+        const val STILL_BELOW = 0.25
+
         /** The speed a record let go at [rate] actually leaves the hand with. */
         fun letGoAt(rate: Double): Double = rate.coerceIn(-LET_GO_FASTEST, LET_GO_FASTEST)
 
         /**
-         * As fast as a record can be thrown, either way: three times its speed. A backspin from
-         * there is half a second of the record turning the wrong way, which is what one is.
+         * As fast as a record can be thrown, either way: twice its speed. A backspin from there
+         * is a fifth of a second of the record turning the wrong way — a flick, heard, and over.
          */
-        const val LET_GO_FASTEST = 3.0
+        const val LET_GO_FASTEST = 2.0
 
         /**
          * [settle], for a record let go at [rate] with the motor running at [nominal] — from any
@@ -221,16 +248,20 @@ class Platter {
 
         /**
          * The slipmat's pull with the motor running, in speeds per second. From a standstill to
-         * playing in about a fifth of a second; from a hard backspin, half a second and more —
-         * which is the length a backspin wants to be.
+         * playing in a tenth of a second.
+         *
+         * It was 7.5 — a fifth of a second from still, half a second from a hard backspin, which
+         * is about what a real deck's motor does — and on the owner's phone that read as the
+         * music *taking a while to come back*. A wind-up has to be heard to be a wind-up, and
+         * has to be over before anybody is waiting for it: this is a deck with a strong motor.
          */
-        const val MOTOR_ACCEL = 7.5
+        const val MOTOR_ACCEL = 14.0
 
-        /** With the motor off there is only friction, and it is gentler: a spun record takes its time to stop. */
-        const val COAST_ACCEL = 4.5
+        /** With the motor off there is only friction, and it is gentler: a spun record runs on a little before it stops. */
+        const val COAST_ACCEL = 9.0
 
         /** The ease at the end of either: how long the last of the difference takes to go. */
-        const val LOCK_SECONDS = 0.045
+        const val LOCK_SECONDS = 0.030
 
         const val AT_SPEED = 0.01
         const val AT_REST = 0.006

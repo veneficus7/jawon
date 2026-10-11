@@ -423,6 +423,79 @@ class ScratchEngineTest {
     }
 
     @Test
+    fun `set down out of a spin it is the record at once, and its level does not jump to get there`() {
+        val source = tone(440.0, 12.0)
+        val engine = ScratchEngine(rate)
+        engine.window = source
+        engine.platter.place(1.0, 0.0, playing = false)
+        engine.open()
+        engine.platter.grab(0.0)
+        engine.hand.land(0.0, 0L)
+        val frames = 480
+        val out = ShortArray(frames * 2)
+        // A hand spinning the disc forwards at twelve times speed for half a second...
+        var t = 0.0
+        repeat(50) {
+            engine.hand.move(12.0 * (t + 0.01), (t * 1e9).toLong(), (t * 1e9).toLong())
+            engine.render(out, frames, (t * 1e9).toLong())
+            t += frames.toDouble() / rate
+        }
+        assertTrue("it was going ${engine.rate}", engine.rate > 9f)
+        val quiet = rms(left(out, frames))
+        // ...sets it down.
+        engine.place(playing = true)
+        val after = FloatArray(frames * 8)
+        repeat(8) { block ->
+            engine.render(out, frames, (t * 1e9).toLong())
+            t += frames.toDouble() / rate
+            for (i in 0 until frames) after[block * frames + i] = out[2 * i] / 32768f
+        }
+        assertEquals(1f, engine.rate, 0f)
+        assertTrue(engine.atSpeed)
+        // Its level climbs to the record's own, and never by a step: no sample moves further
+        // from the last than the loudest the tone itself ever does.
+        val tonesOwn = 0.5 * 2 * PI * 440.0 / rate
+        var worst = 0.0
+        for (i in 1 until after.size) worst = maxOf(worst, abs(after[i] - after[i - 1]).toDouble())
+        assertTrue("stepped by $worst where the tone moves $tonesOwn", worst < tonesOwn * 2.2)
+        assertTrue("a spin is quieter than the record ($quiet)", quiet < 0.22)
+        // The first thousandth of a second after it is set down is still nearer the spin's
+        // level than the record's: reached, not switched to. (Switched, this is the record's
+        // own level from the first sample — and that edge is a tick on every seek.)
+        val record = 0.5 / sqrt(2.0)
+        assertTrue("its first millisecond was at ${rms(after, 0, 48)}", rms(after, 0, 48) < record * 0.8)
+        // A fiftieth of a second on, it is the record: its level, its pitch, nothing of the hand's speed.
+        val settled = after.copyOfRange(frames * 3, frames * 8)
+        assertEquals(0.5 / sqrt(2.0), rms(settled), 0.02)
+        assertEquals(440.0, pitch(settled, rate), 2.0)
+    }
+
+    @Test
+    fun `sound that arrives where there was none is brought up, not switched on`() {
+        val engine = ScratchEngine(rate)
+        // Playing, and what is decoded is somewhere else on the record: silence, with the record
+        // turning at speed — which is a disc spun past the end of its stretch.
+        engine.window = ScratchWindow(ShortArray(rate) { 9_000 }, rate, 1, startSeconds = 60.0)
+        engine.platter.place(3.0003, 1.0, playing = true)
+        engine.open()
+        val frames = 960
+        val out = ShortArray(frames * 2)
+        repeat(4) { engine.render(out, frames, 0L) }
+        assertEquals(0.0, rms(left(out, frames)), 0.0)
+        // The stretch for where it is turns up, mid-wave: 441Hz is not at a crossing here.
+        val stretch = tone(441.0, 8.0)
+        val startsAt = stretch.samples[((engine.positionSeconds) * rate).toInt() + 1] / 32768f
+        assertTrue("the wave is at $startsAt as it arrives", kotlin.math.abs(startsAt) > 0.1f)
+        engine.arrive(stretch)
+        engine.render(out, frames, 0L)
+        val heard = left(out, frames)
+        assertTrue("began at ${heard[0]}", abs(heard[0]) < 0.02f)
+        assertTrue(rms(heard, 0, 96) < rms(heard, 600, 960) * 0.35)
+        // A hundredth of a second later it is all there.
+        assertEquals(0.5 / sqrt(2.0), rms(heard, 600, 960), 0.03)
+    }
+
+    @Test
     fun `a fade is asked for and arrives over the time asked, both ways`() {
         val source = tone(440.0, 3.0)
         val engine = ScratchEngine(rate)

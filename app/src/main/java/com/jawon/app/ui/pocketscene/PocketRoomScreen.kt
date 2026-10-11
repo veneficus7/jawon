@@ -748,7 +748,12 @@ fun PocketRoomScreen(
                 // 120Hz panel (traps 28-30: the CD room's problem is heat, not jank). A finger
                 // down or the wheel still rocking is back to every vsync on the next frame.
                 val live = device.interacting
-                val divisor = if (live) cadence.live else cadence.divisorForFps(POCKET_IDLE_FPS)
+                // (And a quarter of the rate while Android is still sliding the app in — RoomCalm.)
+                val arriving = com.jawon.app.ui.common.RoomCalm.frameCap(SystemClock.uptimeMillis())
+                val divisor = maxOf(
+                    if (live) cadence.live else cadence.divisorForFps(POCKET_IDLE_FPS),
+                    if (arriving == Float.MAX_VALUE) 1 else cadence.divisorForFps(arriving)
+                )
                 if (divisor != publishedDivisor[0]) {
                     publishedDivisor[0] = divisor
                     renderer.frameRateOptions = Renderer.FrameRateOptions().apply {

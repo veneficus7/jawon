@@ -2029,7 +2029,13 @@ fun WallSceneScreen(
             // so the music returns out of the wind-up instead of after a gap. The room only
             // says where the finger left the disc, for the cases there is nothing to wind up
             // with: turned off the end of the track, or a file that would not decode.
-            scratchAudio.release(scratch.cursor.trackIndex, scratch.cursor.offsetMs)
+            scratchAudio.release(
+                scratch.cursor.trackIndex,
+                scratch.cursor.offsetMs,
+                // A disc that was being spun to find a place is set down there: the music is at
+                // that place and at speed at once, with nothing run on past it.
+                placed = scratch.gearing.travelling
+            )
         }
 
         val gestureListener = rememberOnGestureListener(
@@ -2297,7 +2303,9 @@ fun WallSceneScreen(
                             // a seek is a decoder flushed, and nobody reads the line that closely.
                             if (scratchAudio.holding && now - scratch.lastPlayerSeekAt >= Scratch.PLAYER_SEEK_THROTTLE_MS) {
                                 scratch.lastPlayerSeekAt = now
-                                viewModel.onScrub(scratch.cursor.trackIndex, scratch.cursor.offsetMs)
+                                if (!scratchAudio.walk(scratch.cursor.trackIndex, scratch.cursor.offsetMs)) {
+                                    viewModel.onScrub(scratch.cursor.trackIndex, scratch.cursor.offsetMs)
+                                }
                             }
                             scrubReadout.value = ScrubReadout(
                                 trackIndex = scratch.cursor.trackIndex,
@@ -2480,7 +2488,12 @@ fun WallSceneScreen(
                         !reduceMotion,
                     ambientMotion = !reduceMotion && !idleLife.settled,
                     settled = idleLife.settled
-                )
+                ).let { own ->
+                    // While Android is still sliding the app into place, a quarter of the rate:
+                    // the launcher draws that slide on the same GPU. See RoomCalm.
+                    val cap = com.jawon.app.ui.common.RoomCalm.frameCap(SystemClock.uptimeMillis())
+                    if (cap == Float.MAX_VALUE) own else maxOf(own, cadence.divisorForFps(cap))
+                }
                 val draw = cadence.shouldDraw(divisor)
 
                 // Walk the browse camera toward wherever the pinch left it. Every frame,

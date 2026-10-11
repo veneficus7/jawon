@@ -49,6 +49,9 @@ class ScratchLink @Inject constructor() {
     /** Actually producing sound, not merely asked to. Main thread. */
     fun isPlaying(): Boolean = player?.isPlaying == true
 
+    /** Which track of the record it is on. Main thread. */
+    fun trackIndex(): Int = player?.currentMediaItemIndex ?: -1
+
     /** Has what it needs to start the instant it is told to. Main thread. */
     fun isReady(): Boolean = player?.playbackState == Player.STATE_READY
 

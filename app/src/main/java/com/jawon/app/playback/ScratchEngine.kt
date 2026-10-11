@@ -102,6 +102,24 @@ class ScratchEngine(val outputRate: Int) {
         letGo = if (playing) MOTOR_ON else MOTOR_OFF
     }
 
+    /** The hand sets the record down where it is, already playing or already still — see [Platter.place]. */
+    fun place(playing: Boolean) {
+        landed = Double.NaN
+        letGo = if (playing) PLACED_ON else PLACED_OFF
+    }
+
+    /**
+     * A new stretch of audio, for a record that has got to somewhere there was none. Brought up
+     * over a hundredth of a second: sound that starts in the middle of a wave is a click.
+     */
+    fun arrive(stretch: ScratchWindow) {
+        swell = true
+        window = stretch
+    }
+
+    @Volatile
+    private var swell = false
+
     /** Asked for from outside (a fade in at the start, out at the hand-over), reached smoothly in here. */
     @Volatile
     private var levelTarget = 0f
@@ -118,6 +136,13 @@ class ScratchEngine(val outputRate: Int) {
 
     /** How much of the handled sound is in the mix: 1 with a hand on, falling away as the motor takes over. */
     private var colour = 0f
+
+    /** The loudness the record's speed asks for, as it has been reached — see [render]. */
+    private var loud = 0f
+
+    /** 1, except for the hundredth of a second after a stretch arrives in silence ([arrive]). */
+    private var arriving = 1f
+    private val arrivingStep = 1f / (0.010f * outputRate)
 
     private val handNow = DoubleArray(2)
     private val dt = 1.0 / outputRate
@@ -145,7 +170,17 @@ class ScratchEngine(val outputRate: Int) {
         val nanosPerFrame = 1e9 / outputRate
         val master = master
         landed.let { if (!it.isNaN()) { landed = Double.NaN; platter.grab(it) } }
-        letGo.let { if (it != 0) { letGo = 0; platter.release(playing = it == MOTOR_ON) } }
+        letGo.let {
+            if (it != 0) {
+                letGo = 0
+                if (it == MOTOR_ON || it == MOTOR_OFF) platter.release(playing = it == MOTOR_ON)
+                else platter.place(playing = it == PLACED_ON)
+            }
+        }
+        if (swell) {
+            swell = false
+            arriving = 0f
+        }
         var i = 0
         while (i < frames) {
             // The hand is asked after every few frames rather than every one: it is a volatile
@@ -171,7 +206,12 @@ class ScratchEngine(val outputRate: Int) {
                 val stride = speed * source.sampleRate / outputRate
                 // Loudness is measured against the motor's speed, not against 1: with the deck's
                 // tempo up or down, "playing normally" is that speed, and has to come out untouched.
-                val gain = loudness(speed / nominal) * edge(at, source.frames) * level
+                // The loudness of the speed, reached over a few thousandths of a second rather
+                // than at once: a record set down out of a spin goes from many times its speed
+                // to exactly its speed between two samples, and its level with it.
+                loud += (loudness(speed / nominal) - loud) * LOUDNESS_SMOOTHING
+                if (arriving < 1f) arriving = min(1f, arriving + arrivingStep)
+                val gain = loud * edge(at, source.frames) * level * arriving
                 if (gain > 0f) {
                     val bite = colour * bite(speed)
                     left = saturate(read(source, at, stride, 0) * gain, bite) * master
@@ -191,6 +231,11 @@ class ScratchEngine(val outputRate: Int) {
     companion object {
         private const val MOTOR_ON = 1
         private const val MOTOR_OFF = 2
+        private const val PLACED_ON = 3
+        private const val PLACED_OFF = 4
+
+        /** A time constant of about four thousandths of a second at 48kHz: nothing a hand does is that quick. */
+        private const val LOUDNESS_SMOOTHING = 0.005f
 
         private const val HAND_EVERY = 16
 
@@ -233,7 +278,13 @@ class ScratchEngine(val outputRate: Int) {
          * six decibels above the record it was cut from, which is a jump in loudness every time a
          * finger lands. At these it sits a couple of decibels proud — enough to cut through.
          */
-        fun bite(speed: Double): Float = (0.2 + 0.26 * min(speed, 3.2)).toFloat()
+        fun bite(speed: Double): Float {
+            val handled = 0.2 + 0.26 * min(speed, 3.2)
+            // And less of it again once the record is being spun rather than scratched: the grit
+            // is density, and density is level — at eight times speed it was putting back
+            // everything the loudness had taken away, and a search was as loud as the song.
+            return (if (speed <= SEARCH_FROM) handled else handled * (SEARCH_FROM / speed).pow(1.5)).toFloat()
+        }
 
         /**
          * A soft clip that leaves quiet sound alone as [amount] goes to nothing, and at full scale

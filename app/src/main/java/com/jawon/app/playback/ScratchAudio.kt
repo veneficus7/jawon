@@ -259,8 +259,34 @@ class ScratchAudio @Inject constructor(
                                 readyUri = uri
                             }
                         }
+                    } else if (phase == Phase.HELD || phase == Phase.RELEASING) {
+                        // **In the hand, the same decoder follows the record instead of the
+                        // player** (0.7.8). A disc spun to find a place leaves the stretch that
+                        // was decoded round where it was taken in well under a second, and the
+                        // wide one after it is half a minute of audio from a decoder that has
+                        // to start first. This one is already running: a few seconds round
+                        // wherever the record has got to are a few hundredths of a second away,
+                        // so there is sound under the finger on the way, and sound where it stops.
+                        val taken = session
+                        val held = scratching
+                        if (taken != null && held != null && onThePhone(held)) {
+                            if (rolling?.uri != held) {
+                                rolling?.let { old -> withContext(Dispatchers.IO) { old.close() } }
+                                rolling = RollingDecoder(context, held)
+                            }
+                            val decoder = rolling
+                            val place = taken.engine.positionSeconds
+                            if (decoder != null && !decoder.failed && !holds(taken.engine.window, place)) {
+                                // More of it the way the record is going.
+                                val ahead = if (taken.engine.rate < -0.5f) FOLLOW_SECONDS * 0.3 else FOLLOW_SECONDS * 0.7
+                                val fresh = runInterruptible(Dispatchers.IO) {
+                                    decoder.cover(place - (FOLLOW_SECONDS - ahead), place + ahead)
+                                }
+                                if (fresh != null && session === taken) adopt(taken.engine, fresh)
+                            }
+                        }
                     }
-                    delay(READY_EVERY_MS)
+                    delay(if (phase == Phase.HELD || phase == Phase.RELEASING) FOLLOW_EVERY_MS else READY_EVERY_MS)
                 }
                 // Nobody has said the disc can be touched for a while: it cannot.
                 keeping = null
@@ -276,6 +302,36 @@ class ScratchAudio @Inject constructor(
     private var armedAt = 0L
 
     private fun onThePhone(uri: Uri): Boolean = uri.scheme == "content" || uri.scheme == "file"
+
+    /**
+     * Whether [window] has sound for a record at [at]: a little behind it and a little ahead —
+     * or as much of either as the track itself has. A record turned off the end of its track is
+     * held by anything: there is nothing there to decode.
+     */
+    private fun holds(window: ScratchWindow?, at: Double): Boolean {
+        if (at < 0.0 || at > trackSeconds) return true
+        window ?: return false
+        val behind = min(HOLD_BEHIND_SECONDS, at)
+        val ahead = min(HOLD_AHEAD_SECONDS, trackSeconds - at)
+        return at - behind >= window.startSeconds - 0.06 && at + ahead <= window.endSeconds + 0.06
+    }
+
+    /**
+     * Gives the engine [candidate] if that is better than what it has for where the record is:
+     * one that has sound there over one that has not, and of two that have, the longer. A
+     * stretch decoded for somewhere the record has since left is simply dropped.
+     */
+    private fun adopt(engine: ScratchEngine, candidate: ScratchWindow) {
+        val at = engine.positionSeconds
+        val now = engine.window
+        if (!holds(candidate, at)) return
+        when {
+            // Out of silence: brought up, not switched on.
+            now == null || at < now.startSeconds || at > now.endSeconds -> engine.arrive(candidate)
+            !holds(now, at) || candidate.endSeconds - candidate.startSeconds > now.endSeconds - now.startSeconds ->
+                engine.window = candidate
+        }
+    }
 
     /** How much more the app could still allocate, in bytes. */
     private fun headroom(): Long = Runtime.getRuntime().let { it.maxMemory() - (it.totalMemory() - it.freeMemory()) }
@@ -419,11 +475,24 @@ class ScratchAudio @Inject constructor(
         widening = scope.launch {
             val wide = runInterruptible(Dispatchers.IO) { decode(uri, positionMs, WIDE_MS, WIDE_MS) }
             if (wide != null && session === taken) {
-                taken.engine.window = wide
+                adopt(taken.engine, wide)
                 Log.i(TAG, "a wide stretch, ${"%.1f".format(wide.startSeconds)}s to ${"%.1f".format(wide.endSeconds)}s")
             }
         }
     }
+
+    /**
+     * Walks the stopped player along behind the disc while it is held, to ([trackIndex],
+     * [offsetMs]) — so the deck's own line follows the hand, and the player is already near
+     * wherever the record is set down.
+     *
+     * **Straight to the player, and that is not a nicety.** Sent the long way round, through the
+     * session, a seek lands a frame or two after it was asked for — and the last one asked for
+     * before a finger lifts would land *after* the hand-back had put the player where the record
+     * really is, and move it back to where the disc was a moment earlier. False if there is no
+     * player here to tell; the room then asks the repository, which will start one.
+     */
+    fun walk(trackIndex: Int, offsetMs: Long): Boolean = phase == Phase.HELD && link.seek(trackIndex, offsetMs)
 
     /** The hand has turned the disc to [seconds] of music from where it landed, as of [reportNanos]. */
     fun hand(seconds: Double, reportNanos: Long) {
@@ -451,8 +520,11 @@ class ScratchAudio @Inject constructor(
      * The finger lifts. If the engine has the record and it is still on its own track, it is
      * wound back up and handed to the player in step; otherwise the player is simply put at
      * ([fallbackTrackIndex], [fallbackOffsetMs]) — where the room reckons the disc was turned to.
+     *
+     * [placed] is the room saying the disc was being spun to find a place, not scratched: the
+     * record is then set down exactly there, already at speed, instead of let go to run on.
      */
-    fun release(fallbackTrackIndex: Int, fallbackOffsetMs: Long) {
+    fun release(fallbackTrackIndex: Int, fallbackOffsetMs: Long, placed: Boolean = false) {
         when (phase) {
             Phase.IDLE, Phase.RELEASING -> return
             Phase.PRIMING -> {
@@ -489,8 +561,8 @@ class ScratchAudio @Inject constructor(
         phase = Phase.RELEASING
         job = scope.launch {
             try {
-                if (!resume) handBackPaused(engine, fallbackTrackIndex, fallbackOffsetMs)
-                else handBackPlaying(engine, fallbackTrackIndex, fallbackOffsetMs)
+                if (!resume) handBackPaused(engine, fallbackTrackIndex, fallbackOffsetMs, placed)
+                else handBackPlaying(engine, fallbackTrackIndex, fallbackOffsetMs, placed)
             } finally {
                 // However this ended — finished, failed, cancelled by a new grab that wants the
                 // engine kept — the player is never left muted by a scratch that is over.
@@ -562,8 +634,9 @@ class ScratchAudio @Inject constructor(
 
     // ---- Giving it back ------------------------------------------------------------------------
 
-    private suspend fun handBackPaused(engine: ScratchEngine, fallbackIndex: Int, fallbackOffsetMs: Long) {
-        engine.release(playing = false)
+    private suspend fun handBackPaused(engine: ScratchEngine, fallbackIndex: Int, fallbackOffsetMs: Long, travelling: Boolean) {
+        val placed = Platter.setDown(engine.rate.toDouble(), travelling, nominal)
+        if (placed) engine.place(playing = false) else engine.release(playing = false)
         var waited = 0L
         while (!engine.atRest && waited < COAST_LONGEST_MS) {
             delay(POLL_MS)
@@ -596,8 +669,37 @@ class ScratchAudio @Inject constructor(
      * second and a half later when it has settled, to learn how long the start really took —
      * and that is what makes the next one tighter ([learnFrom]).
      */
-    private suspend fun handBackPlaying(engine: ScratchEngine, fallbackIndex: Int, fallbackOffsetMs: Long) {
-        val settle = Platter.settleFrom(Platter.letGoAt(engine.rate.toDouble()), nominal)
+    private suspend fun handBackPlaying(engine: ScratchEngine, fallbackIndex: Int, fallbackOffsetMs: Long, travelling: Boolean) {
+        // Set down, or thrown? Decided by what the record was doing as the finger left it.
+        val placed = Platter.setDown(engine.rate.toDouble(), travelling, nominal)
+        // A record spun somewhere faster than that place could be decoded has no sound there
+        // yet. Two things can put some there, and both are sent for at once: the stretch round
+        // it, a few hundredths of a second from arriving ([arm] follows the hand) — with which
+        // the music comes back out of the record itself — and the player, sent to the place
+        // and started the moment it is ready. Whichever is first is the one that is heard.
+        var landing = 0L
+        if (!holds(engine.window, engine.positionSeconds)) {
+            val (landIndex, landMs) = landingPlace(engine, fallbackIndex, fallbackOffsetMs)
+            playerPlay(false)
+            playerSeek(landIndex, landMs)
+            while (!holds(engine.window, engine.positionSeconds) && landing < LAND_WAIT_MS) {
+                val parked = landing >= PLAYER_SETTLE_MS && link.isReady() && link.trackIndex() == landIndex &&
+                    abs((link.positionMs() ?: -1_000_000L) - landMs) < NEAR_ENOUGH_MS
+                if (parked) {
+                    engine.fade(0f, 0.02f)
+                    playerPlay(true)
+                    fadeLink(0f, 1f, 40)
+                    Log.i(TAG, "set down where there was no audio yet: the player had it after ${landing}ms, at track $landIndex, ${landMs}ms")
+                    return
+                }
+                delay(TICK_MS)
+                landing += TICK_MS
+            }
+        }
+        // Set down, the record is where it was put and already at speed; thrown, it will settle
+        // a little further on (or back), a moment from now.
+        val settle = if (placed) Platter.Settled(0.0, 0.0)
+        else Platter.settleFrom(Platter.letGoAt(engine.rate.toDouble()), nominal)
         val lockAt = engine.positionSeconds + settle.travelled
         val window = engine.window
         val onTheRecord = window != null && lockAt > 0.05 &&
@@ -609,14 +711,20 @@ class ScratchAudio @Inject constructor(
             // Turned off the end of this track, or too near it: there is nothing to wind up
             // with. The player starts where the disc was left, under a quick fade.
             engine.fade(0f, 0.03f)
-            playerSeek(fallbackIndex, fallbackOffsetMs)
+            val (toIndex, toMs) = landingPlace(engine, fallbackIndex, fallbackOffsetMs)
+            // The player may already be standing at the place — it was sent there above, or
+            // walked there behind the disc. Then it is not sent again: a seek is a decoder
+            // emptied and a buffer refilled, and that is the wait this would otherwise be.
+            val there = link.isReady() && link.trackIndex() == toIndex &&
+                abs((link.positionMs() ?: -1_000_000L) - toMs) < NEAR_ENOUGH_MS
+            if (!there) playerSeek(toIndex, toMs)
             playerPlay(true)
-            fadeLink(0f, 1f, 120)
-            Log.i(TAG, "let go off the record (${"%.3f".format(lockAt)}s of ${"%.1f".format(trackSeconds)}): started at track $fallbackIndex, ${fallbackOffsetMs}ms")
+            fadeLink(0f, 1f, 60)
+            Log.i(TAG, "let go off the record (${"%.3f".format(lockAt)}s of ${"%.1f".format(trackSeconds)}): started at track $toIndex, ${toMs}ms")
             return
         }
 
-        engine.release(playing = true)
+        if (placed) engine.place(playing = true) else engine.release(playing = true)
         link.setLevel(0f)
         // Stopped, whatever it was doing: a finger that came and went inside the take-over's own
         // crossfade leaves a player that was never told to stop.
@@ -672,6 +780,7 @@ class ScratchAudio @Inject constructor(
         Log.i(
             TAG,
             "handed back: wind-up ${(settle.seconds * 1000).toInt()}ms, " +
+                (if (placed) "set down, " else "") + (if (landing > 0) "waited ${landing}ms for audio, " else "") +
                 (if (met) "met after ${waited}ms on park $parks" else "not met ($parks parks)") +
                 ", output ${(outputBehind * 1000).toInt()}ms behind, player ${(playExtra * 1000).toInt()}ms more"
         )
@@ -679,6 +788,19 @@ class ScratchAudio @Inject constructor(
         fadeLink(0f, 1f, CROSS_OUT_MS)
         delay(30)
         if (met) learnFrom(startedAt, meetAt, outputBehind)
+    }
+
+    /**
+     * Where the player should be put for a record the engine cannot give back itself: where the
+     * record is, if that is still on its own track — the engine has followed the hand to the
+     * last hundredth of a second, where the room's own figure is as old as the last touch event,
+     * and at a spin's gearing one event is most of a second of music. Off the end of the track,
+     * only the room knows which track that is.
+     */
+    private fun landingPlace(engine: ScratchEngine, fallbackIndex: Int, fallbackOffsetMs: Long): Pair<Int, Long> {
+        val at = engine.positionSeconds
+        return if (at >= 0.0 && at < trackSeconds - 0.05) trackIndex to (at * 1000).toLong()
+        else fallbackIndex to fallbackOffsetMs
     }
 
     /**
@@ -1067,6 +1189,23 @@ class ScratchAudio @Inject constructor(
 
         /** A stretch squeezed shorter than this by what memory is left is not worth having. */
         const val LEAST_WORTH_DECODING_MS = 1_500.0
+
+        /** What following the hand keeps decoded round the record, and how often it looks. */
+        const val FOLLOW_SECONDS = 10.0
+        const val FOLLOW_EVERY_MS = 30L
+
+        /** A stretch has sound for a record with this much of it behind and ahead. */
+        const val HOLD_BEHIND_SECONDS = 0.4
+        const val HOLD_AHEAD_SECONDS = 1.0
+
+        /** How long a record set down where there is no sound yet waits for some before the player is sent for. */
+        const val LAND_WAIT_MS = 400L
+
+        /** A player standing this close to where it is wanted is not sent there again. */
+        const val NEAR_ENOUGH_MS = 80L
+
+        /** A player just sent somewhere says it is ready for a moment before it knows it is not. */
+        const val PLAYER_SETTLE_MS = 16L
 
         /** This close to either end of what is decoded, a record that is travelling gets a new stretch. */
         const val REWIDEN_WITHIN_SECONDS = 8.0

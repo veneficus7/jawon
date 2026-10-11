@@ -1,6 +1,7 @@
 package com.jawon.app.ui.wallscene
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import kotlin.math.abs
@@ -228,6 +229,29 @@ class ScratchTest {
         // All but the few degrees it takes to know the hand has turned are at a record's gearing.
         assertTrue("back was $back", back < -record && back > -record * 1.2)
         assertEquals(record, forth, 0.03)
+    }
+
+    @Test
+    fun `a hand that has gone round is travelling, and one that scratches is not`() {
+        val gearing = Scratch.Gearing()
+        assertFalse(gearing.travelling)
+        // Strokes of half a turn, back and forth: scratching, however long it goes on.
+        repeat(10) {
+            gearing.spin(0.5f)
+            assertFalse(gearing.travelling)
+            gearing.spin(-0.5f)
+            assertFalse(gearing.travelling)
+        }
+        // Round and round: finding a place. What it lets go of is set down, not thrown.
+        gearing.spin(1.5f)
+        assertTrue(gearing.travelling)
+        // And turned back, a hand again.
+        gearing.spin(-0.1f)
+        assertFalse(gearing.travelling)
+        gearing.spin(-1.5f)
+        assertTrue(gearing.travelling)
+        gearing.reset()
+        assertFalse(gearing.travelling)
     }
 
     @Test

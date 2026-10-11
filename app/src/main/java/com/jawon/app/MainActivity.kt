@@ -33,6 +33,7 @@ import kotlinx.coroutines.launch
 import com.jawon.app.data.prefs.AppPreferences
 import com.jawon.app.navigation.JawonNavHost
 import com.jawon.app.ui.common.LocalRoomParked
+import com.jawon.app.ui.common.RoomCalm
 import com.jawon.app.ui.intro.IntroKind
 import com.jawon.app.ui.intro.IntroOverlay
 import com.jawon.app.ui.intro.SplashHandOver
@@ -133,7 +134,9 @@ class MainActivity : ComponentActivity() {
                             .fillMaxSize()
                             .then(if (introUp) Modifier.clearAndSetSemantics { } else Modifier)
                     ) {
-                        CompositionLocalProvider(LocalRoomParked provides parked) {
+                        // Parked under the opening card, or because the app is on its way out
+                        // of sight: either way a room has no reason to draw. See RoomCalm.
+                        CompositionLocalProvider(LocalRoomParked provides (parked || RoomCalm.away.value)) {
                             JawonNavHost(
                                 format = Format.openable(format, BuildConfig.DEBUG || BuildConfig.SHOW_FORMATS),
                                 request = request,
@@ -162,6 +165,23 @@ class MainActivity : ComponentActivity() {
     }
 
     /** An intent arriving at a Jawon that is already open: `singleTask` brings it here. */
+    // The rooms stand aside while Android is sliding the app in or out — see RoomCalm.
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        RoomCalm.onFocus(hasFocus, sideBySide = isInMultiWindowMode, nowMs = android.os.SystemClock.uptimeMillis())
+    }
+
+    override fun onResume() {
+        super.onResume()
+        RoomCalm.onResumed(android.os.SystemClock.uptimeMillis())
+    }
+
+    override fun onPause() {
+        RoomCalm.onPaused()
+        super.onPause()
+    }
+
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
