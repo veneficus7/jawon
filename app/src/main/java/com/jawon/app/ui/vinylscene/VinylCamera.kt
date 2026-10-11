@@ -1,8 +1,11 @@
 package com.jawon.app.ui.vinylscene
 
+import kotlin.math.abs
 import kotlin.math.atan2
+import kotlin.math.cos
 import kotlin.math.max
 import kotlin.math.pow
+import kotlin.math.sin
 import kotlin.math.sqrt
 
 /**
@@ -88,15 +91,77 @@ object VinylCamera {
     private const val CRATE_BACK = 0.62f
     private const val CRATE_WIDTH = 0.40f
 
-    fun crate(aspect: Float): Shot {
+    /**
+     * The shot at the crate; [along] metres further back in it than its middle, for following the
+     * record being read to the back of a crate that is nearly gone through.
+     */
+    fun crate(aspect: Float, along: Float = 0f): Shot {
         val away = max(1.2f, CRATE_WIDTH * aspect * FOCAL_MM / SENSOR_H_MM)
         val length = sqrt(CRATE_UP * CRATE_UP + CRATE_BACK * CRATE_BACK)
         return Shot(
             x = 0f,
             y = CRATE_LOOK_Y + away * CRATE_UP / length,
-            z = CRATE_LOOK_Z + away * CRATE_BACK / length,
+            z = CRATE_LOOK_Z + along + away * CRATE_BACK / length,
             pitchDeg = -Math.toDegrees(atan2(CRATE_UP, CRATE_BACK).toDouble()).toFloat()
         )
+    }
+
+    // ---- A finger, from any shot ---------------------------------------------------------------------
+
+    /**
+     * Where a point of the screen is on a sleeve standing in the crate: how far across it from
+     * its middle, and how far up it from its foot, in metres, into [out]. The sleeve stands on
+     * its bottom edge at height [footY] and distance [footZ], leaning [leanDeg] with its top
+     * toward you. False if the sleeve's plane is not in front of the lens at that point.
+     *
+     * The same lens as [onPlane], for a camera that is not looking straight down: a ray through
+     * the point, met with the plane the sleeve lies in.
+     */
+    fun onSleeve(
+        shot: Shot, px: Float, py: Float, widthPx: Float, heightPx: Float,
+        footY: Float, footZ: Float, leanDeg: Float, out: FloatArray
+    ): Boolean {
+        val pitch = Math.toRadians(shot.pitchDeg.toDouble())
+        val cp = cos(pitch).toFloat()
+        val sp = sin(pitch).toFloat()
+        val tall = SENSOR_H_MM / FOCAL_MM
+        val wide = tall * widthPx / heightPx
+        val sx = (px / widthPx - 0.5f) * wide
+        val sy = (0.5f - py / heightPx) * tall
+        // Forward is (0, sin, -cos) of the pitch and up is (0, cos, sin): straight down, the far edge of the table is up-screen.
+        val dx = sx
+        val dy = sp + sy * cp
+        val dz = -cp + sy * sp
+        val lean = Math.toRadians(leanDeg.toDouble())
+        val ny = -sin(lean).toFloat()
+        val nz = cos(lean).toFloat()
+        val facing = dy * ny + dz * nz
+        if (abs(facing) < 1e-6f) return false
+        val t = ((footY - shot.y) * ny + (footZ - shot.z) * nz) / facing
+        if (t <= 0f) return false
+        val hy = shot.y + t * dy - footY
+        val hz = shot.z + t * dz - footZ
+        out[0] = shot.x + t * dx
+        out[1] = hy * cos(lean).toFloat() + hz * sin(lean).toFloat()
+        return true
+    }
+
+    /** Where a point of the room is on the screen, in pixels from its top left, into [out]. False behind the lens. */
+    fun project(shot: Shot, x: Float, y: Float, z: Float, widthPx: Float, heightPx: Float, out: FloatArray): Boolean {
+        val pitch = Math.toRadians(shot.pitchDeg.toDouble())
+        val cp = cos(pitch).toFloat()
+        val sp = sin(pitch).toFloat()
+        val vx = x - shot.x
+        val vy = y - shot.y
+        val vz = z - shot.z
+        val depth = vy * sp - vz * cp
+        if (depth <= 0f) return false
+        val up = vy * cp + vz * sp
+        val tall = SENSOR_H_MM / FOCAL_MM
+        val wide = tall * widthPx / heightPx
+        out[0] = (vx / (depth * wide) + 0.5f) * widthPx
+        out[1] = (0.5f - up / (depth * tall)) * heightPx
+        return true
     }
 
     /** [t] of the way from [a] to [b]: the camera rising from the crate to stand over the deck. */

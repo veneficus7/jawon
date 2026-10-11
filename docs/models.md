@@ -329,13 +329,28 @@ number is a `V_*` constant in the script and has a twin in `VinylDimens` (`ui/vi
 | `vinyl_arm.glb` | the pivot | x −0.037…0.027 · y −0.025…0.017 · z −0.084…0.241 | `arm_tube`, `arm_black`, `arm_bright`, `arm_stylus` |
 | `vinyl_record.glb` | centre of its underside | r 0.151 · y −0.0003…0.0023 | `vinyl_a`, `vinyl_b`, `label_a`, `label_b` |
 | `vinyl_sleeve.glb` | middle of its bottom edge | x ±0.1575 · y 0…0.315 · z ±0.0018 | `sleeve_card`, `sleeve_front`, `sleeve_back` |
-| `vinyl_crate.glb` | middle of its floor, inside | x ±0.1815 · y −0.012…0.235 · z −0.2235…0.222 | `crate` |
+| `vinyl_crate.glb` | middle of its floor, inside | x ±0.1815 · y −0.012…0.235 · z ±0.2235 | `crate` |
+| `vinyl_divider.glb` | middle of its bottom edge | card x ±0.1575 · y 0…0.319; tab x ±0.0525 · y 0.317…0.345; label x ±0.048 · y 0.320…0.344, on the face at z +0.0009 | `divider_card`, `divider_tab`, `divider_label` |
 | `vinyl_room.glb` | the deck's, on the table top | table y −0.03…0, floor at y −0.56, wall at z −0.28 | `table_top`, `table_carcass`, `table_legs`, `floor`, `wall` |
 
 The bounds are the check, as they were for the case: the arm reaching **+0.241 in z** says it
 lies toward the front, the stylus at **y −0.025** is the record's surface seen from the pivot
 (`V_RECORD_TOP − V_PIVOT_H`), and the spindle's **0.0373** is the platter, the mat, the record
 and the ten millimetres of post above them, added up.
+
+**The crate is the app's arithmetic as much as it is a model** (`CrateLayout`). Its front is as
+tall as its back — the crate's **z ±0.2235** says so; it was −0.2235…0.222 with one low slat in
+front — because the records gone through lean on the top edge of the front as the ones to come
+lean on the back's (`V_CRATE_SLATS`: the top slat ends at 0.2275, which is `CrateLayout.WALL_TOP`).
+Its corner battens are 8mm across and against the sides, because a sleeve is 315 wide in a crate
+336 inside and a batten 16mm in stood in its way at both ends. And it is stained dark: pale pine
+under the lamp that lights the sleeves was the brightest thing in the frame, and the records are
+what the frame is for. (The table's carcass went the other way for the same view — its front is
+what stands behind the crate, a quarter of the frame, and darker than the top it read as a hole.)
+
+**A divider's tab and its label are modelled in the middle and moved by the app** — tabs are cut
+left, middle and right in turn (`CrateLayout.tabX`), and one model serves all three. The label's
+UVs are the whole of a 4:1 texture (`VinylArt.dividerLabel`).
 
 ### A record's grooves are its UVs
 

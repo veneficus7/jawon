@@ -304,12 +304,27 @@ What exists (`ui/vinylscene/`, `docs/architecture.md`): the models, and the half
 that plays, on the flagship emulator — the deck, the record with its labels and its streak of
 lamp, the arm over the groove being heard, the sleeve's back as the tracklist, start · stop, the
 pinch, and the scratch at a record's own gearing through the engine the CD's disc was rebuilt
-on. What does not: **the crate** (an empty deck takes the first record on the shelves when
-touched, which is a stand-in), **the sequence** from sleeve to platter and the needle coming
-down, **the turn** of the record at the end of a side (it turns over in no time at all, and
-nothing waits for a hand), the arm as something to pick up, and any way from here to Settings
-or Add. `Format.VINYL` is unbuilt: debug builds offer it, and a release shows its plinth as
-*Coming*.
+on. **And the crate** (2026-10-11, `Crate.kt` and `CrateScene.kt`): on the floor in front of the
+table, the whole library standing in one bin in the shelves' order, a tabbed card between one
+shelf's records and the next — tabs cut left, middle, right in turn, so three shelves can be
+read at once — and a card at the very back that says *+ add records* and opens Add. **Drag
+down** and the record in front falls toward you and the next is there; let go and it runs on and
+stops *on* a record, a tick for each one passed and a heavier one for a shelf's card. **Swipe
+sideways** for the next shelf, or back to the start of this one. **Touch the record being read**
+and it is lifted out, the camera rises to the deck and it plays; **Back** from the deck is back
+to the crate, where the record that is on stands a little proud. With a record already on, the
+room opens at the deck; with none, at the crate. Both piles rest on the wood — the ones still to
+come on the back of the crate, the ones gone through on its front — so at either end of the
+library the gap is where a real crate's is; in between, twenty-three sleeves are drawn out of a
+ring of twenty-four, whatever the library's size.
+
+What does not exist: **the sequence** from sleeve to platter and the needle coming down (a
+record taken is simply on, and playing, by the time the camera gets there), **the turn** of the
+record at the end of a side (it turns over in no time at all, and nothing waits for a hand), the
+arm as something to pick up, and any way from here to Settings. `Format.VINYL` is unbuilt: debug
+builds offer it, and a release shows its plinth as *Coming*. **Never on a phone**, and its cost
+there is not known — which, after what the CD wall turned out to cost, is the first thing to
+find out when it is.
 
 **First look, 2026-10-11 — stills for the owner to choose between** (`tools/vinyl-preview/`,
 Cycles, at real dimensions: a 453 × 353mm direct-drive deck, a 302mm record, 315mm sleeves in a

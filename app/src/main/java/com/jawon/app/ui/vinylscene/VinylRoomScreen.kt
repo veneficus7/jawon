@@ -11,9 +11,12 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -82,6 +85,15 @@ private const val PLATTER_DEG_PER_S = 200f
 /** The arm, lifted clear of a record: its tip a centimetre up. */
 private const val ARM_LIFT_DEG = 3.2f
 
+/** How stiffly the camera goes between the crate and the deck: a spring that arrives in about three quarters of a second and does not come back. */
+private const val PLACE_STIFFNESS = 7.5f
+
+/** A record that has been chosen is seen to leave the crate before the camera does. */
+private const val TAKE_LEAD_MS = 200L
+
+/** How much of the way the camera follows the record being read toward the back of a crate nearly gone through. */
+private const val CRATE_FOLLOW = 0.8f
+
 /** How quickly the arm and the zoom close on where they are going: the fraction left after a second is e^-this. */
 private const val ARM_EASE = 9f
 private const val ZOOM_EASE = 11f
@@ -105,8 +117,10 @@ private const val START_HALF_D = 0.026f
  * **The vinyl room** (`docs/formats.md` §5) — a sibling of `WallSceneScreen` and `PocketRoomScreen`,
  * sharing their view model and their player and nothing of their scenes.
  *
- * This is the half of it that plays: a deck from straight above, the record that is on, its
- * sleeve laid out in front with its sides printed on the back. The crate it came out of is next.
+ * Two places, and the camera goes between them: **the crate** on the floor, where the library
+ * stands to be gone through (`Crate.kt`, `CrateScene.kt`), and **the deck** from straight above,
+ * the record that is on, its sleeve laid out in front with its sides printed on the back. A
+ * record touched in the crate is lifted out and put on; Back from the deck is back to the crate.
  *
  * - **The platter turns** at 33⅓ while the music plays, and goes on turning under a record that
  *   is held: that is what a slipmat is for, and why the beads on its rim keep moving past a
@@ -163,6 +177,11 @@ fun VinylRoomScreen(
     val recordModel = rememberModelInstance(modelLoader, RECORD_ASSET)
     val sleeveBackModel = rememberModelInstance(modelLoader, SLEEVE_ASSET)
     val sleeveFrontModel = rememberModelInstance(modelLoader, SLEEVE_ASSET)
+    // The crate: its wood, and the pools its sleeves and cards are drawn from — a fixed number of
+    // each, made once and never again (`CrateLayout.POOL`, and `ENGINEERING.md`'s first trap).
+    val crateModel = rememberModelInstance(modelLoader, CRATE_ASSET)
+    val crateSleeves = remember(modelLoader) { modelLoader.createInstancedModel(SLEEVE_ASSET, CrateLayout.POOL) }
+    val crateCards = remember(modelLoader) { modelLoader.createInstancedModel(DIVIDER_ASSET, CrateLayout.CARDS) }
 
     // ---- the record that is on ---------------------------------------------------------------
     val layout by viewModel.layout.collectAsStateWithLifecycle()
@@ -177,7 +196,34 @@ fun VinylRoomScreen(
     // A long album is more than one record; the one on the platter is the one this side is on.
     val recordIndex = sideIndex / 2
 
-    val stage = remember { VinylStage(viewModel.scratchAudio, haptics) }
+    val scope = rememberCoroutineScope()
+    val crateTextures = remember(engine) { CrateTextures(engine) }
+    val crate = remember(crateTextures) { VinylCrate(context.applicationContext, scope, crateTextures, haptics) }
+    // Declared before the scene, so it is disposed after it (`ENGINEERING.md`, trap 35).
+    DisposableEffect(crateTextures) {
+        onDispose {
+            crate.release()
+            crateTextures.destroy()
+        }
+    }
+    // With a record already on, the room opens at the deck; with none, at the crate.
+    val stage = remember(crate) { VinylStage(viewModel.scratchAudio, haptics, crate, startAtDeck = viewModel.deck.value.tracks.isNotEmpty()) }
+    val crateItems = remember(layout) { Crate.items(layout) }
+    val currentNowPlaying = rememberUpdatedState(nowPlayingAlbumId)
+    SideEffect {
+        crate.setItems(crateItems, nowPlayingAlbumId)
+        crate.onTake = { albumId ->
+            viewModel.playAlbum(albumId)
+            stage.leaveCrate()
+        }
+        crate.onAdd = onAddAlbum
+        crate.onDeck = { stage.toDeck() }
+    }
+    // A record put on from somewhere else — the car, the widget — while the crate is out of
+    // sight: it is turned to that record, so that going back to it is going back to where it was.
+    LaunchedEffect(nowPlayingAlbumId, crateItems) {
+        if (stage.atDeck) crate.turnTo(nowPlayingAlbumId)
+    }
     stage.touchSlopPx = ViewConfiguration.get(context).scaledTouchSlop.toFloat()
     val currentDeck = rememberUpdatedState(deck)
     val currentSides = rememberUpdatedState(sides)
@@ -232,8 +278,13 @@ fun VinylRoomScreen(
         stage.changed = true
     }
 
+    // Back is one step out each time: off the record, down to the crate, out to the showroom.
     BackHandler(enabled = !covered) {
-        if (stage.zoomTarget > 0.5f) stage.zoomTarget = 0f else onOpenShowroom()
+        when {
+            stage.zoomTarget > 0.5f -> stage.zoomTarget = 0f
+            stage.atDeck -> stage.toCrate()
+            else -> onOpenShowroom()
+        }
     }
 
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
@@ -262,8 +313,8 @@ fun VinylRoomScreen(
                         onSelectTrack = viewModel::onSelectTrack,
                         onPlayPause = { viewModel.onPlayPause() },
                         onWalk = viewModel::onScrub,
-                        // Until there is a crate to take one from: the first record on the shelves.
-                        onEmptyDeck = { currentLayout.value.casesInWallOrder.firstOrNull()?.let { viewModel.playAlbum(it.albumId) } }
+                        // A deck with nothing on it: the crate is where a record comes from.
+                        onEmptyDeck = { stage.toCrate() }
                     )
                 }
                 true
@@ -271,7 +322,7 @@ fun VinylRoomScreen(
             onFrame = {
                 if (!VinylAtmosphere.isApplied(filamentView)) VinylAtmosphere.apply(filamentView, tier)
                 val now = SystemClock.uptimeMillis()
-                stage.onFrame(now, currentDeck.value, currentSides.value, currentPosition.value)
+                stage.onFrame(now, currentDeck.value, currentSides.value, currentPosition.value, currentNowPlaying.value)
 
                 // The lens, written every frame: SceneView's camera re-aims itself at the origin
                 // if it is left alone (`ENGINEERING.md`, trap 8).
@@ -432,6 +483,68 @@ fun VinylRoomScreen(
                 }
             }
 
+            // **The crate**, on the floor in front of the table: its wood, the sleeves standing
+            // in it and the cards between the shelves. Every sleeve and card is one of a pool,
+            // keyed by its place in the pool and never by the record it happens to be.
+            Node(position = Position(0f, VinylDimens.FLOOR_Y, VinylDimens.CRATE_Z)) {
+                crateModel?.let { ModelNode(it, apply = { isTouchable = false; isShadowCaster = true; isShadowReceiver = true }) }
+                crateSleeves.forEachIndexed { slot, instance ->
+                    key(slot) {
+                        ModelNode(
+                            instance,
+                            apply = {
+                                isTouchable = false
+                                isShadowCaster = true
+                                isShadowReceiver = true
+                                crate.adoptSleeve(slot, this)
+                            }
+                        )
+                    }
+                }
+                crateCards.forEachIndexed { index, instance ->
+                    key(index) {
+                        ModelNode(
+                            instance,
+                            apply = {
+                                isTouchable = false
+                                isShadowCaster = true
+                                isShadowReceiver = true
+                                crate.adoptCard(index, this)
+                            }
+                        )
+                    }
+                }
+            }
+            // The crate's own lamp: in front of it and to the lamp's side, so that the faces of
+            // the sleeves — which lean away from the lamp over the deck, and get nothing from it —
+            // can be read. On its own carrier, which is how the frame loop finds it to turn it
+            // down as the camera leaves.
+            Node(apply = { stage.crateLamp = this }) {
+                LightNode(
+                    type = LightManager.Type.SPOT,
+                    position = Position(VinylLighting.CRATE_POSITION[0], VinylLighting.CRATE_POSITION[1], VinylLighting.CRATE_POSITION[2]),
+                    direction = Direction(
+                        VinylLighting.CRATE_AIM[0] - VinylLighting.CRATE_POSITION[0],
+                        VinylLighting.CRATE_AIM[1] - VinylLighting.CRATE_POSITION[1],
+                        VinylLighting.CRATE_AIM[2] - VinylLighting.CRATE_POSITION[2]
+                    ),
+                    apply = {
+                        color(VinylLighting.CRATE_COLOUR[0], VinylLighting.CRATE_COLOUR[1], VinylLighting.CRATE_COLOUR[2])
+                        intensityCandela(VinylLighting.CRATE_CANDELA)
+                        spotLightCone(VinylLighting.CRATE_CONE_INNER_RAD, VinylLighting.CRATE_CONE_OUTER_RAD)
+                        falloff(VinylLighting.CRATE_FALLOFF_M)
+                        castShadows(tier.shadowsOnFixtures)
+                        shadowOptions(
+                            LightManager.ShadowOptions().apply {
+                                mapSize = 1024
+                                shadowNearHint = 0.4f
+                                shadowFarHint = 2.4f
+                            }
+                        )
+                    }
+                )
+            }
+
             // Declared inside the scene so that it is disposed before the scene is (trap 35):
             // the materials stop sampling these before the textures go.
             DisposableEffect(art) { onDispose { stage.release() } }
@@ -552,7 +665,12 @@ private class VinylTextures(private val engine: Engine) {
  * director are: nothing here is Compose state, because nothing here should recompose anything —
  * a platter's angle changes a hundred and twenty times a second.
  */
-private class VinylStage(private val scratch: ScratchAudio, private val haptics: RoomHaptics) {
+private class VinylStage(
+    private val scratch: ScratchAudio,
+    private val haptics: RoomHaptics,
+    private val crate: VinylCrate,
+    startAtDeck: Boolean
+) {
 
     var platterNode: Node? = null
     var recordNode: Node? = null
@@ -561,6 +679,36 @@ private class VinylStage(private val scratch: ScratchAudio, private val haptics:
     var armTilt: Node? = null
     var sleeveFrontNode: Node? = null
     var sleeveBackNode: Node? = null
+    var crateLamp: Node? = null
+
+    // ---- Where the camera is: at the crate (0), over the deck (1), or on its way ----------------
+
+    private var place = if (startAtDeck) 1f else 0f
+    private var placeTarget = place
+    private var placeVelocity = 0f
+    private var leaveAt = 0L
+    private var lampAt = -1f
+
+    /** The deck is where the camera is, or is going. */
+    val atDeck: Boolean get() = placeTarget > 0.5f
+
+    /** Down to the crate, from wherever the camera is; a record in the hand is let go first. */
+    fun toCrate() {
+        if (held) letGo()
+        zoomTarget = 0f
+        leaveAt = 0L
+        placeTarget = 0f
+    }
+
+    /** Up to the deck — if there is a record on it to go up to. */
+    fun toDeck() {
+        if (hasRecord) placeTarget = 1f
+    }
+
+    /** A record has been taken out of the crate: up to the deck, a moment after it is seen to go. */
+    fun leaveCrate() {
+        leaveAt = SystemClock.uptimeMillis() + TAKE_LEAD_MS
+    }
 
     var widthPx = 1f
     var heightPx = 1f
@@ -590,14 +738,32 @@ private class VinylStage(private val scratch: ScratchAudio, private val haptics:
     var turning = false
         private set
 
-    fun onFrame(now: Long, deck: DeckState, sides: List<Side>, positionMs: Long) {
+    fun onFrame(now: Long, deck: DeckState, sides: List<Side>, positionMs: Long, nowPlaying: String?) {
         val dt = if (lastFrameAt == 0L) 0f else ((now - lastFrameAt) / 1000f).coerceAtMost(0.1f)
         lastFrameAt = now
         hasRecord = deck.tracks.isNotEmpty() && sides.isNotEmpty()
         val aspect = heightPx / widthPx
 
+        // ---- between the crate and the deck -------------------------------------------------------
+        if (leaveAt != 0L && now >= leaveAt) {
+            leaveAt = 0L
+            placeTarget = 1f
+        }
+        var left = dt
+        while (left > 0f) {
+            val h = minOf(left, 1f / 240f)
+            placeVelocity += (PLACE_STIFFNESS * PLACE_STIFFNESS * (placeTarget - place) - 2f * PLACE_STIFFNESS * placeVelocity) * h
+            place += placeVelocity * h
+            left -= h
+        }
+        if (abs(placeTarget - place) < 0.0006f && abs(placeVelocity) < 0.004f) {
+            place = placeTarget
+            placeVelocity = 0f
+        }
+        val risen = place.coerceIn(0f, 1f)
+
         // While the record can be touched, the scratch keeps the audio round the playhead in hand.
-        scratch.arm(hasRecord)
+        scratch.arm(hasRecord && atDeck)
 
         // ---- the platter, and the record on it -------------------------------------------------
         val playing = deck.isPlaying
@@ -626,8 +792,8 @@ private class VinylStage(private val scratch: ScratchAudio, private val haptics:
         recordFlip?.position = Position(0f, if (flipped) VinylDimens.LP_H else 0f, 0f)
 
         val side = sides.getOrNull(sideIndex)
-        val place = scratch.positionMs() ?: positionMs
-        val radius = if (side != null) side.radiusAt(side.fraction(track, place)) else VinylDimens.REST_RADIUS
+        val heard = scratch.positionMs() ?: positionMs
+        val radius = if (side != null) side.radiusAt(side.fraction(track, heard)) else VinylDimens.REST_RADIUS
         val wantedYaw = VinylArm.yawDegrees(radius)
         val wantedLift = if (side != null) 0f else ARM_LIFT_DEG
         val armStep = 1f - exp(-ARM_EASE * dt)
@@ -639,12 +805,28 @@ private class VinylStage(private val scratch: ScratchAudio, private val haptics:
         // ---- the lens ------------------------------------------------------------------------------------
         zoom += (zoomTarget - zoom) * (1f - exp(-ZOOM_EASE * dt))
         if (abs(zoomTarget - zoom) < 0.0005f) zoom = zoomTarget
-        shot = VinylCamera.play(zoom, aspect)
+        val over = VinylCamera.play(zoom, aspect)
+        // The crate is gone through only while it can be seen.
+        val digging = risen < 1f && crate.onFrame(dt, now, nowPlaying)
+        shot = if (risen >= 1f) over else {
+            val down = VinylCamera.crate(aspect, crate.readsAt * CRATE_FOLLOW)
+            if (risen <= 0f) down else VinylCamera.between(down, over, risen)
+        }
+        // The crate's lamp goes down as the camera leaves it: nothing it lights is in the frame from above.
+        val lamp = VinylLighting.CRATE_CANDELA * (1f - risen)
+        if (abs(lamp - lampAt) > 0.5f) {
+            (crateLamp?.childNodes?.firstOrNull { it is LightNode } as? LightNode)?.let {
+                it.setIntensityCandela(lamp)
+                lampAt = lamp
+            }
+        }
 
         turning = hasRecord && (playing || scratch.turning)
-        busy = held || pinching || changed || zoom != zoomTarget ||
+        busy = held || pinching || changed || zoom != zoomTarget || place != placeTarget || leaveAt != 0L ||
+            digging || crate.busy || crate.changed ||
             abs(wantedYaw - armYaw) > 0.02f || abs(wantedLift - armLift) > 0.02f
         changed = false
+        crate.changed = false
     }
 
     // ---- A finger ------------------------------------------------------------------------------------
@@ -677,6 +859,12 @@ private class VinylStage(private val scratch: ScratchAudio, private val haptics:
         onWalk: (Int, Long) -> Unit,
         onEmptyDeck: () -> Unit
     ) {
+        // At the crate, a finger is the crate's; on the way between the two, nobody's.
+        if (place < 0.04f && placeTarget == 0f) {
+            crate.onTouch(event, shot, widthPx, heightPx, touchSlopPx)
+            return
+        }
+        if (place < 0.96f || placeTarget != 1f) return
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
                 downAt = event.eventTime

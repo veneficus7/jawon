@@ -96,6 +96,13 @@ object VinylArt {
     const val SLEEVE_PX = 1024
     const val BAND_PX = 1024
 
+    /** A sleeve standing in the crate among twenty others: all that is seen of most of them is a top edge. */
+    const val CRATE_PX = 256
+
+    /** The paper label on a divider's tab: four to one, as the model maps it. */
+    const val LABEL_W = 512
+    const val LABEL_H = 128
+
     private val cream = Color.rgb(236, 228, 212)
     private val dim = Color.rgb(176, 168, 152)
     private val amber = Color.rgb(240, 170, 90)
@@ -145,8 +152,7 @@ object VinylArt {
     }
 
     /** The front of the sleeve: the cover, or the record's name where it has none. */
-    fun sleeveFront(context: Context, cover: Bitmap?, title: String, artist: String): Bitmap {
-        val px = SLEEVE_PX
+    fun sleeveFront(context: Context, cover: Bitmap?, title: String, artist: String, px: Int = SLEEVE_PX): Bitmap {
         val out = Bitmap.createBitmap(px, px, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(out)
         if (cover != null) {
@@ -255,6 +261,41 @@ object VinylArt {
         canvas.drawText("${records}STEREO · 33⅓ RPM", m, px * 0.895f, text)
         return out
     }
+
+    /**
+     * The label on a divider's tab: a shelf's name and how many records are behind it, typed on
+     * paper — or, in amber, the one card that is not a shelf.
+     */
+    fun dividerLabel(context: Context, name: String, detail: String, accent: Boolean): Bitmap {
+        val out = Bitmap.createBitmap(LABEL_W, LABEL_H, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(out)
+        canvas.drawColor(if (accent) Color.rgb(34, 28, 22) else Color.rgb(226, 218, 200))
+        val ink = if (accent) amber else Color.rgb(34, 30, 27)
+        val edge = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = ink; alpha = 110; style = Paint.Style.STROKE; strokeWidth = LABEL_H * 0.03f }
+        canvas.drawRect(LABEL_H * 0.07f, LABEL_H * 0.09f, LABEL_W - LABEL_H * 0.07f, LABEL_H * 0.91f, edge)
+        val text = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
+            typeface = font(context, R.font.jetbrains_mono_variable)
+            color = ink
+            letterSpacing = 0.06f
+        }
+        val room = LABEL_W - LABEL_H * 0.44f
+        text.textSize = LABEL_H * 0.40f
+        val small = TextPaint(text).apply { textSize = LABEL_H * 0.24f; alpha = 190 }
+        val tail = if (detail.isEmpty()) 0f else small.measureText(detail) + LABEL_H * 0.20f
+        val shown = TextUtils.ellipsize(name.uppercase(), text, room - tail, TextUtils.TruncateAt.END).toString()
+        val left = LABEL_H * 0.22f
+        val base = LABEL_H * 0.5f + text.textSize * 0.36f
+        canvas.drawText(shown, left, base, text)
+        if (detail.isNotEmpty()) {
+            small.textAlign = Paint.Align.RIGHT
+            canvas.drawText(detail, LABEL_W - LABEL_H * 0.22f, base, small)
+        }
+        return out
+    }
+
+    /** The back of a sleeve as the crate shows it — which is hardly at all: card. */
+    fun cardBack(px: Int = 64): Bitmap =
+        Bitmap.createBitmap(px, px, Bitmap.Config.ARGB_8888).also { it.eraseColor(Color.rgb(46, 40, 35)) }
 
     private fun centreSquare(bitmap: Bitmap): Rect {
         val side = minOf(bitmap.width, bitmap.height)

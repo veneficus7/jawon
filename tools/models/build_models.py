@@ -2347,6 +2347,11 @@ V_HEADSHELL_ANGLE = math.radians(21.0)
 V_SLEEVE, V_SLEEVE_T = 0.315, 0.0034
 
 V_CRATE_W, V_CRATE_D, V_CRATE_H, V_CRATE_T = 0.336, 0.420, 0.235, 0.012   # inside, and its slats
+V_CRATE_SLATS, V_CRATE_SLAT = (0.055, 0.180), 0.095       # each side's two slats: their middles, and how tall; the top one ends at 0.2275
+V_CRATE_BATTEN = 0.008                                    # the corner battens, across: thin, so a sleeve passes between them
+V_DIVIDER_RISE, V_DIVIDER_T = 0.004, 0.0016               # a divider card: how much taller than a sleeve, and how thick
+V_DIVIDER_TAB_W, V_DIVIDER_TAB_H, V_DIVIDER_TAB_R = 0.105, 0.026, 0.004
+V_DIVIDER_LABEL_W, V_DIVIDER_LABEL_H = 0.096, 0.024       # the paper label on the tab: four to one, as the app prints it
 
 V_TABLE_W, V_TABLE_FRONT, V_TABLE_BACK, V_TABLE_H = 1.30, -0.62, 0.40, 0.56
 
@@ -2882,20 +2887,84 @@ def build_vinyl_sleeve():
 
 
 def build_vinyl_crate():
-    """A pine crate for a row of sleeves, open at the top and slatted; its origin is the middle of its floor, inside."""
+    """
+    A pine crate for a row of sleeves, open at the top and slatted; its origin is the middle of
+    its floor, inside.
+
+    Two things about it are the app's arithmetic and not taste (`CrateLayout`). **Its front is
+    as tall as its back**: the records already gone through lean forward on the top edge of the
+    front as the ones still to come lean back on the back's, and a low front let them fall out
+    over it. And **its corner battens are thin and against the sides**: a sleeve is 315 across
+    in a crate 336 inside, so a batten 16 in from the side stood in the sleeves' way at both ends.
+    """
     w, d, h, t = V_CRATE_W, V_CRATE_D, V_CRATE_H, V_CRATE_T
     boxes = [((0, 0, -t / 2), (w + 2 * t, d + 2 * t, t))]
     for sx in (-1, 1):
-        for zc in (0.055, 0.180):
-            boxes.append(((sx * (w / 2 + t / 2), 0, zc), (t, d + 2 * t, 0.095)))
+        for zc in V_CRATE_SLATS:
+            boxes.append(((sx * (w / 2 + t / 2), 0, zc), (t, d + 2 * t, V_CRATE_SLAT)))
         for sy in (-1, 1):
-            boxes.append(((sx * (w / 2 - 0.006), sy * (d / 2 - 0.006), h / 2), (0.020, 0.020, h)))
-    for zc, tall in ((0.040, 0.070),):
-        boxes.append(((0, -(d / 2 + t / 2), zc), (w + 2 * t, t, tall)))
-    for zc in (0.055, 0.180):
-        boxes.append(((0, d / 2 + t / 2, zc), (w + 2 * t, t, 0.095)))
-    pine = _wood("CratePine", (0.52, 0.36, 0.19), (0.80, 0.63, 0.40), seed=5, roughness=0.62, rings=14.0)
+            boxes.append(((sx * (w / 2 - V_CRATE_BATTEN / 2), sy * (d / 2 - 0.006), h / 2), (V_CRATE_BATTEN, 0.020, h)))
+    for sy in (-1, 1):
+        for zc in V_CRATE_SLATS:
+            boxes.append(((0, sy * (d / 2 + t / 2), zc), (w + 2 * t, t, V_CRATE_SLAT)))
+    # Stained, and old: a pale pine crate under the lamp that lights the sleeves was the brightest
+    # thing in the room, and the records in it are what the room is for.
+    pine = _wood("CratePine", (0.165, 0.100, 0.052), (0.36, 0.245, 0.135), seed=5, roughness=0.66, rings=14.0)
     return [_grain_object("crate", boxes, pine, bevel_width=0.0015, scale=2.2)]
+
+
+def build_vinyl_divider():
+    """
+    The card between one shelf's records and the next: a sleeve's width, a little taller, with a
+    tab standing above the sleeves for the shelf's name. Stands as a sleeve does, its face
+    toward -Y, its origin the middle of its bottom edge.
+
+    Three objects. `divider_card` is the card. `divider_tab` and `divider_label` are the tab and
+    the paper label on its face, **modelled in the middle and moved by the app**: tabs are cut
+    left, middle and right in turn, so that three shelves in a row can all be read at once, and
+    one model serves all three. The label's UVs are the whole of a texture four times as wide as
+    it is tall, which the app prints.
+    """
+    kraft = principled("DividerCard", base_color=(0.47, 0.345, 0.215), metallic=0.0, roughness=0.80)
+    height = V_SLEEVE + V_DIVIDER_RISE
+    card = _simple("divider_card", lambda bm: _vbox(bm, 0, 0, height / 2, V_SLEEVE, V_DIVIDER_T, height), kraft, bevel_width=0.0004)
+
+    def tab_fill(bm):
+        # A tab with its top corners rounded, as they are die-cut: an outline, and its thickness.
+        half, top, bottom, r = V_DIVIDER_TAB_W / 2, height + V_DIVIDER_TAB_H, height - 0.002, V_DIVIDER_TAB_R
+        outline = [(-half, bottom), (half, bottom), (half, top - r)]
+        steps = 8
+        for i in range(1, steps + 1):
+            a = math.pi / 2 * i / steps
+            outline.append((half - r + r * math.cos(a), top - r + r * math.sin(a)))
+        for i in range(1, steps + 1):
+            a = math.pi / 2 + math.pi / 2 * i / steps
+            outline.append((-half + r + r * math.cos(a), top - r + r * math.sin(a)))
+        front = bm.faces.new([bm.verts.new((x, -V_DIVIDER_T / 2, z)) for x, z in outline])
+        grown = bmesh.ops.extrude_face_region(bm, geom=[front])
+        bmesh.ops.translate(bm, verts=[g for g in grown["geom"] if isinstance(g, bmesh.types.BMVert)], vec=(0, V_DIVIDER_T, 0))
+        bmesh.ops.recalc_face_normals(bm, faces=bm.faces[:])
+
+    tab = _simple("divider_tab", tab_fill, kraft)
+
+    label = new_mesh_object("divider_label")
+    bm = bmesh.new()
+    uv = bm.loops.layers.uv.new("UVMap")
+    x0, x1 = -V_DIVIDER_LABEL_W / 2, V_DIVIDER_LABEL_W / 2
+    z0 = height + (V_DIVIDER_TAB_H - V_DIVIDER_LABEL_H) / 2
+    z1 = z0 + V_DIVIDER_LABEL_H
+    y = -(V_DIVIDER_T / 2 + 0.00008)
+    f = bm.faces.new([bm.verts.new(p) for p in ((x0, y, z0), (x1, y, z0), (x1, y, z1), (x0, y, z1))])
+    for loop in f.loops:
+        p = loop.vert.co
+        loop[uv].uv = ((p.x - x0) / (x1 - x0), (p.z - z0) / (z1 - z0))
+    bm.normal_update()
+    bm.to_mesh(label.data)
+    bm.free()
+    label.data.materials.append(attach_placeholder_basecolor(
+        principled("DividerLabel", base_color=(0.86, 0.83, 0.76), metallic=0.0, roughness=0.62), "divider_label_placeholder"))
+    finish(label, bevel=False)
+    return [card, tab, label]
 
 
 def build_vinyl_room():
@@ -2910,7 +2979,10 @@ def build_vinyl_room():
     top = _grain_object("table_top", [((0, mid, -0.015), (V_TABLE_W, depth, 0.030))], walnut, bevel_width=0.003, scale=1.7)
     carcass = _grain_object("table_carcass", [
         ((0, mid + 0.012, -0.030 - (V_TABLE_H - 0.13) / 2), (V_TABLE_W - 0.04, depth - 0.04, V_TABLE_H - 0.13)),
-    ], _wood("WalnutDark", (0.13, 0.07, 0.04), (0.30, 0.18, 0.10), seed=4, roughness=0.42, coat=0.2, rings=16.0), bevel_width=0.003, scale=1.1)
+        # The same walnut as the top, not a darker one: its front is what stands behind the crate,
+        # a quarter of the frame from there, and at a third of the top's brightness it was a
+        # black hole over the records rather than a piece of furniture.
+    ], _wood("WalnutDark", (0.20, 0.115, 0.066), (0.46, 0.29, 0.17), seed=4, roughness=0.42, coat=0.2, rings=16.0), bevel_width=0.003, scale=1.1)
     legs = _simple("table_legs", lambda bm: [
         _vcyl(bm, sx * (V_TABLE_W / 2 - 0.10), sy, -V_TABLE_H + 0.05, 0.016, 0.10, segments=24, radius2=0.022)
         for sx in (-1, 1) for sy in (V_TABLE_FRONT + 0.08, V_TABLE_BACK - 0.08)],
@@ -3045,6 +3117,7 @@ def main():
         ("vinyl_record.glb", build_vinyl_record, "AUTO"),
         ("vinyl_sleeve.glb", build_vinyl_sleeve, "AUTO"),
         ("vinyl_crate.glb", build_vinyl_crate, "JPEG"),
+        ("vinyl_divider.glb", build_vinyl_divider, "AUTO"),
         ("vinyl_room.glb", build_vinyl_room, "JPEG"),
     ):
         if not skip(filename):

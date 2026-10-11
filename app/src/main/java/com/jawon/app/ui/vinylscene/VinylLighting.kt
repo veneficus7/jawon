@@ -72,10 +72,25 @@ object VinylLighting {
     const val STROBE_CANDELA = 2.2f
     const val STROBE_FALLOFF_M = 0.20f
 
-    /** The crate's own light, so a sleeve can be read: from the lamp's side, high, raking across the covers. */
-    val CRATE_POSITION = floatArrayOf(-0.55f, 0.55f, 1.75f)
-    val CRATE_AIM = floatArrayOf(0.0f, VinylDimens.FLOOR_Y + 0.16f, 1.02f)
-    const val CRATE_CANDELA = 2_600f
+    /**
+     * The crate's own light, so a sleeve can be read. **Low and in front**, under the line the
+     * eye looks down: the sleeves lean back, so a light from in front meets their faces nearly
+     * square (nine tenths of it arrives) while the wood's top edges, which face the ceiling, get
+     * a quarter — from above it was the other way about, and the first frame on a device had a
+     * bright crate full of dark records. Forty degrees off the mirror of the eye's own line, so
+     * a laminated cover does not flash.
+     *
+     * Its strength was bracketed on a device rather than stepped toward (9,000 and 60,000, read
+     * off the white of a cover's title): a sleeve wants about what the deck's own lamp gives the
+     * sleeve on the table, and this lamp is further away than that one.
+     */
+    val CRATE_POSITION = floatArrayOf(-0.45f, 0.20f, 2.20f)
+    val CRATE_AIM = floatArrayOf(0.0f, VinylDimens.FLOOR_Y + 0.15f, 0.95f)
+    const val CRATE_CANDELA = 45_000f
+    val CRATE_COLOUR = floatArrayOf(1.0f, 0.88f, 0.72f)
+    const val CRATE_CONE_INNER_RAD = 0.34f
+    const val CRATE_CONE_OUTER_RAD = 0.80f
+    const val CRATE_FALLOFF_M = 5f
 
     // ---- What the room reflects ------------------------------------------------------------------------
 

@@ -111,6 +111,83 @@ class VinylRoomTest {
         }
     }
 
+    // ---- A finger on a sleeve in the crate ---------------------------------------------------------
+
+    /** A point of a sleeve standing at [footZ], leaning [leanDeg]: [across] from its middle, [up] from its foot. */
+    private fun onSleeve(footZ: Float, leanDeg: Float, across: Float, up: Float): FloatArray {
+        val lean = Math.toRadians(leanDeg.toDouble())
+        return floatArrayOf(across, VinylDimens.FLOOR_Y + up * Math.cos(lean).toFloat(), footZ + up * Math.sin(lean).toFloat())
+    }
+
+    @Test
+    fun `a finger is put on a sleeve in the crate by the same lens - there and back is where it started`() {
+        val w = 1440f
+        for (aspect in phones) {
+            val h = w * aspect
+            val shot = VinylCamera.crate(aspect)
+            for (lean in listOf(-CrateLayout.LEAN_BACK_DEG, 0f, CrateLayout.LEAN_FRONT_DEG)) {
+                val footZ = VinylDimens.CRATE_Z + 0.03f
+                for ((across, up) in listOf(0f to 0f, 0.12f to 0.30f, -0.15f to 0.02f, 0.05f to 0.16f)) {
+                    val world = onSleeve(footZ, lean, across, up)
+                    val px = FloatArray(2)
+                    assertTrue(VinylCamera.project(shot, world[0], world[1], world[2], w, h, px))
+                    val back = FloatArray(2)
+                    assertTrue(VinylCamera.onSleeve(shot, px[0], px[1], w, h, VinylDimens.FLOOR_Y, footZ, lean, back))
+                    assertEquals(across, back[0], 2e-4f)
+                    assertEquals(up, back[1], 2e-4f)
+                }
+            }
+            // Right on the screen is right on the sleeve, and up the screen is up it.
+            val at = FloatArray(2)
+            val right = FloatArray(2)
+            val higher = FloatArray(2)
+            val z = VinylDimens.CRATE_Z
+            VinylCamera.onSleeve(shot, w * 0.5f, h * 0.5f, w, h, VinylDimens.FLOOR_Y, z, -20f, at)
+            VinylCamera.onSleeve(shot, w * 0.7f, h * 0.5f, w, h, VinylDimens.FLOOR_Y, z, -20f, right)
+            VinylCamera.onSleeve(shot, w * 0.5f, h * 0.4f, w, h, VinylDimens.FLOOR_Y, z, -20f, higher)
+            assertTrue(right[0] > at[0] && abs(right[1] - at[1]) < 1e-4f)
+            assertTrue(higher[1] > at[1])
+        }
+        // Looking straight down at something lying flat, it is the deck's own arithmetic.
+        val down = VinylCamera.play(0.3f, 2f)
+        val flat = FloatArray(2)
+        val plane = FloatArray(2)
+        assertTrue(VinylCamera.onSleeve(down, 300f, 900f, 1000f, 2000f, VinylDimens.TOP_Y, 0.2f, -90f, flat))
+        VinylCamera.onPlane(down, 300f, 900f, 1000f, 2000f, VinylDimens.TOP_Y, plane)
+        assertEquals(plane[0], flat[0], 1e-5f)
+        assertEquals(plane[1], 0.2f - flat[1], 1e-5f)
+        // A sleeve seen exactly edge on is not something a finger can be on: from straight above,
+        // one standing bolt upright, at the middle of the screen.
+        assertTrue(!VinylCamera.onSleeve(down, 500f, 1000f, 1000f, 2000f, 0f, 0.2f, 0f, flat))
+    }
+
+    @Test
+    fun `the record being read is whole in the frame on every phone, and clear of the band that is the table`() {
+        val w = 1440f
+        for (aspect in phones) {
+            val h = w * aspect
+            for ((position, count) in listOf(50f to 100, 1f to 100, 99f to 100, 1f to 3)) {
+                val shot = VinylCamera.crate(aspect, (CrateLayout.readZ(position, count) - CrateLayout.readZ(50f, 100)) * 0.8f)
+                val pose = CrateLayout.Pose().also { CrateLayout.pose(0f, position, count, it) }
+                val footZ = VinylDimens.CRATE_Z + pose.z
+                val px = FloatArray(2)
+                for ((across, up) in listOf(-VinylDimens.SLEEVE / 2 to 0f, VinylDimens.SLEEVE / 2 to 0f, -VinylDimens.SLEEVE / 2 to VinylDimens.SLEEVE, VinylDimens.SLEEVE / 2 to VinylDimens.SLEEVE)) {
+                    val world = onSleeve(footZ, pose.leanDeg, across, up)
+                    assertTrue(VinylCamera.project(shot, world[0], world[1], world[2], w, h, px))
+                    assertTrue("a corner at x ${px[0]} of $w (aspect $aspect, position $position of $count)", px[0] > 0f && px[0] < w)
+                    // Below the band at the top that goes back up to the deck, above the system's bar.
+                    assertTrue("a corner at y ${px[1] / h} of the screen (aspect $aspect, position $position of $count)", px[1] > h * 0.16f && px[1] < h * 0.92f)
+                }
+            }
+            // Following the record back moves the camera back with it and does nothing else.
+            val a = VinylCamera.crate(aspect)
+            val b = VinylCamera.crate(aspect, -0.05f)
+            assertEquals(a.z - 0.05f, b.z, 1e-6f)
+            assertEquals(a.y, b.y, 0f)
+            assertEquals(a.pitchDeg, b.pitchDeg, 0f)
+        }
+    }
+
     // ---- The back of the sleeve ------------------------------------------------------------------
 
     private fun sides(vararg counts: Int): List<Side> {
