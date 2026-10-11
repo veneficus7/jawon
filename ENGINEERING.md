@@ -60,17 +60,18 @@ the hole in the disc (`ui/intro/`, `docs/architecture.md`); and **the player is 
 the rooms** — Android Auto, "play … on Jawon", the system's resume card, a widget, a Quick Settings
 tile, shortcuts, "Open with Jawon" for a song or an album ZIP — with CD import as five steps and a
 drawing, and Resume with headphones behind one opt-in. Checked on the flagship emulator; **not on
-hardware: Android Auto itself, headphones dropping out, a CD drive.** **0.7.7 (built 2026-10-11, with
-the owner for his ear before testers get it) is the scratch, rebuilt** — his own feedback, "can we
-make that CD scratching sound more satisfying and cool", and the first piece of 0.8 because the
-vinyl room's platter is the same object. A record with weight (`Platter`) read by a needle
+hardware: Android Auto itself, headphones dropping out, a CD drive.** **0.7.7 (2026-10-11) is the
+scratch, rebuilt** — his own feedback, "can we make that CD scratching sound more satisfying and
+cool", and the first piece of 0.8 because the vinyl room's platter is the same object. It went to
+him alone first, as an APK, and to testers on his word the same day: *"i love it, its dope"*. A record with weight (`Platter`) read by a needle
 (`ScratchEngine`): touched, it slips and winds down; held, it is where the hand is; let go, it winds
 up or spins back, and is handed to the player without the music stopping. A touch is answered at
 once because the audio round the playhead is kept decoded while the disc can be touched. **One turn
 of the disc is a record's 1.8s of music while scratching (it was 6), geared up to 7.2s once the hand
-keeps going round** (`Scratch.Gearing`). Every path was driven on the emulator from its log; **what
-it sounds like, how far behind the finger it is and how tightly the hand-back lands have not met
-hardware** — `adb logcat -s Jawon.Scratch` on his phone is the first thing to read.
+keeps going round** (`Scratch.Gearing`). Every path was driven on the emulator from its log, and he
+has heard it on his phone; **what nobody has yet read is its log there** — how far behind the finger
+the output is and how tightly the hand-back lands are numbers, and `adb logcat -s Jawon.Scratch` on
+his phone is where they are.
 
 ### Working, and checked on a device
 
