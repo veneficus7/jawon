@@ -315,6 +315,69 @@ small and turning, which is why it has not been noticed rather than proof it is 
 face's one-number check on it before touching anything — every front-face corner normal within
 0.5° of +Z (Blender −Y) — and swap in `plate_triangles()` only if it fails.
 
+## The vinyl room's models
+
+Seven files, one per thing that moves on its own (`docs/formats.md` §5). **Modelled as they stand
+in a room** — Blender Z up, Y away — so none of it goes through `az`: in the app the deck's top
+faces +Y, its controls are at the front (+Z) and the arm's pivot is at the back right. Every
+number is a `V_*` constant in the script and has a twin in `VinylDimens` (`ui/vinylscene/`).
+
+| File | Origin | Bounds in the app's axes (m) | Parts |
+|---|---|---|---|
+| `vinyl_deck.glb` | middle of its footprint, on the table | x ±0.2265 · y 0…0.129 · z ±0.1765 | `deck_feet`, `deck_body`, `deck_top`, `deck_bright`, `deck_dark`, `deck_strobe`, `deck_target`, `deck_ink` |
+| `vinyl_platter.glb` | the spindle's axis, at the top plate | r 0.166 · y 0.001…0.0373 | `platter`, `platter_dots`, `slipmat`, `spindle` |
+| `vinyl_arm.glb` | the pivot | x −0.037…0.027 · y −0.025…0.017 · z −0.084…0.241 | `arm_tube`, `arm_black`, `arm_bright`, `arm_stylus` |
+| `vinyl_record.glb` | centre of its underside | r 0.151 · y −0.0003…0.0023 | `vinyl_a`, `vinyl_b`, `label_a`, `label_b` |
+| `vinyl_sleeve.glb` | middle of its bottom edge | x ±0.1575 · y 0…0.315 · z ±0.0018 | `sleeve_card`, `sleeve_front`, `sleeve_back` |
+| `vinyl_crate.glb` | middle of its floor, inside | x ±0.1815 · y −0.012…0.235 · z −0.2235…0.222 | `crate` |
+| `vinyl_room.glb` | the deck's, on the table top | table y −0.03…0, floor at y −0.56, wall at z −0.28 | `table_top`, `table_carcass`, `table_legs`, `floor`, `wall` |
+
+The bounds are the check, as they were for the case: the arm reaching **+0.241 in z** says it
+lies toward the front, the stylus at **y −0.025** is the record's surface seen from the pivot
+(`V_RECORD_TOP − V_PIVOT_H`), and the spindle's **0.0373** is the platter, the mat, the record
+and the ten millimetres of post above them, added up.
+
+### A record's grooves are its UVs
+
+The disc could not have a record's highlight (`build_disc`: its UVs were spent on its artwork).
+A record's UVs are **polar** — u is the radius, v the turn (`_lathe`) — which does two things at
+once. The tangent of every face runs *along its radius*, and anisotropy stretches a highlight
+along the tangent: the radial streak a record throws across itself, with no direction texture.
+And a side becomes **one line of pixels**: `vinyl_band_map` is roughness along the radius — cut
+groove, and the smooth rings of the run-in, the gaps between tracks and the dead wax — crisp at
+any zoom along the only axis it varies on. The model ships a default; the app writes one for
+every record, from that record's track lengths, into the same `metallicRoughnessMap` slot.
+
+The platter's top and the deck's top plate use the same idea for spun and brushed metal.
+
+### Two sides, and the second is mirrored
+
+`VinylA`/`LabelA` are the face that is up out of the sleeve, `VinylB`/`LabelB` the other. A
+record is turned over by rolling it about its front-to-back axis, so `label_b` is mapped with u
+reversed: printed the ordinary way round by the app, it reads the right way round once it is the
+one facing up. The sleeve's back is mirrored for the same reason.
+
+### The stylus is not on the arm's line
+
+A headshell sits at an angle to its arm, so the stylus is to one side of the tube. `V_STYLUS` is
+where it is in the arm's own frame — 230mm from the pivot, 4.1° off the arm's axis — and it is
+the one point the app aims: it turns the arm about its origin until that point is on the groove
+it wants. Aim the tube instead and the needle lands sixteen millimetres off the music.
+
+### Wood is painted in the script
+
+A procedural texture does not survive export, so `_wood_image` paints planks with numpy —
+growth rings wandering, fibre, pores — and `_grain_box` maps every board with u along its own
+long axis. The first version was a zebra: rings at full strength are stripes. They are a third
+of the figure now, under the fibre.
+
+### Looking at them assembled
+
+`tools/vinyl-preview/assemble.py` loads these files and places them by `VinylDimens`'s
+arithmetic in Cycles — the deck, the record on the platter, the stylus on a groove, the sleeve
+laid out, the crate full. A part the wrong way up or a label mapped backwards shows there in
+twenty seconds rather than on a phone.
+
 ## `disc_shards.glb` — the disc, cracked
 
 Eight wedges, one object each, for the deletion animation. Built by

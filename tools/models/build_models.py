@@ -2308,6 +2308,616 @@ def build_disc_shards():
     return objects
 
 
+# ---------------------------------------------------------------------------
+# Vinyl (docs/formats.md §5): a direct-drive deck, a record, a sleeve, a crate, and the table
+# they stand on.
+#
+# Modelled as they stand in a room — Blender Z up, Y away from you — and exported Y-up, so in the
+# app the deck's top faces +Y, its controls are at the front (+Z) and the arm's pivot is at the
+# back right. Nothing here goes through [az]: that is for objects modelled cover-forward.
+#
+# These MUST agree with VinylDimens in ui/vinylscene/VinylDeck.kt, which places the record on the
+# platter, the stylus on the record and a finger on both by these numbers.
+# ---------------------------------------------------------------------------
+
+V_DECK_W, V_DECK_D = 0.453, 0.353
+V_FOOT_H, V_BODY_H, V_PLATE_H = 0.018, 0.044, 0.018
+V_TOP = V_FOOT_H + V_BODY_H + V_PLATE_H       # the top plate's surface: 80mm off the table
+
+V_SPINDLE = (-0.050, 0.012)                    # the platter's centre on the plate (Blender x, y)
+V_PLATTER_R, V_PLATTER_H = 0.166, 0.020        # 332mm, and its strobe-dotted rim tapers in to the top
+V_PLATTER_TAPER = 0.006
+V_MAT_R, V_MAT_H = 0.149, 0.003                # a felt slipmat: what lets a record be held while the platter turns
+
+V_LP_R, V_LP_H = 0.151, 0.002                  # a 12-inch record: 302mm across
+V_HOLE_R = 0.0036
+V_LABEL_R = 0.050
+V_GROOVE_OUT, V_GROOVE_IN = 0.1465, 0.0605     # where the music is cut, from the run-in to the dead wax
+V_RECORD_TOP = V_TOP + V_PLATTER_H + V_MAT_H + V_LP_H
+
+V_PIVOT = (0.152, 0.106)                       # the arm's pivot (Blender x, y)
+V_PIVOT_H = V_TOP + 0.050
+V_ARM_LENGTH = 0.230                           # pivot to stylus, a nine-inch arm
+# Where the stylus is in the arm's own frame, the arm lying along -Y: a headshell is set at an
+# angle to its arm, so the stylus is a little to one side of the tube's line.
+V_STYLUS_ANGLE = math.radians(4.1)
+V_STYLUS = (-V_ARM_LENGTH * math.sin(V_STYLUS_ANGLE), -V_ARM_LENGTH * math.cos(V_STYLUS_ANGLE))
+V_HEADSHELL_ANGLE = math.radians(21.0)
+
+V_SLEEVE, V_SLEEVE_T = 0.315, 0.0034
+
+V_CRATE_W, V_CRATE_D, V_CRATE_H, V_CRATE_T = 0.336, 0.420, 0.235, 0.012   # inside, and its slats
+
+V_TABLE_W, V_TABLE_FRONT, V_TABLE_BACK, V_TABLE_H = 1.30, -0.62, 0.25, 0.56
+
+
+def _lathe(bm, uv, profile, segments, u_of, flip=False, centre=(0.0, 0.0)):
+    """
+    Turns [profile] — (radius, height) pairs, from the axis outward — into rings of quads.
+
+    UVs are polar: u from [u_of], v round the turn. That is what makes the tangent of every face
+    here run *along its radius*, and anisotropy stretches a highlight along the tangent: the
+    radial streak a record, or a spun platter, throws across itself. The disc could not have it
+    (see build_disc) because its UVs were spent on its artwork.
+    """
+    rings = []
+    for r, z in profile:
+        rings.append([
+            bm.verts.new((centre[0] + r * math.cos(2 * math.pi * i / segments),
+                          centre[1] + r * math.sin(2 * math.pi * i / segments), z))
+            for i in range(segments)
+        ])
+    for k in range(len(profile) - 1):
+        (ra, za), (rb, zb) = profile[k], profile[k + 1]
+        for i in range(segments):
+            j = (i + 1) % segments
+            quad = [rings[k][i], rings[k + 1][i], rings[k + 1][j], rings[k][j]]
+            us = [u_of(ra, za), u_of(rb, zb), u_of(rb, zb), u_of(ra, za)]
+            vs = [i / segments, i / segments, (i + 1) / segments, (i + 1) / segments]
+            if flip:
+                quad.reverse()
+                us.reverse()
+                vs.reverse()
+            face = bm.faces.new(quad)
+            for loop, u, v in zip(face.loops, us, vs):
+                loop[uv].uv = (u, v)
+            face.smooth = True
+
+
+def _lathe_object(name, profile, segments, u_of, material, flip=False, centre=(0.0, 0.0)):
+    obj = new_mesh_object(name)
+    bm = bmesh.new()
+    uv = bm.loops.layers.uv.new("UVMap")
+    _lathe(bm, uv, profile, segments, u_of, flip=flip, centre=centre)
+    bm.normal_update()
+    bm.to_mesh(obj.data)
+    bm.free()
+    obj.data.materials.append(material)
+    finish(obj, bevel=False)
+    return obj
+
+
+def _planar_disc(name, radius, hole, z, material, up=True, mirror=False, segments=128):
+    """A flat ring with its picture laid straight across it: a label."""
+    obj = new_mesh_object(name)
+    bm = bmesh.new()
+    uv = bm.loops.layers.uv.new("UVMap")
+    inner = [bm.verts.new((hole * math.cos(2 * math.pi * i / segments), hole * math.sin(2 * math.pi * i / segments), z)) for i in range(segments)]
+    outer = [bm.verts.new((radius * math.cos(2 * math.pi * i / segments), radius * math.sin(2 * math.pi * i / segments), z)) for i in range(segments)]
+    for i in range(segments):
+        j = (i + 1) % segments
+        quad = [inner[i], outer[i], outer[j], inner[j]]
+        if not up:
+            quad.reverse()
+        face = bm.faces.new(quad)
+        for loop in face.loops:
+            p = loop.vert.co
+            x = -p.x if mirror else p.x
+            loop[uv].uv = (x / (2.0 * radius) + 0.5, p.y / (2.0 * radius) + 0.5)
+    bm.normal_update()
+    bm.to_mesh(obj.data)
+    bm.free()
+    obj.data.materials.append(material)
+    finish(obj, bevel=False)
+    return obj
+
+
+def _grain_box(bm, uv, centre, size, scale=1.5, seed=0):
+    """
+    A box whose every face is mapped with u along the box's long axis — the way a board is cut
+    from a plank — at [scale] turns of the texture to a metre, shifted per [seed] so that two
+    boards are not the same piece of wood.
+    """
+    c, s = Vector(centre), Vector(size)
+    long_axis = max(range(3), key=lambda i: s[i])
+    off = ((seed * 0.37) % 1.0, (seed * 0.61) % 1.0)
+    for n in range(3):
+        a, b = [i for i in range(3) if i != n]
+        even = (n, a, b) in ((0, 1, 2), (1, 2, 0), (2, 0, 1))
+        for sign in (-1, 1):
+            corners = []
+            for da, db in ((-1, -1), (1, -1), (1, 1), (-1, 1)):
+                p = [0.0, 0.0, 0.0]
+                p[n] = c[n] + sign * s[n] / 2
+                p[a] = c[a] + da * s[a] / 2
+                p[b] = c[b] + db * s[b] / 2
+                corners.append(tuple(p))
+            if (sign > 0) != even:
+                corners.reverse()
+            face = bm.faces.new([bm.verts.new(p) for p in corners])
+            ua = a if (a == long_axis or (b != long_axis and s[a] >= s[b])) else b
+            va = b if ua == a else a
+            for loop in face.loops:
+                p = loop.vert.co
+                loop[uv].uv = (p[ua] * scale + off[0], p[va] * scale + off[1])
+
+
+def _grain_object(name, boxes, material, bevel_width=0.0012, scale=1.5):
+    """[boxes] are (centre, size) pairs; one object, one wood."""
+    obj = new_mesh_object(name)
+    bm = bmesh.new()
+    uv = bm.loops.layers.uv.new("UVMap")
+    for i, (centre, size) in enumerate(boxes):
+        _grain_box(bm, uv, centre, size, scale=scale, seed=i + 1)
+    bmesh.ops.remove_doubles(bm, verts=bm.verts, dist=1e-6)
+    bm.normal_update()
+    bm.to_mesh(obj.data)
+    bm.free()
+    obj.data.materials.append(material)
+    finish(obj, bevel=True, bevel_width=bevel_width, harden=True)
+    return obj
+
+
+def _simple(name, fill, material, bevel_width=None, harden=False):
+    """One object from whatever [fill] puts into a bmesh, bevelled."""
+    obj = new_mesh_object(name)
+    bm = bmesh.new()
+    fill(bm)
+    bm.normal_update()
+    bm.to_mesh(obj.data)
+    bm.free()
+    obj.data.materials.append(material)
+    finish(obj, bevel=bevel_width is not None, bevel_width=bevel_width, harden=harden)
+    return obj
+
+
+def _vbox(bm, cx, cy, cz, sx, sy, sz, turn=0.0):
+    """A box by centre and size in Blender's own axes, turned [turn] radians about Z."""
+    bmesh.ops.create_cube(bm, size=1.0, matrix=(
+        Matrix.Translation((cx, cy, cz)) @ Matrix.Rotation(turn, 4, "Z") @ Matrix.Diagonal((sx, sy, sz, 1.0))
+    ))
+
+
+def _vcyl(bm, cx, cy, cz, radius, depth, segments=48, radius2=None, tilt=None):
+    """An upright cylinder (or cone), or one laid over by the rotation matrix [tilt]."""
+    m = Matrix.Translation((cx, cy, cz))
+    if tilt is not None:
+        m = m @ tilt
+    bmesh.ops.create_cone(bm, cap_ends=True, cap_tris=False, segments=segments, radius1=radius,
+                          radius2=radius if radius2 is None else radius2, depth=depth, matrix=m)
+
+
+def _srgb_image(name, rgb):
+    """An albedo image from an h x w x 3 array of display values, bottom row first."""
+    np = _np()
+    h, w, _ = rgb.shape
+    rgba = np.ones((h, w, 4), dtype=np.float32)
+    rgba[..., :3] = np.clip(rgb, 0.0, 1.0)
+    img = bpy.data.images.new(name, width=w, height=h, alpha=False)
+    img.pixels.foreach_set(rgba.ravel())
+    img.pack()
+    return img
+
+
+def _wood_image(name, size, dark, light, seed, rings=22.0):
+    """
+    A plank: growth rings wandering along it, and the fibres between them. Grain runs along u.
+
+    Painted here because a procedural texture does not survive being exported — glTF carries
+    images — and because wood is the one surface in this room that cannot be a flat colour: a
+    table that is one brown is a brown rectangle.
+    """
+    np = _np()
+    rng = np.random.default_rng(seed)
+    h = w = size
+    wander = _fbm(h, w, 3, 4, rng, aspect=0.3)
+    fibre = _fbm(h, w, 96, 3, rng, aspect=0.05)
+    pores = _fbm(h, w, 160, 2, rng, aspect=0.08)
+    v = np.arange(h)[:, None] / h
+    ring = np.sin((v * rings + wander * 7.0) * 2.0 * np.pi) * 0.5 + 0.5
+    # Mostly fibre, a little figure: rings at full strength are a zebra, not a plank.
+    t = np.clip(0.22 + 0.60 * (0.30 * ring ** 1.3 + 0.48 * fibre + 0.22 * pores), 0.0, 1.0)
+    rgb = np.array(dark)[None, None, :] + (np.array(light) - np.array(dark))[None, None, :] * t[..., None]
+    return _srgb_image(name, rgb)
+
+
+def _wood(name, dark, light, seed, roughness, coat=0.0, size=512, rings=22.0):
+    mat = principled(name, base_color=light, metallic=0.0, roughness=roughness, coat=coat, coat_roughness=0.12)
+    tex = mat.node_tree.nodes.new("ShaderNodeTexImage")
+    tex.image = _wood_image(name + "_albedo", size, dark, light, seed, rings=rings)
+    mat.node_tree.links.new(tex.outputs["Color"], mat.node_tree.nodes["Principled BSDF"].inputs["Base Color"])
+    return mat
+
+
+def _emissive(name, colour, strength):
+    mat = principled(name, base_color=colour, metallic=0.0, roughness=0.4)
+    bsdf = mat.node_tree.nodes["Principled BSDF"]
+    bsdf.inputs["Emission Color"].default_value = (*colour, 1.0)
+    bsdf.inputs["Emission Strength"].default_value = strength
+    return mat
+
+
+def _deck_text(bm, body, cap_height, x, y, z, align="CENTER"):
+    """[body] as raised ink lying on the plate at ([x], [y]), reading from the front."""
+    font_path = os.path.abspath(os.path.join("app", "src", "main", "res", "font", "inter_variable.ttf"))
+    curve = bpy.data.curves.new("deck_caption", type="FONT")
+    curve.font = bpy.data.fonts.load(font_path, check_existing=True)
+    curve.body = body
+    curve.size = cap_height / INTER_CAP_HEIGHT_EM
+    curve.align_x = align
+    curve.align_y = "CENTER"
+    curve.space_character = 1.12
+    curve.offset = 0.00002
+    curve.resolution_u = 6
+    caption = bpy.data.objects.new("deck_caption", curve)
+    bpy.context.collection.objects.link(caption)
+    depsgraph = bpy.context.evaluated_depsgraph_get()
+    mesh = bpy.data.meshes.new_from_object(caption.evaluated_get(depsgraph))
+    mesh.transform(Matrix.Translation((x, y, z)))
+    bm.from_mesh(mesh)
+    bpy.data.meshes.remove(mesh)
+    bpy.data.objects.remove(caption)
+
+
+def vinyl_band_map(shares=(0.24, 0.20, 0.22, 0.18, 0.16), width=1024):
+    """
+    A side of a record as roughness along its radius: the rough of cut groove, and the smooth
+    rings where nothing is cut — the run-in at the edge, the gap before each track, the dead wax
+    round the label. Packed for glTF (roughness in G), and the default the model ships with: the
+    app writes its own for every record, from that record's track lengths, into the same slot.
+    """
+    np = _np()
+    rng = np.random.default_rng(7)
+    r = (np.arange(width) + 0.5) / width * V_LP_R
+    # Loud passages are cut wider and scatter more; a side is never one even grey.
+    rough = 0.20 + (_fbm(1, width, 14, 4, rng)[0] - 0.5) * 0.07
+    smooth = (r > V_GROOVE_OUT) | (r < V_GROOVE_IN)
+    at = 0.0
+    for share in shares[:-1]:
+        at += share
+        edge = V_GROOVE_OUT - (V_GROOVE_OUT - V_GROOVE_IN) * at
+        smooth |= np.abs(r - edge) < 0.00045
+    rough[smooth] = 0.05
+    return _metal_rough_image("vinyl_bands", np.tile(rough, (4, 1)), 0.0)
+
+
+def _vinyl_material(name):
+    # Black, and not quite: vinyl is carbon-filled PVC and returns a little light of its own.
+    mat = principled(name, base_color=(0.004, 0.004, 0.0045), metallic=0.0, roughness=0.20, anisotropic=0.9)
+    _use_metal_rough(mat, vinyl_band_map())
+    return mat
+
+
+def build_vinyl_record():
+    """
+    A twelve-inch record, its origin at the centre of its underside.
+
+    Two sides, because a record has two and this one is turned over: `VinylA` is the face that is
+    up as it comes out of the sleeve, `VinylB` the other, each with its own band map and its own
+    label (`LabelA`, `LabelB` — the app prints them). The B label is mapped mirrored, so that it
+    reads the right way round once the record has been rolled over onto it.
+    """
+    seg = 256
+    bead = 0.00028       # the raised rim that keeps one record's grooves off the next one's
+
+    def u_of(r, z):
+        return r / V_LP_R
+
+    def side(top):
+        z = V_LP_H if top else 0.0
+        up = 1.0 if top else -1.0
+        profile = [(V_HOLE_R, z), (V_LABEL_R, z), (0.075, z), (0.105, z), (0.130, z), (V_LP_R - 0.0032, z),
+                   (V_LP_R - 0.0018, z + up * bead), (V_LP_R - 0.0006, z + up * bead * 0.6), (V_LP_R, V_LP_H / 2)]
+        return _lathe_object("vinyl_a" if top else "vinyl_b", profile, seg, u_of,
+                             _vinyl_material("VinylA" if top else "VinylB"), flip=not top)
+
+    paper = dict(metallic=0.0, roughness=0.62)
+    label_a = _planar_disc("label_a", V_LABEL_R, V_HOLE_R, V_LP_H + 0.00006,
+                           attach_placeholder_basecolor(principled("LabelA", (0.78, 0.74, 0.66), **paper), "label_a_placeholder"))
+    label_b = _planar_disc("label_b", V_LABEL_R, V_HOLE_R, -0.00006,
+                           attach_placeholder_basecolor(principled("LabelB", (0.78, 0.74, 0.66), **paper), "label_b_placeholder"),
+                           up=False, mirror=True)
+    return [side(True), side(False), label_a, label_b]
+
+
+def build_vinyl_platter():
+    """
+    The platter, its slipmat and the spindle: everything that turns. The origin is the spindle's
+    axis at the top plate.
+
+    The rim is the part of a direct-drive deck everybody remembers — four rows of raised dots,
+    which a strobe lamp freezes when the speed is right — and it is why the rim tapers: the dots
+    face a little upward, toward whoever is standing over the deck.
+    """
+    seg = 192
+    top_r = V_PLATTER_R - V_PLATTER_TAPER
+    spun = principled("PlatterSpun", base_color=(0.78, 0.78, 0.79), metallic=1.0, roughness=0.24, anisotropic=0.8)
+    platter = _lathe_object(
+        "platter",
+        [(0.010, V_PLATTER_H), (0.060, V_PLATTER_H), (V_MAT_R - 0.004, V_PLATTER_H), (top_r - 0.0012, V_PLATTER_H),
+         (top_r, V_PLATTER_H - 0.0012), (V_PLATTER_R, 0.0022), (V_PLATTER_R - 0.0010, 0.0010), (V_PLATTER_R - 0.012, 0.0010)],
+        seg, lambda r, z: r / V_PLATTER_R + (V_PLATTER_H - z) * 4.0, spun)
+
+    def dots(bm):
+        for row in range(4):
+            count = 180 + row * 4
+            z = 0.0050 + row * 0.0038
+            r = V_PLATTER_R - V_PLATTER_TAPER * (z - 0.0022) / (V_PLATTER_H - 0.0034) + 0.00035
+            for i in range(count):
+                a = 2 * math.pi * i / count
+                _vbox(bm, r * math.cos(a), r * math.sin(a), z, 0.0013, 0.0019, 0.0022, turn=a)
+
+    beads = _simple("platter_dots", dots,
+                    principled("PlatterDots", base_color=(0.86, 0.86, 0.87), metallic=1.0, roughness=0.14))
+
+    felt = principled("Slipmat", base_color=(0.014, 0.014, 0.015), metallic=0.0, roughness=0.96)
+    felt.node_tree.nodes["Principled BSDF"].inputs["Sheen Weight"].default_value = 0.6
+    felt.node_tree.nodes["Principled BSDF"].inputs["Sheen Roughness"].default_value = 0.5
+    slipmat = _lathe_object(
+        "slipmat",
+        [(V_HOLE_R + 0.0004, V_PLATTER_H + V_MAT_H), (V_MAT_R - 0.0008, V_PLATTER_H + V_MAT_H),
+         (V_MAT_R, V_PLATTER_H + V_MAT_H - 0.0008), (V_MAT_R, V_PLATTER_H)],
+        96, lambda r, z: r / V_MAT_R, felt)
+
+    def post(bm):
+        top = V_PLATTER_H + V_MAT_H + V_LP_H + 0.0105
+        _vcyl(bm, 0, 0, (V_PLATTER_H + top) / 2, V_HOLE_R - 0.0001, top - V_PLATTER_H, segments=24)
+        _vcyl(bm, 0, 0, top + 0.0009, V_HOLE_R - 0.0001, 0.0018, segments=24, radius2=0.0016)
+
+    spindle = _simple("spindle", post, principled("Chrome", base_color=(0.88, 0.88, 0.89), metallic=1.0, roughness=0.07))
+    return [platter, beads, slipmat, spindle]
+
+
+def build_vinyl_arm():
+    """
+    The tonearm, lying along -Y as it would over a record's last groove, its origin at the pivot.
+
+    Everything that swings: the bearing housing, the S of the tube, the counterweight behind, the
+    headshell and cartridge ahead, and the stylus at exactly [V_STYLUS]. The app turns it about
+    its origin to put that point on a groove, and tips it a few degrees to lift it off.
+    """
+    chrome = principled("ArmChrome", base_color=(0.88, 0.88, 0.89), metallic=1.0, roughness=0.08)
+    gloss = principled("ArmBlack", base_color=(0.012, 0.012, 0.013), metallic=0.0, roughness=0.25, coat=0.6, coat_roughness=0.06)
+    alu = principled("ArmAlu", base_color=(0.66, 0.66, 0.67), metallic=1.0, roughness=0.30)
+
+    stylus_z = V_RECORD_TOP - V_PIVOT_H            # the record's surface, seen from the pivot
+    shell_z = stylus_z + 0.019
+    shell = Vector((-math.sin(V_HEADSHELL_ANGLE), -math.cos(V_HEADSHELL_ANGLE)))   # the headshell's own direction
+    stylus = Vector(V_STYLUS)
+    shell_mid = stylus - shell * 0.014
+    neck = shell_mid - shell * 0.021               # where the tube meets the headshell
+
+    # The tube, as a curve given a thickness: an S, so the headshell can be offset without the
+    # arm's weight being off its own axis.
+    curve = bpy.data.curves.new("arm_tube", type="CURVE")
+    curve.dimensions = "3D"
+    spline = curve.splines.new("BEZIER")
+    points = [(0.0, 0.050, 0.0), (0.0, 0.0, 0.0), (0.0, -0.090, -0.004), (0.014, -0.135, -0.010),
+              (neck.x - 0.002, neck.y + 0.020, shell_z + 0.003), (neck.x, neck.y, shell_z + 0.001)]
+    spline.bezier_points.add(len(points) - 1)
+    for bp, p in zip(spline.bezier_points, points):
+        bp.co = p
+        bp.handle_left_type = bp.handle_right_type = "AUTO"
+    curve.bevel_depth = 0.0045
+    curve.bevel_resolution = 6
+    curve.resolution_u = 24
+    curve.use_fill_caps = True
+    tube_curve = bpy.data.objects.new("arm_tube_curve", curve)
+    bpy.context.collection.objects.link(tube_curve)
+    depsgraph = bpy.context.evaluated_depsgraph_get()
+    tube_mesh = bpy.data.meshes.new_from_object(tube_curve.evaluated_get(depsgraph))
+    bpy.data.objects.remove(tube_curve)
+    tube = bpy.data.objects.new("arm_tube", tube_mesh)
+    bpy.context.collection.objects.link(tube)
+    tube.data.materials.append(chrome)
+    finish(tube, bevel=False)
+
+    lay = Matrix.Rotation(math.radians(90.0), 4, "X")      # a cylinder laid along Y
+    turn = math.atan2(shell.y, shell.x)
+
+    def black(bm):
+        _vcyl(bm, 0, 0, 0, 0.027, 0.012, segments=64)                                   # the bearing housing
+        _vcyl(bm, 0, 0.066, 0, 0.0165, 0.036, segments=48, tilt=lay)                    # the counterweight
+        _vbox(bm, shell_mid.x, shell_mid.y, shell_z, 0.046, 0.018, 0.0022, turn=turn)   # the headshell
+        _vbox(bm, shell_mid.x + shell.x * 0.006, shell_mid.y + shell.y * 0.006, shell_z - 0.0074, 0.022, 0.014, 0.012, turn=turn)
+
+    def bright(bm):
+        _vcyl(bm, 0, 0.045, 0, 0.0172, 0.006, segments=48, tilt=lay)                    # the weight's scale ring
+        side = Vector((-shell.y, shell.x))
+        _vbox(bm, shell_mid.x - side.x * 0.016, shell_mid.y - side.y * 0.016, shell_z + 0.002, 0.006, 0.020, 0.0016, turn=turn)
+
+    def needle(bm):
+        _vcyl(bm, stylus.x, stylus.y, stylus_z + 0.0032, 0.0002, 0.0064, segments=12, radius2=0.0009)
+
+    return [
+        tube,
+        _simple("arm_black", black, gloss, bevel_width=0.0012),
+        _simple("arm_bright", bright, alu, bevel_width=0.0006),
+        _simple("arm_stylus", needle, chrome),
+    ]
+
+
+def build_vinyl_deck():
+    """
+    The deck itself: everything that does not move. Its origin is the middle of its footprint, on
+    the table.
+
+    A direct-drive deck in the tradition every scratch was invented on — a cast top plate, a start
+    button the size of two thumbs, a strobe at the platter's edge, a pitch fader down the right —
+    and nobody's in particular: no badge, no model.
+    """
+    px, py = V_SPINDLE
+    ax, ay = V_PIVOT
+    objs = []
+
+    rubber = principled("DeckRubber", base_color=(0.012, 0.012, 0.012), metallic=0.0, roughness=0.85)
+    objs.append(_simple("deck_feet", lambda bm: [
+        _vcyl(bm, sx * (V_DECK_W / 2 - 0.05), sy * (V_DECK_D / 2 - 0.05), V_FOOT_H / 2, 0.034, V_FOOT_H, segments=48)
+        for sx in (-1, 1) for sy in (-1, 1)], rubber, bevel_width=0.003))
+
+    body = principled("DeckBody", base_color=(0.020, 0.020, 0.021), metallic=0.0, roughness=0.50, coat=0.25, coat_roughness=0.2)
+
+    def lower(bm):
+        _vbox(bm, 0, 0, V_FOOT_H + V_BODY_H / 2, V_DECK_W - 0.004, V_DECK_D - 0.004, V_BODY_H)
+        sx, sy = V_DECK_W / 2 - 0.038, -0.060
+        _vbox(bm, sx, sy, V_TOP + 0.0003, 0.016, 0.118, 0.0010)                          # the fader's slot
+    objs.append(_simple("deck_body", lower, body, bevel_width=0.005))
+
+    # The top plate: cast aluminium, brushed along its length.
+    np = _np()
+    rng = np.random.default_rng(31)
+    brushed = 0.37 + (_fbm(256, 256, 4, 3, rng, aspect=0.5) - 0.5) * 0.05 + (_fbm(256, 256, 200, 2, rng, aspect=0.02) - 0.5) * 0.07
+    top = principled("DeckTop", base_color=(0.30, 0.30, 0.305), metallic=1.0, roughness=0.38, anisotropic=0.35)
+    _use_metal_rough(top, _metal_rough_image("deck_top_brushing", brushed, 1.0))
+    plate = _simple("deck_top", lambda bm: _vbox(bm, 0, 0, V_FOOT_H + V_BODY_H + V_PLATE_H / 2, V_DECK_W, V_DECK_D, V_PLATE_H),
+                    top, bevel_width=0.0035, harden=True)
+    mesh = plate.data
+    if not mesh.uv_layers:
+        mesh.uv_layers.new(name="UVMap")
+    for poly in mesh.polygons:
+        for li in poly.loop_indices:
+            v = mesh.vertices[mesh.loops[li].vertex_index].co
+            mesh.uv_layers.active.data[li].uv = (v.x / V_DECK_W + 0.5, v.y / V_DECK_D + 0.5 + v.z)
+    objs.append(plate)
+
+    alu = principled("DeckAlu", base_color=(0.64, 0.64, 0.65), metallic=1.0, roughness=0.30)
+    fx, fy = -V_DECK_W / 2 + 0.046, -V_DECK_D / 2 + 0.036
+
+    def bright(bm):
+        _vbox(bm, fx, fy, V_TOP + 0.0035, 0.052, 0.036, 0.007)                           # start · stop
+        _vbox(bm, fx + 0.052, fy - 0.010, V_TOP + 0.0025, 0.026, 0.014, 0.005)           # 33
+        _vbox(bm, fx + 0.082, fy - 0.010, V_TOP + 0.0025, 0.026, 0.014, 0.005)           # 45
+        _vcyl(bm, fx - 0.006, fy + 0.058, V_TOP + 0.010, 0.014, 0.020)                   # the strobe's tower
+        _vcyl(bm, ax, ay, V_TOP + 0.003, 0.043, 0.006, segments=64)                      # the arm's base
+        _vcyl(bm, ax, ay, V_TOP + 0.006 + 0.016, 0.021, 0.032, segments=64)              # and its tower
+        _vcyl(bm, 0.066, -V_DECK_D / 2 + 0.030, V_TOP + 0.015, 0.007, 0.030, segments=32)   # the target light's post
+        _vcyl(bm, ax + 0.046, ay - 0.105, V_TOP + 0.020, 0.005, 0.040, segments=32)      # the rest's post
+        _vcyl(bm, -V_DECK_W / 2 + 0.038, V_DECK_D / 2 - 0.038, V_TOP + 0.006, 0.019, 0.012, segments=64)   # the 45 adaptor
+    objs.append(_simple("deck_bright", bright, alu, bevel_width=0.0015))
+
+    gloss = principled("DeckBlack", base_color=(0.012, 0.012, 0.013), metallic=0.0, roughness=0.25, coat=0.6, coat_roughness=0.06)
+
+    def dark(bm):
+        sx, sy = V_DECK_W / 2 - 0.038, -0.060
+        _vbox(bm, sx, sy + 0.012, V_TOP + 0.006, 0.026, 0.012, 0.012)                    # the fader's knob
+        _vbox(bm, ax + 0.046, ay - 0.105, V_TOP + 0.044, 0.022, 0.012, 0.010)            # the arm's cradle
+        _vcyl(bm, ax + 0.040, ay - 0.046, V_TOP + 0.004, 0.011, 0.008)                   # anti-skate
+        _vbox(bm, ax + 0.052, ay + 0.010, V_TOP + 0.007, 0.010, 0.030, 0.006)            # the cue lever
+        _vcyl(bm, -V_DECK_W / 2 + 0.038, V_DECK_D / 2 - 0.038, V_TOP + 0.0125, 0.0045, 0.002, segments=24)
+    objs.append(_simple("deck_dark", dark, gloss, bevel_width=0.0012))
+
+    objs.append(_simple("deck_strobe", lambda bm: _vbox(bm, fx + 0.0075, fy + 0.0605, V_TOP + 0.010, 0.004, 0.012, 0.010, turn=math.radians(18)),
+                        _emissive("StrobeLamp", (1.0, 0.10, 0.04), 6.0)))
+    objs.append(_simple("deck_target", lambda bm: _vcyl(bm, 0.062, -V_DECK_D / 2 + 0.034, V_TOP + 0.0265, 0.0045, 0.002, segments=24,
+                                                        tilt=Matrix.Rotation(math.radians(-55.0), 4, "X")),
+                        _emissive("TargetLamp", (1.0, 0.93, 0.78), 10.0)))
+
+    def ink(bm):
+        _deck_text(bm, "START · STOP", 0.0024, fx, fy - 0.0245, V_TOP + 0.00006)
+        _deck_text(bm, "33", 0.0026, fx + 0.052, fy + 0.003, V_TOP + 0.00006)
+        _deck_text(bm, "45", 0.0026, fx + 0.082, fy + 0.003, V_TOP + 0.00006)
+        sx, sy = V_DECK_W / 2 - 0.038, -0.060
+        for i in range(-8, 9, 2):
+            wide = 0.006 if i % 4 == 0 else 0.0038
+            _vbox(bm, sx - 0.013 - wide / 2, sy + i * 0.0062, V_TOP + 0.00005, wide, 0.0006, 0.0001)
+        _deck_text(bm, "0", 0.0022, sx - 0.024, sy, V_TOP + 0.00006)
+        _deck_text(bm, "+8", 0.0022, sx - 0.0245, sy - 8 * 0.0062, V_TOP + 0.00006)
+        _deck_text(bm, "−8", 0.0022, sx - 0.0245, sy + 8 * 0.0062, V_TOP + 0.00006)
+        _deck_text(bm, "PITCH", 0.0020, sx, sy - 0.068, V_TOP + 0.00006)
+    objs.append(_simple("deck_ink", ink, principled("DeckInk", base_color=(0.82, 0.82, 0.80), metallic=0.0, roughness=0.55)))
+    return objs
+
+
+def build_vinyl_sleeve():
+    """
+    A record's sleeve, standing on its bottom edge with its cover toward -Y; the origin is the
+    middle of that edge.
+
+    Three objects because it is three things to the app: the cover (`SleeveFront`, the album's
+    art), the back (`SleeveBack` — the art the app prints with the record's sides on it, mapped
+    mirrored so that it reads from behind), and the card between them.
+    """
+    card = principled("SleeveCard", base_color=(0.80, 0.77, 0.70), metallic=0.0, roughness=0.78)
+    body = _simple("sleeve_card", lambda bm: _vbox(bm, 0, 0, V_SLEEVE / 2, V_SLEEVE, V_SLEEVE_T, V_SLEEVE), card, bevel_width=0.0006)
+
+    def face(name, material_name, front):
+        obj = new_mesh_object(name)
+        bm = bmesh.new()
+        uv = bm.loops.layers.uv.new("UVMap")
+        half = V_SLEEVE / 2 - 0.0004
+        y = (-1 if front else 1) * (V_SLEEVE_T / 2 + 0.00006)
+        corners = [(-half, y, 0.0004), (half, y, 0.0004), (half, y, V_SLEEVE - 0.0004), (-half, y, V_SLEEVE - 0.0004)]
+        if not front:
+            corners.reverse()
+        f = bm.faces.new([bm.verts.new(p) for p in corners])
+        for loop in f.loops:
+            p = loop.vert.co
+            x = p.x if front else -p.x
+            loop[uv].uv = (x / V_SLEEVE + 0.5, p.z / V_SLEEVE)
+        bm.normal_update()
+        bm.to_mesh(obj.data)
+        bm.free()
+        # Printed card under a thin lamination: a soft sheen, not a mirror.
+        obj.data.materials.append(attach_placeholder_basecolor(
+            principled(material_name, base_color=(0.72, 0.70, 0.66), metallic=0.0, roughness=0.46, coat=0.25, coat_roughness=0.16),
+            name + "_placeholder"))
+        finish(obj, bevel=False)
+        return obj
+
+    return [body, face("sleeve_front", "SleeveFront", True), face("sleeve_back", "SleeveBack", False)]
+
+
+def build_vinyl_crate():
+    """A pine crate for a row of sleeves, open at the top and slatted; its origin is the middle of its floor, inside."""
+    w, d, h, t = V_CRATE_W, V_CRATE_D, V_CRATE_H, V_CRATE_T
+    boxes = [((0, 0, -t / 2), (w + 2 * t, d + 2 * t, t))]
+    for sx in (-1, 1):
+        for zc in (0.055, 0.180):
+            boxes.append(((sx * (w / 2 + t / 2), 0, zc), (t, d + 2 * t, 0.095)))
+        for sy in (-1, 1):
+            boxes.append(((sx * (w / 2 - 0.006), sy * (d / 2 - 0.006), h / 2), (0.020, 0.020, h)))
+    for zc, tall in ((0.040, 0.070),):
+        boxes.append(((0, -(d / 2 + t / 2), zc), (w + 2 * t, t, tall)))
+    for zc in (0.055, 0.180):
+        boxes.append(((0, d / 2 + t / 2, zc), (w + 2 * t, t, 0.095)))
+    pine = _wood("CratePine", (0.52, 0.36, 0.19), (0.80, 0.63, 0.40), seed=5, roughness=0.62, rings=14.0)
+    return [_grain_object("crate", boxes, pine, bevel_width=0.0015, scale=2.2)]
+
+
+def build_vinyl_room():
+    """
+    Where the deck stands: a walnut sideboard deep enough to lay a sleeve out in front of the
+    deck, the floor the crate sits on in front of it, and the wall behind. The origin is the
+    deck's, on the table top.
+    """
+    mid = (V_TABLE_FRONT + V_TABLE_BACK) / 2
+    depth = V_TABLE_BACK - V_TABLE_FRONT
+    walnut = _wood("Walnut", (0.20, 0.11, 0.06), (0.48, 0.30, 0.17), seed=3, roughness=0.36, coat=0.3, size=1024, rings=18.0)
+    top = _grain_object("table_top", [((0, mid, -0.015), (V_TABLE_W, depth, 0.030))], walnut, bevel_width=0.003, scale=1.1)
+    carcass = _grain_object("table_carcass", [
+        ((0, mid + 0.012, -0.030 - (V_TABLE_H - 0.13) / 2), (V_TABLE_W - 0.04, depth - 0.04, V_TABLE_H - 0.13)),
+    ], _wood("WalnutDark", (0.13, 0.07, 0.04), (0.30, 0.18, 0.10), seed=4, roughness=0.42, coat=0.2, rings=16.0), bevel_width=0.003, scale=1.1)
+    legs = _simple("table_legs", lambda bm: [
+        _vcyl(bm, sx * (V_TABLE_W / 2 - 0.10), sy, -V_TABLE_H + 0.05, 0.016, 0.10, segments=24, radius2=0.022)
+        for sx in (-1, 1) for sy in (V_TABLE_FRONT + 0.08, V_TABLE_BACK - 0.08)],
+        principled("TableLegs", base_color=(0.020, 0.020, 0.021), metallic=0.0, roughness=0.5))
+    boards = _wood("FloorBoards", (0.12, 0.075, 0.045), (0.30, 0.19, 0.115), seed=9, roughness=0.5, coat=0.12, size=1024, rings=10.0)
+    floor = _grain_object("floor", [((0, -0.6, -V_TABLE_H - 0.01), (3.2, 3.2, 0.02))], boards, bevel_width=None, scale=0.9)
+    wall = _simple("wall", lambda bm: _vbox(bm, 0, V_TABLE_BACK + 0.03, 0.55, 3.2, 0.02, 2.4),
+                   principled("WallPaint", base_color=(0.105, 0.125, 0.120), metallic=0.0, roughness=0.92))
+    return [top, carcass, legs, floor, wall]
+
+
 def export(objects, filename, image_format="AUTO", jpeg_quality=75):
     bpy.ops.object.select_all(action="DESELECT")
     for obj in objects:
@@ -2420,6 +3030,22 @@ def main():
     if not skip("disc_shards.glb"):
         clear_scene()
         paths.append(export(build_disc_shards(), "disc_shards.glb"))
+
+    # The vinyl room (docs/formats.md §5). One file per thing that moves on its own: the deck
+    # stands still, the platter turns, the arm swings, the record is put on and turned over, and
+    # a sleeve is drawn once for every record in the crate.
+    for filename, build, fmt in (
+        ("vinyl_deck.glb", build_vinyl_deck, "AUTO"),
+        ("vinyl_platter.glb", build_vinyl_platter, "AUTO"),
+        ("vinyl_arm.glb", build_vinyl_arm, "AUTO"),
+        ("vinyl_record.glb", build_vinyl_record, "AUTO"),
+        ("vinyl_sleeve.glb", build_vinyl_sleeve, "AUTO"),
+        ("vinyl_crate.glb", build_vinyl_crate, "JPEG"),
+        ("vinyl_room.glb", build_vinyl_room, "JPEG"),
+    ):
+        if not skip(filename):
+            clear_scene()
+            paths.append(export(build(), filename, image_format=fmt, jpeg_quality=88))
 
     for path in paths:
         size = os.path.getsize(path)
