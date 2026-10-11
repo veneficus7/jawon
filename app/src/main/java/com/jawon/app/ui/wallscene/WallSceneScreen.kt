@@ -887,19 +887,22 @@ private class RoomNodes {
 private class ScratchDriver {
     var active = false
 
-    /**
-     * Whether letting go of the disc should start the music again � i.e. whether it was
-     * playing when the finger landed. Holding the platter pauses; releasing restores what
-     * was there rather than assuming play.
-     */
-    var resumeOnRelease = false
-
-    /** When the last touch move arrived, for turning angle deltas into a velocity. */
-    var lastMoveAt = 0L
     var lastAngle = 0f
+
+    /** How much music the disc has been turned through since the finger landed, in seconds; forwards is positive. */
+    var moved = 0.0
+
+    /** What each turn is worth: a record's while scratching, more while travelling. */
+    val gearing = Scratch.Gearing()
+
+    /** Where the finger landed: which track, and where in it the room took it to be. */
+    var grabIndex = 0
+    var grabOffsetMs = 0L
+
     var cursor = Scratch.Cursor(0, 0L)
     var durations: List<Long> = emptyList()
     var lastSeekAt = 0L
+    var lastPlayerSeekAt = 0L
     val haptics = Scratch.HapticAccumulator()
 }
 
@@ -2019,30 +2022,14 @@ fun WallSceneScreen(
         fun endScratch() {
             if (!scratch.active) return
             scratch.active = false
-
-            scratchAudio.end()
-
-            // **The finger is the authority on where the record ended up, not the audio.**
-            //
-            // This briefly asked the sound engine instead, on the reasoning that the sound is
-            // what the user was steering. It is not: the audio cursor only advances while
-            // output is actually being produced, at the *smoothed* rate, and stops entirely
-            // below the silence threshold — so a quick scrub moves the finger across half a
-            // record and the audio a small fraction of that. Releasing then snapped playback
-            // back toward wherever the disc was first grabbed, which is precisely what was
-            // reported.
-            //
-            // `scratch.cursor` is walked from the real angle deltas on every touch event and
-            // has no such limit. It is what the throttled seeks during the drag already use,
-            // which is why the position was right until the moment of release.
-            viewModel.onScrub(scratch.cursor.trackIndex, scratch.cursor.offsetMs)
             scrubReadout.value = null
-            // Let the platter go: pick playback back up exactly where the scrub left it, and
-            // only if it was running when the disc was grabbed.
-            if (scratch.resumeOnRelease) {
-                scratch.resumeOnRelease = false
-                viewModel.setPlaying(true)
-            }
+        
+            // **Let the platter go, and the scratch gives the record back** (0.8): wound up
+            // to speed — or spun back, if it was thrown — and handed to the player in step,
+            // so the music returns out of the wind-up instead of after a gap. The room only
+            // says where the finger left the disc, for the cases there is nothing to wind up
+            // with: turned off the end of the track, or a file that would not decode.
+            scratchAudio.release(scratch.cursor.trackIndex, scratch.cursor.offsetMs)
         }
 
         val gestureListener = rememberOnGestureListener(
@@ -2082,19 +2069,25 @@ fun WallSceneScreen(
                         //
                         // Remembered rather than assumed: releasing must restore what was
                         // true before the grab, or grabbing a paused disc would start it.
-                        scratch.resumeOnRelease = frame.isPlaying
-                        if (frame.isPlaying) viewModel.setPlaying(false)
-                        scratch.lastMoveAt = SystemClock.uptimeMillis()
+                        scratch.moved = 0.0
+                        scratch.gearing.reset()
+                        scratch.grabIndex = scratch.cursor.trackIndex
+                        scratch.grabOffsetMs = scratch.cursor.offsetMs
+                        scratch.lastPlayerSeekAt = 0L
 
-                        // The player is stopped, so from here the sound is ours to make.
-                        // Handed the track under the playhead and where in it we are; the
-                        // decode runs off the main thread and the gesture never waits on it.
+                        // **The record is handed to the scratch, and the scratch decides when the
+                        // player stops** (0.8). It used to be paused here, at once, and the sound
+                        // began whenever a decode finished: a dead cut, a gap, then noise. Now the
+                        // music plays on for the few hundredths of a second that takes, and the
+                        // scratch takes it over at full speed and winds it down under the finger —
+                        // which is the sound a hand on a record makes. See ScratchAudio.
                         deck.tracks.getOrNull(scratch.cursor.trackIndex)?.let { track ->
-                            scratchAudio.begin(
-                                context,
-                                scope,
-                                android.net.Uri.parse(track.fileUri),
-                                scratch.cursor.offsetMs
+                            scratchAudio.grab(
+                                uri = android.net.Uri.parse(track.fileUri),
+                                trackIndex = scratch.cursor.trackIndex,
+                                trackDurationMs = track.durationMs,
+                                playing = frame.isPlaying,
+                                positionMs = scratch.cursor.offsetMs
                             )
                         }
                     }
@@ -2262,21 +2255,25 @@ fun WallSceneScreen(
                         // The disc tracks the finger exactly — this is the whole illusion.
                         sequence.spinAngle -= degrees
 
+                        // **The record goes where the hand goes** (0.8). The scratch is told the disc's
+                        // *place* — how much music it has been turned through since the finger
+                        // landed — and when the screen saw it there, never a speed worked out
+                        // from two touch events: a record held to a place cannot drift from the
+                        // disc, and a finger that stops is simply a record that has arrived. See
+                        // Platter and HandTrack; and Scratch.Gearing for what a turn is worth.
+                        scratch.moved += scratch.gearing.turn(delta)
+                        scratchAudio.hand(scratch.moved, e.eventTime * 1_000_000L)
+
+                        // Where the record is, is where the scratch has it — what is heard is where you
+                        // are. Until it has the record (or if it never could), the finger's own sum.
                         val before = scratch.cursor.trackIndex
+                        val place = scratchAudio.positionMs()
+                            ?: (scratch.grabOffsetMs + (scratch.moved * 1000).toLong())
                         scratch.cursor = Scratch.advance(
-                            scratch.cursor, Scratch.radiansToMs(delta), scratch.durations
+                            Scratch.Cursor(scratch.grabIndex, 0L), place, scratch.durations
                         )
-
+                        
                         val now = SystemClock.uptimeMillis()
-
-                        // The audio follows the same delta the disc does, turned into a
-                        // velocity. Measured against the wall clock rather than the frame
-                        // clock because touch events do not arrive on frame boundaries, and
-                        // dividing a real angle by an assumed interval is how a steady drag
-                        // ends up sounding like it is stuttering.
-                        val sinceMove = (now - scratch.lastMoveAt).coerceAtLeast(1L)
-                        scratch.lastMoveAt = now
-                        scratchAudio.setAngularVelocity(delta / (sinceMove / 1000f))
 
                         if (scratch.cursor.trackIndex != before) {
                             // A track boundary went past under the finger. Heavier than the
@@ -2294,9 +2291,14 @@ fun WallSceneScreen(
                         }
                         if (now - scratch.lastSeekAt >= Scratch.SEEK_THROTTLE_MS) {
                             scratch.lastSeekAt = now
-                            viewModel.onScrub(
-                                scratch.cursor.trackIndex, scratch.cursor.offsetMs
-                            )
+                            // The paused player is walked along behind, so the deck's own line follows the
+                            // disc — only once the scratch has the record (until then the player is still
+                            // the one sounding, and a seek would be heard), and less often than the readout:
+                            // a seek is a decoder flushed, and nobody reads the line that closely.
+                            if (scratchAudio.holding && now - scratch.lastPlayerSeekAt >= Scratch.PLAYER_SEEK_THROTTLE_MS) {
+                                scratch.lastPlayerSeekAt = now
+                                viewModel.onScrub(scratch.cursor.trackIndex, scratch.cursor.offsetMs)
+                            }
                             scrubReadout.value = ScrubReadout(
                                 trackIndex = scratch.cursor.trackIndex,
                                 positionMs = scratch.cursor.offsetMs,
@@ -2636,12 +2638,17 @@ fun WallSceneScreen(
                     if (scratch.active && sequence.progress <= Scratch.ARM_AT) {
                         scratch.active = false
                         scrubReadout.value = null
-                        if (scratch.resumeOnRelease) {
-                            scratch.resumeOnRelease = false
-                            viewModel.setPlaying(true)
-                        }
+                        // The scratch puts the music back as it found it: playing, if it was.
+                        scratchAudio.cancel()
                     }
                 }
+
+                // While the disc can be touched, the scratch keeps the audio round the playhead
+                // in hand, so that a finger is answered at once and not when a decoder has
+                // started. Said every frame, as a heartbeat: when the room stops drawing —
+                // covered, parked, the screen off — it stops being said, and the scratch lets
+                // go by itself.
+                scratchAudio.arm(sequence.progress > Scratch.ARM_AT)
 
                 // Every shelved case hovers off its board and turns slowly, so a wall of
                 // albums reads as a rack of objects presenting themselves rather than a row
@@ -2870,7 +2877,15 @@ fun WallSceneScreen(
                         // scrub. Dragging the disc clockwise moves the audio forward, and
                         // it would read as a fault if letting go then span it backwards.
                         // DESIGN.md §4 also lists the idle spin under reduced motion.
-                        if (frame.isPlaying && !scratch.active && !reduceMotion) {
+                        if (scratchAudio.turning && !scratch.active && !reduceMotion) {
+                            // Let go, and the record is still the scratch's to turn (0.8): winding back up,
+                            // or spinning back from a throw. The disc does what the sound is doing — at
+                            // the speed the hand had it, easing into its own idle turn as it comes up
+                            // to pitch — so a backspin is seen as well as heard.
+                            val rate = scratchAudio.rate
+                            sequence.spinAngle -= rate * dt *
+                                Scratch.degreesPerSecondLetGo(rate, OpenSequence.SPIN_DEG_PER_S * beats.spin)
+                        } else if (frame.isPlaying && !scratch.active && !reduceMotion) {
                             sequence.spinAngle -= OpenSequence.SPIN_DEG_PER_S * dt * beats.spin
                         }
                         disc.rotation = Rotation(0f, 0f, sequence.spinAngle)

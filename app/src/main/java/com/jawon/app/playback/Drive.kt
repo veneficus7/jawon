@@ -5,11 +5,12 @@ import kotlin.math.abs
 /**
  * The third of Jawon's own effects: saturation, from warm to broken.
  *
- * **This is mostly already written.** The waveshaper is [ScratchTone.saturate] — the same
- * rational-tanh approximation that gives the scratch its grit — reused rather than copied, so
- * there is one saturator in this app and tuning it tunes both. What this file adds is what a
- * *rack* effect needs and a scratch does not: a single amount knob, a dry path that is exactly
- * dry, and a trim that stops the knob from being a volume control.
+ * The waveshaper ([saturate]) began as the scratch's own, and the two were deliberately one
+ * function until 0.8 — when the scratch was rebuilt as a record under a hand ([ScratchEngine])
+ * and wanted a gentler curve that leaves the sound untouched at rest, which a rack's drive knob
+ * must not become. So the original lives here now, unchanged: the rack sounds exactly as it did.
+ * What this file adds round it is what a rack effect needs: a single amount knob, a dry path
+ * that is exactly dry, and a trim that stops the knob from being a volume control.
  *
  * Pure, and testable without a device.
  */
@@ -59,8 +60,30 @@ object Drive {
         // Clamped even on the bypass path: the output of this goes back to 16-bit, where anything
         // outside full scale wraps to a click rather than clipping.
         if (wet <= 0f) return sample.coerceIn(-1f, 1f)
-        val shaped = ScratchTone.saturate(sample, driveFor(wet)) * trimFor(wet)
+        val shaped = saturate(sample, driveFor(wet)) * trimFor(wet)
         return (sample * (1f - wet) + shaped * wet).coerceIn(-1f, 1f)
+    }
+
+    /**
+     * Soft clip, normalised so quiet passages are not also turned down.
+     *
+     * A rational approximation of `tanh` rather than the real thing: this runs on every sample
+     * on the audio thread, tens of thousands of times a second, and the difference is inaudible
+     * where a stall is not. Odd-symmetric, so it adds the odd harmonics that read as warmth and
+     * grit rather than the even ones that read as broken.
+     */
+    fun saturate(sample: Float, drive: Float): Float {
+        val x = sample * drive
+        val shaped = x / (1f + abs(x))
+        // Divided by what the shaper does to full scale, so raising drive adds harmonics
+        // instead of simply making everything quieter.
+        val ceiling = drive / (1f + drive)
+        val normalised = if (ceiling > 1e-4f) shaped / ceiling else shaped
+        // Clamped, because the normalisation above is calibrated for a signal inside full
+        // scale and will push past 1 for anything louder. Sample data can arrive hotter than
+        // that, and letting it out would wrap in the conversion to 16-bit, which is a click
+        // rather than warmth. The whole point of a soft clipper is that nothing leaves it hard.
+        return normalised.coerceIn(-1f, 1f)
     }
 
     /** Whether the knob is far enough up to be worth running at all. */

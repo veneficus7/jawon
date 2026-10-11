@@ -11,7 +11,7 @@ import kotlin.math.pow
  * many repeats there are, and how much of it you hear — and that the last of those has to be able
  * to go fully dry, cleanly, at any moment.
  *
- * Pure, like [DjFilter] and [ScratchTone], so the feel can be tuned and the safety of the
+ * Pure, like [DjFilter] and [ScratchEngine], so the feel can be tuned and the safety of the
  * feedback path proved without a device.
  */
 object Echo {

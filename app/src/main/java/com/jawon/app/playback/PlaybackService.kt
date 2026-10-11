@@ -123,6 +123,10 @@ class PlaybackService : MediaLibraryService() {
     @Inject
     lateinit var streamCache: StreamCache
 
+    /** The scratch's way to the real player while it lives — see [ScratchLink]. */
+    @Inject
+    lateinit var scratchLink: ScratchLink
+
     private var crossfadeEngine: CrossfadeEngine? = null
     private var replayGainReader: ReplayGainReader? = null
 
@@ -218,6 +222,9 @@ class PlaybackService : MediaLibraryService() {
         val crossfade =
             CrossfadeEngine(this, player, preferences, volume, streamCache.dataSourceFactory())
         crossfadeEngine = crossfade
+
+        // Where the scratch finds the real player: its true position, and a hand on its level.
+        scratchLink.attach(player, volume)
 
         val replayGain = ReplayGainReader(volume, preferences)
         replayGainReader = replayGain
@@ -347,6 +354,7 @@ class PlaybackService : MediaLibraryService() {
         // Before the player goes: the effect is attached to that player's session, and one
         // left behind holds an audio effect slot the next player may need.
         serviceScope.cancel()
+        scratchLink.detach()
         getSystemService(android.media.AudioManager::class.java)
             ?.unregisterAudioDeviceCallback(outputs)
         crossfadeEngine?.release()

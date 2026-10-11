@@ -14,7 +14,7 @@ import kotlin.math.tan
  * mid-play, and it is why a mixer spends a whole knob on it rather than two.
  *
  * Pure, and deliberately so: every value here can be tested without a device, an audio session
- * or a decoder, which is the same reason [ScratchTone] is shaped this way.
+ * or a decoder, which is the same reason [ScratchEngine] is shaped this way.
  */
 object DjFilter {
 

@@ -106,12 +106,25 @@ class DriveTest {
     }
 
     @Test
-    fun `there is exactly one saturator in this app`() {
-        // Drive reuses ScratchTone's shaper rather than copying it, so tuning one tunes both.
-        // If these ever disagree, the reuse has been broken.
+    fun `full drive is the shaper and the trim, and nothing else`() {
         val x = 0.42f
         val amount = 1f
-        val expected = ScratchTone.saturate(x, Drive.driveFor(amount)) * Drive.trimFor(amount)
+        val expected = Drive.saturate(x, Drive.driveFor(amount)) * Drive.trimFor(amount)
         assertEquals(expected, Drive.process(x, amount), 1e-6f)
+    }
+
+    @Test
+    fun `the shaper is the curve the rack has always had`() {
+        // Moved here from the scratch in 0.8, and it must not have changed on the way: these
+        // are the old function's own values.
+        assertEquals(0f, Drive.saturate(0f, 6f), 0f)
+        assertEquals(1f, Drive.saturate(1f, 6f), 1e-6f)
+        assertEquals(-1f, Drive.saturate(-1f, 6f), 1e-6f)
+        assertEquals(0.875f, Drive.saturate(0.5f, 6f), 1e-6f)
+        assertEquals(0.4375f, Drive.saturate(0.1f, 6f), 1e-6f)
+        // Hotter than full scale leaves at full scale, never past it.
+        assertEquals(1f, Drive.saturate(2f, 6f), 0f)
+        // Odd-symmetric.
+        assertEquals(-Drive.saturate(0.3f, 3f), Drive.saturate(-0.3f, 3f), 1e-6f)
     }
 }

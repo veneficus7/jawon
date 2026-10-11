@@ -8,7 +8,7 @@ import kotlin.math.pow
  *
  * **These are two knobs because they are two ideas, and that is the whole point.** On a record
  * deck they are one: turning the platter faster raises the pitch, because the groove passes the
- * needle more quickly — which is why [ScratchTone] deliberately keeps them welded together, and
+ * needle more quickly — which is why [ScratchEngine] deliberately keeps them welded together, and
  * why taking the pitch out of a scratch leaves a scrub. Here they come apart. Media3 time-
  * stretches with Sonic, so a record can be slowed to three quarters and still sing in its
  * original key, or pushed up a tone at the tempo it was recorded at. Neither is a thing vinyl

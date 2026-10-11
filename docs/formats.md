@@ -54,7 +54,7 @@ Every row here is something the CD room has and each new room needs its own vers
 | What you browse | `case_closed.glb` + three art plates, from an index-keyed pool that never destroys a node | `CaseSlots` (trap 1) |
 | What you hold | tray, lid on a hinge, disc | `ActiveCase`, `case_tray/lid.glb`, `disc.glb` |
 | The sequence | pull · turn · open · lift · spin, 1.9s | `OpenSequence` |
-| The play surface | a platter under the finger, 6s of audio per turn, audible scratch | `Scratch`, `ScratchAudio`, `ScratchTone` |
+| The play surface | a platter under the finger — a record's own 1.8s of music per turn while scratching, geared up to 7.2s once the hand keeps going round (`Scratch.Gearing`) — and an audible scratch | `Scratch`, `ScratchAudio`, `ScratchEngine`, `Platter` |
 | Artwork | spine, cover and back inlay; the printed disc face | `CaseArt`, `DiscArt` |
 | Deletion | the disc breaking into 27 pieces | `CaseDiscard`, `DiscardScene`, `disc_shards.glb` |
 | Models | the Blender script, committed `.glb` | `tools/models/build_models.py` |
@@ -273,8 +273,10 @@ the tactile object it was, and it is a nostalgia object rather than a collection
 
 The case for vinyl, whenever it comes:
 
-1. **The scratch is already a vinyl gesture.** `ScratchAudio` and `ScratchTone` were tuned
-   to sound "like a record, not a resampler" (`9ed28f6`). On an LP it stops being a metaphor.
+1. **The scratch is already a vinyl gesture**, and since 0.8 it is a record's physics rather
+   than a resampler tuned to sound like one: `Platter` (slip, grip, the motor's pull, a
+   backspin) under `ScratchEngine`. Built in the CD room first precisely so the vinyl room's
+   platter is the same object. On an LP it stops being a metaphor.
 2. **The sequence maps beat for beat:** pull the sleeve · turn it to face you · slide the
    record out · lower it onto the platter · drop the needle.
 3. **The existing turntable is too small to reuse.** `build_turntable()` is a 235mm portable

@@ -30,6 +30,11 @@ class PlayerVolume(private val player: Player) {
     /** The crossfade envelope, 0..1. */
     private var fade = 1f
 
+    private var scratch = 1f
+
+    /** The levelling alone, as the player can actually apply it — what a scratch has to match. */
+    val levelling: Float get() = gain.coerceIn(0f, 1f)
+
     fun setGain(value: Float) {
         gain = value.coerceAtLeast(0f)
         apply()
@@ -40,10 +45,24 @@ class PlayerVolume(private val player: Player) {
         apply()
     }
 
+    /**
+     * How much of the player is heard while a hand has the record, or is giving it back (0.8).
+     *
+     * A third owner of the same field, for the same reason there was already a second: the
+     * scratch crosses the player out as it takes the record and back in as it returns it, and
+     * written straight to the player that would fight the crossfade's envelope and ReplayGain's
+     * levelling. Multiplied in here with them, none of the three can undo another.
+     */
+    fun setScratch(value: Float) {
+        scratch = value.coerceIn(0f, 1f)
+        apply()
+    }
+
     /** Back to a plain, unlevelled, un-faded player. */
     fun reset() {
         gain = 1f
         fade = 1f
+        scratch = 1f
         apply()
     }
 
@@ -53,6 +72,6 @@ class PlayerVolume(private val player: Player) {
     private fun apply() {
         // runCatching because a released player throws, and a volume write is never worth
         // taking the service down for.
-        runCatching { player.volume = (gain * fade).coerceIn(0f, 1f) }
+        runCatching { player.volume = (gain * fade * scratch).coerceIn(0f, 1f) }
     }
 }

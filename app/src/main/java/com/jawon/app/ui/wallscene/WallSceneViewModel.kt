@@ -246,7 +246,7 @@ class WallSceneViewModel @Inject constructor(
      * Tempo and key, −1 … 0 … +1 each, and independent of one another.
      *
      * A turntable cannot do this — its pitch follows its speed because that is what a groove
-     * passing a needle means — and [com.jawon.app.playback.ScratchTone] deliberately keeps them
+     * passing a needle means — and [com.jawon.app.playback.ScratchEngine] deliberately keeps them
      * welded for exactly that reason. Here Media3's time-stretcher takes them apart.
      */
     val speedPosition: StateFlow<Float> = rack.speed

@@ -3,183 +3,768 @@ package com.jawon.app.playback
 import android.content.Context
 import android.media.AudioAttributes
 import android.media.AudioFormat
+import android.media.AudioManager
+import android.media.AudioTimestamp
 import android.media.AudioTrack
 import android.media.MediaCodec
 import android.media.MediaExtractor
 import android.media.MediaFormat
 import android.net.Uri
+import android.os.Process
+import android.os.SystemClock
 import android.util.Log
+import com.jawon.app.data.playback.PlaybackRepository
+import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runInterruptible
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlin.math.abs
+import kotlin.math.max
 import kotlin.math.min
 
 /**
- * Hearing a record while your hand is on it.
+ * Hearing a record while your hand is on it — and the two hand-overs either side.
  *
- * Holding the disc pauses ExoPlayer and always has — a hand on the platter stops the platter.
- * What was missing is what a real turntable does *next*: the record is still under your hand,
- * so dragging it makes a sound. That sound is the whole point of a disc you can grab, and
- * without it a scratch is a silent seek with a nice animation over it.
+ * The sound itself is [ScratchEngine]: a record with weight ([Platter]), read by a needle. This
+ * is everything that has to be true around it on a phone.
  *
  * ### Why none of this can be ExoPlayer
  *
  * A player will run at half speed or double on request. It will not run at **minus** one, and
- * backwards is half of scratching. So for as long as the disc is held, a window of audio around
- * the playhead is decoded into memory and read out by hand: a floating cursor stepped by the
- * rate [ScratchTone] computes from the disc's own angular velocity, negative when the finger
- * pulls back, interpolated between samples so the slow drags stay smooth. Positive and
- * fractional gives the chirp, negative gives the growl, and both fall out of one signed number.
+ * backwards is half of scratching. So for as long as the record is in the hand's keeping, a
+ * stretch of audio round the playhead is decoded into memory and read out by the engine.
  *
- * ### The window, and why it is finite
+ * ### Taking the record
  *
- * Decoding is not free and scratching has to start *now*, so this takes a few seconds either
- * side of the playhead rather than the whole track. That is not a compromise so much as the
- * shape of the gesture: a scratch worth making covers a second or two. Run the cursor off
- * either end and the output goes quiet rather than clicking, and letting go re-seeks the real
- * player to wherever the disc ended up, so the window never has to be the whole record.
+ * A finger lands, and the engine starts where the player truly is, at full speed, and the two
+ * cross over a fiftieth of a second; from there the record winds down under the finger, which is
+ * the sound a touch should make.
+ *
+ * That needs audio in hand the instant the finger lands, and a decoder takes a tenth of a second
+ * and more to start. So for as long as the disc can be touched ([arm]) a few seconds round the
+ * playhead are **kept decoded** ([RollingDecoder]), and a touch is answered at once. Where they
+ * are not — a stream, a record that has only just started — a small stretch is decoded there and
+ * then, and until it is ready **the player goes on playing**: a record does not fall silent
+ * because a hand is approaching it. (A tap too brief to get that far touches nothing at all.)
+ * Either way a wide stretch follows, a dozen turns of the disc each way.
+ *
+ * ### Giving it back
+ *
+ * The finger lifts. The engine winds the record back up — or spins it back, if it was thrown —
+ * and goes on playing it: for a moment the scratch *is* the music. Where it will be when it
+ * reaches speed is known the moment it is let go ([Platter.settleFrom]), so the player is parked
+ * a little past there, silent, and started as the record arrives; the two are crossed. No gap,
+ * no jump: the wind-up is the music returning. See [handBackPlaying].
  *
  * ### What it must never do
  *
- * Stall the frame loop. Decoding happens on IO, the write loop is its own thread, and the
- * scene only ever hands over a rate — a plain float, written from the frame callback, read by
- * the audio thread. `@Volatile` rather than a lock, because a scratch writes it sixty times a
- * second and a contended lock in a frame callback is a dropped frame.
+ * Stall the frame loop, or leave the player muted. Decoding is on IO, rendering is its own
+ * thread, the gesture only ever leaves a number for it; and every way out of here — a finish, a
+ * failure, a case closed under the finger — ends with the player's own level put back.
  */
 @Singleton
-class ScratchAudio @Inject constructor() {
+class ScratchAudio @Inject constructor(
+    @param:ApplicationContext private val context: Context,
+    private val playback: PlaybackRepository,
+    private val link: ScratchLink
+) {
+    /**
+     * **Nothing here may ever take the app down.** This is audio for a finger on a disc, reaching
+     * into a player that belongs to a service; if any of it throws, the worst that may happen is
+     * that the scratch ends and the music is as it was.
+     */
+    private val scope = CoroutineScope(
+        SupervisorJob() + Dispatchers.Main.immediate + CoroutineExceptionHandler { _, failure ->
+            Log.w(TAG, "the scratch gave up: $failure")
+            runCatching {
+                val restart = resume && phase != Phase.IDLE && phase != Phase.PRIMING
+                finish()
+                if (restart) link.setPlaying(true)
+            }
+        }
+    )
 
-    private var track: AudioTrack? = null
-    private var pcm: ShortArray = ShortArray(0)
-    private var sampleRate = 44_100
-    private var channels = 1
+    private enum class Phase {
+        IDLE,
 
-    /** Where in [pcm] the window began, so a release can report an absolute position. */
-    private var windowStartMs = 0L
+        /** A finger is down and the first stretch is still being decoded. The player is untouched. */
+        PRIMING,
 
-    /** Read cursor, in *frames* from the start of the window. Fractional by design. */
-    private var cursor = 0.0
+        /** The engine has the record. */
+        HELD,
 
-    /** What the finger is asking for, and where the smoothing has actually got to. */
-    @Volatile private var targetRate = 0f
-    private var currentRate = 0f
+        /** Let go: the engine is bringing the record back to the player, or to rest. */
+        RELEASING
+    }
 
+    private var phase = Phase.IDLE
+    private var job: Job? = null
 
-    @Volatile private var running = false
-    private var writer: Thread? = null
-    private var prepareJob: Job? = null
+    /** Which track, how long it is, and whether it was playing when the finger landed. */
+    private var trackIndex = 0
+    private var trackSeconds = 0.0
+    private var resume = false
 
-    /** Whether there is decoded audio to scratch. False means fall back to silence. */
-    val ready: Boolean get() = pcm.isNotEmpty()
+    /** The file the record in hand was decoded from. */
+    private var scratching: Uri? = null
+
+    /** How fast the player was running when the finger landed — the deck's tempo; the speed "playing" means. */
+    private var nominal = 1.0
+
+    /** The first stretch being decoded, and what it has grown to if that finished before the record was taken. */
+    private var decoding: Job? = null
+    private var grown: ScratchWindow? = null
+
+    /** The wide stretch on its way — see [widen]. */
+    private var widening: Job? = null
 
     /**
-     * Decode a window around [positionMs] of [uri] and open the output.
+     * How much longer this phone's player takes to be heard, once told to play, than the scratch's
+     * own output does — in seconds. Learnt, a little more each time a record is handed back, and
+     * kept: it is a fact about the phone, and the hand-back is only as tight as this is right.
      *
-     * Returns immediately; the audio becomes available when the decode finishes, which is
-     * typically well inside the time it takes someone to move their finger. Starting the
-     * gesture is never blocked on it.
+     * The *difference*, not the whole delay, because most of the delay is the way to whatever is
+     * making the sound, and both go that way: a speaker is a few hundredths of a second off and
+     * a Bluetooth headphone a few tenths, and a number learnt on one would be badly wrong on the
+     * other. What is left once that is taken out is the player's own — its deeper buffer, its
+     * getting going — and is the same wherever the sound ends up.
      */
-    fun begin(context: Context, scope: CoroutineScope, uri: Uri, positionMs: Long) {
-        end()
-        running = true
-        targetRate = 0f
-        currentRate = 0f
-        prepareJob = scope.launch {
-            val decoded = withContext(Dispatchers.IO) {
-                runCatching { decodeWindow(context, uri, positionMs) }.getOrNull()
+    private var playExtra: Double
+        get() {
+            if (playExtraCached.isNaN()) {
+                playExtraCached = prefs.getFloat(KEY_PLAY_EXTRA, PLAY_EXTRA_SECONDS.toFloat()).toDouble()
+                    .coerceIn(PLAY_EXTRA_LEAST, PLAY_EXTRA_MOST)
             }
-            if (decoded == null || !running) return@launch
-            pcm = decoded.samples
-            sampleRate = decoded.sampleRate
-            channels = decoded.channels
-            windowStartMs = decoded.startMs
-            cursor = ((positionMs - decoded.startMs) / 1000.0) * sampleRate * channels
-            startOutput()
+            return playExtraCached
+        }
+        set(value) {
+            playExtraCached = value.coerceIn(PLAY_EXTRA_LEAST, PLAY_EXTRA_MOST)
+            prefs.edit().putFloat(KEY_PLAY_EXTRA, playExtraCached.toFloat()).apply()
+        }
+    private var playExtraCached = Double.NaN
 
-            // **Then widen it, because the first window is not big enough to scratch with.**
-            //
-            // One revolution of the disc is `Scratch.SEC_PER_REV` seconds of audio — six —
-            // so a four-second window runs out inside a single turn, and the sound simply
-            // stopped after a couple of spins. It cannot just be decoded wide to begin with:
-            // this has to make a noise the instant a finger lands, and half a minute of audio
-            // takes long enough to decode that the start of the gesture would be silent.
-            //
-            // So: a small window to start on, immediately, and a large one that replaces it a
-            // moment later. The swap re-bases the cursor onto the new window's origin, and a
-            // torn read across it costs at most a click of silence, because `sampleAt` already
-            // answers out-of-range with zero rather than a held sample.
-            val wide = withContext(Dispatchers.IO) {
-                runCatching { decodeWindow(context, uri, positionMs, WIDE_WINDOW_MS) }.getOrNull()
+    /** The last few measurements of that, newest last; the middle one is what is used. */
+    private val measured = ArrayDeque<Double>()
+
+    private val prefs by lazy { context.getSharedPreferences(HeadphoneResume.PREFS_FILE, Context.MODE_PRIVATE) }
+
+    /** Counts the times a record has been taken, so a measurement begun before one can tell it was interrupted. */
+    private var taken = 0
+
+    // ---- Kept ready --------------------------------------------------------------------------------
+
+    /** A stretch round the playhead, decoded before anybody asked — see [arm]. */
+    private var ready: ScratchWindow? = null
+    private var readyUri: Uri? = null
+    private var keeping: Job? = null
+
+    /** The hand's place on its own scale, kept from the first touch so nothing moved before the engine started is lost. */
+    @Volatile
+    private var handSeconds = 0.0
+
+    /**
+     * One time the engine has the record: its own engine, its own output, its own thread. Never
+     * reused — the thread of the last one may still be winding down when the next begins, and two
+     * threads moving one record is a record in two places.
+     */
+    private class Session(val engine: ScratchEngine, val track: AudioTrack, val burst: Int) {
+        @Volatile
+        var alive = true
+
+        /** Frames handed to the output so far, for knowing how far behind the write the ear is. */
+        @Volatile
+        var written = 0L
+
+        var writer: Thread? = null
+    }
+
+    private var session: Session? = null
+    private val engine: ScratchEngine? get() = session?.engine
+    private val running: Boolean get() = session?.alive == true
+
+    // ---- What the room asks ------------------------------------------------------------------
+
+    /** The engine has the record under a finger: its position is where the music is. */
+    val holding: Boolean get() = phase == Phase.HELD
+
+    /** Nobody is touching the record and the engine is still turning it — winding up, or spinning back. */
+    val turning: Boolean get() = phase == Phase.RELEASING
+
+    /** How fast the record is turning, for drawing it. 1 is the speed it plays at. */
+    val rate: Float get() = engine?.let { (it.rate / nominal).toFloat() } ?: 0f
+
+    /** Where the record is in its track, while the engine has it; null when it does not. */
+    fun positionMs(): Long? =
+        if (phase == Phase.HELD || phase == Phase.RELEASING) engine?.let { (it.positionSeconds * 1000).toLong() } else null
+
+    /**
+     * The disc can be touched ([armed]), or no longer can.
+     *
+     * While it can, a few seconds round the playhead are kept decoded, so that a finger finds the
+     * record already in hand. Only for a file on the phone: keeping a stream decoded would be
+     * fetching it a second time over the network, for a touch that may never come.
+     *
+     * **Said again and again, not once**: the room calls this every frame it draws. A room that
+     * has stopped drawing — under a panel, behind another room, with the screen off and the music
+     * playing on — has no way to say so, and a decoder following a record nobody can touch is
+     * battery spent on nothing. So saying nothing for a second is the same as saying no.
+     */
+    fun arm(armed: Boolean) {
+        if (!armed) {
+            if (keeping == null) return
+            keeping?.cancel()
+            keeping = null
+            ready = null
+            readyUri = null
+            return
+        }
+        armedAt = SystemClock.uptimeMillis()
+        if (keeping != null) return
+        keeping = scope.launch {
+            var rolling: RollingDecoder? = null
+            try {
+                while (SystemClock.uptimeMillis() - armedAt < ARM_LAPSES_MS) {
+                    val uri = link.uri()
+                    val at = link.positionMs()?.let { it / 1000.0 }
+                    if (headroom() < KEEP_HEADROOM_BYTES) {
+                        // No room to hold audio on the chance of a touch: the touch will wait
+                        // the tenth of a second it used to.
+                        ready = null
+                        readyUri = null
+                    } else if (phase == Phase.IDLE && uri != null && at != null && onThePhone(uri)) {
+                        if (rolling?.uri != uri) {
+                            rolling?.let { old -> withContext(Dispatchers.IO) { old.close() } }
+                            rolling = RollingDecoder(context, uri)
+                        }
+                        val decoder = rolling
+                        if (!covers(ready, readyUri, uri, at, READY_TOP_UP_SECONDS) && decoder != null && !decoder.failed) {
+                            val fresh = runInterruptible(Dispatchers.IO) {
+                                decoder.cover(at - READY_BEHIND_SECONDS, at + READY_AHEAD_SECONDS)
+                            }
+                            if (fresh != null) {
+                                ready = fresh
+                                readyUri = uri
+                            }
+                        }
+                    }
+                    delay(READY_EVERY_MS)
+                }
+                // Nobody has said the disc can be touched for a while: it cannot.
+                keeping = null
+                ready = null
+                readyUri = null
+            } finally {
+                val old = rolling
+                if (old != null) withContext(NonCancellable + Dispatchers.IO) { old.close() }
             }
-            if (wide == null || !running) return@launch
-            val playingMs = windowStartMs + ((cursor / channels) / sampleRate * 1000.0)
-            windowStartMs = wide.startMs
-            pcm = wide.samples
-            cursor = ((playingMs - wide.startMs) / 1000.0) * sampleRate * channels
         }
     }
 
-    /** The disc's angular velocity, in radians per second. Called from the frame loop. */
-    fun setAngularVelocity(radiansPerSecond: Float) {
-        targetRate = ScratchTone.rateFor(radiansPerSecond)
+    private var armedAt = 0L
+
+    private fun onThePhone(uri: Uri): Boolean = uri.scheme == "content" || uri.scheme == "file"
+
+    /** How much more the app could still allocate, in bytes. */
+    private fun headroom(): Long = Runtime.getRuntime().let { it.maxMemory() - (it.totalMemory() - it.freeMemory()) }
+
+    /**
+     * Whether [window], decoded from [of], has enough of [uri] round [at] — a little behind, and
+     * [ahead] seconds in front.
+     *
+     * Asked with two different [ahead]s, and the gap between them is the point: the stretch is
+     * topped up while it still has more in front of it than a touch needs, so that a touch never
+     * arrives in the moment between it running short and the decoder catching it up.
+     */
+    private fun covers(window: ScratchWindow?, of: Uri?, uri: Uri, at: Double, ahead: Double): Boolean =
+        window != null && of == uri &&
+            // (A track's first sample is a few hundredths of a second in, not at nought: at
+            // the very start there is nothing behind to ask for, and the little that is missing
+            // is silence anyway.)
+            at > window.startSeconds + min(READY_BEHIND_LEAST_SECONDS, at) - 0.06 &&
+            at + ahead < window.endSeconds
+
+    /**
+     * A finger lands on the disc of [uri], track [trackIndex] of the record, [trackDurationMs]
+     * long. [playing] is whether the music was going; [positionMs] is the room's idea of where,
+     * used only if the player cannot say.
+     */
+    fun grab(uri: Uri, trackIndex: Int, trackDurationMs: Long, playing: Boolean, positionMs: Long) {
+        val current = engine
+        if (phase == Phase.RELEASING && current != null && running && this.trackIndex == trackIndex) {
+            // Caught again while it was still winding up: the same record, straight back in the
+            // hand. The phase changes *before* the hand-back is cancelled — cancelling runs its
+            // tidying-up there and then, and that has to find a record that is held, not one
+            // that is over, or it closes the output this is about to go on using.
+            phase = Phase.HELD
+            taken++
+            job?.cancel()
+            job = null
+            handSeconds = 0.0
+            current.grab(0.0, System.nanoTime())
+            current.fade(1f, 0.01f)
+            link.setLevel(0f)
+            // Told to stop whether or not it has got going yet: a player still starting up after
+            // the hand-back's seek would otherwise start, unheard, under the hand.
+            if (resume) scope.launch { playerPlay(false) }
+            Log.i(TAG, "caught again at ${"%.3f".format(current.positionSeconds)}s, turning at ${"%.2f".format(current.rate)}")
+            return
+        }
+        // Caught mid-return on some other track, the music was still — as far as whoever is
+        // holding it is concerned — playing, whatever the player happens to say this instant.
+        val wasGoing = resume && (phase == Phase.HELD || phase == Phase.RELEASING)
+        cancel()
+        this.trackIndex = trackIndex
+        trackSeconds = trackDurationMs / 1000.0
+        resume = playing || wasGoing
+        nominal = link.speed()
+        scratching = uri
+        taken++
+        handSeconds = 0.0
+        phase = Phase.PRIMING
+        grown = null
+        val kept = ready
+        val live = link.positionMs()
+        if (kept != null && live != null && covers(kept, readyUri, uri, live / 1000.0, READY_AHEAD_LEAST_SECONDS)) {
+            // Already in hand: the record is taken now, in the same breath as the touch.
+            job = scope.launch {
+                takeOver(kept, live, live = true, primedMs = 0)
+                widen(uri, live)
+            }
+            return
+        }
+        // Round where the player truly is. The room's idea of that is a third of a second old —
+        // it learns the position a few times a second — and a stretch centred there is a stretch
+        // with that much less of the record ahead of the finger.
+        val around = link.positionMs()?.takeIf { playing } ?: positionMs
+        val began = System.nanoTime()
+        val early = CompletableDeferred<ScratchWindow?>()
+        decoding = scope.launch {
+            // **In two steps, from one pass.** What decides how soon a touch is answered is how
+            // much has to be decoded before there is anything to play, so the first of it is
+            // handed over as soon as it reaches a little past the playhead — a second of audio,
+            // not three — and the same decoder carries on to the few seconds a first stroke can
+            // reach. Measured on the emulator: 134ms from touch to sound before this, 60 after.
+            val all = runInterruptible(Dispatchers.IO) {
+                decode(uri, around, FIRST_BEFORE_MS, FIRST_AFTER_MS, EARLY_AFTER_MS) { early.complete(it) }
+            }
+            val first = if (early.isCompleted) early.getCompleted() else null
+            early.complete(all)
+            if (all == null || all === first) return@launch
+            val taken = session
+            if (taken == null) grown = all
+            else if (taken.engine.window === first) taken.engine.window = all
+        }
+        job = scope.launch {
+            // **A record does not go on playing under a hand for long.** A file on the phone is
+            // ready in a few hundredths of a second and the music simply carries on until it is.
+            // A stream, or a card that had gone to sleep, can take seconds — and music that plays
+            // on regardless while a finger drags the disc round is a disc that is not connected
+            // to anything. Past this, the hold begins in silence and the sound joins it when it can.
+            val inTime = withTimeoutOrNull(PRIME_LONGEST_MS) { early.await(); true } == true
+            if (!inTime) holdSilently()
+            val first = early.await()
+            if (first == null) {
+                // Nothing to scratch with: a silent hold, which is what a scratch was before it had a sound.
+                if (inTime) holdSilently()
+                return@launch
+            }
+            takeOver(grown ?: first, around, live = inTime, primedMs = (System.nanoTime() - began) / 1_000_000)
+            widen(uri, around)
+        }
+    }
+
+    /** The hold with no sound of its own: the player stopped, and (by the room) walked along behind the disc. */
+    private suspend fun holdSilently() {
+        phase = Phase.HELD
+        if (resume) playerPlay(false)
+        Log.i(TAG, "holding in silence")
+    }
+
+    // The player is told directly where it can be (see ScratchLink), and through the repository —
+    // which will start one — where there is none yet.
+
+    private suspend fun playerPlay(playing: Boolean) {
+        if (!link.setPlaying(playing)) playback.setPlaying(playing)
+    }
+
+    private suspend fun playerSeek(trackIndex: Int, positionMs: Long) {
+        if (!link.seek(trackIndex, positionMs)) playback.seekTo(trackIndex, positionMs)
     }
 
     /**
-     * Stop.
+     * **Then widen it, because the first stretch is not enough to scratch with.** It cannot
+     * simply be decoded wide to begin with: the record has to be in the hand within a few
+     * hundredths of a second, and most of a minute of audio takes longer than that. The swap is
+     * one reference; the engine reads whichever it finds.
      *
-     * Deliberately reports nothing. It used to hand back where its own cursor had reached, so
-     * the caller could seek the real player there — which was wrong, and was the cause of a
-     * release snapping playback back toward where the disc was grabbed. This cursor only moves
-     * while audio is being produced, at the smoothed rate, and not at all below the silence
-     * threshold; the gesture's cursor has no such limit and is the honest answer.
+     * Its own job, and one that outlives the finger: a record let go and caught again a moment
+     * later is the same record, and still wants the wide stretch that was on its way.
      */
-    fun end() {
-        running = false
-        prepareJob?.cancel()
-        prepareJob = null
-
-        // **Torn down off the calling thread, deliberately.**
-        //
-        // This is called from the gesture handler, which is the main thread, and `begin` calls
-        // it too — so a scratch started immediately after one ended would pay for the previous
-        // teardown before it could start. Joining the writer and releasing an AudioTrack take
-        // milliseconds, and milliseconds spent on the main thread inside a touch handler are
-        // dropped frames on the exact gesture this feature exists to make feel good.
-        //
-        // The references are taken first and the fields cleared straight away, so nothing that
-        // arrives in the meantime can touch a track that is being released.
-        val dying = track
-        val dyingWriter = writer
-        track = null
-        writer = null
-        pcm = ShortArray(0)
-
-        Thread({
-            runCatching { dyingWriter?.join(200) }
-            runCatching {
-                dying?.pause()
-                dying?.flush()
-                dying?.release()
+    private fun widen(uri: Uri, positionMs: Long) {
+        val taken = session ?: return
+        widening?.cancel()
+        widening = scope.launch {
+            val wide = runInterruptible(Dispatchers.IO) { decode(uri, positionMs, WIDE_MS, WIDE_MS) }
+            if (wide != null && session === taken) {
+                taken.engine.window = wide
+                Log.i(TAG, "a wide stretch, ${"%.1f".format(wide.startSeconds)}s to ${"%.1f".format(wide.endSeconds)}s")
             }
-        }, "jawon-scratch-release").start()
+        }
     }
 
-    // ---- output ----------------------------------------------------------------------
+    /** The hand has turned the disc to [seconds] of music from where it landed, as of [reportNanos]. */
+    fun hand(seconds: Double, reportNanos: Long) {
+        handSeconds = seconds
+        if (phase != Phase.HELD) return
+        val engine = engine ?: return
+        engine.hand.move(seconds, reportNanos, System.nanoTime())
 
-    private fun startOutput() {
-        val channelMask =
-            if (channels >= 2) AudioFormat.CHANNEL_OUT_STEREO else AudioFormat.CHANNEL_OUT_MONO
-        val minBuffer = AudioTrack.getMinBufferSize(
-            sampleRate, channelMask, AudioFormat.ENCODING_PCM_16BIT
-        ).coerceAtLeast(4096)
+        // Spun to find a place, a record soon leaves the stretch that was decoded round where
+        // it was taken. As it nears either end of it — with more of the track beyond — a new
+        // one is decoded round where it has got to.
+        val window = engine.window ?: return
+        val uri = scratching ?: return
+        if (widening?.isActive == true) return
+        val at = engine.positionSeconds
+        // (Already centred about here: a stretch too short to have a middle and two ends, as a
+        // high-resolution file's is, would otherwise be decoded over and over.)
+        if (abs(at - (window.startSeconds + window.endSeconds) / 2) < REWIDEN_WITHIN_SECONDS / 4) return
+        val nearEnd = at > window.endSeconds - REWIDEN_WITHIN_SECONDS && window.endSeconds < trackSeconds - 0.5
+        val nearStart = at < window.startSeconds + REWIDEN_WITHIN_SECONDS && window.startSeconds > 0.5
+        if (nearEnd || nearStart) widen(uri, (at * 1000).toLong().coerceAtLeast(0L))
+    }
 
-        val out = runCatching {
+    /**
+     * The finger lifts. If the engine has the record and it is still on its own track, it is
+     * wound back up and handed to the player in step; otherwise the player is simply put at
+     * ([fallbackTrackIndex], [fallbackOffsetMs]) — where the room reckons the disc was turned to.
+     */
+    fun release(fallbackTrackIndex: Int, fallbackOffsetMs: Long) {
+        when (phase) {
+            Phase.IDLE, Phase.RELEASING -> return
+            Phase.PRIMING -> {
+                // Lifted before the engine ever took the record: the music never stopped. If the
+                // disc was turned in that moment, that is still a seek; a tap is nothing at all.
+                job?.cancel()
+                stopDecoding()
+                phase = Phase.IDLE
+                Log.i(TAG, "let go before the record was taken, ${"%.3f".format(handSeconds)}s turned")
+                if (abs(handSeconds) > TAP_SECONDS) {
+                    scope.launch { playerSeek(fallbackTrackIndex, fallbackOffsetMs) }
+                }
+                return
+            }
+            Phase.HELD -> Unit
+        }
+        // Whatever the grab was still doing — crossing the player out, waiting on a slow decode
+        // — stops here: a sound that arrived after the finger had gone would be a record held
+        // by nobody.
+        job?.cancel()
+        job = null
+        val engine = engine
+        if (engine == null || !running) {
+            // The silent hold: put the player where the disc was turned to, and carry on.
+            stopDecoding()
+            phase = Phase.IDLE
+            Log.i(TAG, "let go of a silent hold: track $fallbackTrackIndex, ${fallbackOffsetMs}ms")
+            scope.launch {
+                playerSeek(fallbackTrackIndex, fallbackOffsetMs)
+                if (resume) playerPlay(true)
+            }
+            return
+        }
+        phase = Phase.RELEASING
+        job = scope.launch {
+            try {
+                if (!resume) handBackPaused(engine, fallbackTrackIndex, fallbackOffsetMs)
+                else handBackPlaying(engine, fallbackTrackIndex, fallbackOffsetMs)
+            } finally {
+                // However this ended — finished, failed, cancelled by a new grab that wants the
+                // engine kept — the player is never left muted by a scratch that is over.
+                if (phase == Phase.RELEASING) finish()
+            }
+        }
+    }
+
+    /** Stop now: a case closing under the finger, the room going away. The music is put back as it was. */
+    fun cancel() {
+        val was = phase
+        job?.cancel()
+        job = null
+        val restart = resume && (was == Phase.HELD || was == Phase.RELEASING) && !link.isPlaying()
+        if (was != Phase.IDLE) Log.i(TAG, "cancelled while $was" + if (restart) ", playing again" else "")
+        finish()
+        if (restart) scope.launch { playerPlay(true) }
+    }
+
+    // ---- Taking the record ---------------------------------------------------------------------
+
+    /**
+     * The engine takes the record. [live] is whether the player still has it as the finger found
+     * it — false when the first stretch took so long that the hold has already begun in silence.
+     */
+    private suspend fun takeOver(first: ScratchWindow, grabPositionMs: Long, live: Boolean, primedMs: Long) {
+        val engine = openOutput() ?: run {
+            if (live) holdSilently()
+            return
+        }
+        val now = System.nanoTime()
+        val sounding = live && resume
+        engine.window = first
+        engine.master = link.levelling()
+        val at: Double
+        if (sounding) {
+            // Where the player truly is — and by the time the first of this is heard, a little
+            // on. It starts at the player's own speed, as the same sound, and the hand that is
+            // already on it winds it down from there.
+            at = (link.positionMs() ?: grabPositionMs) / 1000.0 + startLatencySeconds() * nominal
+            engine.platter.place(at, nominal, playing = true, nominal = nominal)
+            engine.grab(handSeconds, now)
+            engine.fade(1f, CROSS_IN_SECONDS)
+        } else {
+            // Nothing is sounding: the music was stopped, or the hold began in silence. The
+            // record starts still — where the player is, if it has not been moved since the
+            // finger landed; where the hand has turned the disc to, if it has.
+            at = if (live) (link.positionMs() ?: grabPositionMs) / 1000.0
+            else grabPositionMs / 1000.0 + handSeconds
+            engine.platter.place(at, 0.0, playing = false, nominal = nominal)
+            engine.grab(handSeconds, now)
+            engine.open()
+        }
+        startWriter(engine)
+        phase = Phase.HELD
+        Log.i(
+            TAG,
+            "took the record at ${"%.3f".format(at)}s after ${primedMs}ms" +
+                (if (sounding) ", playing" else if (live) ", stopped" else ", late") +
+                ", ${engine.outputRate}Hz in bursts of ${session?.burst}"
+        )
+        if (sounding) {
+            fadeLink(1f, 0f, CROSS_IN_MS)
+            playerPlay(false)
+        } else {
+            link.setLevel(0f)
+        }
+    }
+
+    // ---- Giving it back ------------------------------------------------------------------------
+
+    private suspend fun handBackPaused(engine: ScratchEngine, fallbackIndex: Int, fallbackOffsetMs: Long) {
+        engine.release(playing = false)
+        var waited = 0L
+        while (!engine.atRest && waited < COAST_LONGEST_MS) {
+            delay(POLL_MS)
+            waited += POLL_MS
+        }
+        val at = engine.positionSeconds
+        if (at in 0.0..trackSeconds) playerSeek(trackIndex, (at * 1000).toLong())
+        else playerSeek(fallbackIndex, fallbackOffsetMs)
+        Log.i(TAG, "left stopped at ${"%.3f".format(at)}s after coasting ${waited}ms")
+    }
+
+    /**
+     * The record goes back to the player without the music stopping.
+     *
+     * **In three steps, and the order is the point.** A player told to seek and play starts when
+     * it starts — a decoder to flush, a file to read, a buffer to fill — and how long that takes
+     * varies by more than an ear forgives. A player that is already *parked* at a place, stopped
+     * and ready, starts after very nearly the same delay every time. So:
+     *
+     * 1. the record winds up, and goes on playing — it is the music now, and nobody can tell;
+     * 2. meanwhile the player is parked, silent, at a place the record will pass a third of a
+     *    second on, and is started just before the record gets there — by exactly as much as
+     *    this phone's player has been found to need ([playExtra]);
+     * 3. as it comes in, the two are crossed.
+     *
+     * **Nothing is steered by the player's clock while this happens**, which was the first design
+     * and did not survive being watched: for its first second after starting, a player's idea of
+     * where it is is a blend of two estimates sliding into each other, and a record leant toward
+     * that is a record whose pitch wanders after a moving target. The clock is read once, a
+     * second and a half later when it has settled, to learn how long the start really took —
+     * and that is what makes the next one tighter ([learnFrom]).
+     */
+    private suspend fun handBackPlaying(engine: ScratchEngine, fallbackIndex: Int, fallbackOffsetMs: Long) {
+        val settle = Platter.settleFrom(Platter.letGoAt(engine.rate.toDouble()), nominal)
+        val lockAt = engine.positionSeconds + settle.travelled
+        val window = engine.window
+        val onTheRecord = window != null && lockAt > 0.05 &&
+            lockAt + (PARK_AHEAD_SECONDS + HAND_BACK_MARGIN_SECONDS) * nominal < trackSeconds &&
+            // ...and on what has been decoded of it: spun a long way fast, a record can be let
+            // go beyond the stretch in hand, and a wind-up there is a wind-up of nothing.
+            engine.positionSeconds > window.startSeconds && lockAt + PARK_AHEAD_SECONDS * nominal < window.endSeconds
+        if (!onTheRecord) {
+            // Turned off the end of this track, or too near it: there is nothing to wind up
+            // with. The player starts where the disc was left, under a quick fade.
+            engine.fade(0f, 0.03f)
+            playerSeek(fallbackIndex, fallbackOffsetMs)
+            playerPlay(true)
+            fadeLink(0f, 1f, 120)
+            Log.i(TAG, "let go off the record (${"%.3f".format(lockAt)}s of ${"%.1f".format(trackSeconds)}): started at track $fallbackIndex, ${fallbackOffsetMs}ms")
+            return
+        }
+
+        engine.release(playing = true)
+        link.setLevel(0f)
+        // Stopped, whatever it was doing: a finger that came and went inside the take-over's own
+        // crossfade leaves a player that was never told to stop.
+        playerPlay(false)
+
+        // 2. Park it where the record will be, and start it as the record arrives.
+        var meetAt = lockAt + PARK_AHEAD_SECONDS * nominal
+        var startedAt = 0L
+        var outputBehind = 0.0
+        var waited = 0L
+        var parks = 0
+        park@ while (parks < PARKS_MOST && meetAt < trackSeconds - HAND_BACK_MARGIN_SECONDS) {
+            parks++
+            playerSeek(trackIndex, (meetAt * 1000).toLong())
+            while (waited < PARK_LONGEST_MS) {
+                // How long until the record is *written* as far as the meeting place. What is
+                // written is heard later, by however far behind the output is — and so is what
+                // the player plays, by that and its own little more. The first of those cancels.
+                val togo = (meetAt - engine.positionSeconds) / nominal
+                if (engine.atSpeed && togo <= playExtra) {
+                    // Parked, and the player agrees that it is — its own seek has landed.
+                    val there = link.isReady() && abs((link.positionMs() ?: -1L) - meetAt * 1000) < 40
+                    if (there && togo > playExtra - LATE_SECONDS) {
+                        outputBehind = latencySeconds()
+                        outputBehindLast = outputBehind
+                        playerPlay(true)
+                        startedAt = System.nanoTime()
+                        break@park
+                    }
+                    // Not ready in time: park it again, further on. The record plays on meanwhile.
+                    meetAt = engine.positionSeconds + (PARK_AHEAD_SECONDS + 0.25 * parks) * nominal
+                    continue@park
+                }
+                delay(TICK_MS)
+                waited += TICK_MS
+            }
+            break
+        }
+        val met = startedAt != 0L
+        if (met) {
+            // 3. It is heard about now: the output's delay and its own.
+            delay(((outputBehind + playExtra) * 1000).toLong().coerceIn(0L, 500L) + CROSS_AFTER_MS)
+        } else {
+            // It could not be met in step: start it where the record is, and cross them as they are.
+            playerSeek(trackIndex, (engine.positionSeconds * 1000).toLong())
+            playerPlay(true)
+        }
+        var running = 0L
+        while (!link.isPlaying() && running < START_LONGEST_MS) {
+            delay(TICK_MS)
+            running += TICK_MS
+        }
+        Log.i(
+            TAG,
+            "handed back: wind-up ${(settle.seconds * 1000).toInt()}ms, " +
+                (if (met) "met after ${waited}ms on park $parks" else "not met ($parks parks)") +
+                ", output ${(outputBehind * 1000).toInt()}ms behind, player ${(playExtra * 1000).toInt()}ms more"
+        )
+        engine.fade(0f, CROSS_OUT_SECONDS)
+        fadeLink(0f, 1f, CROSS_OUT_MS)
+        delay(30)
+        if (met) learnFrom(startedAt, meetAt, outputBehind)
+    }
+
+    /**
+     * Once the player's clock has settled, ask it how long its start really took: it was told to
+     * play at [startedAt] from [parkedAt], so wherever it says it is now, it has been heard for
+     * that long and no longer. The difference from what was allowed goes, in part, into the next
+     * guess. Skipped if anything has touched the record or the player since.
+     */
+    private fun learnFrom(startedAt: Long, parkedAt: Double, outputBehind: Double) {
+        val then = taken
+        val speed = nominal
+        scope.launch {
+            delay(CLOCK_SETTLE_MS)
+            if (taken != then || !link.isPlaying()) return@launch
+            val now = System.nanoTime()
+            val played = ((link.positionMs() ?: return@launch) / 1000.0 - parkedAt) / speed
+            val since = (now - startedAt) / 1e9
+            // Not this start any more: a seek, another track, a pause and a play.
+            if (played <= 0.0 || played > since) return@launch
+            val took = since - played
+            if (took > START_MOST_SECONDS) return@launch
+            // The middle of the last few, not a step toward the newest: on a phone whose clocks
+            // are good these agree to a few thousandths of a second and the first is believed at
+            // once; on one whose clocks are not, a wild one moves nothing.
+            val was = playExtra
+            measured.addLast(took - outputBehind)
+            while (measured.size > MEASURED_KEPT) measured.removeFirst()
+            playExtra = measured.sorted()[measured.size / 2]
+            Log.i(
+                TAG,
+                "the player took ${(took * 1000).toInt()}ms to start where ${((outputBehind + was) * 1000).toInt()}ms " +
+                    "was allowed; ${(playExtra * 1000).toInt()}ms more than the output from now on"
+            )
+        }
+    }
+
+    /** The player's level from [from] to [to] in steps a mixer smooths between. */
+    private suspend fun fadeLink(from: Float, to: Float, millis: Long) {
+        val steps = max(1, (millis / FADE_STEP_MS).toInt())
+        for (i in 1..steps) {
+            link.setLevel(from + (to - from) * i / steps)
+            delay(FADE_STEP_MS)
+        }
+        link.setLevel(to)
+    }
+
+    /** Over: the output stops, and the player has its own level back whatever state this was in. */
+    private fun finish() {
+        phase = Phase.IDLE
+        link.setLevel(1f)
+        // What this scratch decoded is the best thing to be ready with for the next: scratching
+        // comes in bursts, and the second touch should not wait on a decoder any more than the
+        // first did. Only while the disc can still be touched; it is let go with that.
+        val had = session?.engine?.window
+        val uri = link.uri()
+        val at = link.positionMs()
+        if (keeping != null && had != null && uri != null && at != null && uri == scratching &&
+            covers(had, uri, uri, at / 1000.0, READY_TOP_UP_SECONDS)
+        ) {
+            ready = had
+            readyUri = uri
+        }
+        stopDecoding()
+        closeOutput()
+    }
+
+    // ---- Output --------------------------------------------------------------------------------
+
+    /**
+     * Opens the output at the phone's own rate, on its low-latency path.
+     *
+     * A scratch is played, not listened to: the sound has to follow the hand within a few
+     * hundredths of a second or it is a recording of a scratch arriving late. The old output took
+     * the platform's default buffer twice over and was a tenth of a second behind the finger.
+     * Asking for the mixer's own rate and burst is what lets Android give this the fast path —
+     * the engine reads the record at any rate, so the file's own costs nothing to give up.
+     */
+    private fun openOutput(): ScratchEngine? {
+        closeOutput()
+        val manager = context.getSystemService(AudioManager::class.java)
+        val rate = manager?.getProperty(AudioManager.PROPERTY_OUTPUT_SAMPLE_RATE)?.toIntOrNull()
+            ?.takeIf { it in 22_050..192_000 } ?: 48_000
+        val burst = manager?.getProperty(AudioManager.PROPERTY_OUTPUT_FRAMES_PER_BUFFER)?.toIntOrNull()
+            ?.coerceIn(64, 1024) ?: 256
+        val least = AudioTrack.getMinBufferSize(rate, AudioFormat.CHANNEL_OUT_STEREO, AudioFormat.ENCODING_PCM_16BIT)
+        val track = runCatching {
             AudioTrack.Builder()
                 .setAudioAttributes(
                     AudioAttributes.Builder()
@@ -190,127 +775,154 @@ class ScratchAudio @Inject constructor() {
                 .setAudioFormat(
                     AudioFormat.Builder()
                         .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
-                        .setSampleRate(sampleRate)
-                        .setChannelMask(channelMask)
+                        .setSampleRate(rate)
+                        .setChannelMask(AudioFormat.CHANNEL_OUT_STEREO)
                         .build()
                 )
-                // Twice the minimum: one buffer of latency is what makes the sound follow the
-                // finger, and less than that underruns into clicks on a busy frame.
-                .setBufferSizeInBytes(minBuffer * 2)
+                .setPerformanceMode(AudioTrack.PERFORMANCE_MODE_LOW_LATENCY)
+                .setBufferSizeInBytes(max(least, max(burst * 8, rate / 20) * BYTES_PER_FRAME))
                 .setTransferMode(AudioTrack.MODE_STREAM)
                 .build()
-        }.getOrNull() ?: return
+        }.getOrNull()?.takeIf { it.state == AudioTrack.STATE_INITIALIZED } ?: return null
 
-        track = out
-        runCatching { out.play() }
-
-        writer = Thread({
-            // **Nothing here may ever kill the app.**
-            //
-            // It already did once: an off-by-two in the grain arithmetic threw an
-            // ArrayIndexOutOfBounds on this thread, and an uncaught exception on any thread
-            // takes the whole process with it — so the app died the moment anyone spun the
-            // disc. The arithmetic is fixed and tested, but the shape of the risk is
-            // permanent: this loop runs audio maths on a background thread while a finger is
-            // moving, and the worst it should ever be able to do is stop making noise.
-            runCatching { writeLoop(out, minBuffer / 2) }
-                .onFailure { Log.w(TAG, "scratch output stopped: $it") }
-        }, "jawon-scratch").apply {
-            priority = Thread.MAX_PRIORITY
-            start()
-        }
+        // As little held in hand as the phone will take without running dry: a sixtieth of a
+        // second or so to begin with — this is a thread in a garbage-collected runtime, and
+        // less than that is a crackle waiting for a pause — and more, kept from one scratch to
+        // the next, on a phone where that turned out not to be enough.
+        runCatching { track.bufferSizeInFrames = max(heldFrames, max(burst * 4, rate / 60)) }
+        val made = Session(ScratchEngine(rate), track, burst)
+        session = made
+        return made.engine
     }
 
-    /**
-     * Granular playback: constant pitch, variable speed.
-     *
-     * Each pass emits one hop — half a grain — built from the tail of the previous grain and
-     * the head of a new one, both raised-cosine windowed so they sum to unit gain. Every grain
-     * is read from `pcm` at *normal* rate, which is what holds the pitch; what the scrub rate
-     * moves is where the next grain is *taken from*. Speed is travel through the record, pitch
-     * is whatever the record was recorded at.
-     */
-    /**
-     * A stylus in a groove being dragged about by hand.
-     *
-     * The samples are read at the scrub rate, so the pitch follows the speed — which is not an
-     * artefact to be engineered away but the instrument itself. A turntablist has one hand on
-     * the pitch and one on the volume; taking the pitch out leaves a scrub, not a scratch.
-     *
-     * Then the needle: louder with speed, duller with speed, and driven into a soft clip that
-     * bites harder the faster it goes. Those three are what the ear hears as vinyl rather than
-     * as a sample being resampled, and together they are the "hard, distorted" part.
-     */
-    private fun writeLoop(out: AudioTrack, chunkSamples: Int) {
-        val buffer = ShortArray(chunkSamples.coerceAtLeast(256))
-        val chunkSeconds = (buffer.size / channels).toFloat() / sampleRate
-        // One-pole state per channel, kept across chunks or the filter restarts every buffer
-        // and ticks at the chunk rate.
-        val toneState = FloatArray(channels)
-
-        while (running) {
-            currentRate = ScratchTone.approach(currentRate, targetRate, chunkSeconds)
-            val rate = currentRate
-
-            if (!ScratchTone.audible(rate)) {
-                // Held still: silence, not a buzz. Reading at a near-zero rate repeats the
-                // same handful of samples, which is a tone, not quiet. See SILENCE_BELOW.
-                java.util.Arrays.fill(buffer, 0)
-                java.util.Arrays.fill(toneState, 0f)
-            } else {
-                val step = rate.toDouble()
-                val gain = ScratchTone.gainFor(rate)
-                val drive = ScratchTone.driveFor(rate)
-                val toneCoeff = ScratchTone.toneCoeffFor(rate, sampleRate)
-
-                var i = 0
-                while (i < buffer.size) {
-                    // Channels advance together, so the interpolation cannot read one side a
-                    // fraction ahead of the other and tear the stereo image.
-                    val frameBase = cursor
-                    var c = 0
-                    while (c < channels && i < buffer.size) {
-                        val raw = Pcm16.toFloat(ScratchTone.sampleAt(pcm, frameBase + c))
-                        // Dulled, then driven, then levelled. Filtering before saturation and
-                        // not after: a needle loses the top end on the way *in*, and clipping
-                        // a dull signal is warm where dulling a clipped one is muffled.
-                        toneState[c] += toneCoeff * (raw - toneState[c])
-                        val shaped = ScratchTone.saturate(toneState[c], drive) * gain
-                        buffer[i] = Pcm16.toShort(shaped)
-                        i++
-                        c++
+    private fun startWriter(engine: ScratchEngine) {
+        val session = session?.takeIf { it.engine === engine } ?: return
+        val track = session.track
+        runCatching { track.play() }
+        session.writer = Thread({
+            // **Nothing here may ever kill the app.** An uncaught exception on any thread takes
+            // the whole process with it, and this is audio arithmetic on a background thread
+            // while a finger is moving: the worst it may ever do is stop making noise.
+            runCatching {
+                Process.setThreadPriority(Process.THREAD_PRIORITY_URGENT_AUDIO)
+                val frames = session.burst
+                val buffer = ShortArray(frames * 2)
+                var dry = runCatching { track.underrunCount }.getOrDefault(0)
+                var blocks = 0
+                while (session.alive) {
+                    engine.render(buffer, frames, System.nanoTime())
+                    val wrote = track.write(buffer, 0, buffer.size)
+                    if (wrote < 0) break
+                    session.written += wrote / 2
+                    // Ran dry: a click. Hold more in hand from here on, and next time too.
+                    if (++blocks % 16 == 0) {
+                        val now = runCatching { track.underrunCount }.getOrDefault(dry)
+                        if (now > dry) {
+                            dry = now
+                            runCatching {
+                                track.bufferSizeInFrames =
+                                    min(track.bufferCapacityInFrames, track.bufferSizeInFrames + frames * 2)
+                                heldFrames = track.bufferSizeInFrames
+                                Log.i(TAG, "the output ran dry; holding $heldFrames frames from now on")
+                            }
+                        }
                     }
-                    cursor += step * channels
                 }
-            }
-
-            val written = runCatching { out.write(buffer, 0, buffer.size) }.getOrDefault(-1)
-            if (written < 0) break
-        }
+            }.onFailure { Log.w(TAG, "scratch output stopped: $it") }
+        }, "jawon-scratch").apply { start() }
     }
 
-    // ---- decoding ----------------------------------------------------------------------
+    /**
+     * How long after its first sample is written an output just opened will be heard.
+     *
+     * It cannot be measured before it starts, so it is what the last one measured once it was
+     * running, less what that one was holding in its buffer — a new one starts with nothing
+     * queued. That matters most where it is largest: through a Bluetooth headphone the way to the
+     * ear is a fifth of a second, and a record taken that much behind where the player was is a
+     * record that repeats itself as it is taken. Before anything has been measured, a guess.
+     */
+    private fun startLatencySeconds(): Double {
+        val track = session?.track
+        if (outputBehindLast.isNaN() || track == null) return START_LATENCY_SECONDS
+        val held = runCatching { track.bufferSizeInFrames.toDouble() / track.sampleRate }.getOrDefault(0.0)
+        return (outputBehindLast - held).coerceIn(0.004, 0.4)
+    }
 
-    private class Window(
-        val samples: ShortArray,
-        val sampleRate: Int,
-        val channels: Int,
-        val startMs: Long
-    )
+    /** What [latencySeconds] last said of a running output; NaN before there has been one. */
+    private var outputBehindLast = Double.NaN
+
+    /** How much the output has had to hold in hand on this phone not to run dry; 0 until it has. */
+    @Volatile
+    private var heldFrames = 0
 
     /**
-     * Decode [WINDOW_MS] either side of [positionMs] into interleaved 16-bit PCM.
+     * How far behind what is being written the ear is, in seconds: what is still in the buffer,
+     * and the way from there to the speaker — read from the output's own clock when it has one.
+     */
+    private fun latencySeconds(): Double {
+        val session = session ?: return DEFAULT_LATENCY_SECONDS
+        val track = session.track
+        val written = session.written
+        val rate = track.sampleRate.toDouble()
+        val stamp = AudioTimestamp()
+        val heard = runCatching {
+            if (track.getTimestamp(stamp) && stamp.framePosition > 0) {
+                stamp.framePosition + (System.nanoTime() - stamp.nanoTime) / 1e9 * rate
+            } else {
+                null
+            }
+        }.getOrNull()
+        val behind = if (heard != null) (written - heard) / rate
+        else (written - runCatching { track.playbackHeadPosition.toLong() }.getOrDefault(written)) / rate + MIXER_SECONDS
+        return if (written == 0L) START_LATENCY_SECONDS else behind.coerceIn(0.0, 0.5)
+    }
+
+    /** Nobody is waiting for audio any more. */
+    private fun stopDecoding() {
+        decoding?.cancel()
+        decoding = null
+        widening?.cancel()
+        widening = null
+        grown = null
+    }
+
+    private fun closeOutput() {
+        val dying = session ?: return
+        session = null
+        dying.alive = false
+        // Torn down off the calling thread: this is called from a touch handler, and joining a
+        // thread and releasing a track are milliseconds it should not spend there.
+        Thread({
+            runCatching { dying.writer?.join(300) }
+            runCatching {
+                dying.track.pause()
+                dying.track.flush()
+                dying.track.release()
+            }
+        }, "jawon-scratch-release").start()
+    }
+
+    // ---- Decoding ------------------------------------------------------------------------------
+
+    /**
+     * Decode from [beforeMs] before [positionMs] to [afterMs] after it into interleaved 16-bit PCM.
+     *
+     * With [early] given, what has been decoded is handed to it once — as a stretch of its own,
+     * to play from at once — when it reaches [earlyAfterMs] past [positionMs]; the decode carries
+     * on and returns the whole of it, which begins at the same place.
      *
      * Deliberately a plain `MediaExtractor` + `MediaCodec` loop rather than anything shared
      * with the player: this needs raw samples in an array, which is exactly what a player is
      * built to avoid ever handing out.
      */
-    private fun decodeWindow(
-        context: Context,
+    private fun decode(
         uri: Uri,
         positionMs: Long,
-        halfWindowMs: Long = WINDOW_MS
-    ): Window? {
+        beforeMs: Long,
+        afterMs: Long,
+        earlyAfterMs: Long = 0L,
+        early: ((ScratchWindow) -> Unit)? = null
+    ): ScratchWindow? {
         val extractor = MediaExtractor()
         var codec: MediaCodec? = null
         try {
@@ -326,57 +938,95 @@ class ScratchAudio @Inject constructor() {
             val rate = format.getInteger(MediaFormat.KEY_SAMPLE_RATE)
             val ch = format.getInteger(MediaFormat.KEY_CHANNEL_COUNT).coerceIn(1, 2)
 
-            val startMs = (positionMs - halfWindowMs).coerceAtLeast(0L)
-            val endMs = positionMs + halfWindowMs
+            // A wide stretch of a high-resolution file is several times the memory of an ordinary
+            // one. The memory is what is kept the same; the stretch gets shorter.
+            var scale = if (beforeMs + afterMs > 10_000L) min(1.0, 48_000.0 / rate) else 1.0
+            // And never more than a third of what memory there is left: this is audio held for a
+            // finger, beside a player with tens of megabytes of its own, and an app that runs out
+            // does not get to say which thread found out.
+            val wanted = (beforeMs + afterMs) * scale / 1000.0 * rate * ch * 2
+            val budget = headroom() / 3.0
+            if (wanted > budget) {
+                scale *= budget / wanted
+                if ((beforeMs + afterMs) * scale < LEAST_WORTH_DECODING_MS) return null
+            }
+            val length = if (format.containsKey(MediaFormat.KEY_DURATION)) format.getLong(MediaFormat.KEY_DURATION) / 1000L else Long.MAX_VALUE
+            val startMs = (positionMs - (beforeMs * scale).toLong()).coerceAtLeast(0L)
+            val endMs = min(positionMs + (afterMs * scale).toLong(), length)
             extractor.seekTo(startMs * 1000L, MediaExtractor.SEEK_TO_PREVIOUS_SYNC)
+            // Where the decoder really starts: the sync point at or before what was asked for.
+            val firstUs = extractor.sampleTime.coerceAtLeast(0L)
 
             codec = MediaCodec.createDecoderByType(mime).apply {
                 configure(format, null, null, 0)
                 start()
             }
 
-            val out = ShortArray(((endMs - startMs) / 1000.0 * rate * ch).toInt() + rate * ch)
+            // What was asked for, and half a second more for a decoder that runs on past it.
+            val out = ShortArray((((endMs - firstUs / 1000).coerceAtLeast(0L) / 1000.0 + 0.5) * rate).toInt() * ch)
             var written = 0
+            var firstOutUs = -1L
             val info = MediaCodec.BufferInfo()
             var sawInputEnd = false
             var sawOutputEnd = false
+            var handedOver = false
 
             while (!sawOutputEnd && written < out.size) {
-                if (!sawInputEnd) {
-                    val inIndex = codec.dequeueInputBuffer(TIMEOUT_US)
-                    if (inIndex >= 0) {
-                        val inBuf = codec.getInputBuffer(inIndex)!!
-                        val size = extractor.readSampleData(inBuf, 0)
-                        if (size < 0 || extractor.sampleTime > endMs * 1000L) {
-                            codec.queueInputBuffer(
-                                inIndex, 0, 0, 0L, MediaCodec.BUFFER_FLAG_END_OF_STREAM
-                            )
-                            sawInputEnd = true
-                        } else {
-                            codec.queueInputBuffer(inIndex, 0, size, extractor.sampleTime, 0)
-                            extractor.advance()
-                        }
+                // Nobody is waiting for this any more: the finger lifted, or the case closed.
+                if (Thread.currentThread().isInterrupted) return null
+
+                // **Everything it will take, then everything it has.** One buffer in and then a
+                // wait for one out — the usual loop — hands a decoder its work a frame at a
+                // time, and the first of the sound arrives after a dozen of those waits. How soon
+                // a touch is answered is exactly that, so nothing here waits while there is
+                // anything to do.
+                var busy = false
+                while (!sawInputEnd) {
+                    val inIndex = codec.dequeueInputBuffer(0L)
+                    if (inIndex < 0) break
+                    busy = true
+                    val inBuf = codec.getInputBuffer(inIndex)!!
+                    val size = extractor.readSampleData(inBuf, 0)
+                    if (size < 0 || extractor.sampleTime > endMs * 1000L) {
+                        codec.queueInputBuffer(inIndex, 0, 0, 0L, MediaCodec.BUFFER_FLAG_END_OF_STREAM)
+                        sawInputEnd = true
+                    } else {
+                        codec.queueInputBuffer(inIndex, 0, size, extractor.sampleTime, 0)
+                        extractor.advance()
                     }
                 }
 
-                val outIndex = codec.dequeueOutputBuffer(info, TIMEOUT_US)
-                if (outIndex >= 0) {
+                while (!sawOutputEnd && written < out.size) {
+                    val outIndex = codec.dequeueOutputBuffer(info, if (busy) 0L else TIMEOUT_US)
+                    if (outIndex < 0) break
+                    busy = true
                     val outBuf: ByteBuffer? = codec.getOutputBuffer(outIndex)
                     if (outBuf != null && info.size > 0) {
+                        if (firstOutUs < 0) firstOutUs = info.presentationTimeUs
                         val shorts = outBuf.order(ByteOrder.nativeOrder()).asShortBuffer()
                         val count = min(info.size / 2, out.size - written)
                         shorts.get(out, written, count)
                         written += count
+                        if (early != null && !handedOver) {
+                            val wanted = (((positionMs + earlyAfterMs) * 1000L - firstOutUs) / 1e6 * rate).toLong() * ch
+                            if (written >= wanted) {
+                                handedOver = true
+                                early(ScratchWindow(out.copyOf(written - written % ch), rate, ch, firstOutUs / 1e6))
+                            }
+                        }
                     }
                     codec.releaseOutputBuffer(outIndex, false)
-                    if (info.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM != 0) {
-                        sawOutputEnd = true
-                    }
+                    if (info.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM != 0) sawOutputEnd = true
                 }
             }
 
             if (written == 0) return null
-            return Window(out.copyOf(written), rate, ch, startMs)
+            // **Placed by the decoder's own stamp, not by where the seek was asked to land.** A
+            // seek lands on the sync point before the place asked for, which in some files is a
+            // good fraction of a second earlier; calling that "the place asked for" put every
+            // sample that far out, and a record taken from the player has to be the same record.
+            val startSeconds = (if (firstOutUs >= 0) firstOutUs else firstUs) / 1e6
+            return ScratchWindow(out, rate, ch, startSeconds, frames = written / ch)
         } catch (t: Throwable) {
             // A scratch that cannot decode is a silent scratch, which is what it was before
             // this existed. Never a crash: this runs on a user's own files, of any format,
@@ -393,24 +1043,124 @@ class ScratchAudio @Inject constructor() {
         const val TAG = "Jawon.Scratch"
 
         /**
-         * How much audio is grabbed either side of the playhead, in milliseconds.
-         *
-         * Four seconds each way covers any scratch a hand actually makes while staying a
-         * decode that finishes in a fraction of a second. Run past it and the sound stops
-         * rather than clicking — see [ScratchTone.sampleAt].
+         * The first stretch: enough behind the playhead to pull back into and enough ahead for a
+         * first stroke — and of that, how little past the playhead is enough to *start* on
+         * ([EARLY_AFTER_MS]). For as long as the first of it takes to decode, the finger is on a
+         * record that has not yet answered, so the first of it is small.
          */
-        const val WINDOW_MS = 4_000L
+        const val FIRST_BEFORE_MS = 450L
+        const val EARLY_AFTER_MS = 550L
+        const val FIRST_AFTER_MS = 4_000L
 
         /**
-         * The window that replaces it, once there has been time to decode one.
-         *
-         * Twenty-five seconds either side is four full revolutions of the disc in each
-         * direction, which is past the point where anyone is still scratching rather than
-         * seeking. Around 9MB of PCM for a stereo 44.1kHz track, held only while a finger is
-         * down.
+         * The stretch that replaces it: twenty-five seconds either side, a dozen turns of the
+         * disc each way. Around 9MB of PCM for a stereo 44.1kHz track, held only while the
+         * record is out of the player's hands.
          */
-        const val WIDE_WINDOW_MS = 25_000L
+        const val WIDE_MS = 25_000L
 
-        const val TIMEOUT_US = 8_000L
+        /** How long to wait on a decoder with nothing to give and no room to take. */
+        const val TIMEOUT_US = 2_000L
+
+        /** With less memory left than this, nothing is kept decoded on the chance of a touch. */
+        const val KEEP_HEADROOM_BYTES = 24L * 1024 * 1024
+
+        /** A stretch squeezed shorter than this by what memory is left is not worth having. */
+        const val LEAST_WORTH_DECODING_MS = 1_500.0
+
+        /** This close to either end of what is decoded, a record that is travelling gets a new stretch. */
+        const val REWIDEN_WITHIN_SECONDS = 8.0
+        const val BYTES_PER_FRAME = 4
+
+        /** The disc turned less than this before the engine was ready is a tap, not a turn. */
+        const val TAP_SECONDS = 0.04
+
+        const val CROSS_IN_SECONDS = 0.02f
+        const val CROSS_IN_MS = 24L
+        const val CROSS_OUT_SECONDS = 0.06f
+        const val CROSS_OUT_MS = 60L
+        const val FADE_STEP_MS = 6L
+        const val POLL_MS = 10L
+
+        /** The hand-back is timed more finely than the rest: a few thousandths of a second decide it. */
+        const val TICK_MS = 4L
+
+        /**
+         * How far past where it comes up to speed the record meets the player: long enough for a
+         * player to seek there and be ready, on a local file, with room to spare.
+         */
+        const val PARK_AHEAD_SECONDS = 0.32
+
+        /** How many times the player is parked further on before it is simply started where the record is. */
+        const val PARKS_MOST = 3
+        const val PARK_LONGEST_MS = 2_500L
+
+        /** Starting the player later than this past its moment is not starting it in step. */
+        const val LATE_SECONDS = 0.03
+
+        /**
+         * A parked player told to play is heard about this much later than the scratch's own
+         * output would be — the first guess, before this phone has been measured ([playExtra]).
+         */
+        const val PLAY_EXTRA_SECONDS = 0.035
+        const val PLAY_EXTRA_LEAST = -0.05
+        const val PLAY_EXTRA_MOST = 0.25
+        const val KEY_PLAY_EXTRA = "scratch_player_extra"
+
+        /** How many measurements of the player's start the guess is the middle of. */
+        const val MEASURED_KEPT = 5
+
+        /**
+         * Kept ready: how far behind and ahead of the playhead it is decoded to; how little ahead
+         * it is let fall to before it is topped up, and how little is still enough to take a
+         * record with — see [covers] for why those are two numbers — and how often it is looked
+         * at. Decoding goes ahead in steps of two and a half seconds of audio, every two and a half.
+         */
+        const val READY_BEHIND_SECONDS = 1.0
+        const val READY_AHEAD_SECONDS = 5.5
+        const val READY_TOP_UP_SECONDS = 3.0
+        const val READY_BEHIND_LEAST_SECONDS = 0.35
+        const val READY_AHEAD_LEAST_SECONDS = 1.2
+        const val READY_EVERY_MS = 250L
+
+        /** The room says the disc can be touched every frame; this long without, and it cannot. */
+        const val ARM_LAPSES_MS = 1_000L
+
+        /** A start that seems to have taken longer than this was not a start; something else happened. */
+        const val START_MOST_SECONDS = 0.7
+
+        /** How long a player told to play is waited on before going ahead regardless. */
+        const val START_LONGEST_MS = 800L
+
+        /** The player is given this long to be properly under way before the two are crossed. */
+        const val CROSS_AFTER_MS = 30L
+
+        /**
+         * A player's idea of where it is cannot be trusted until this long after it starts: for
+         * about a second it is two estimates blending into each other.
+         */
+        const val CLOCK_SETTLE_MS = 1_600L
+
+        const val COAST_LONGEST_MS = 2_000L
+
+        /** A record let go this close to its track's end is not wound up: there is not enough left. */
+        const val HAND_BACK_MARGIN_SECONDS = 1.0
+
+        const val DEFAULT_LATENCY_SECONDS = 0.04
+        const val MIXER_SECONDS = 0.015
+
+        /**
+         * How long after its first sample is written an output just started is heard: the mixer
+         * and the way to the speaker, with nothing yet queued in front. A guess, and the only one
+         * here — everything after the start is measured from the output's own clock.
+         */
+        const val START_LATENCY_SECONDS = 0.015
+
+        /**
+         * How long the music may go on playing under a finger while the first stretch decodes.
+         * A local file takes a fraction of this; anything that takes longer is not going to feel
+         * like a record under a hand whatever is done, so the hold begins without it.
+         */
+        const val PRIME_LONGEST_MS = 220L
     }
 }

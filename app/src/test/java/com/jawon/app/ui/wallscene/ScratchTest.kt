@@ -148,4 +148,107 @@ class ScratchTest {
         val c = Scratch.advance(Scratch.Cursor(0, 0L), 1_500L, withEmpty)
         assertTrue("cursor did not get past the empty track", c.trackIndex >= 1)
     }
+
+    // ---- What a turn is worth ------------------------------------------------------------------
+
+    private val turn = (2.0 * Math.PI).toFloat()
+
+    /** Turns the disc [turns] in steps of [step] radians (signed by [turns]) and says how much music that was. */
+    private fun Scratch.Gearing.spin(turns: Float, step: Float = 0.02f): Double {
+        var left = kotlin.math.abs(turns) * turn
+        var music = 0.0
+        while (left > 0f) {
+            val d = kotlin.math.min(step, left)
+            music += turn(if (turns > 0f) d else -d)
+            left -= d
+        }
+        return music
+    }
+
+    @Test
+    fun `scratching, a turn of the disc is a record's - whichever way and however far it has been`() {
+        val gearing = Scratch.Gearing()
+        // Half a turn each way, again and again: every stroke is exactly a record's gearing,
+        // and after any number of them the record is back where it started.
+        var at = 0.0
+        repeat(40) {
+            val out = gearing.spin(0.5f)
+            assertEquals(Scratch.SEC_PER_REV / 2.0, out, 1e-4)
+            at += out
+            at += gearing.spin(-0.5f)
+        }
+        assertEquals(0.0, at, 1e-3)
+    }
+
+    @Test
+    fun `going round and round, it becomes a way to travel - and no slower than the disc used to be`() {
+        val gearing = Scratch.Gearing()
+        val first = gearing.spin(1f)
+        val second = gearing.spin(1f)
+        val third = gearing.spin(1f)
+        val fourth = gearing.spin(1f)
+        // The first turn is nearly a record's; each one after is worth more; and it tops out.
+        assertTrue("first turn was $first", first in 1.8..2.1)
+        assertTrue(second > first * 1.5)
+        assertTrue(third > second)
+        assertEquals(Scratch.SEC_PER_REV * Scratch.GEAR_TOP, fourth, 1e-3)
+        assertEquals(fourth, gearing.spin(1f), 1e-3)
+        // The disc was six seconds a turn before it could scratch. Five turns of it now go as far.
+        assertTrue(first + second + third + fourth * 2 >= 0.85 * 6.0 * 5)
+        // And backwards is the same journey.
+        val back = Scratch.Gearing()
+        assertEquals(-(first + second), back.spin(-2f), 1e-3)
+    }
+
+    @Test
+    fun `the gearing never jumps - a spin's speed changes as the hand's does and no faster`() {
+        var last = Scratch.boost(0f)
+        assertEquals(1.0, last, 0.0)
+        var run = 0f
+        while (run < 4f * turn) {
+            run += 0.01f
+            val now = Scratch.boost(run)
+            assertTrue("fell at $run", now >= last)
+            assertTrue("jumped at $run", now - last < 0.01)
+            assertEquals(now, Scratch.boost(-run), 0.0)
+            last = now
+        }
+        assertEquals(Scratch.GEAR_TOP, last, 0.0)
+        assertEquals(1.0, Scratch.boost(Scratch.GEAR_FROM_TURNS * turn), 1e-6)
+    }
+
+    @Test
+    fun `turn back and it is a record again from the first degree`() {
+        val gearing = Scratch.Gearing()
+        gearing.spin(4f)
+        // A scratch straight after a long spin: a quarter turn back, then forth.
+        val back = gearing.spin(-0.25f)
+        val forth = gearing.spin(0.25f)
+        val record = Scratch.SEC_PER_REV / 4.0
+        // All but the few degrees it takes to know the hand has turned are at a record's gearing.
+        assertTrue("back was $back", back < -record && back > -record * 1.2)
+        assertEquals(record, forth, 0.03)
+    }
+
+    @Test
+    fun `a step backwards in a spinning finger's reports does not drop the gearing`() {
+        val steady = Scratch.Gearing()
+        steady.spin(3f)
+        val jittery = Scratch.Gearing()
+        var left = 3f * turn
+        // The same spin as a touchscreen might report it: mostly forwards, with a small step
+        // back every so often.
+        var n = 0
+        while (left > 0f) {
+            val d = kotlin.math.min(0.05f, left)
+            jittery.turn(d)
+            left -= d
+            if (++n % 7 == 0) {
+                jittery.turn(-0.02f)
+                left += 0.02f
+            }
+        }
+        // Both are at full gearing: the next stretch is worth the same to each.
+        assertEquals(steady.spin(0.25f), jittery.spin(0.25f), 1e-3)
+    }
 }
