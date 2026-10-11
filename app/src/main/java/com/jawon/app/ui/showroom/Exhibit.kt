@@ -14,7 +14,7 @@ import com.jawon.app.Format
 enum class Exhibit(val format: Format?, val title: String, val line: String) {
     CD(Format.CD, "CD", "A wall of records"),
     POCKET(Format.POCKET, "Pocket player", "A click wheel in your hand"),
-    VINYL(null, "Vinyl", "Coming"),
+    VINYL(Format.VINYL, "Vinyl", "A deck, and a crate to dig through"),
     CASSETTE(null, "Cassette", "Coming");
 
     companion object {
@@ -29,6 +29,17 @@ enum class Exhibit(val format: Format?, val title: String, val line: String) {
             val format = exhibit.format ?: return false
             return format.built || showUnbuilt
         }
+
+        /**
+         * What a plinth says under its name: its own line where its room can be gone into, and
+         * "Coming" where it cannot — which is every plinth with no room behind it, and one whose
+         * room is still being built, in a build that does not offer those. A room that is half
+         * made is not announced to people who cannot walk into it.
+         */
+        fun line(exhibit: Exhibit, showUnbuilt: Boolean): String =
+            if (opens(exhibit, showUnbuilt)) exhibit.line else COMING
+
+        const val COMING = "Coming"
 
         /**
          * Whether the showroom can be reached at all: only once there is somewhere else to go. A

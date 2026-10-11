@@ -64,11 +64,14 @@ object VinylDimens {
 
     /** The table the deck stands on: its front edge, its back, and the floor below. */
     const val TABLE_FRONT_Z = 0.62f
-    const val TABLE_BACK_Z = -0.25f
+    const val TABLE_BACK_Z = -0.40f
     const val FLOOR_Y = -0.56f
 
     const val CRATE_W = 0.336f
     const val CRATE_D = 0.420f
+
+    /** The crate, on the floor in front of the table: its middle. */
+    const val CRATE_Z = 1.02f
 }
 
 /**
@@ -271,8 +274,16 @@ object Sides {
  */
 object VinylBands {
 
-    const val GROOVE_ROUGHNESS = 0.20f
-    const val SMOOTH_ROUGHNESS = 0.05f
+    /**
+     * Rough, and that is what makes the streak. The record's material stretches its highlight
+     * along the radius — nineteen parts along to one across — and how far along is this number:
+     * at 0.2, which is what a record measures like and what the first build used, the streak
+     * reached fifteen degrees from the mirror and a lamp thirty-eight degrees off it lit nothing;
+     * the record was a black disc (19 of 255, flat). A groove's walls stand at forty-five
+     * degrees and throw a lamp back from almost anywhere, and this is that, as one number.
+     */
+    const val GROOVE_ROUGHNESS = 0.58f
+    const val SMOOTH_ROUGHNESS = 0.10f
 
     /** Half the width of the ring between two tracks: a little under a millimetre across. */
     const val GAP_HALF_WIDTH = 0.00045f

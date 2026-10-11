@@ -2108,6 +2108,7 @@ private fun loudnessLine(mode: ReplayGain.Mode): String = when (mode) {
 private fun formatLine(format: Format): String = when (format) {
     Format.CD -> "A wall of records you pull out and play."
     Format.POCKET -> "Your phone becomes the player, with a click wheel."
+    Format.VINYL -> "A turntable from above, and the record's sleeve beside it."
 } + if (!format.built) " In progress." else ""
 
 /** The brand card's second line: what the version stands for right now. */

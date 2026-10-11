@@ -1,7 +1,16 @@
 # Custom Filament materials
 
-**Jawon ships four.** Three in the CD room — dust, fog and the neon sign (`neon.mat`,
-additive, drawn from a two-channel mask) — and the pocket player's steel:
+**Jawon ships five.** Three in the CD room — dust, fog and the neon sign (`neon.mat`,
+additive, drawn from a two-channel mask) — the pocket player's steel, and a record's vinyl:
+
+- `materials/vinyl.mat` → `assets/materials/vinyl.filamat`, the two playing surfaces of
+  `vinyl_record.glb`, put on in place of the glTF's own material when the record loads. It
+  exists because **gltfio's ubershader has no anisotropy** (`ENGINEERING.md`, the trap of that
+  name): a record is black, and all there is to see of it is the streak a lamp draws along its
+  radius. The mesh's UVs are polar, so the tangent runs along the radius and the direction is
+  simply `vec3(1, 0, 0)`; roughness comes from a one-line texture the app writes per record
+  (`bands`, green), and the anisotropy is switched off where that says smooth — the rings
+  between tracks. Parameters: `bands`, `baseColor`, `anisotropy`, `reflectance`.
 
 - `materials/polished_steel.mat` → `assets/materials/polished_steel.filamat`, the device's steel
   shell and the bead round its face — seen now only on the showroom's plinth, the room itself

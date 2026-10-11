@@ -2348,7 +2348,7 @@ V_SLEEVE, V_SLEEVE_T = 0.315, 0.0034
 
 V_CRATE_W, V_CRATE_D, V_CRATE_H, V_CRATE_T = 0.336, 0.420, 0.235, 0.012   # inside, and its slats
 
-V_TABLE_W, V_TABLE_FRONT, V_TABLE_BACK, V_TABLE_H = 1.30, -0.62, 0.25, 0.56
+V_TABLE_W, V_TABLE_FRONT, V_TABLE_BACK, V_TABLE_H = 1.30, -0.62, 0.40, 0.56
 
 
 def _lathe(bm, uv, profile, segments, u_of, flip=False, centre=(0.0, 0.0)):
@@ -2524,9 +2524,11 @@ def _wood_image(name, size, dark, light, seed, rings=22.0):
     fibre = _fbm(h, w, 96, 3, rng, aspect=0.05)
     pores = _fbm(h, w, 160, 2, rng, aspect=0.08)
     v = np.arange(h)[:, None] / h
-    ring = np.sin((v * rings + wander * 7.0) * 2.0 * np.pi) * 0.5 + 0.5
-    # Mostly fibre, a little figure: rings at full strength are a zebra, not a plank.
-    t = np.clip(0.22 + 0.60 * (0.30 * ring ** 1.3 + 0.48 * fibre + 0.22 * pores), 0.0, 1.0)
+    ring = np.sin((v * rings + wander * 9.0) * 2.0 * np.pi) * 0.5 + 0.5
+    # Mostly fibre, a little figure: rings at full strength are a zebra, not a plank. (Twice
+    # found: once in Cycles, and again on a device, where a tabletop a metre wide showed a
+    # 1024-pixel plank's rings as bands five centimetres apart.)
+    t = np.clip(0.26 + 0.56 * (0.14 * ring ** 1.3 + 0.58 * fibre + 0.28 * pores), 0.0, 1.0)
     rgb = np.array(dark)[None, None, :] + (np.array(light) - np.array(dark))[None, None, :] * t[..., None]
     return _srgb_image(name, rgb)
 
@@ -2580,14 +2582,16 @@ def vinyl_band_map(shares=(0.24, 0.20, 0.22, 0.18, 0.16), width=1024):
     rng = np.random.default_rng(7)
     r = (np.arange(width) + 0.5) / width * V_LP_R
     # Loud passages are cut wider and scatter more; a side is never one even grey.
-    rough = 0.20 + (_fbm(1, width, 14, 4, rng)[0] - 0.5) * 0.07
+    # Rough: what stretches the highlight far enough along the radius to find the lamp — see
+    # VinylBands.GROOVE_ROUGHNESS, which is the figure the app writes and this agrees with.
+    rough = 0.58 + (_fbm(1, width, 14, 4, rng)[0] - 0.5) * 0.07
     smooth = (r > V_GROOVE_OUT) | (r < V_GROOVE_IN)
     at = 0.0
     for share in shares[:-1]:
         at += share
         edge = V_GROOVE_OUT - (V_GROOVE_OUT - V_GROOVE_IN) * at
         smooth |= np.abs(r - edge) < 0.00045
-    rough[smooth] = 0.05
+    rough[smooth] = 0.10
     return _metal_rough_image("vinyl_bands", np.tile(rough, (4, 1)), 0.0)
 
 
@@ -2902,8 +2906,8 @@ def build_vinyl_room():
     """
     mid = (V_TABLE_FRONT + V_TABLE_BACK) / 2
     depth = V_TABLE_BACK - V_TABLE_FRONT
-    walnut = _wood("Walnut", (0.20, 0.11, 0.06), (0.48, 0.30, 0.17), seed=3, roughness=0.36, coat=0.3, size=1024, rings=18.0)
-    top = _grain_object("table_top", [((0, mid, -0.015), (V_TABLE_W, depth, 0.030))], walnut, bevel_width=0.003, scale=1.1)
+    walnut = _wood("Walnut", (0.17, 0.095, 0.055), (0.40, 0.25, 0.145), seed=3, roughness=0.36, coat=0.3, size=1024, rings=44.0)
+    top = _grain_object("table_top", [((0, mid, -0.015), (V_TABLE_W, depth, 0.030))], walnut, bevel_width=0.003, scale=1.7)
     carcass = _grain_object("table_carcass", [
         ((0, mid + 0.012, -0.030 - (V_TABLE_H - 0.13) / 2), (V_TABLE_W - 0.04, depth - 0.04, V_TABLE_H - 0.13)),
     ], _wood("WalnutDark", (0.13, 0.07, 0.04), (0.30, 0.18, 0.10), seed=4, roughness=0.42, coat=0.2, rings=16.0), bevel_width=0.003, scale=1.1)

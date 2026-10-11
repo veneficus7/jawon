@@ -296,6 +296,21 @@ What vinyl can do that a CD cannot:
   half the running time, no more than ~22 minutes a side. **Open:** is flipping the record
   required, offered, or off?
 
+**Under way, 2026-10-11.** Shown the stills below, the owner's answer was *"just do whats best
+for the vinyl"*, so the two open questions are settled by the recommendation: the room is played
+**from above, as one zoom** — the whole deck with its sleeve, pinched in to the record under the
+thumb — and the record is **turned over by hand**, with a setting to have it done for you.
+What exists (`ui/vinylscene/`, `docs/architecture.md`): the models, and the half of the room
+that plays, on the flagship emulator — the deck, the record with its labels and its streak of
+lamp, the arm over the groove being heard, the sleeve's back as the tracklist, start · stop, the
+pinch, and the scratch at a record's own gearing through the engine the CD's disc was rebuilt
+on. What does not: **the crate** (an empty deck takes the first record on the shelves when
+touched, which is a stand-in), **the sequence** from sleeve to platter and the needle coming
+down, **the turn** of the record at the end of a side (it turns over in no time at all, and
+nothing waits for a hand), the arm as something to pick up, and any way from here to Settings
+or Add. `Format.VINYL` is unbuilt: debug builds offer it, and a release shows its plinth as
+*Coming*.
+
 **First look, 2026-10-11 — stills for the owner to choose between** (`tools/vinyl-preview/`,
 Cycles, at real dimensions: a 453 × 353mm direct-drive deck, a 302mm record, 315mm sleeves in a
 pine crate; rendered in the phone's shape). One browsing view and three ways to play:

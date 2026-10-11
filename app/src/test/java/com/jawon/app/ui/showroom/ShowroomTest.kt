@@ -188,8 +188,23 @@ class ShowroomTest {
     }
 
     @Test
+    fun `a room still being built says Coming to anybody who cannot go into it`() {
+        for (exhibit in Exhibit.entries) {
+            for (showUnbuilt in listOf(false, true)) {
+                val line = Exhibit.line(exhibit, showUnbuilt)
+                if (Exhibit.opens(exhibit, showUnbuilt)) assertEquals(exhibit.line, line)
+                else assertEquals(Exhibit.COMING, line)
+            }
+        }
+        // The one that matters as this is written: vinyl has a room in code, and is not finished.
+        Format.entries.filter { !it.built }.forEach {
+            assertEquals(Exhibit.COMING, Exhibit.line(Exhibit.of(it), showUnbuilt = false))
+        }
+        assertEquals(Exhibit.COMING, Exhibit.line(Exhibit.CASSETTE, showUnbuilt = true))
+    }
+
+    @Test
     fun `a coming plinth never opens, and an unfinished room only where unfinished ones are offered`() {
-        assertFalse(Exhibit.opens(Exhibit.VINYL, showUnbuilt = true))
         assertFalse(Exhibit.opens(Exhibit.CASSETTE, showUnbuilt = true))
         assertTrue(Exhibit.opens(Exhibit.CD, showUnbuilt = false))
         Format.entries.filter { !it.built }.forEach {

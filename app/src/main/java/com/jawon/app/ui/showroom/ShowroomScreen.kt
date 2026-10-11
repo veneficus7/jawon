@@ -401,7 +401,7 @@ fun ShowroomScreen(
 
             Exhibit.entries.forEachIndexed { i, exhibit ->
                 val x = ShowroomStage.plinthX(i.toFloat())
-                val coming = exhibit.format == null
+                val coming = !Exhibit.opens(exhibit, showUnbuilt)
                 LightNode(
                     type = LightManager.Type.SPOT,
                     position = Position(x + SPOT_X_M, SPOT_Y_M, SPOT_Z_M),
@@ -434,7 +434,7 @@ fun ShowroomScreen(
                     direction = Direction(0f, WASH_AIM_Y_M - WASH_Y_M, WASH_AIM_Z_M - WASH_Z_M),
                     apply = {
                         color(1.0f, 0.86f, 0.70f)
-                        intensityCandela(if (exhibit.format == null) WASH_CANDELA * 0.35f else WASH_CANDELA)
+                        intensityCandela(if (!Exhibit.opens(exhibit, showUnbuilt)) WASH_CANDELA * 0.35f else WASH_CANDELA)
                         spotLightCone(WASH_CONE_INNER_RAD, WASH_CONE_OUTER_RAD)
                         falloff(6f)
                         castShadows(false)
@@ -554,7 +554,7 @@ fun ShowroomScreen(
                     val d = currentDirector.value
                     val front = d.exhibitInFront
                     contentDescription = "The showroom, every room on its own stand. In front: " +
-                        "${front.title}, ${front.line.lowercase(Locale.ROOT)}." +
+                        "${front.title}, ${Exhibit.line(front, showUnbuilt).lowercase(Locale.ROOT)}." +
                         if (d.opensInFront()) "" else " Coming later."
                     customActions = buildList {
                         if (d.opensInFront()) {
@@ -592,12 +592,12 @@ fun ShowroomScreen(
                         fontWeight = FontWeight.ExtraBold,
                         fontSize = JawonType.Heading,
                         letterSpacing = 2.sp,
-                        color = if (exhibit.format == null) LabelDim else LabelCream
+                        color = if (!Exhibit.opens(exhibit, showUnbuilt)) LabelDim else LabelCream
                     )
                 )
                 Spacer(Modifier.height(8.dp))
                 Text(
-                    text = exhibit.line.uppercase(Locale.ROOT),
+                    text = Exhibit.line(exhibit, showUnbuilt).uppercase(Locale.ROOT),
                     style = JawonTextStyle.mono.copy(color = LabelDim, fontSize = JawonType.Caption)
                 )
                 // The room you are in, marked the way Settings marks a choice: in the lamp's amber.

@@ -1,0 +1,67 @@
+// A record's playing surface: the two faces of `vinyl_record.glb` (vinyl_a, vinyl_b), put on in
+// place of the glTF's own material at load (VinylRoomScreen's VinylTextures.bindRecord).
+//
+// **Why it is hand-written.** A record is black, and the only thing there is to see of it is the
+// streak of light a lamp draws across its grooves: a highlight stretched along the radius, the
+// bow-tie everybody knows a record by. That is anisotropy, and the model asks for it the way glTF
+// asks — KHR_materials_anisotropy, 0.9 — and gltfio parses it and then has nowhere to put it:
+// SceneView loads models through gltfio's ready-made ubershaders, and `base_lit_opaque`, which is
+// what a plain opaque material becomes, has no anisotropy parameter at all. Its parameter list was
+// printed on a device and it is not there. So the record rendered as a flat black disc, 19 of 255
+// from edge to label, through three changes to its roughness that could not have done anything.
+//
+// The mesh makes this easy to do properly. Its UVs are polar (`_lathe` in the model script): u is
+// the radius, so the tangent of every face already runs along the radius, and the direction a
+// highlight should stretch in is simply "along the tangent". And a side of a record is one line
+// of pixels — roughness along the radius, written by the app for each record from its track
+// lengths (VinylBands) — so the rings between tracks are crisp at any zoom.
+//
+// Compiled by hand with a version-matched matc. See docs/materials.md.
+
+material {
+    name : Vinyl,
+    shadingModel : lit,
+    blending : opaque,
+    requires : [ uv0, tangents ],
+    parameters : [
+        {
+            // Roughness along the radius, in green as glTF packs it: rough where groove is cut,
+            // smooth in the run-in, the gaps between tracks and the dead wax.
+            type : sampler2d,
+            name : bands
+        },
+        {
+            // Linear. Black, and not quite: carbon-filled PVC gives a little light back.
+            type : float3,
+            name : baseColor
+        },
+        {
+            // How much longer than wide the highlight is where groove is cut. 0 is none.
+            type : float,
+            name : anisotropy
+        },
+        {
+            // Filament's remap, not a percentage: 0.5 is the 4% an ordinary dielectric returns.
+            type : float,
+            name : reflectance
+        }
+    ]
+}
+
+fragment {
+    void material(inout MaterialInputs material) {
+        // Along the tangent, which is along the radius. Set before prepareMaterial, as every
+        // direction a material bends has to be.
+        material.anisotropyDirection = vec3(1.0, 0.0, 0.0);
+        prepareMaterial(material);
+
+        float rough = texture(materialParams_bands, getUV0()).g;
+        material.baseColor = vec4(materialParams.baseColor, 1.0);
+        material.metallic = 0.0;
+        material.reflectance = materialParams.reflectance;
+        material.roughness = rough;
+        // Only where something is cut. The smooth rings are vinyl as it left the press: a plain
+        // gloss, which is why they read as rings.
+        material.anisotropy = materialParams.anisotropy * smoothstep(0.18, 0.40, rough);
+    }
+}

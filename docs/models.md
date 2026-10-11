@@ -343,10 +343,15 @@ The disc could not have a record's highlight (`build_disc`: its UVs were spent o
 A record's UVs are **polar** — u is the radius, v the turn (`_lathe`) — which does two things at
 once. The tangent of every face runs *along its radius*, and anisotropy stretches a highlight
 along the tangent: the radial streak a record throws across itself, with no direction texture.
+(**Not through glTF**, as this was first written to say: gltfio's ubershader drops
+`KHR_materials_anisotropy`, so the app puts `vinyl.mat` on these two faces at load. The polar
+UVs are what make that material a dozen lines.)
 And a side becomes **one line of pixels**: `vinyl_band_map` is roughness along the radius — cut
 groove, and the smooth rings of the run-in, the gaps between tracks and the dead wax — crisp at
 any zoom along the only axis it varies on. The model ships a default; the app writes one for
-every record, from that record's track lengths, into the same `metallicRoughnessMap` slot.
+every record, from that record's track lengths (`VinylBands`, into `vinyl.mat`'s `bands`).
+Groove is written **rough, 0.58**: that is how far along the radius the streak reaches, and at
+the 0.2 a record measures like it never reached the lamp.
 
 The platter's top and the deck's top plate use the same idea for spun and brushed metal.
 

@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -49,7 +50,7 @@ import com.jawon.app.ui.theme.LocalPalette
 internal enum class RoomChoice(val format: Format?, val title: String) {
     CD(Format.CD, "CD"),
     POCKET(Format.POCKET, "Pocket"),
-    VINYL(null, "Vinyl"),
+    VINYL(Format.VINYL, "Vinyl"),
     CASSETTE(null, "Cassette")
 }
 
@@ -71,7 +72,13 @@ internal fun RoomSwitcher(
     onPick: (Format) -> Unit,
     onDismiss: () -> Unit
 ) {
-    BackHandler(onBack = onDismiss)
+    // **Taken up again every time the room changes.** Back goes to whichever handler was set up
+    // last, and a room visited for the first time is built — and sets up its own — after this
+    // card is already open: Back then went to the room under the card, which took it for
+    // leaving, and the card stayed up over the showroom. Keyed on the room, this one is always
+    // the newer of the two. (Found going into the vinyl room for the first time; the pocket
+    // player's first visit had the same fault and nobody had pressed Back there.)
+    key(current) { BackHandler(onBack = onDismiss) }
     val corner = LocalPalette.current.corner
     Box(
         Modifier

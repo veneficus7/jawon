@@ -34,7 +34,9 @@ class FormatTest {
     @Test
     fun `an unknown or missing name is the CD room`() {
         assertEquals(Format.CD, Format.fromName(null))
-        assertEquals(Format.CD, Format.fromName("VINYL"))
+        // A room that does not exist yet — as vinyl was when this was written, and no longer is.
+        assertEquals(Format.CD, Format.fromName("CASSETTE"))
         assertEquals(Format.POCKET, Format.fromName("POCKET"))
+        assertEquals(Format.VINYL, Format.fromName("VINYL"))
     }
 }
