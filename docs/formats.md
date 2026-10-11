@@ -296,6 +296,24 @@ What vinyl can do that a CD cannot:
   half the running time, no more than ~22 minutes a side. **Open:** is flipping the record
   required, offered, or off?
 
+**First look, 2026-10-11 — stills for the owner to choose between** (`tools/vinyl-preview/`,
+Cycles, at real dimensions: a 453 × 353mm direct-drive deck, a 302mm record, 315mm sleeves in a
+pine crate; rendered in the phone's shape). One browsing view and three ways to play:
+
+- **Digging** — over the crate at about fifty degrees, the record in front leaning back to be
+  read, the ones already flipped lying toward you.
+- **Under the thumb** — straight down and close, the record *wider than the phone*: the largest
+  thing a hand can be given to turn. The pocket face's answer, applied to a record.
+- **The whole deck** — straight down, the deck above and the **back of the sleeve laid out
+  below it, its sides printed on it**: the tracklist is the sleeve, and a track is chosen by
+  touching its line (the arm goes to its band). Liner notes (roadmap, 0.8) have their place.
+- **In the room** — the deck where it stands on a sideboard, in perspective. The CD room's
+  answer; in a portrait frame it leaves the record small and foreshortened under the finger.
+
+Recommended: the two views from above as one zoom — the whole deck and its sleeve, pinched in
+to the record under the thumb — with the room as the way in and out. **Open, his to choose:**
+which way to play; and whether turning the record over is required, offered or off.
+
 **Browsing, decided: the crate.** Records stand upright in bins, and a flick tilts them
 forward one at a time, the front one showing its sleeve. That is a new gesture, a new camera
 and a new pool — none of the CD wall's panning carries over, though its detent haptics and
