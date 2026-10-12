@@ -318,13 +318,29 @@ come on the back of the crate, the ones gone through on its front — so at eith
 library the gap is where a real crate's is; in between, twenty-three sleeves are drawn out of a
 ring of twenty-four, whatever the library's size.
 
-What does not exist: **the sequence** from sleeve to platter and the needle coming down (a
-record taken is simply on, and playing, by the time the camera gets there), **the turn** of the
-record at the end of a side (it turns over in no time at all, and nothing waits for a hand), the
-arm as something to pick up, and any way from here to Settings. `Format.VINYL` is unbuilt: debug
-builds offer it, and a release shows its plinth as *Coming*. **Never on a phone**, and its cost
-there is not known — which, after what the CD wall turned out to cost, is the first thing to
-find out when it is.
+**And a record is put on** (2026-10-11, `PutOn.kt`): a record touched in the crate is not simply
+on. Its sleeve comes in from the crate's side and is laid on the table as the camera gets there;
+the record is drawn out of the sleeve's mouth, lifted, carried over the arm and the spindle and
+lowered straight onto the mat; the card with its sides on it is drawn out after it and laid on
+the sleeve; the motor starts; the arm is lifted, swung and lowered — **and the music is from the
+moment the needle lands**, 3.3 seconds after the touch, with the thump of it and a breath of
+surface noise first (`NeedleSound`, made and not recorded). The record is loaded silent
+(`PlaybackRepository.playAlbum(play = false)`), so whatever was playing stops when it is taken
+off. One clock, so a touch during it only runs the same clock seven times as fast; and a record
+half way on when the room stops being drawn — the home button, a panel, another room — is on.
+**A needle is never dragged**: a track touched on the card lifts it — and the music — swings it
+over and lowers it there, half a second at the most (`Needle.move`), and a seek from anywhere
+else moves the arm the same way. The platter comes up to speed and runs down (`PlatterSpin`).
+Timings and the order were read off the emulator's player state and a screen recording frame by
+frame; **what a needle sounds like has not been heard on a phone**, nor how the half-second of a
+hop feels to someone who has said he wants things instant.
+
+What does not exist: **the turn** of the record at the end of a side (it turns over in no time
+at all, and nothing waits for a hand), the arm as something to pick up, taking a record *off*
+(it leaves the platter out of sight), and any way from here to Settings. `Format.VINYL` is
+unbuilt: debug builds offer it, and a release shows its plinth as *Coming*. **Never on a
+phone**, and its cost there is not known — which, after what the CD wall turned out to cost, is
+the first thing to find out when it is.
 
 **First look, 2026-10-11 — stills for the owner to choose between** (`tools/vinyl-preview/`,
 Cycles, at real dimensions: a 453 × 353mm direct-drive deck, a 302mm record, 315mm sleeves in a

@@ -407,9 +407,18 @@ class PlaybackRepository @Inject constructor(
         tracks: List<Track>,
         startIndex: Int = 0,
         startPositionMs: Long = 0L,
-        albumArtist: String? = null
+        albumArtist: String? = null,
+        /**
+         * False to put the record on without starting it: the vinyl room's, where a record is
+         * silent from the moment it is taken until its needle is down, and whatever was playing
+         * stops when it is taken off.
+         */
+        play: Boolean = true
     ) {
         val controller = ensureController()
+        // Before the queue is replaced, not after: a player told to play goes on playing whatever
+        // it is given next, and the new record would be heard for a moment before it was stopped.
+        if (!play) controller.pause()
         // Recorded before the queue is replaced, so the last stretch of the album being
         // swapped out is not lost — and so `queuedTracks` still describes it while we do.
         segment?.let { recordSegment(it, _positionMs.value) }
@@ -423,7 +432,7 @@ class PlaybackRepository @Inject constructor(
             startPositionMs.coerceAtLeast(0L)
         )
         controller.prepare()
-        controller.play()
+        if (play) controller.play()
     }
 
     /**

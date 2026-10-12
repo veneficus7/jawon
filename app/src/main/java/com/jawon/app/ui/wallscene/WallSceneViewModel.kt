@@ -659,7 +659,7 @@ class WallSceneViewModel @Inject constructor(
      * because "resuming" an album you finished means starting it again, not hearing its last
      * breath and stopping.
      */
-    fun playAlbum(albumId: String) {
+    fun playAlbum(albumId: String, play: Boolean = true) {
         viewModelScope.launch {
             val tracks = trackDao.getForAlbum(albumId).first()
             if (tracks.isEmpty()) return@launch
@@ -670,7 +670,7 @@ class WallSceneViewModel @Inject constructor(
             if (_nowPlayingAlbumId.value == albumId &&
                 playbackRepository.playback.value.queuedTrackIds == tracks.map { it.id }
             ) {
-                playbackRepository.setPlaying(true)
+                if (play) playbackRepository.setPlaying(true)
                 return@launch
             }
             _nowPlayingAlbumId.value = albumId
@@ -686,7 +686,9 @@ class WallSceneViewModel @Inject constructor(
                 tracks,
                 startIndex = at.index,
                 startPositionMs = at.positionMs,
-                albumArtist = album?.artist
+                albumArtist = album?.artist,
+                // Put on, and not yet started: see the vinyl room, where the needle starts it.
+                play = play
             )
         }
     }
