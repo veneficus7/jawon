@@ -335,10 +335,34 @@ Timings and the order were read off the emulator's player state and a screen rec
 frame; **what a needle sounds like has not been heard on a phone**, nor how the half-second of a
 hop feels to someone who has said he wants things instant.
 
-What does not exist: **the turn** of the record at the end of a side (it turns over in no time
-at all, and nothing waits for a hand), the arm as something to pick up, taking a record *off*
-(it leaves the platter out of sight), and any way from here to Settings. `Format.VINYL` is
-unbuilt: debug builds offer it, and a release shows its plinth as *Coming*. **Never on a
+**And it is turned over** (2026-10-12, `TurnOver`). At the end of a side the player stops
+*at* the end of the side's last track — told to, in the player itself
+(`ScratchLink.stopAtEndOfTrack`: a pause sent when the room noticed would land in the next
+track, and a crossfade would have run the two sides together) — the needle goes home, the
+platter runs down, and the card's next heading reads *SIDE B · TURN OVER*. **By hand**, which is
+the default: touch the record, or draw a hand across it, or touch any track on the other side —
+at any time, not only when a side has run out — and it is lifted clear, turned like a page about
+the line from you to the back of the deck, set down, and the needle put on the track that was
+asked for. **Unasked**, with *Settings → Turn records over for me* on, the same thing half a
+second after the side ends. And **only while it is being looked at**: with the app in the
+background, a panel over the room or another room in front, the player is not asked to stop,
+and the music carries on — a record is turned over by a hand, and waiting for one that is not
+there is silence in a pocket. On the emulator: 2.2s from the touch to the music by hand, 3.1s of
+silence between sides unasked; in the background, six tracks straight through.
+
+The arm follows the **player's own clock, every frame** (`ScratchAudio.playerPositionMs`), not
+the position the room is told twice a second: on a record of two-second tracks that arrived in
+steps each large enough to be taken for a seek, and the arm was lifted and put down twice a
+second. A real record would not have shown it; the test library did.
+
+**And there is a way out**: ROOMS and SETTINGS at the foot of the frame at the crate — the CD
+room's own two buttons (`ChromeAction`, moved to `ui/common/`). `adb logcat -s Jawon.Vinyl` says
+what the deck did and when.
+
+What does not exist: the arm as something to pick up, taking a record *off* (it leaves the
+platter out of sight), changing to the second record of a double album as anything but a turn
+(the labels change under it), a page of Settings → Guide, and a first-run card. `Format.VINYL`
+is unbuilt: debug builds offer it, and a release shows its plinth as *Coming*. **Never on a
 phone**, and its cost there is not known — which, after what the CD wall turned out to cost, is
 the first thing to find out when it is.
 

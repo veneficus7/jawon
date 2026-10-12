@@ -258,6 +258,52 @@ class PutOnTest {
         assertTrue(Needle.HOP_DEG > 0.2f && Needle.HOP_DEG < 1f)
     }
 
+    // ---- The record turned over ------------------------------------------------------------------------
+
+    @Test
+    fun `a record is turned over clear of the mat and the spindle, and comes down on its other side`() {
+        val pose = TurnOver.Pose()
+        TurnOver.at(0f, pose)
+        assertTrue(pose.seated && pose.lift == 0f && pose.turned == 0f)
+        TurnOver.at(TurnOver.TOTAL_S, pose)
+        assertTrue(pose.seated)
+        assertEquals(0f, pose.lift, 1e-6f)
+        assertEquals(1f, pose.turned, 1e-6f)
+        // How far the spindle stands above the mat a record lies on.
+        val spindle = 0.0373f - (VinylDimens.PLATTER_H + VinylDimens.MAT_H)
+        var t = 0f
+        var lastLift = 0f
+        var lastTurned = 0f
+        var edgeOn = false
+        while (t <= TurnOver.TOTAL_S) {
+            TurnOver.at(t, pose)
+            val angle = Math.PI * pose.turned
+            // Half of it swings down as the other half swings up: the half coming down stays off the mat.
+            val swing = VinylDimens.LP_R * Math.sin(angle).toFloat()
+            // (Lying flat, at either end, it is on the mat and that is where it belongs.)
+            if (swing > 0.0005f) assertTrue("into the mat at $t: up ${pose.lift}, swung ${swing}", pose.lift - swing >= 0.004f)
+            // Edge on, its edge is over the spindle, and above it.
+            if (VinylDimens.LP_R * kotlin.math.abs(Math.cos(angle)).toFloat() < 0.012f) {
+                edgeOn = true
+                assertTrue("on the spindle at $t", pose.lift - VinylDimens.LP_R >= spindle + 0.004f)
+            }
+            // It goes over once, and nothing about it jumps.
+            assertTrue("turned back at $t", pose.turned >= lastTurned)
+            assertTrue("jumped at $t", abs(pose.lift - lastLift) < 0.006f && pose.turned - lastTurned < 0.012f)
+            if (t > 0f && t < TurnOver.TOTAL_S - 1e-3f) assertTrue(!pose.seated)
+            lastLift = pose.lift
+            lastTurned = pose.turned
+            t += 1f / 240f
+        }
+        assertTrue(edgeOn)
+        // About a second: long enough to be a hand turning a record, short enough to wait through.
+        assertTrue(TurnOver.TOTAL_S in 0.9f..1.3f)
+        // On its rest the arm is further from the spindle than a record reaches, whichever way up it is going.
+        assertTrue(VinylDimens.REST_RADIUS > VinylDimens.LP_R + 0.02f)
+        // Left to itself, it is turned soon after the side ends - but not on the instant.
+        assertTrue(TurnOver.UNASKED_AFTER_S in 0.3f..1.2f)
+    }
+
     // ---- The motor --------------------------------------------------------------------------------------
 
     @Test

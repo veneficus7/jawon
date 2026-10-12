@@ -347,6 +347,20 @@ class AppPreferences @Inject constructor(@param:ApplicationContext context: Cont
         _shortIntro.value = enabled
     }
 
+    private val _vinylTurnsItself = MutableStateFlow(prefs.getBoolean(KEY_VINYL_TURNS_ITSELF, false))
+
+    /**
+     * Whether a record in the vinyl room turns itself over at the end of a side (0.8). Off by
+     * default: a record is turned over by hand, and waiting for the hand is what a side *is* —
+     * the owner's "just do whats best for the vinyl" settled it that way. On, it is lifted and
+     * turned the same way, by nobody. Either way it only waits while the room is being looked at.
+     */
+    val vinylTurnsItself: StateFlow<Boolean> = _vinylTurnsItself.asStateFlow()
+    fun setVinylTurnsItself(enabled: Boolean) {
+        prefs.edit { putBoolean(KEY_VINYL_TURNS_ITSELF, enabled) }
+        _vinylTurnsItself.value = enabled
+    }
+
     private val _fetchLyrics = MutableStateFlow(prefs.getBoolean(KEY_FETCH_LYRICS, true))
 
     /**
@@ -575,6 +589,7 @@ class AppPreferences @Inject constructor(@param:ApplicationContext context: Cont
         const val KEY_SHAKE_TO_SWITCH = "shake_to_switch"
         const val KEY_KEEP_PLAYING_ON_CLOSE = "keep_playing_on_close"
         const val KEY_SHORT_INTRO = "short_intro"
+        const val KEY_VINYL_TURNS_ITSELF = "vinyl_turns_itself"
         const val KEY_PREFER_ONLINE_LYRICS = "prefer_online_lyrics"
         const val KEY_ROOM_SCHEME = "room_scheme"
         const val KEY_FORMAT = "format"

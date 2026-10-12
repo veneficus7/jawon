@@ -303,6 +303,55 @@ object PutOn {
 }
 
 /**
+ * **A record being turned over**: lifted off the spindle, turned like a page about the line
+ * that runs from you to the back of the deck, and set down on its other side.
+ *
+ * A record is thirty centimetres across and turns about its middle, so half of it swings down
+ * as the other half swings up: it has to be lifted by more than its own radius before it is
+ * edge on, or it goes through the platter. [LIFT_M] is that, and the turn waits for the lift and
+ * the lowering waits for the turn — overlapped, because a hand does not do one and then the
+ * other, but never by more than the height it has ([at]'s three eases, and the test that holds
+ * them to it).
+ *
+ * Pure. [Pose.lift] is how far above the mat the record's middle is, [Pose.turned] how far over
+ * it is, 0 to 1 of the half turn.
+ */
+object TurnOver {
+
+    const val LIFT_S = 0.30f
+    const val TURN_FROM = 0.16f
+    const val TURN_S = 0.66f
+    const val LOWER_FROM = 0.74f
+    const val LOWER_S = 0.36f
+    const val TOTAL_S = LOWER_FROM + LOWER_S
+
+    /** A record's radius and four centimetres: clear of the mat, and of the spindle when it is edge on. */
+    const val LIFT_M = VinylDimens.LP_R + 0.039f
+
+    /** How long a side that has ended is left before it is turned over, where it is not waiting for a hand. */
+    const val UNASKED_AFTER_S = 0.55f
+
+    class Pose {
+        var lift = 0f
+        var turned = 0f
+        var seated = true
+    }
+
+    fun at(t: Float, out: Pose) {
+        val up = ease(t / LIFT_S)
+        val down = ease((t - LOWER_FROM) / LOWER_S)
+        out.lift = LIFT_M * up * (1f - down)
+        out.turned = ease((t - TURN_FROM) / TURN_S)
+        out.seated = t <= 0f || t >= TOTAL_S
+    }
+
+    private fun ease(x: Float): Float {
+        val u = x.coerceIn(0f, 1f)
+        return u * u * (3f - 2f * u)
+    }
+}
+
+/**
  * A platter under a motor: it comes up to speed and it runs down, and neither is at once.
  * [speed] is 0 at rest and 1 at thirty-three and a third.
  */

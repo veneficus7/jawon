@@ -1453,6 +1453,7 @@ fun SettingsScreen(
     val shakeToSwitch by viewModel.shakeToSwitch.collectAsStateWithLifecycle()
     val keepPlayingOnClose by viewModel.keepPlayingOnClose.collectAsStateWithLifecycle()
     val shortIntro by viewModel.shortIntro.collectAsStateWithLifecycle()
+    val vinylTurnsItself by viewModel.vinylTurnsItself.collectAsStateWithLifecycle()
     val resumeWithHeadphones by viewModel.resumeWithHeadphones.collectAsStateWithLifecycle()
     val graphicsName by viewModel.graphics.collectAsStateWithLifecycle()
     val graphics = com.jawon.app.ui.wallscene.Graphics.fromName(graphicsName)
@@ -1617,6 +1618,22 @@ fun SettingsScreen(
                                     "showroom, and one shake is one room however long you keep at it.",
                                 checked = shakeToSwitch,
                                 onCheckedChange = viewModel::onShakeToSwitchChanged
+                            )
+                        }
+                        // The vinyl room's one setting, shown where the vinyl room is.
+                        if (Format.VINYL in offeredFormats) {
+                            SettingsDivider()
+                            SettingsSwitchRow(
+                                icon = Icons.Rounded.Album,
+                                title = "Turn records over for me",
+                                summary = "At the end of a side, the vinyl room does it.",
+                                detail = "A record has two sides. At the end of one the needle lifts " +
+                                    "and the record waits to be turned over: touch it, or a track on " +
+                                    "its other side. On, the room turns it over by itself. Either way " +
+                                    "it only waits while you are looking at it — with Jawon in the " +
+                                    "background the music carries on.",
+                                checked = vinylTurnsItself,
+                                onCheckedChange = viewModel::onVinylTurnsItselfChanged
                             )
                         }
                     }

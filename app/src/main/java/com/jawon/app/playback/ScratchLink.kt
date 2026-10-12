@@ -2,6 +2,7 @@ package com.jawon.app.playback
 
 import android.net.Uri
 import androidx.media3.common.Player
+import androidx.media3.exoplayer.ExoPlayer
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -86,8 +87,39 @@ class ScratchLink @Inject constructor() {
     /** The player's own levelling (ReplayGain), which the scratch plays at too. Main thread. */
     fun levelling(): Float = volume?.levelling ?: 1f
 
+    // ---- The end of a side --------------------------------------------------------------------------
+    //
+    // A record has two sides and a player has a queue. The vinyl room is where the two meet: at
+    // the end of a side's last track the music stops until the record has been turned over, and
+    // the only exact way to stop a player at the end of a track is to tell the player — a pause
+    // sent when the room notices would land a fraction of a second into the next one.
+
+    /**
+     * Stop at the end of the track that is playing, instead of going on to the next. Asked for
+     * every frame by a room that is being looked at, and withdrawn the moment it is not: nobody
+     * is there to turn a record over for a phone in a pocket. Main thread.
+     */
+    fun stopAtEndOfTrack(stop: Boolean) {
+        val player = player as? ExoPlayer ?: return
+        if (player.pauseAtEndOfMediaItems != stop) runCatching { player.pauseAtEndOfMediaItems = stop }
+    }
+
+    /** Stopped by itself at the end of a track: a side has ended, or the record has. Main thread. */
+    fun endedTrack(): Boolean {
+        val player = player ?: return false
+        if (player.playWhenReady && player.playbackState != Player.STATE_ENDED) return false
+        if (player.playbackState == Player.STATE_ENDED) return true
+        val duration = player.duration
+        return duration > 0L && player.currentPosition >= duration - END_WITHIN_MS
+    }
+
     /** How much of the player is heard while the scratch has, or is handing back, the record. Main thread. */
     fun setLevel(level: Float) {
         volume?.setScratch(level)
+    }
+
+    private companion object {
+        /** A player stopped at the end of a track reports a position within this of its length. */
+        const val END_WITHIN_MS = 120L
     }
 }

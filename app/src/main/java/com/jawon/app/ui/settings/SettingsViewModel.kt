@@ -212,6 +212,10 @@ class SettingsViewModel @Inject constructor(
     val shortIntro: StateFlow<Boolean> = preferences.shortIntro
 
     fun onShortIntroChanged(enabled: Boolean) = preferences.setShortIntro(enabled)
+
+    /** The vinyl room: a record turned over at the end of a side without being asked. */
+    val vinylTurnsItself: StateFlow<Boolean> = preferences.vinylTurnsItself
+    fun onVinylTurnsItselfChanged(enabled: Boolean) = preferences.setVinylTurnsItself(enabled)
     fun onKeepPlayingOnCloseChanged(enabled: Boolean) = preferences.setKeepPlayingOnClose(enabled)
 
     val roomScheme: StateFlow<RoomScheme> = preferences.roomScheme

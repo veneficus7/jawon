@@ -3,11 +3,26 @@ package com.jawon.app.ui.vinylscene
 import android.graphics.Bitmap
 import android.net.Uri
 import android.os.SystemClock
+import android.util.Log
 import android.view.MotionEvent
 import android.view.ViewConfiguration
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.unit.dp
+import com.jawon.app.ui.common.ChromeAction
+import com.jawon.app.ui.common.JawonMark
+import com.jawon.app.ui.theme.LabelCream
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -64,8 +79,10 @@ import kotlinx.coroutines.withContext
 import kotlin.math.abs
 import kotlin.math.atan2
 import kotlin.math.exp
+import kotlin.math.cos
 import kotlin.math.hypot
 import kotlin.math.ln
+import kotlin.math.sin
 
 private const val ROOM_ASSET = "models/vinyl_room.glb"
 private const val DECK_ASSET = "models/vinyl_deck.glb"
@@ -139,7 +156,10 @@ private const val START_HALF_D = 0.026f
  * the record that is on, its sleeve laid out in front with its sides printed on the back. A
  * record touched in the crate is lifted out and put on — its sleeve laid on the table, the
  * record drawn out of it and lowered onto the spindle, the needle put down, and the music from
- * the moment it lands (`PutOn`). Back from the deck is back to the crate.
+ * the moment it lands (`PutOn`). At the end of a side the needle goes home and the record waits
+ * to be turned over — touched, or a track on its other side touched — unless Settings says it
+ * turns itself (`TurnOver`). Back from the deck is back to the crate, where the way to the
+ * other rooms and to Settings is.
  *
  * - **The platter turns** at 33⅓ while the music plays, and goes on turning under a record that
  *   is held: that is what a slipmat is for, and why the beads on its rim keep moving past a
@@ -232,11 +252,13 @@ fun VinylRoomScreen(
     val stage = remember(crate) { VinylStage(viewModel.scratchAudio, haptics, crate, needle, startAtDeck = viewModel.deck.value.tracks.isNotEmpty()) }
     // Left with a record half way onto the deck — the home button, another room — it is on:
     // nobody takes a record out to not hear it.
-    LifecycleEventEffect(Lifecycle.Event.ON_STOP) { stage.finish() }
+    LifecycleEventEffect(Lifecycle.Event.ON_STOP) { stage.unseen() }
     // The same when the room stops being drawn with the app still up — a panel over it, another
-    // room in front: the sequence is frames, and without frames it would wait for ever.
+    // room in front: the sequence is frames, and without frames it would wait for ever. And a
+    // record that nobody is looking at is not waited on to be turned over.
     val unseen = covered || LocalRoomParked.current
-    LaunchedEffect(unseen) { if (unseen) stage.finish() }
+    LaunchedEffect(unseen) { if (unseen) stage.unseen() }
+    val turnsItself by viewModel.vinylTurnsItself.collectAsStateWithLifecycle()
     val crateItems = remember(layout) { Crate.items(layout) }
     val currentNowPlaying = rememberUpdatedState(nowPlayingAlbumId)
     SideEffect {
@@ -255,6 +277,7 @@ fun VinylRoomScreen(
         stage.onNeedleDown = { viewModel.setPlaying(true) }
         stage.onNeedleUp = { viewModel.setPlaying(false) }
         stage.onSelect = { index -> viewModel.onSelectTrack(index) }
+        stage.turnsItself = turnsItself
         crate.onAdd = onAddAlbum
         crate.onDeck = { stage.toDeck() }
     }
@@ -308,13 +331,18 @@ fun VinylRoomScreen(
         stage.printedSides = sides
         stage.changed = true
     }
-    // The back of the sleeve is printed again whenever the line that is lit moves.
-    LaunchedEffect(album?.albumId, sides, deck.currentTrackIndex, cover) {
+    // The back of the sleeve is printed again whenever the line that is lit moves, and when a
+    // side has ended and the record is waiting to be turned to its next one.
+    val turnTo = stage.awaiting
+    LaunchedEffect(album?.albumId, sides, deck.currentTrackIndex, cover, turnTo) {
         val playing = album
         val titles = deck.tracks.map { it.title }
         val printed = cover
         val back = withContext(Dispatchers.Default) {
-            VinylArt.sleeveBack(context, printed, playing?.title.orEmpty(), playing?.artist.orEmpty(), sides, titles, deck.currentTrackIndex)
+            VinylArt.sleeveBack(
+                context, printed, playing?.title.orEmpty(), playing?.artist.orEmpty(), sides, titles,
+                playing = if (turnTo >= 0) -1 else deck.currentTrackIndex, turnTo = turnTo
+            )
         }
         art.writeBack(back)
         stage.changed = true
@@ -455,8 +483,10 @@ fun VinylRoomScreen(
                     position = Position(VinylDimens.SPINDLE_X, VinylDimens.RECORD_Y, VinylDimens.SPINDLE_Z),
                     apply = { stage.recordNode = this }
                 ) {
-                    // Turned over about its front-to-back axis for a B side, and lifted by its
-                    // own thickness so that it still lies on the mat.
+                    // Two turns, one inside the other: the outer node is which side is up — a
+                    // turn about the line from you to the back of the deck, the same line
+                    // wherever the record has stopped — and the inner one is the record going
+                    // round on whichever side that is.
                     Node(apply = { stage.recordFlip = this }) {
                         ModelNode(
                             model,
@@ -590,6 +620,34 @@ fun VinylRoomScreen(
             // Declared inside the scene so that it is disposed before the scene is (trap 35):
             // the materials stop sampling these before the textures go.
             DisposableEffect(art) { onDispose { stage.release() } }
+        }
+
+        // **The way out**, at the crate and nowhere else: to the other rooms, and to Settings.
+        // The CD room's own two buttons, at the foot of the frame where the floor is — over the
+        // deck there is nothing on the glass but the deck. (Adding a record is in the crate
+        // itself: the card at the back of it.)
+        AnimatedVisibility(
+            visible = !stage.deckward && !covered,
+            enter = fadeIn(),
+            exit = fadeOut(),
+            modifier = Modifier.align(Alignment.BottomCenter)
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .navigationBarsPadding()
+                    .padding(horizontal = 48.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.Bottom
+            ) {
+                ChromeAction(
+                    icon = null,
+                    label = "ROOMS",
+                    onClick = onOpenRooms,
+                    modifier = Modifier.weight(1f),
+                    iconContent = { JawonMark(size = 24.dp, color = LabelCream.copy(alpha = 0.82f), contentDescription = null) }
+                )
+                ChromeAction(Icons.Default.Settings, "SETTINGS", onOpenSettings, Modifier.weight(1f))
+            }
         }
     }
 }
@@ -757,6 +815,39 @@ private class VinylStage(
     private var seatedNow = false
     private var castsShadow = false
 
+    // ---- The record's other side ------------------------------------------------------------------
+
+    /** One turning-over: which track the needle goes down on afterwards, and from which side up to which. */
+    private class Turn(val toTrack: Int, val fromDeg: Float, val toDeg: Float) {
+        /** `TurnOver`'s clock; below zero while the arm is still on its way home. */
+        var t = -1f
+        var rate = 1f
+        var armSent = false
+    }
+
+    private var turnRun: Turn? = null
+    private val turnPose = TurnOver.Pose()
+
+    /** How far over the record is — 0 with its first side up, 180 with its second — and how far off the mat. */
+    private var turnedDeg = 0f
+    private var liftM = 0f
+
+    /** A side has ended and the needle has gone home; how long ago; and where the needle goes when the record is turned. */
+    private var ended = false
+    private var endedFor = 0f
+    private var awaitedTrack = -1
+
+    /**
+     * Which side the record is waiting to be turned to, −1 when it is not waiting. Compose state,
+     * unlike nearly everything else here, because the card is printed from it — and it changes
+     * twice a side, not a hundred and twenty times a second.
+     */
+    var awaiting by mutableStateOf(-1)
+        private set
+
+    /** Settings → Turn records over for me. */
+    var turnsItself = false
+
     /** What the sleeve and the labels are printed with, and for which record: set by the room when it has printed them. */
     var printedAlbum: String? = null
     var printedSides: List<Side>? = null
@@ -782,14 +873,64 @@ private class VinylStage(
         leaveCrate()
     }
 
-    /** A record half way on is on, now: the room is going, or the app is. */
+    /** A record half way on is on, now, and one half way over is over: the room is going, or the app is. */
     fun finish() {
+        val turning = turnRun
+        if (turning != null) {
+            turnRun = null
+            armMove = null
+            armLanding = null
+            turnedDeg = turning.toDeg
+            liftM = 0f
+            snapDown = true
+            agreeing = 0f
+            clearEnded()
+            onSelect(turning.toTrack)
+        }
         val putting = run ?: return
         run = null
         armMove = null
         armLanding = null
         snapDown = true
         if (!putting.musicAsked) onNeedleDown()
+    }
+
+    /**
+     * Nobody is looking: whatever was half done is done, and the player is no longer asked to
+     * stop at the end of a side — a record is turned over by a hand, and waiting for one that is
+     * not there is only silence in a pocket.
+     */
+    fun unseen() {
+        finish()
+        scratch.stopAtEndOfTrack(false)
+    }
+
+    private fun clearEnded() {
+        ended = false
+        endedFor = 0f
+        awaitedTrack = -1
+        if (awaiting != -1) awaiting = -1
+    }
+
+    /**
+     * Turn the record over — or, for a side on another record of the set, change it, which for
+     * now is drawn the same way — and put the needle down on [toTrack].
+     */
+    private fun turnOver(toTrack: Int, sides: List<Side>) {
+        if (turnRun != null || run != null || toTrack < 0) return
+        haptics.tick()
+        zoomTarget = 0f
+        if (awaiting != -1) awaiting = -1
+        Log.i(TAG, "turning the record over for track ${toTrack + 1}" + if (ended && turnsItself) ", unasked" else "")
+        turnRun = Turn(toTrack, turnedDeg, if (Sides.of(sides, toTrack) % 2 == 1) 180f else 0f)
+    }
+
+    /** Where the needle goes if the record is turned over with nothing having asked for a track. */
+    private fun otherSide(deck: DeckState, sides: List<Side>): Int {
+        if (awaitedTrack >= 0) return awaitedTrack
+        val now = Sides.of(sides, deck.currentTrackIndex.coerceAtLeast(0))
+        // The other face of the same record; a record with one side is played again.
+        return (sides.getOrNull(now xor 1) ?: sides.getOrNull(now))?.firstTrack ?: -1
     }
 
     private fun sendArm(move: ArmMove, then: (() -> Unit)?) {
@@ -802,6 +943,14 @@ private class VinylStage(
 
     private var place = if (startAtDeck) 1f else 0f
     private var placeTarget = place
+        set(value) {
+            field = value
+            if (deckward != value > 0.5f) deckward = value > 0.5f
+        }
+
+    /** [atDeck], for Compose: what is drawn over the room depends on which of the two places it is. */
+    var deckward by mutableStateOf(startAtDeck)
+        private set
     private var placeVelocity = 0f
     private var leaveAt = 0L
     private var lampAt = -1f
@@ -882,14 +1031,15 @@ private class VinylStage(
         // ---- which side is up, and where on it the music is ------------------------------------------
         deckAlbum = deck.tracks.firstOrNull()?.albumId
         val playing = deck.isPlaying
-        val track = deck.currentTrackIndex.coerceAtLeast(0)
+        // The player's own track and place, asked every frame: what the room is told arrives
+        // twice a second, and an arm drawn from that crosses a short track in steps — each one
+        // far enough to be taken for the music having gone somewhere else.
+        val track = scratch.playerTrack().takeIf { it in deck.tracks.indices } ?: deck.currentTrackIndex.coerceAtLeast(0)
         val sideIndex = if (hasRecord) Sides.of(sides, track) else 0
         val flipped = sideIndex % 2 == 1
-        recordFlip?.rotation = Rotation(z = if (flipped) 180f else 0f)
-        recordFlip?.position = Position(0f, if (flipped) VinylDimens.LP_H else 0f, 0f)
 
         val side = sides.getOrNull(sideIndex)
-        val heard = scratch.positionMs() ?: positionMs
+        val heard = scratch.positionMs() ?: scratch.playerPositionMs() ?: positionMs
         val radius = if (side != null) side.radiusAt(side.fraction(track, heard)) else VinylDimens.REST_RADIUS
         val grooveYaw = VinylArm.yawDegrees(radius)
 
@@ -922,6 +1072,7 @@ private class VinylStage(
                     haptics.detent()
                     putting.landed = true
                     putting.musicAt = putting.t + Needle.LEAD_IN_S
+                    Log.i(TAG, "put on: needle down ${"%.2f".format(putting.t)}s after the touch${if (putting.rate > 1f) ", hurried" else ""}")
                 }
             }
             if (putting.landed && !putting.musicAsked && putting.t >= putting.musicAt) {
@@ -933,7 +1084,78 @@ private class VinylStage(
         } else {
             PutOn.rest(pose)
         }
-        val seated = here && pose.seated
+        // ---- the end of a side, and the record turned over ------------------------------------------
+        val lastOfSide = side != null && track == side.lastTrack
+        // Asked for every frame this is drawn, and only then: see `unseen`.
+        scratch.stopAtEndOfTrack(putting == null && lastOfSide && track + 1 < deck.tracks.size)
+        if (!ended) {
+            if (putting == null && turnRun == null && needleDown && armMove == null && !held &&
+                !playing && lastOfSide && scratch.endedTrack()
+            ) {
+                // The side has run out: the needle goes home, the motor stops, and the card says which side is next.
+                ended = true
+                Log.i(TAG, "side ${Sides.letter(sideIndex)} ended at track ${track + 1}; " +
+                    if (track + 1 < deck.tracks.size) "waiting to be turned over${if (turnsItself) ", and will be" else ""}" else "the record is over")
+                endedFor = 0f
+                awaitedTrack = if (track + 1 < deck.tracks.size) track + 1 else -1
+                awaiting = if (awaitedTrack >= 0) Sides.of(sides, awaitedTrack) else -1
+                motorUntil = 0L
+                sendArm(Needle.move(armYaw, armLift, Needle.REST_YAW, quick = false, down = false), null)
+            }
+        } else if (turnRun == null) {
+            if (playing || !lastOfSide || !scratch.endedTrack()) {
+                // Going again, or sent somewhere else — the notification, a car: it is not waiting any more.
+                clearEnded()
+            } else {
+                endedFor += dt
+                if (turnsItself && awaitedTrack >= 0 && endedFor >= TurnOver.UNASKED_AFTER_S) turnOver(awaitedTrack, sides)
+            }
+        }
+        val flip = turnRun
+        if (flip != null) {
+            rate = maxOf(rate, flip.rate)
+            if (flip.t < 0f) {
+                // Not from under a needle: the arm is home before the record leaves the mat.
+                if (armMove == null) {
+                    if (needleDown) {
+                        if (playing) onNeedleUp()
+                        sendArm(Needle.move(armYaw, armLift, Needle.REST_YAW, quick = true, down = false), null)
+                    } else if (abs(armYaw - Needle.REST_YAW) < 0.4f) {
+                        flip.t = 0f
+                    }
+                }
+            } else {
+                if (flip.t < TurnOver.TOTAL_S) flip.t = (flip.t + dt * flip.rate).coerceAtMost(TurnOver.TOTAL_S)
+                TurnOver.at(flip.t, turnPose)
+                liftM = turnPose.lift
+                turnedDeg = flip.fromDeg + (flip.toDeg - flip.fromDeg) * turnPose.turned
+                if (flip.t >= TurnOver.TOTAL_S && !flip.armSent) {
+                    // Down on its other side: the motor, and the needle to the track that was asked for.
+                    flip.armSent = true
+                    haptics.tick()
+                    motorUntil = now + MOTOR_HOLD_MS
+                    val to = sides.getOrNull(Sides.of(sides, flip.toTrack))
+                    val yaw = VinylArm.yawDegrees(to?.radiusAt(to.fraction(flip.toTrack, 0L)) ?: VinylDimens.GROOVE_OUT)
+                    sendArm(Needle.move(armYaw, armLift, yaw, quick = false)) {
+                        needle.drop(1f)
+                        haptics.detent()
+                        agreeing = 0f
+                        motorUntil = SystemClock.uptimeMillis() + MOTOR_HOLD_MS
+                        turnRun = null
+                        Log.i(TAG, "turned over: needle down on track ${flip.toTrack + 1}")
+                        onSelect(flip.toTrack)
+                    }
+                }
+            }
+        } else {
+            liftM = 0f
+            // With nothing flip it and nothing just having turned it, the side that is up is
+            // the side the music is on — a record started on its second side, a seek from a car.
+            val wanted = if (flipped) 180f else 0f
+            if (agreeing < 0f && turnedDeg != wanted) turnedDeg = wanted
+        }
+        val aloft = flip != null && flip.t > 0f && !turnPose.seated
+        val seated = here && pose.seated && !aloft
         seatedNow = seated
 
         // ---- the arm --------------------------------------------------------------------------------------
@@ -965,7 +1187,7 @@ private class VinylStage(
                     sendArm(Needle.move(armYaw, armLift, grooveYaw, quick = true), null)
                 else -> armYaw += (grooveYaw - armYaw) * (1f - exp(-ARM_FOLLOW * dt))
             }
-        } else if (seated && side != null && putting == null) {
+        } else if (seated && side != null && putting == null && !ended && flip == null) {
             // A record is on and the needle is not down — a room opened on a record that is
             // playing: it is where the music is, at once. Later than that, it is put there.
             if (frames < 4 || snapDown) {
@@ -1009,8 +1231,17 @@ private class VinylStage(
         platterNode?.rotation = Rotation(y = platterAngle)
 
         // ---- the record, its sleeve and the card: where `PutOn` has them -------------------------------
-        recordNode?.position = Position(pose.recordX, pose.recordY, pose.recordZ)
-        recordNode?.rotation = Rotation(y = recordAngle)
+        // Turned about its own middle, not its underside: half its thickness, taken round with it.
+        val over = Math.toRadians(turnedDeg.toDouble())
+        val half = VinylDimens.LP_H / 2
+        recordNode?.position = Position(
+            pose.recordX + half * sin(over).toFloat(),
+            pose.recordY + liftM + half * (1f - cos(over).toFloat()),
+            pose.recordZ
+        )
+        recordNode?.rotation = Rotation(z = turnedDeg)
+        // On its second side the record's own up is down, and the same way round is the other way about.
+        recordFlip?.rotation = Rotation(y = if (turnedDeg > 90f && turnedDeg < 270f) -recordAngle else recordAngle)
         recordNode?.isVisible = here && pose.recordSeen
         sleeveFrontNode?.position = Position(pose.sleeveX, pose.sleeveY, pose.sleeveZ)
         sleeveFrontNode?.rotation = Rotation(y = pose.sleeveYaw)
@@ -1021,7 +1252,7 @@ private class VinylStage(
         // In the air a record has a shadow, and the shadow closing on it is how it is seen to
         // come down from straight above; on the mat it has none to speak of, and asking for one
         // only speckles the mat.
-        val shadow = here && pose.recordSeen && !pose.seated
+        val shadow = here && pose.recordSeen && (!pose.seated || aloft)
         if (shadow != castsShadow) {
             castsShadow = shadow
             recordModel?.isShadowCaster = shadow
@@ -1031,12 +1262,12 @@ private class VinylStage(
         // ---- the lens ------------------------------------------------------------------------------------
         zoom += (zoomTarget - zoom) * (1f - exp(-ZOOM_EASE * dt))
         if (abs(zoomTarget - zoom) < 0.0005f) zoom = zoomTarget
-        val over = VinylCamera.play(zoom, aspect)
+        val above = VinylCamera.play(zoom, aspect)
         // The crate is gone through only while it can be seen.
         val digging = risen < 1f && crate.onFrame(dt, now, nowPlaying)
-        shot = if (risen >= 1f) over else {
+        shot = if (risen >= 1f) above else {
             val down = VinylCamera.crate(aspect, crate.readsAt * CRATE_FOLLOW)
-            if (risen <= 0f) down else VinylCamera.between(down, over, risen)
+            if (risen <= 0f) down else VinylCamera.between(down, above, risen)
         }
         // The crate's lamp goes down as the camera leaves it: nothing it lights is in the frame from above.
         val lamp = VinylLighting.CRATE_CANDELA * (1f - risen)
@@ -1050,7 +1281,8 @@ private class VinylStage(
         turning = spin.speed > 0.001f
         busy = held || pinching || changed || zoom != zoomTarget || place != placeTarget || leaveAt != 0L ||
             digging || crate.busy || crate.changed ||
-            run != null || armMove != null || agreeing >= 0f || (spin.speed > 0f && spin.speed < 1f) ||
+            run != null || turnRun != null || armMove != null || agreeing >= 0f || (spin.speed > 0f && spin.speed < 1f) ||
+            (ended && turnsItself && awaitedTrack >= 0) ||
             (!needleDown && (abs(Needle.REST_YAW - armYaw) > 0.02f || abs(Needle.UP_DEG - armLift) > 0.02f))
         changed = false
         crate.changed = false
@@ -1095,6 +1327,10 @@ private class VinylStage(
             if (event.actionMasked == MotionEvent.ACTION_DOWN) putting.rate = HURRY
             return
         }
+        turnRun?.let { turning ->
+            if (event.actionMasked == MotionEvent.ACTION_DOWN) turning.rate = HURRY
+            return
+        }
         if (place < 0.96f || placeTarget != 1f) return
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
@@ -1133,6 +1369,9 @@ private class VinylStage(
                 val quick = event.eventTime - downAt <= TAP_LONGEST_MS
                 if (!moved && quick) {
                     if (hasRecord) tap(event, deck, sides, wasHeld, onPlayPause) else onEmptyDeck()
+                } else if (ended && moved && onRecord(downX, downY) && abs(event.x - downX) > touchSlopPx * 3f) {
+                    // A hand drawn across a record that is waiting: that is turning it over.
+                    turnOver(otherSide(deck, sides), sides)
                 }
                 // Left between the two: come to rest at whichever is nearer.
                 zoomTarget = if (zoomTarget >= 0.5f) 1f else 0f
@@ -1215,11 +1454,17 @@ private class VinylStage(
         // A touch on the record is a hand on the record — it has already slowed it — and is
         // never also a tap.
         if (onRecordItself) return
+        // A side has ended and the needle is home: a touch on the record turns it over.
+        if (ended && onRecord(event.x, event.y)) {
+            turnOver(otherSide(deck, sides), sides)
+            return
+        }
         // The start · stop button, on the top plate.
         VinylCamera.onPlane(shot, event.x, event.y, widthPx, heightPx, VinylDimens.TOP_Y, spot)
         if (abs(spot[0] - START_X) <= START_HALF_W && abs(spot[1] - START_Z) <= START_HALF_D) {
             haptics.detent()
-            onPlayPause()
+            // With a side waiting to be turned, starting it is turning it: there is nothing on this side left to start.
+            if (ended && awaitedTrack >= 0) turnOver(awaitedTrack, sides) else onPlayPause()
             return
         }
         // A line on the back of the sleeve.
@@ -1248,6 +1493,11 @@ private class VinylStage(
      * lowered at the start of that track, where the music is from the moment it lands.
      */
     private fun hop(index: Int, deck: DeckState, sides: List<Side>) {
+        // A track on the other side: the record is turned over to get to it.
+        if (ended || Sides.of(sides, index) != Sides.of(sides, deck.currentTrackIndex.coerceAtLeast(0))) {
+            turnOver(index, sides)
+            return
+        }
         val side = sides.getOrNull(Sides.of(sides, index)) ?: return
         val to = VinylArm.yawDegrees(side.radiusAt(side.fraction(index, 0L)))
         haptics.tick()
@@ -1266,13 +1516,15 @@ private class VinylStage(
 
     /** The room is going: a record in the hand is put back, and nothing is left decoding. */
     fun release() {
-        finish()
+        unseen()
         if (held) scratch.cancel()
         held = false
         scratch.arm(false)
     }
 
     private companion object {
+        /** `adb logcat -s Jawon.Vinyl`: what the deck did and when, for reading off a phone. */
+        const val TAG = "Jawon.Vinyl"
         const val PINCH_FOR_WHOLE_ZOOM = 0.85f
     }
 }

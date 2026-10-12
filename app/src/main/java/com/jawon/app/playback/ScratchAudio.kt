@@ -206,6 +206,20 @@ class ScratchAudio @Inject constructor(
     /** How fast the record is turning, for drawing it. 1 is the speed it plays at. */
     val rate: Float get() = engine?.let { (it.rate / nominal).toFloat() } ?: 0f
 
+    /** The vinyl room's, at the end of a side: see [ScratchLink.stopAtEndOfTrack]. Main thread. */
+    fun stopAtEndOfTrack(stop: Boolean) = link.stopAtEndOfTrack(stop)
+
+    /** The player has stopped by itself at the end of a track. Main thread. */
+    fun endedTrack(): Boolean = link.endedTrack()
+
+    /**
+     * Where the player itself is, and on which track: its own clock, asked every frame, where
+     * what the rooms are told arrives twice a second. An arm drawn from the second would cross a
+     * record in steps. Null, or −1, with no player. Main thread.
+     */
+    fun playerPositionMs(): Long? = link.positionMs()
+    fun playerTrack(): Int = link.trackIndex()
+
     /** Where the record is in its track, while the engine has it; null when it does not. */
     fun positionMs(): Long? =
         if (phase == Phase.HELD || phase == Phase.RELEASING) engine?.let { (it.positionSeconds * 1000).toLong() } else null

@@ -180,7 +180,9 @@ object VinylArt {
         artist: String,
         sides: List<Side>,
         titles: List<String>,
-        playing: Int
+        playing: Int,
+        /** A side the record is waiting to be turned over to, or −1: its heading says so, in the lit line's colour. */
+        turnTo: Int = -1
     ): Bitmap {
         val px = SLEEVE_PX
         val out = Bitmap.createBitmap(px, px, Bitmap.Config.ARGB_8888)
@@ -218,7 +220,10 @@ object VinylArt {
             text.color = dim
             text.textSize = px * 0.021f
             text.letterSpacing = 0.16f
-            canvas.drawText("SIDE ${Sides.letter(heading.side)}", heading.left * px, (heading.top + SleeveBackLayout.HEADING_HEIGHT * 0.62f) * px, text)
+            val next = heading.side == turnTo
+            text.color = if (next) amber else dim
+            val words = if (next) "SIDE ${Sides.letter(heading.side)}  ·  TURN OVER" else "SIDE ${Sides.letter(heading.side)}"
+            canvas.drawText(words, heading.left * px, (heading.top + SleeveBackLayout.HEADING_HEIGHT * 0.62f) * px, text)
             text.letterSpacing = 0f
         }
         val size = (layout.rowHeight * 0.52f).coerceAtMost(0.034f) * px

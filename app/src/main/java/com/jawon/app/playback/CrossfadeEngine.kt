@@ -152,7 +152,9 @@ class CrossfadeEngine(
         val index = main.currentMediaItemIndex
         val duration = main.duration
         val position = main.currentPosition
-        val hasNext = index + 1 < main.mediaItemCount
+        // A track the player has been told to stop at the end of has, for a fade, nothing after
+        // it: that is the end of a record's side, and a side does not fade into its other side.
+        val hasNext = index + 1 < main.mediaItemCount && !main.pauseAtEndOfMediaItems
         if (duration <= 0L) return
 
         if (armedForIndex != index &&

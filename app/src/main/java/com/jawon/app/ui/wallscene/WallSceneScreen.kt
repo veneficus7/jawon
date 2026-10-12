@@ -115,6 +115,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.jawon.app.ui.theme.ArchivoFamily
 import com.jawon.app.ui.theme.CrateBlack
 import com.jawon.app.ui.theme.CrateEdge
+import com.jawon.app.ui.common.ChromeAction
 import com.jawon.app.ui.theme.JawonTextStyle
 import com.jawon.app.ui.theme.JawonType
 import com.jawon.app.ui.theme.JetBrainsMonoFamily
@@ -4940,52 +4941,6 @@ private const val RAIL_LINE_PX = 3.5f
  * it stays visible on a library long enough that a proportional thumb would vanish.
  */
 private const val RAIL_THUMB_FRACTION = 0.085f
-
-/** One room-chrome action: a real 48dp target with a quiet mono label under it. */
-@Composable
-private fun ChromeAction(
-    icon: androidx.compose.ui.graphics.vector.ImageVector?,
-    label: String,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-    /** Drawn in place of [icon] — the ROOMS button wears the mark, which is no vector. */
-    iconContent: (@Composable () -> Unit)? = null
-) {
-    // The whole column is the target (0.7.2): it used to be the 48dp icon alone, so a thumb landing
-    // on the word under it did nothing. A shade brighter than dim, too — it sits on the room's dark.
-    Column(
-        modifier = modifier
-            .clip(androidx.compose.foundation.shape.RoundedCornerShape(12.dp))
-            .clickable(role = androidx.compose.ui.semantics.Role.Button, onClick = onClick)
-            .padding(vertical = 4.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Box(Modifier.size(40.dp), contentAlignment = Alignment.Center) {
-            if (iconContent != null) iconContent()
-            else if (icon != null) Icon(icon, contentDescription = null, tint = LabelCream.copy(alpha = 0.82f))
-        }
-        // One line, and grown with the phone's text size only so far (0.7.5): at Android's largest
-        // the five labels broke mid-word ("SHELV / ES"). The icon above carries the meaning; past
-        // 1.3x the word stays at 1.3x and ellipsises before it wraps.
-        val density = LocalDensity.current
-        val base = JawonTextStyle.mono.fontSize
-        val capped = if (density.fontScale > CHROME_TEXT_MAX_SCALE) {
-            (base.value * CHROME_TEXT_MAX_SCALE / density.fontScale).sp
-        } else {
-            base
-        }
-        Text(
-            text = label,
-            style = JawonTextStyle.mono.copy(color = LabelCream.copy(alpha = 0.72f), fontSize = capped),
-            maxLines = 1,
-            softWrap = false,
-            overflow = TextOverflow.Ellipsis
-        )
-    }
-}
-
-/** How far the bar's labels grow with the phone's text size. */
-private const val CHROME_TEXT_MAX_SCALE = 1.3f
 
 /**
  * The label plate's content, rendered to a texture by [ViewNode]. Sized in raw pixels rather

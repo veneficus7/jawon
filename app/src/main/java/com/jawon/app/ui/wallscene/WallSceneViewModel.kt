@@ -120,6 +120,9 @@ class WallSceneViewModel @Inject constructor(
     /** What colour the room is lit in. The scene reads this and writes it onto the lights. */
     val roomScheme: StateFlow<RoomScheme> = preferences.roomScheme
 
+    /** The vinyl room: whether a record turns itself over at the end of a side. */
+    val vinylTurnsItself: StateFlow<Boolean> = preferences.vinylTurnsItself
+
     /** How fast shelved cases turn, 0..1. The frame driver scales the rotation by it. */
     val caseSpin: StateFlow<Float> = preferences.caseSpin
 
