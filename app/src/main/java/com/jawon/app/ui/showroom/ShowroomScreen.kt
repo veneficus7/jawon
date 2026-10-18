@@ -3,6 +3,7 @@ package com.jawon.app.ui.showroom
 import com.jawon.app.ui.common.displayRefreshHz
 import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.SideEffect
@@ -623,28 +624,9 @@ fun ShowroomScreen(
             }
         }
 
-        // The showroom, as TalkBack meets it (0.7.5): what is on the stand in front, and the moves a
-        // finger makes — the next room, the one before, go in. A layer of semantics; no touches.
-        androidx.compose.foundation.layout.Box(
-            Modifier
-                .fillMaxSize()
-                .semantics {
-                    val d = currentDirector.value
-                    val front = d.exhibitInFront
-                    contentDescription = "The showroom, every room on its own stand. In front: " +
-                        "${front.title}, ${Exhibit.line(front, showUnbuilt).lowercase(Locale.ROOT)}." +
-                        if (d.opensInFront()) "" else " Coming later."
-                    customActions = buildList {
-                        if (d.opensInFront()) {
-                            add(androidx.compose.ui.semantics.CustomAccessibilityAction("Go into the ${front.title} room") {
-                                d.depart(front); true
-                            })
-                        }
-                        add(androidx.compose.ui.semantics.CustomAccessibilityAction("Next room") { d.stepTo(1) })
-                        add(androidx.compose.ui.semantics.CustomAccessibilityAction("Previous room") { d.stepTo(-1) })
-                    }
-                }
-        )
+        // The showroom, as TalkBack meets it (0.7.5): a composable of its own, so that the plinth in
+        // front changing recomposes it and nothing else.
+        ShowroomSemantics(currentDirector.value, showUnbuilt)
 
         // **The captions**: each format's name under its plinth, in the app's own type, sliding
         // with the row — drawn from the row's position in the draw phase, so nothing recomposes.
@@ -725,6 +707,39 @@ private fun square(source: Bitmap, px: Int): Bitmap {
     val side = minOf(source.width, source.height)
     val cropped = Bitmap.createBitmap(source, (source.width - side) / 2, (source.height - side) / 2, side, side)
     return if (side == px) cropped else Bitmap.createScaledBitmap(cropped, px, px, true)
+}
+
+/**
+ * **The showroom, as TalkBack meets it** (0.7.5): what is on the stand in front, and the moves a
+ * finger makes — the next room, the one before, go in. A layer of semantics over the scene; no
+ * touches. What it says is read here, in the composition, from [ShowroomDirector.front]: a
+ * description written inside a semantics block is not watched, and went stale.
+ */
+@Composable
+private fun ShowroomSemantics(director: ShowroomDirector, showUnbuilt: Boolean) {
+    val front = Exhibit.entries[director.front.intValue.coerceIn(0, Exhibit.entries.size - 1)]
+    val opens = Exhibit.opens(front, showUnbuilt)
+    // A room that does not open yet is "coming later", once — not its caption and then that again.
+    val description = "The showroom, every room on its own stand. In front: ${front.title}, " +
+        if (opens) "${front.line.lowercase(Locale.ROOT)}." else "coming later."
+    androidx.compose.foundation.layout.Box(
+        Modifier
+            .fillMaxSize()
+            .semantics {
+                contentDescription = description
+                // Said when it changes: the next room, after "Next room".
+                liveRegion = androidx.compose.ui.semantics.LiveRegionMode.Polite
+                customActions = buildList {
+                    if (opens) {
+                        add(androidx.compose.ui.semantics.CustomAccessibilityAction("Go into the ${front.title} room") {
+                            director.depart(front); true
+                        })
+                    }
+                    add(androidx.compose.ui.semantics.CustomAccessibilityAction("Next room") { director.stepTo(1) })
+                    add(androidx.compose.ui.semantics.CustomAccessibilityAction("Previous room") { director.stepTo(-1) })
+                }
+            }
+    )
 }
 
 /** The single on the vinyl's plinth, printed: textures the scene's materials sample, so they outlive it. */

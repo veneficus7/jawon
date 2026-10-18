@@ -42,8 +42,8 @@ android {
         applicationId = "com.jawon.app"
         minSdk = 28
         targetSdk = 37
-        versionCode = 23
-        versionName = "0.7.8 beta"
+        versionCode = 24
+        versionName = "0.8 beta"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 

@@ -92,8 +92,13 @@ mode"): `Format.VINYL` is built and offered in release builds; a long album's ne
 taken out of the sleeve rather than the first turned over (`ChangeRecord`); a seven-inch single
 stands on its plinth in the showroom; Settings → Guide has its page, the crate and the deck a
 first-run card each, and TalkBack a layer of its own. Not built, on purpose: the arm as something
-to pick up, a record taken off to an empty platter. Never on a phone, and the needle's sound never
-heard on one. `docs/formats.md` §5. **0.7.8 (2026-10-11) is two things he said the same day, both of the
+to pick up, a record taken off to an empty platter. **Shipped to testers as 0.8 beta (versionCode
+24, 2026-10-18)** on the owner's "finish and release": the R8 release build was driven through all
+four places on the flagship emulator first — a case opened and played, a record put on, turned over
+and changed for the second of a set, the showroom's single, the pocket player — and the showroom's
+TalkBack description, which had said "In front: CD" from anywhere along the row since 0.7.5, was
+fixed on the way (`ShowroomDirector.front`). Never on a phone, and the needle's sound never heard
+on one. `docs/formats.md` §5. **0.7.8 (2026-10-11) is two things he said the same day, both of the
 form "this should be instant".** *After seeking with the disc the music took a while to continue
 from where it was put*: a record let go mid-spin was **thrown** — it ran on past the place, or back
 through it, before it settled — and one spun further than had been decoded came back only when the

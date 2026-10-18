@@ -3,6 +3,7 @@ package com.jawon.app.ui.showroom
 import android.view.MotionEvent
 import android.view.VelocityTracker
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import com.jawon.app.ui.wallscene.RoomHaptics
 import io.github.sceneview.math.Position
@@ -39,6 +40,13 @@ internal class ShowroomDirector(
 
     /** For the captions: where the row is, read in the draw phase so nothing recomposes. */
     val position = mutableFloatStateOf(from.toFloat())
+
+    /**
+     * For TalkBack: which plinth is in front, as state. Read in a composition, and it changes once a
+     * plinth — where [exhibitInFront], read inside a semantics block, was read once and went stale:
+     * the showroom said "In front: CD" from wherever along the row it was (0.7.5 to 0.8).
+     */
+    val front = mutableIntStateOf(from)
 
     /**
      * **Black over the scene**, 0…1: all of it until the showroom has something in it to show, then
@@ -182,6 +190,7 @@ internal class ShowroomDirector(
         carousel.step(dt)
         while (carousel.ticked()) haptics.detent()
         position.floatValue = carousel.position
+        if (front.intValue != carousel.index) front.intValue = carousel.index
 
         // Pulled back while the row is moving under a finger or on its way to a plinth — not for a
         // tap, which never crosses the slop.
