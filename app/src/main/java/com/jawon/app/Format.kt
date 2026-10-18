@@ -21,8 +21,9 @@ enum class Format(val displayName: String, val built: Boolean) {
     // Built since 0.7.1 (2026-10-09): the face, the wheel, its menus and Settings, on the owner's
     // phone and shipped to testers on his call.
     POCKET("Pocket player", built = true),
-    // Under way since 2026-10-11 (`docs/formats.md` §5): the deck plays; the crate is next.
-    VINYL("Vinyl", built = false);
+    // Begun 2026-10-11 and finished 2026-10-18 (`docs/formats.md` §5): the crate, the deck, a
+    // record put on and turned over, its Guide page and its single in the showroom.
+    VINYL("Vinyl", built = true);
 
     companion object {
         /**

@@ -164,6 +164,11 @@ suite) keep one structure and let a *skin* change the look.
 
 ## 0.8 — vinyl (November 2026)
 
+**The room is finished (2026-10-18)** — crate, deck, put on, turned over, the next record of a
+set, its Guide page, its single in the showroom, TalkBack — and open in release builds. Never yet
+on the owner's phone; its cost there is the first thing to measure. The rest of 0.8 below is
+still to do.
+
 The room `docs/formats.md` §5 already decided: **crate-digging**. Flip through a crate of LPs with
 the thumb, pull one out, slide the record from its sleeve onto a turntable, drop the needle;
 **side A and side B**, with the flip as a ritual; the platter scratches as the CD's disc does; the

@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Adjust
 import androidx.compose.material.icons.rounded.Album
 import androidx.compose.material.icons.rounded.LibraryMusic
 import androidx.compose.material.icons.rounded.SwapHoriz
@@ -118,6 +119,44 @@ internal enum class GuideTopic(
             )
         )
     ),
+    VINYL(
+        title = "The vinyl room",
+        summary = "The crate, the deck, turning a record over",
+        icon = Icons.Rounded.Adjust,
+        sections = listOf(
+            GuideSection(
+                "The crate",
+                listOf(
+                    Tip("Dig", "Drag up and down on the records to flip through them, as you would in a shop; you feel each one go by. Swipe sideways to jump to the next shelf — every shelf starts behind a card with its name on the tab."),
+                    Tip("Put one on", "Tap the record in front. Its sleeve is laid by the deck, the record is drawn out and put on, and the needle comes down. Tap while that happens to hurry it."),
+                    Tip("Back to the deck", "Tap the table at the top of the screen to go back up to the record that is on. The card at the back of the crate adds records.")
+                )
+            ),
+            GuideSection(
+                "The deck",
+                listOf(
+                    Tip("Scratch", "Put a finger on the record: it slows under your hand and follows it, forwards and backwards. Let go and it plays on."),
+                    Tip("Choose a song", "The back of the sleeve, lying by the deck, is the tracklist. Touch a song and the needle is lifted and put down on it."),
+                    Tip("Start · stop", "The button at the front left of the deck stops the record, and starts it again."),
+                    Tip("Closer", "Pinch, or tap the table twice, to go from the whole deck to the record under the needle, and back.")
+                )
+            ),
+            GuideSection(
+                "Sides",
+                listOf(
+                    Tip("Turn it over", "At the end of a side the music stops, the needle goes home, and the sleeve says which side is next. Touch the record, draw your finger across it, or touch a song on the other side, and it is turned over and played. You can turn it over whenever you like."),
+                    Tip("Let it turn itself", "Settings → Turn records over for me does it half a second after a side ends. And while Jawon is out of sight — in a pocket, behind another app — a record always plays straight through."),
+                    Tip("A long album", "Your albums are cut into sides as a record would be: two, or four or six for a long one, never splitting a song. When a side ends on the first record, the next one is taken out of the sleeve for you.")
+                )
+            ),
+            GuideSection(
+                "Going back",
+                listOf(
+                    Tip("Back", "From the record to the whole deck, from the deck to the crate, from the crate to the showroom. ROOMS and SETTINGS are at the foot of the crate.")
+                )
+            )
+        )
+    ),
     ROOMS(
         title = "Moving between rooms",
         summary = "Rooms, shaking, the showroom",
@@ -126,8 +165,8 @@ internal enum class GuideTopic(
             GuideSection(
                 "Rooms",
                 listOf(
-                    Tip("What a room is", "Each room is a different way to hold your music: a wall of CDs, a pocket player, and in time a record crate and a tape deck. Your library is the same in every one."),
-                    Tip("Switch rooms", "Press ROOMS at the bottom of the CD room, or choose Rooms on the pocket player's menu, and pick one."),
+                    Tip("What a room is", "Each room is a different way to hold your music: a wall of CDs, a pocket player, a crate of records by a deck, and in time a tape deck. Your library is the same in every one."),
+                    Tip("Switch rooms", "Press ROOMS at the bottom of the CD room or of the record crate, or choose Rooms on the pocket player's menu, and pick one."),
                     Tip("Shake", "Shake the phone twice, quickly back and forth, to flip to the next room. It never happens in a pocket. Settings → Shake to switch rooms turns it off."),
                     Tip("The showroom", "Press Back in a room, tap the glowing JAWON sign, or pinch the pocket player, and you are in the showroom: every room on its own stand. Swipe along them and tap one to go in.")
                 )

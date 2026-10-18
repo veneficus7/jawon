@@ -307,6 +307,52 @@ class PutOnTest {
     // ---- The motor --------------------------------------------------------------------------------------
 
     @Test
+    fun `the next record of a set goes back into the sleeve and the other comes out, and the sleeve never moves`() {
+        // From the mat, to the middle of the sleeve under its cover, to the mat again.
+        val on = at(ChangeRecord.clock(0f))
+        assertTrue(on.seated)
+        assertEquals(VinylDimens.SPINDLE_X, on.recordX, 1e-5f)
+        assertEquals(VinylDimens.SPINDLE_Z, on.recordZ, 1e-5f)
+        val inside = at(ChangeRecord.clock(ChangeRecord.SWAP_AT))
+        assertEquals(0f, along(inside), 1e-5f)
+        assertTrue(inside.recordY + VinylDimens.LP_H <= VinylDimens.SLEEVE_T)
+        val back = at(ChangeRecord.clock(ChangeRecord.TOTAL_S))
+        assertTrue(back.seated)
+        assertEquals(VinylDimens.SPINDLE_X, back.recordX, 1e-5f)
+        // Back the way it came and out the way it went, a little at a time: the put-on's clock
+        // never runs faster than the change's, and goes down and then up, once each.
+        val rest = PutOn.Pose().also { PutOn.rest(it) }
+        var last = ChangeRecord.clock(0f)
+        var t = 0f
+        var turnedBack = false
+        while (t <= ChangeRecord.TOTAL_S + 0.2f) {
+            t += 1f / 240f
+            val c = ChangeRecord.clock(t)
+            assertTrue("a jump at $t", abs(c - last) <= 1f / 240f + 1e-5f)
+            if (c > last + 1e-6f) turnedBack = true else if (turnedBack) assertTrue("back again at $t", c >= last - 1e-6f)
+            last = c
+            // The sleeve lies where it was laid the whole time.
+            val p = at(c)
+            assertEquals("the sleeve moved at $t", rest.sleeveX, p.sleeveX, 1e-6f)
+            assertEquals(rest.sleeveZ, p.sleeveZ, 1e-6f)
+            assertEquals(rest.sleeveY, p.sleeveY, 1e-6f)
+            assertEquals(rest.sleeveYaw, p.sleeveYaw, 1e-5f)
+        }
+        assertTrue(turnedBack)
+    }
+
+    @Test
+    fun `only a side on another record is a change - its other face is a turn`() {
+        assertTrue(!ChangeRecord.isChange(0, 1))
+        assertTrue(!ChangeRecord.isChange(1, 0))
+        assertTrue(ChangeRecord.isChange(1, 2))
+        assertTrue(!ChangeRecord.isChange(2, 3))
+        assertTrue(ChangeRecord.isChange(3, 0))
+        assertTrue(ChangeRecord.isChange(5, 2))
+        for (from in 0..5) for (to in 0..5) assertEquals(Sides.record(from) != Sides.record(to), ChangeRecord.isChange(from, to))
+    }
+
+    @Test
     fun `a platter comes up to speed in under a second and runs down, and is never past either`() {
         val spin = PlatterSpin()
         var t = 0f

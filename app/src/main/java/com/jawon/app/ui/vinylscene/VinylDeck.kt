@@ -41,6 +41,11 @@ object VinylDimens {
     const val GROOVE_OUT = 0.1465f
     const val GROOVE_IN = 0.0605f
 
+    /** The showroom's seven-inch single (`build_vinyl_single`): its radius, and where its music is cut. */
+    const val SINGLE_R = 0.0875f
+    const val SINGLE_GROOVE_OUT = 0.0845f
+    const val SINGLE_GROOVE_IN = 0.0500f
+
     /** Where a record sits: on the mat. And the surface a stylus rides on. */
     const val RECORD_Y = TOP_Y + PLATTER_H + MAT_H
     const val RECORD_TOP_Y = RECORD_Y + LP_H
@@ -288,12 +293,21 @@ object VinylBands {
     /** Half the width of the ring between two tracks: a little under a millimetre across. */
     const val GAP_HALF_WIDTH = 0.00045f
 
-    /** Roughness at each of [width] steps from the spindle (0) to the record's edge. */
-    fun roughness(side: Side?, width: Int): FloatArray {
+    /**
+     * Roughness at each of [width] steps from the spindle (0) to the record's edge — a twelve-inch
+     * record's unless told another's: [recordR] and the band its music is cut in.
+     */
+    fun roughness(
+        side: Side?,
+        width: Int,
+        recordR: Float = VinylDimens.LP_R,
+        grooveOut: Float = VinylDimens.GROOVE_OUT,
+        grooveIn: Float = VinylDimens.GROOVE_IN
+    ): FloatArray {
         val gaps = side?.gaps().orEmpty().map { side!!.radiusAt(it) }
         return FloatArray(width) { i ->
-            val r = (i + 0.5f) / width * VinylDimens.LP_R
-            val cut = r <= VinylDimens.GROOVE_OUT && r >= VinylDimens.GROOVE_IN &&
+            val r = (i + 0.5f) / width * recordR
+            val cut = r <= grooveOut && r >= grooveIn &&
                 gaps.none { kotlin.math.abs(r - it) < GAP_HALF_WIDTH }
             if (cut) GROOVE_ROUGHNESS else SMOOTH_ROUGHNESS
         }

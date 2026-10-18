@@ -105,5 +105,8 @@ private fun HintButton(label: String, colour: androidx.compose.ui.graphics.Color
 object Hints {
     const val CD = "cd"
     const val POCKET = "pocket"
+    /** The vinyl room has two places, and a card for each: the crate, and the deck. */
+    const val VINYL = "vinyl"
+    const val VINYL_DECK = "vinyl_deck"
     const val SHOWROOM = "showroom"
 }

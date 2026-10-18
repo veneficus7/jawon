@@ -238,7 +238,7 @@ internal class ShowroomDirector(
             )
             node.rotation = Rotation(
                 TILT_DEG * w[2].at(time),
-                TURN_DEG * w[1].at(time),
+                FACING_DEG[i] + TURN_DEG * w[1].at(time),
                 ROLL_DEG * w[3].at(time)
             )
         }
@@ -270,8 +270,20 @@ internal class ShowroomDirector(
     }
 
     private companion object {
-        /** How far each exhibit's middle sits above its underside: half its height. */
-        val HALF_HEIGHT_M = floatArrayOf(0.071f, 0.0518f, 0f, 0f)
+        /**
+         * How far each exhibit's middle sits above its underside: half its height. The vinyl's is
+         * its single, from the sleeve's foot to the top of the record standing out of it
+         * (`V_SINGLE_HEIGHT`).
+         */
+        val HALF_HEIGHT_M = floatArrayOf(0.071f, 0.0518f, 0.11875f, 0f)
+
+        /**
+         * Which way each exhibit faces at the middle of its wander. The single is turned toward its
+         * spot: square on it was wider than its plinth's cap, read as a picture rather than a
+         * thing, and its record — black, and seen by the streak a lamp draws across it — showed
+         * almost nothing of that streak.
+         */
+        val FACING_DEG = floatArrayOf(0f, 0f, 20f, 0f)
 
         const val FLOAT_M = 0.004f
         const val TURN_DEG = 24f

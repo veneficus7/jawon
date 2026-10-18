@@ -2886,6 +2886,95 @@ def build_vinyl_sleeve():
     return [body, face("sleeve_front", "SleeveFront", True), face("sleeve_back", "SleeveBack", False)]
 
 
+# The vinyl room's exhibit in the showroom: a seven-inch single, half out of its picture sleeve. A
+# twelve-inch sleeve is wider than the showroom's frame on a phone held upright and twice its
+# plinth; a single is the plinth's own width, and as much a record as an LP is.
+V_SINGLE_R, V_SINGLE_H = 0.0875, 0.0014       # 175mm across, as IEC 60098 has it
+V_SINGLE_LABEL_R = 0.0440
+V_SINGLE_GROOVE_OUT, V_SINGLE_GROOVE_IN = 0.0845, 0.0500
+V_SINGLE_SLEEVE, V_SINGLE_SLEEVE_T = 0.184, 0.0026   # a picture sleeve: 7¼ inches, two leaves of paper
+V_SINGLE_PAPER = 0.0005
+V_SINGLE_DRAWN = 0.058                         # the record's centre above the sleeve's: a third of it out
+V_SINGLE_HEIGHT = V_SINGLE_SLEEVE / 2 + V_SINGLE_DRAWN + V_SINGLE_R   # foot of the sleeve to the top of the record
+
+
+def build_vinyl_single():
+    """
+    A seven-inch single standing half out of its picture sleeve, the cover toward -Y (the camera);
+    the origin is the middle of the whole thing, top to bottom, as every exhibit's is.
+
+    The sleeve is two leaves of paper closed along three edges, so the opening at the top is an
+    opening and the record stands in it. The record is `build_vinyl_record`'s profile at a single's
+    size, turned up on edge: UVs polar, u from the spindle (0) to the edge (1) — the app binds the
+    room's own `vinyl.mat` to `single_a` and `single_b` and writes a band map at this radius.
+    """
+    lift = -V_SINGLE_HEIGHT / 2                # the sleeve's foot, below the origin
+    s, t, paper = V_SINGLE_SLEEVE, V_SINGLE_SLEEVE_T, V_SINGLE_PAPER
+    card = principled("SingleCard", base_color=(0.84, 0.82, 0.77), metallic=0.0, roughness=0.80)
+
+    def leaves(bm):
+        for y in (-(t / 2 - paper / 2), t / 2 - paper / 2):
+            _vbox(bm, 0, y, lift + s / 2, s, paper, s)
+        for x in (-(s / 2 - paper / 2), s / 2 - paper / 2):
+            _vbox(bm, x, 0, lift + s / 2, paper, t, s)
+        _vbox(bm, 0, 0, lift + paper / 2, s, t, paper)
+
+    body = _simple("single_sleeve", leaves, card)
+
+    def face(name, material_name, front, colour):
+        obj = new_mesh_object(name)
+        bm = bmesh.new()
+        uv = bm.loops.layers.uv.new("UVMap")
+        half = s / 2 - 0.0003
+        y = (-1 if front else 1) * (t / 2 + 0.00006)
+        corners = [(-half, y, lift + 0.0003), (half, y, lift + 0.0003), (half, y, lift + s - 0.0003), (-half, y, lift + s - 0.0003)]
+        if not front:
+            corners.reverse()
+        f = bm.faces.new([bm.verts.new(p) for p in corners])
+        for loop in f.loops:
+            p = loop.vert.co
+            x = p.x if front else -p.x
+            loop[uv].uv = (x / s + 0.5, (p.z - lift) / s)
+        bm.normal_update()
+        bm.to_mesh(obj.data)
+        bm.free()
+        # Printed paper, lightly varnished: a sheen under a spot, not a mirror.
+        mat = principled(material_name, base_color=colour, metallic=0.0, roughness=0.42, coat=0.20, coat_roughness=0.18)
+        obj.data.materials.append(attach_placeholder_basecolor(mat, name + "_placeholder") if front else mat)
+        finish(obj, bevel=False)
+        return obj
+
+    seg = 192
+    bead = 0.00022
+    centre_z = lift + s / 2 + V_SINGLE_DRAWN
+    # Built lying down, as `_lathe` builds, then stood up: +90° about X turns the top face to -Y.
+    stand = Matrix.Translation((0.0, V_SINGLE_H / 2, centre_z)) @ Matrix.Rotation(math.radians(90.0), 4, "X")
+
+    def u_of(r, z):
+        return r / V_SINGLE_R
+
+    def side(top):
+        z = V_SINGLE_H if top else 0.0
+        up = 1.0 if top else -1.0
+        profile = [(V_HOLE_R, z), (V_SINGLE_LABEL_R, z), (0.062, z), (V_SINGLE_R - 0.0028, z),
+                   (V_SINGLE_R - 0.0016, z + up * bead), (V_SINGLE_R - 0.0005, z + up * bead * 0.6), (V_SINGLE_R, V_SINGLE_H / 2)]
+        obj = _lathe_object("single_a" if top else "single_b", profile, seg, u_of,
+                            principled("SingleVinyl" + ("A" if top else "B"), base_color=(0.004, 0.004, 0.0045),
+                                       metallic=0.0, roughness=0.25, anisotropic=0.9), flip=not top)
+        obj.data.transform(stand)
+        return obj
+
+    paper_label = dict(metallic=0.0, roughness=0.62)
+    label_a = _planar_disc("single_label_a", V_SINGLE_LABEL_R, V_HOLE_R, V_SINGLE_H + 0.00006,
+                           attach_placeholder_basecolor(principled("SingleLabelA", (0.78, 0.74, 0.66), **paper_label), "single_label_a_placeholder"))
+    label_b = _planar_disc("single_label_b", V_SINGLE_LABEL_R, V_HOLE_R, -0.00006,
+                           principled("SingleLabelB", (0.62, 0.20, 0.16), **paper_label), up=False, mirror=True)
+    for label in (label_a, label_b):
+        label.data.transform(stand)
+    return [body, face("single_front", "SingleFront", True, (0.72, 0.70, 0.66)),
+            face("single_back", "SingleBack", False, (0.80, 0.77, 0.70)), side(True), side(False), label_a, label_b]
+
+
 def build_vinyl_crate():
     """
     A pine crate for a row of sleeves, open at the top and slatted; its origin is the middle of
@@ -3118,6 +3207,7 @@ def main():
         ("vinyl_sleeve.glb", build_vinyl_sleeve, "AUTO"),
         ("vinyl_crate.glb", build_vinyl_crate, "JPEG"),
         ("vinyl_divider.glb", build_vinyl_divider, "AUTO"),
+        ("vinyl_single.glb", build_vinyl_single, "AUTO"),
         ("vinyl_room.glb", build_vinyl_room, "JPEG"),
     ):
         if not skip(filename):

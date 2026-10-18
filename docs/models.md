@@ -331,6 +331,7 @@ number is a `V_*` constant in the script and has a twin in `VinylDimens` (`ui/vi
 | `vinyl_sleeve.glb` | middle of its bottom edge | x ±0.1575 · y 0…0.315 · z ±0.0018 | `sleeve_card`, `sleeve_front`, `sleeve_back` |
 | `vinyl_crate.glb` | middle of its floor, inside | x ±0.1815 · y −0.012…0.235 · z ±0.2235 | `crate` |
 | `vinyl_divider.glb` | middle of its bottom edge | card x ±0.1575 · y 0…0.319; tab x ±0.0525 · y 0.317…0.345; label x ±0.048 · y 0.320…0.344, on the face at z +0.0009 | `divider_card`, `divider_tab`, `divider_label` |
+| `vinyl_single.glb` | the middle of the whole thing, top to bottom (the showroom's exhibits are all hung by their middles) | x ±0.092 · y ±0.1187 · z ±0.0014; the record r 0.0875, its centre at y +0.0313 | `single_sleeve`, `single_front`, `single_back`, `single_a`, `single_b`, `single_label_a`, `single_label_b` |
 | `vinyl_room.glb` | the deck's, on the table top | table y −0.03…0, floor at y −0.56, wall at z −0.28 | `table_top`, `table_carcass`, `table_legs`, `floor`, `wall` |
 
 The bounds are the check, as they were for the case: the arm reaching **+0.241 in z** says it

@@ -187,6 +187,25 @@ class VinylDeckTest {
     }
 
     @Test
+    fun `the showroom's single is cut across a single's band, from the edge of its own radius`() {
+        val width = 1_024
+        val rough = VinylBands.roughness(null, width, VinylDimens.SINGLE_R, VinylDimens.SINGLE_GROOVE_OUT, VinylDimens.SINGLE_GROOVE_IN)
+        // Its u runs from the spindle to its own edge, as `build_vinyl_single` maps it.
+        fun at(radius: Float) = rough[(radius / VinylDimens.SINGLE_R * width).toInt().coerceIn(0, width - 1)]
+        assertEquals(VinylBands.SMOOTH_ROUGHNESS, at(VinylDimens.SINGLE_R - 0.001f), 0f)
+        assertEquals(VinylBands.SMOOTH_ROUGHNESS, at(VinylDimens.SINGLE_GROOVE_IN - 0.002f), 0f)
+        // One song a side: groove all the way across, and not a ring in it.
+        var r = VinylDimens.SINGLE_GROOVE_IN + 0.0005f
+        while (r < VinylDimens.SINGLE_GROOVE_OUT - 0.0005f) {
+            assertEquals("at $r", VinylBands.GROOVE_ROUGHNESS, at(r), 0f)
+            r += 0.0002f
+        }
+        // And a twelve-inch record, asked for as it always was, is where it always was.
+        assertEquals(VinylBands.GROOVE_ROUGHNESS, VinylBands.roughness(null, width)[(0.1f / VinylDimens.LP_R * width).toInt()], 0f)
+        assertEquals(VinylBands.SMOOTH_ROUGHNESS, VinylBands.roughness(null, width)[(0.149f / VinylDimens.LP_R * width).toInt()], 0f)
+    }
+
+    @Test
     fun `the rings you find a track by are where the tracks begin`() {
         val side = Side(0, minutes(4.0, 6.0, 2.0))
         assertEquals(listOf(4f / 12f, 10f / 12f), side.gaps())

@@ -32,6 +32,12 @@ class FormatTest {
     }
 
     @Test
+    fun `the vinyl room is a finished room`() {
+        assertTrue(Format.VINYL.built)
+        assertEquals(Format.VINYL, Format.openable(Format.VINYL, showUnbuilt = false))
+    }
+
+    @Test
     fun `an unknown or missing name is the CD room`() {
         assertEquals(Format.CD, Format.fromName(null))
         // A room that does not exist yet — as vinyl was when this was written, and no longer is.

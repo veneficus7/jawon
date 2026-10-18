@@ -12,6 +12,7 @@ import android.graphics.Typeface
 import android.text.TextPaint
 import android.text.TextUtils
 import androidx.core.content.res.ResourcesCompat
+import com.google.android.filament.MaterialInstance
 import com.jawon.app.R
 
 /**
@@ -111,7 +112,7 @@ object VinylArt {
      * A side's label: the cover, as a great many labels are, under the side's letter and what a
      * label always says.
      */
-    fun label(context: Context, cover: Bitmap?, letter: String, title: String, artist: String): Bitmap {
+    fun label(context: Context, cover: Bitmap?, letter: String, title: String, artist: String, speed: String = "33⅓ RPM"): Bitmap {
         val px = LABEL_PX
         val out = Bitmap.createBitmap(px, px, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(out)
@@ -131,7 +132,7 @@ object VinylArt {
         canvas.drawText(letter, px * 0.24f, px * 0.5f + text.textSize * 0.36f, text)
         canvas.drawRoundRect(RectF(px * 0.66f, px * 0.465f, px * 0.86f, px * 0.535f), px * 0.02f, px * 0.02f, plate)
         text.textSize = px * 0.040f
-        canvas.drawText("33⅓ RPM", px * 0.76f, px * 0.5f + text.textSize * 0.36f, text)
+        canvas.drawText(speed, px * 0.76f, px * 0.5f + text.textSize * 0.36f, text)
         // Round the edge, as type on a label runs: the record's name and whose it is.
         val arc = Path().apply { addArc(RectF(px * 0.09f, px * 0.09f, px * 0.91f, px * 0.91f), 200f, 140f) }
         text.textSize = px * 0.042f
@@ -144,8 +145,14 @@ object VinylArt {
     }
 
     /** A side's grooves, as one line of roughness — see [VinylBands]. Packed as glTF packs it: roughness in green. */
-    fun bands(side: Side?): Bitmap {
-        val rough = VinylBands.roughness(side, BAND_PX)
+    fun bands(side: Side?): Bitmap = line(VinylBands.roughness(side, BAND_PX))
+
+    /** The showroom's single: one song a side, cut across a seven-inch record's band. */
+    fun singleBands(): Bitmap = line(
+        VinylBands.roughness(null, BAND_PX, VinylDimens.SINGLE_R, VinylDimens.SINGLE_GROOVE_OUT, VinylDimens.SINGLE_GROOVE_IN)
+    )
+
+    private fun line(rough: FloatArray): Bitmap {
         val row = IntArray(BAND_PX) { Color.argb(255, 255, (rough[it] * 255f).toInt().coerceIn(0, 255), 0) }
         val pixels = IntArray(BAND_PX * 4) { row[it % BAND_PX] }
         return Bitmap.createBitmap(pixels, BAND_PX, 4, Bitmap.Config.ARGB_8888)
@@ -222,7 +229,9 @@ object VinylArt {
             text.letterSpacing = 0.16f
             val next = heading.side == turnTo
             text.color = if (next) amber else dim
-            val words = if (next) "SIDE ${Sides.letter(heading.side)}  ·  TURN OVER" else "SIDE ${Sides.letter(heading.side)}"
+            // Waiting at the end of a side for the next: its other face, or the next record of the set.
+            val then = if (ChangeRecord.isChange(heading.side - 1, heading.side)) "NEXT RECORD" else "TURN OVER"
+            val words = if (next) "SIDE ${Sides.letter(heading.side)}  ·  $then" else "SIDE ${Sides.letter(heading.side)}"
             canvas.drawText(words, heading.left * px, (heading.top + SleeveBackLayout.HEADING_HEIGHT * 0.62f) * px, text)
             text.letterSpacing = 0f
         }
@@ -311,4 +320,24 @@ object VinylArt {
 
     private fun font(context: Context, id: Int): Typeface =
         runCatching { ResourcesCompat.getFont(context, id) }.getOrNull() ?: Typeface.DEFAULT
+}
+
+/**
+ * A record's playing surface, in the one material here that is hand-written (`vinyl.mat`): what
+ * the vinyl room puts on its record, and the showroom on its single.
+ */
+object VinylSurface {
+    const val MATERIAL_ASSET = "materials/vinyl.filamat"
+
+    /** Carbon-filled PVC, linear: black, and not quite. */
+    const val BLACK = 0.004f
+
+    /** How much longer than wide the lamp's streak across the grooves is: nineteen to one. */
+    const val ANISOTROPY = 0.9f
+
+    fun dress(vinyl: MaterialInstance) {
+        vinyl.setParameter("baseColor", BLACK, BLACK, BLACK * 1.1f)
+        vinyl.setParameter("anisotropy", ANISOTROPY)
+        vinyl.setParameter("reflectance", 0.5f)
+    }
 }

@@ -48,6 +48,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.google.android.filament.LightManager
 import com.google.android.filament.Renderer
 import com.google.android.filament.Texture
+import com.google.android.filament.TextureSampler
 import com.google.android.filament.utils.TextureType
 import com.jawon.app.BuildConfig
 import com.jawon.app.ui.pocketscene.LCD_PX_H
@@ -69,6 +70,8 @@ import com.jawon.app.ui.theme.JawonTextStyle
 import com.jawon.app.ui.theme.LabelCream
 import com.jawon.app.ui.theme.LabelDim
 import com.jawon.app.ui.theme.LampAmber
+import com.jawon.app.ui.vinylscene.VinylArt
+import com.jawon.app.ui.vinylscene.VinylSurface
 import com.jawon.app.ui.wallscene.CaseArt
 import com.jawon.app.ui.wallscene.RoomCadence
 import com.jawon.app.ui.wallscene.RoomHaptics
@@ -106,6 +109,9 @@ private const val SHOWROOM_ASSET = "models/showroom.glb"
 /** The jewel case on the CD's plinth: the held case's own two halves, shut. */
 private const val CASE_TRAY_ASSET = "models/case_tray.glb"
 private const val CASE_LID_ASSET = "models/case_lid.glb"
+
+/** The vinyl's plinth: a seven-inch single, half out of its sleeve (`build_vinyl_single`). */
+private const val SINGLE_ASSET = "models/vinyl_single.glb"
 
 /**
  * The lens. Shorter than the pocket room's 50mm: this is a room you stand in and look along, not
@@ -293,6 +299,20 @@ fun ShowroomScreen(
     val tray = rememberModelInstance(modelLoader, CASE_TRAY_ASSET)
     val lid = rememberModelInstance(modelLoader, CASE_LID_ASSET)
     val pocket = rememberModelInstance(modelLoader, POCKET_MODEL_ASSET)
+    val single = rememberModelInstance(modelLoader, SINGLE_ASSET)
+    // The single's two playing faces, in the vinyl room's own material: gltfio's has nowhere to
+    // put the streak a lamp draws across a record (`vinyl.mat`), and under a gallery spot that
+    // streak is the whole of what a black disc shows.
+    val singleVinyl = remember(materialLoader) {
+        materialLoader.createInstance(materialLoader.createMaterial(VinylSurface.MATERIAL_ASSET)).apply(VinylSurface::dress)
+    }
+    val printSampler = remember {
+        TextureSampler(TextureSampler.MinFilter.LINEAR_MIPMAP_LINEAR, TextureSampler.MagFilter.LINEAR, TextureSampler.WrapMode.CLAMP_TO_EDGE)
+            .apply { anisotropy = 8f }
+    }
+    val lineSampler = remember {
+        TextureSampler(TextureSampler.MinFilter.LINEAR, TextureSampler.MagFilter.LINEAR, TextureSampler.WrapMode.CLAMP_TO_EDGE)
+    }
     val steel = remember(materialLoader) {
         materialLoader.createInstance(materialLoader.createMaterial(POLISHED_STEEL_MATERIAL_ASSET)).apply {
             setParameter("baseColor", STEEL_BASE_COLOUR[0], STEEL_BASE_COLOUR[1], STEEL_BASE_COLOUR[2])
@@ -306,15 +326,35 @@ fun ShowroomScreen(
     var cover by remember { mutableStateOf<Texture?>(null) }
     // The same record on the pocket player's screen, beside its main menu.
     var screenCover by remember { mutableStateOf<ImageBitmap?>(null) }
+    // And as a single: its label, its grooves, and its sleeve — printed with its name where the
+    // record has no cover.
+    var singlePrint by remember { mutableStateOf<SinglePrint?>(null) }
     LaunchedEffect(engine) {
-        val path = viewModel.caseCoverPath() ?: return@LaunchedEffect
-        val bitmap = withContext(Dispatchers.IO) {
-            CaseArt.loadCover(path, maxPx = COVER_PX)?.let { square(it, COVER_PX) }
-        } ?: return@LaunchedEffect
+        val record = viewModel.lastRecord()
+        val bitmap = record?.coverPath?.let { path ->
+            withContext(Dispatchers.IO) { CaseArt.loadCover(path, maxPx = COVER_PX)?.let { square(it, COVER_PX) } }
+        }
+        val printed = withContext(Dispatchers.Default) {
+            Triple(
+                VinylArt.label(context, bitmap, "A", record?.title.orEmpty(), record?.artist.orEmpty(), speed = "45 RPM"),
+                VinylArt.singleBands(),
+                if (record != null && bitmap == null) VinylArt.sleeveFront(context, null, record.title, record.artist) else null
+            )
+        }
+        singlePrint = SinglePrint(
+            label = ImageTexture.Builder().bitmap(printed.first, TextureType.COLOR).build(engine),
+            bands = ImageTexture.Builder().bitmap(printed.second, TextureType.DATA).build(engine),
+            front = printed.third?.let { ImageTexture.Builder().bitmap(it, TextureType.COLOR).build(engine) }
+        )
+        bitmap ?: return@LaunchedEffect
         cover = ImageTexture.Builder().bitmap(bitmap, TextureType.COLOR).build(engine)
         screenCover = withContext(Dispatchers.Default) {
             Bitmap.createScaledBitmap(bitmap, SCREEN_COVER_PX, SCREEN_COVER_PX, true).asImageBitmap()
         }
+    }
+    DisposableEffect(singlePrint) {
+        val print = singlePrint
+        onDispose { print?.let { p -> listOfNotNull(p.label, p.bands, p.front).forEach { engine.destroyTexture(it) } } }
     }
 
     // **The pocket player's screen, switched on**: its main menu, drawn by the pocket room's own
@@ -543,6 +583,44 @@ fun ShowroomScreen(
                     )
                 }
             }
+
+            // **The vinyl**: a seven-inch single half out of its picture sleeve — the record you
+            // played last, its cover on the sleeve and on the label, cut at a single's speed.
+            single?.let { model ->
+                Node(apply = {
+                    exhibitNodes[Exhibit.VINYL.ordinal] = this
+                    currentDirector.value.exhibitNodes[Exhibit.VINYL.ordinal] = this
+                }) {
+                    val print = singlePrint
+                    val front = print?.front ?: cover
+                    val node = remember { arrayOfNulls<ModelNode>(1) }
+                    ModelNode(
+                        model,
+                        apply = {
+                            isTouchable = false
+                            isShadowCaster = true
+                            isShadowReceiver = true
+                            node[0] = this
+                        }
+                    )
+                    // Dressed after every recomposition here, not in `apply`, which runs as the node
+                    // is made — before anything is printed, and never again.
+                    SideEffect {
+                        val made = node[0] ?: return@SideEffect
+                        for (part in made.renderableNodes) {
+                            val renderable = part as? RenderableNode ?: continue
+                            when (renderable.name) {
+                                "single_a", "single_b" -> if (print != null) {
+                                    singleVinyl.setParameter("bands", print.bands, lineSampler)
+                                    renderable.materialInstance = singleVinyl
+                                }
+                                "single_label_a" -> print?.let { renderable.materialInstance.setParameter("baseColorMap", it.label, printSampler) }
+                                "single_front" -> front?.let { renderable.materialInstance.setParameter("baseColorMap", it, printSampler) }
+                            }
+                        }
+                    }
+                }
+            }
         }
 
         // The showroom, as TalkBack meets it (0.7.5): what is on the stand in front, and the moves a
@@ -648,3 +726,6 @@ private fun square(source: Bitmap, px: Int): Bitmap {
     val cropped = Bitmap.createBitmap(source, (source.width - side) / 2, (source.height - side) / 2, side, side)
     return if (side == px) cropped else Bitmap.createScaledBitmap(cropped, px, px, true)
 }
+
+/** The single on the vinyl's plinth, printed: textures the scene's materials sample, so they outlive it. */
+private class SinglePrint(val label: Texture, val bands: Texture, val front: Texture?)

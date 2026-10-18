@@ -28,6 +28,9 @@ import kotlin.math.exp
 import kotlin.math.floor
 import kotlin.math.hypot
 import kotlin.math.roundToInt
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.setValue
 import kotlin.math.sin
 
 internal const val CRATE_ASSET = "models/vinyl_crate.glb"
@@ -237,6 +240,7 @@ internal class VinylCrate(
         // One tick for a record passed, and a heavier one for a shelf's card — from the motion
         // and not from the finger, so a flick ticks all the way to where it stops.
         val near = motion.nearest
+        if (near != front) front = near
         if (near != lastNear && count > 0) {
             if (lastNear >= 0) {
                 val by = if (near > lastNear) 1 else -1
@@ -494,20 +498,47 @@ internal class VinylCrate(
             // Above the one being read, on the screen, is the stack behind it; below is the pile in front.
             spot[1] > VinylDimens.SLEEVE + 0.012f -> motion.nudge(1)
             spot[1] < -0.012f -> motion.nudge(-1)
-            abs(spot[0]) <= VinylDimens.SLEEVE / 2 -> when (item) {
-                is CrateItem.Record -> {
-                    haptics.detent()
-                    taking = item.albumId
-                    takingAt = SystemClock.uptimeMillis()
-                    onTake(item.albumId)
-                }
-                CrateItem.Add -> {
-                    haptics.detent()
-                    onAdd()
-                }
-                else -> Unit
-            }
+            abs(spot[0]) <= VinylDimens.SLEEVE / 2 -> take(item)
         }
+    }
+
+    private fun take(item: CrateItem) {
+        when (item) {
+            is CrateItem.Record -> {
+                haptics.detent()
+                taking = item.albumId
+                takingAt = SystemClock.uptimeMillis()
+                onTake(item.albumId)
+            }
+            CrateItem.Add -> {
+                haptics.detent()
+                onAdd()
+            }
+            else -> Unit
+        }
+    }
+
+    // ---- What TalkBack's actions do: what a finger does, by name ------------------------------------
+
+    /**
+     * Which one is in front, for Compose: what TalkBack reads out. State, unlike the rest of the
+     * crate, because it is read in a composition — and it changes once a record, not once a frame.
+     */
+    var front by mutableIntStateOf(0)
+        private set
+
+    /** What is being read: the one in front. */
+    val inFront: CrateItem? get() = items.getOrNull(front)
+
+    /** The next record back, or the one in front of it. */
+    fun step(by: Int) = motion.nudge(by)
+
+    /** The first record of the next shelf, or of this one — or the one before. */
+    fun shelf(forward: Boolean) = motion.goTo(Crate.shelfStart(items, motion.target.roundToInt(), forward))
+
+    /** The one in front, taken out. */
+    fun takeInFront() {
+        inFront?.let(::take)
     }
 
     /** The room is going. */

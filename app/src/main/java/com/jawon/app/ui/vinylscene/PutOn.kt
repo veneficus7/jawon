@@ -352,6 +352,38 @@ object TurnOver {
 }
 
 /**
+ * **The next record of a set** (2026-10-18). A long album is cut into more than two sides
+ * (`Sides.cut`), and a side on another record is not got to by turning this one over: the record
+ * on the platter is put back in its sleeve and the next one drawn out of it. Turned over instead,
+ * as it was until now, the labels changed under the needle as it landed.
+ *
+ * It is `PutOn`'s own path — run backwards from the mat to the middle of the sleeve, and forwards
+ * again — so a record is carried over the arm and the spindle both ways by the rules the put-on
+ * is held to, and the sleeve never moves. The labels are printed for the next record while the
+ * record is under the cover, where nobody can see one become the other.
+ *
+ * Pure. [clock] is where `PutOn`'s clock stands [t] seconds into a change.
+ */
+object ChangeRecord {
+
+    /** Off the spindle and into the sleeve: the put-on's slide and carry, backwards. */
+    const val BACK_S = PutOn.SEATED_AT - PutOn.SLIDE_FROM
+
+    /** In the sleeve, under its cover: where one record becomes the next. */
+    const val SWAP_AT = BACK_S
+
+    const val TOTAL_S = 2f * BACK_S
+
+    /** `PutOn`'s clock [t] seconds into a change: back to the middle of the sleeve, and out again. */
+    fun clock(t: Float): Float =
+        if (t <= SWAP_AT) PutOn.SEATED_AT - t.coerceAtLeast(0f)
+        else PutOn.SLIDE_FROM + (t - SWAP_AT).coerceAtMost(BACK_S)
+
+    /** Whether [toSide] is on another record of the set from [fromSide], and not this one's other face. */
+    fun isChange(fromSide: Int, toSide: Int): Boolean = fromSide / 2 != toSide / 2
+}
+
+/**
  * A platter under a motor: it comes up to speed and it runs down, and neither is at once.
  * [speed] is 0 at rest and 1 at thirty-three and a third.
  */

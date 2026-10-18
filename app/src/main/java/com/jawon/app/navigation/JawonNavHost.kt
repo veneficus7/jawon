@@ -62,6 +62,7 @@ import com.jawon.app.ui.pocketscene.PocketRoomScreen
 import com.jawon.app.ui.settings.GUIDE_CD_PAGE
 import com.jawon.app.ui.settings.GUIDE_POCKET_PAGE
 import com.jawon.app.ui.settings.GUIDE_ROOMS_PAGE
+import com.jawon.app.ui.settings.GUIDE_VINYL_PAGE
 import com.jawon.app.ui.settings.SettingsScreen
 import com.jawon.app.ui.shelfmanager.ShelfManagerScreen
 import com.jawon.app.ui.showroom.ShowroomScreen
@@ -425,6 +426,7 @@ private fun RoomStage(
                         )
                         Place.VINYL -> VinylRoomScreen(
                             onOpenSettings = onOpenSettings,
+                            onOpenGuide = { onOpenGuide(GUIDE_VINYL_PAGE) },
                             onAddAlbum = onAddAlbum,
                             onOpenShowroom = onOpenShowroom,
                             onOpenRooms = onOpenRooms,

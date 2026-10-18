@@ -10,7 +10,17 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.ui.semantics.CustomAccessibilityAction
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.customActions
+import androidx.compose.ui.semantics.semantics
+import com.jawon.app.ui.common.FirstRunHint
+import com.jawon.app.ui.common.Hints
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -90,13 +100,6 @@ private const val PLATTER_ASSET = "models/vinyl_platter.glb"
 private const val ARM_ASSET = "models/vinyl_arm.glb"
 private const val RECORD_ASSET = "models/vinyl_record.glb"
 private const val SLEEVE_ASSET = "models/vinyl_sleeve.glb"
-private const val VINYL_MATERIAL_ASSET = "materials/vinyl.filamat"
-
-/** Carbon-filled PVC, linear: black, and not quite. */
-private const val VINYL_BLACK = 0.004f
-
-/** How much longer than wide the lamp's streak across the grooves is: nineteen to one. */
-private const val VINYL_ANISOTROPY = 0.9f
 
 /** 33⅓ turns a minute. Clockwise from above, which about +y is the negative way round. */
 private const val PLATTER_DEG_PER_S = 200f
@@ -259,6 +262,7 @@ fun VinylRoomScreen(
     val unseen = covered || LocalRoomParked.current
     LaunchedEffect(unseen) { if (unseen) stage.unseen() }
     val turnsItself by viewModel.vinylTurnsItself.collectAsStateWithLifecycle()
+    val hintsSeen by viewModel.hintsSeen.collectAsStateWithLifecycle()
     val crateItems = remember(layout) { Crate.items(layout) }
     val currentNowPlaying = rememberUpdatedState(nowPlayingAlbumId)
     SideEffect {
@@ -277,6 +281,8 @@ fun VinylRoomScreen(
         stage.onNeedleDown = { viewModel.setPlaying(true) }
         stage.onNeedleUp = { viewModel.setPlaying(false) }
         stage.onSelect = { index -> viewModel.onSelectTrack(index) }
+        // The next record of a set, while it is in the sleeve: the player there, and silent.
+        stage.onCue = { index -> viewModel.onScrub(index, 0L) }
         stage.turnsItself = turnsItself
         crate.onAdd = onAddAlbum
         crate.onDeck = { stage.toDeck() }
@@ -300,9 +306,9 @@ fun VinylRoomScreen(
     // process with it.
     val art = remember(engine) { VinylTextures(engine) }
     // A record's two faces, in the one material here that is hand-written — see `vinyl.mat`.
-    val vinylMaterial = remember(materialLoader) { materialLoader.createMaterial(VINYL_MATERIAL_ASSET) }
-    val vinylA = remember(vinylMaterial) { materialLoader.createInstance(vinylMaterial).apply(::dressVinyl) }
-    val vinylB = remember(vinylMaterial) { materialLoader.createInstance(vinylMaterial).apply(::dressVinyl) }
+    val vinylMaterial = remember(materialLoader) { materialLoader.createMaterial(VinylSurface.MATERIAL_ASSET) }
+    val vinylA = remember(vinylMaterial) { materialLoader.createInstance(vinylMaterial).apply(VinylSurface::dress) }
+    val vinylB = remember(vinylMaterial) { materialLoader.createInstance(vinylMaterial).apply(VinylSurface::dress) }
     // Declared before the scene, so it is disposed after it (`ENGINEERING.md`, trap 35): the textures
     // go only once nothing can be drawn with them.
     DisposableEffect(art) { onDispose { art.destroy() } }
@@ -329,6 +335,7 @@ fun VinylRoomScreen(
         // What is printed, and for which record: a record being put on is not shown in the last one's sleeve.
         stage.printedAlbum = playing?.albumId
         stage.printedSides = sides
+        stage.printedRecord = recordIndex
         stage.changed = true
     }
     // The back of the sleeve is printed again whenever the line that is lit moves, and when a
@@ -622,6 +629,46 @@ fun VinylRoomScreen(
             DisposableEffect(art) { onDispose { stage.release() } }
         }
 
+        // **The room, as TalkBack meets it** — a composable of its own, so that what it reads
+        // changing recomposes it and nothing else.
+        VinylRoomSemantics(stage, crate, crateItems, album, deck, sides, onPlayPause = { viewModel.onPlayPause() })
+
+        // **The first time at the crate, and the first time at the deck** (as each room has had
+        // since 0.7.4): what a finger does in each — two places, two cards, each shown once.
+        if (!covered && !stage.deckward && Hints.VINYL !in hintsSeen && crateItems.any { it is CrateItem.Record }) {
+            FirstRunHint(
+                title = "This is your crate",
+                body = "Drag up and down to flip through your records, and sideways for the next " +
+                    "shelf. Tap the one in front to put it on.",
+                onGotIt = { viewModel.onHintSeen(Hints.VINYL) },
+                onGuide = {
+                    viewModel.onHintSeen(Hints.VINYL)
+                    onOpenGuide()
+                },
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .statusBarsPadding()
+                    .padding(top = 24.dp)
+            )
+        }
+        if (!covered && stage.deckward && album != null && Hints.VINYL_DECK !in hintsSeen) {
+            FirstRunHint(
+                title = "The record is on",
+                body = "Put a finger on the record to scratch it. Touch a song on the sleeve to put " +
+                    "the needle there; at the end of a side, touch the record to turn it over.",
+                onGotIt = { viewModel.onHintSeen(Hints.VINYL_DECK) },
+                onGuide = {
+                    viewModel.onHintSeen(Hints.VINYL_DECK)
+                    onOpenGuide()
+                },
+                // Under the sleeve, not over the deck: the record is what it tells you to touch.
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .navigationBarsPadding()
+                    .padding(bottom = 8.dp)
+            )
+        }
+
         // **The way out**, at the crate and nowhere else: to the other rooms, and to Settings.
         // The CD room's own two buttons, at the foot of the frame where the floor is — over the
         // deck there is nothing on the glass but the deck. (Adding a record is in the crate
@@ -652,10 +699,90 @@ fun VinylRoomScreen(
     }
 }
 
-private fun dressVinyl(vinyl: MaterialInstance) {
-    vinyl.setParameter("baseColor", VINYL_BLACK, VINYL_BLACK, VINYL_BLACK * 1.1f)
-    vinyl.setParameter("anisotropy", VINYL_ANISOTROPY)
-    vinyl.setParameter("reflectance", 0.5f)
+/**
+ * **The room, as TalkBack meets it**: where you are, what is in front of you or on the deck, and
+ * the moves a finger makes, by name. A layer of semantics over the scene, as the other rooms have
+ * (0.7.5): SceneView reads none of its own, and this takes no touches. What it says is read here,
+ * in the composition, from state — the crate's [VinylCrate.front], the deck, the side awaited —
+ * because a semantics block is not watched, and a description written inside one goes stale.
+ */
+@Composable
+private fun VinylRoomSemantics(
+    stage: VinylStage,
+    crate: VinylCrate,
+    crateItems: List<CrateItem>,
+    album: com.jawon.app.ui.wallscene.CaseLayout?,
+    deck: DeckState,
+    sides: List<Side>,
+    onPlayPause: () -> Unit
+) {
+    val atCrate = !stage.deckward
+    val front = if (crateItems.isEmpty()) null else crate.front.let { crateItems.getOrNull(it) }
+    val waiting = stage.awaiting
+    var closer by remember { mutableStateOf(false) }
+    val index = deck.currentTrackIndex.coerceAtLeast(0)
+    val side = Sides.of(sides, index)
+    val description = if (atCrate) {
+        "Your record crate. " + when (front) {
+            is CrateItem.Record -> "In front: ${front.title}, by ${front.artist}."
+            is CrateItem.Divider -> "In front: the card for ${front.name}, ${front.records} records behind it."
+            CrateItem.Add -> "In front: the card for adding records."
+            null -> "There is nothing in it yet."
+        }
+    } else if (album == null) {
+        "The deck, with no record on it."
+    } else buildString {
+        append("The deck. ${album.title}, by ${album.artist}")
+        if (sides.size > 2) append(", record ${Sides.record(side)} of ${Sides.record(sides.size - 1)}")
+        append(". ")
+        if (waiting > 0) {
+            append("Side ${Sides.letter(waiting - 1)} has ended. ")
+            append(
+                if (ChangeRecord.isChange(waiting - 1, waiting)) "Change to the next record for side ${Sides.letter(waiting)}."
+                else "Turn it over for side ${Sides.letter(waiting)}."
+            )
+        } else {
+            append("Side ${Sides.letter(side)}, track ${index + 1}")
+            deck.currentTrack?.title?.let { append(", $it") }
+            append(if (deck.isPlaying) ", playing." else ", stopped.")
+        }
+    }
+    Box(
+        Modifier
+            .fillMaxSize()
+            .semantics {
+                contentDescription = description
+                // Said when it changes: an action's result, not a silence.
+                liveRegion = LiveRegionMode.Polite
+                customActions = buildList {
+                    if (atCrate) {
+                        add(CustomAccessibilityAction("Next record") { crate.step(1); true })
+                        add(CustomAccessibilityAction("Previous record") { crate.step(-1); true })
+                        add(CustomAccessibilityAction("Next shelf") { crate.shelf(true); true })
+                        add(CustomAccessibilityAction("Previous shelf") { crate.shelf(false); true })
+                        when (front) {
+                            is CrateItem.Record -> add(CustomAccessibilityAction("Put it on") { crate.takeInFront(); true })
+                            CrateItem.Add -> add(CustomAccessibilityAction("Add records") { crate.takeInFront(); true })
+                            else -> Unit
+                        }
+                        if (album != null) add(CustomAccessibilityAction("Go to the deck") { stage.toDeck(); true })
+                    } else {
+                        if (album != null) {
+                            add(CustomAccessibilityAction("Start or stop") { stage.startStop(sides, onPlayPause); true })
+                            add(CustomAccessibilityAction("Turn the record over") { stage.turnOverNow(deck, sides); true })
+                            if (index + 1 < deck.tracks.size) add(CustomAccessibilityAction("Next track") { stage.choose(index + 1, deck, sides); true })
+                            if (index > 0) add(CustomAccessibilityAction("Previous track") { stage.choose(index - 1, deck, sides); true })
+                            add(CustomAccessibilityAction(if (closer) "The whole deck" else "Closer to the record") {
+                                closer = !closer
+                                stage.zoomTarget = if (closer) 1f else 0f
+                                true
+                            })
+                        }
+                        add(CustomAccessibilityAction("Back to the crate") { stage.toCrate(); true })
+                    }
+                }
+            }
+    )
 }
 
 /** What a record is printed with, baked off the main thread. */
@@ -817,16 +944,28 @@ private class VinylStage(
 
     // ---- The record's other side ------------------------------------------------------------------
 
-    /** One turning-over: which track the needle goes down on afterwards, and from which side up to which. */
-    private class Turn(val toTrack: Int, val fromDeg: Float, val toDeg: Float) {
-        /** `TurnOver`'s clock; below zero while the arm is still on its way home. */
+    /**
+     * One turning-over: which track the needle goes down on afterwards, and from which side up to
+     * which — or, where [change], the next record of a set (`ChangeRecord`).
+     */
+    private class Turn(val toTrack: Int, val fromDeg: Float, val toDeg: Float, val change: Boolean) {
+        /** `TurnOver`'s clock, or `ChangeRecord`'s; below zero while the arm is still on its way home. */
         var t = -1f
         var rate = 1f
         var armSent = false
+        /** A change: the player has been sent to the next record, and how long its labels have been waited for. */
+        var cued = false
+        var waited = 0f
     }
 
     private var turnRun: Turn? = null
     private val turnPose = TurnOver.Pose()
+
+    /** The side that is up, as the last frame had it. */
+    private var sideUp = 0
+
+    /** Where the card lies with a record on: it stays there while one record of a set is changed for the next. */
+    private val restPose = PutOn.Pose().also { PutOn.rest(it) }
 
     /** How far over the record is — 0 with its first side up, 180 with its second — and how far off the mat. */
     private var turnedDeg = 0f
@@ -851,12 +990,17 @@ private class VinylStage(
     /** What the sleeve and the labels are printed with, and for which record: set by the room when it has printed them. */
     var printedAlbum: String? = null
     var printedSides: List<Side>? = null
+    /** Which record of the set the labels are printed for. */
+    var printedRecord = -1
     private var deckAlbum: String? = null
 
     /** The needle has landed and there should be music; it has been lifted and there should not; it has been put on a track. */
     var onNeedleDown: () -> Unit = {}
     var onNeedleUp: () -> Unit = {}
     var onSelect: (Int) -> Unit = {}
+
+    /** Send the player to a track without starting it: the next record of a set, under its cover. */
+    var onCue: (Int) -> Unit = {}
 
     /** [albumId] is the record on the platter, with nothing on its way there. */
     fun isOn(albumId: String): Boolean = run == null && hasRecord && deckAlbum == albumId
@@ -913,16 +1057,59 @@ private class VinylStage(
     }
 
     /**
-     * Turn the record over — or, for a side on another record of the set, change it, which for
-     * now is drawn the same way — and put the needle down on [toTrack].
+     * Turn the record over — or, for a side on another record of the set, change it for that one
+     * (`ChangeRecord`) — and put the needle down on [toTrack].
      */
     private fun turnOver(toTrack: Int, sides: List<Side>) {
         if (turnRun != null || run != null || toTrack < 0) return
         haptics.tick()
         zoomTarget = 0f
         if (awaiting != -1) awaiting = -1
-        Log.i(TAG, "turning the record over for track ${toTrack + 1}" + if (ended && turnsItself) ", unasked" else "")
-        turnRun = Turn(toTrack, turnedDeg, if (Sides.of(sides, toTrack) % 2 == 1) 180f else 0f)
+        val toSide = Sides.of(sides, toTrack)
+        val change = ChangeRecord.isChange(sideUp, toSide)
+        Log.i(TAG, (if (change) "changing to record ${Sides.record(toSide)}" else "turning the record over") +
+            " for track ${toTrack + 1}" + if (ended && turnsItself) ", unasked" else "")
+        turnRun = Turn(toTrack, turnedDeg, if (toSide % 2 == 1) 180f else 0f, change)
+    }
+
+    // ---- What TalkBack's actions do: what a finger does, by name ------------------------------------
+
+    /** The start · stop button on the top plate. */
+    fun startStop(sides: List<Side>, onPlayPause: () -> Unit) {
+        if (!hasRecord || run != null || turnRun != null) return
+        if (ended && awaitedTrack >= 0) turnOver(awaitedTrack, sides) else onPlayPause()
+    }
+
+    /** A hand drawn across the record: over to its other side, or on to the next record of a set when a side has ended. */
+    fun turnOverNow(deck: DeckState, sides: List<Side>) {
+        if (hasRecord && run == null) turnOver(otherSide(deck, sides), sides)
+    }
+
+    /** A line on the back of the sleeve, touched. */
+    fun choose(index: Int, deck: DeckState, sides: List<Side>) {
+        if (!hasRecord || run != null || turnRun != null || armMove != null) return
+        if (index in deck.tracks.indices && (ended || index != deck.currentTrackIndex)) hop(index, deck, sides)
+    }
+
+    /** Whether the needle is home and the record waiting to be turned, or changed, to [awaiting]. */
+    val waitingForAHand: Boolean get() = ended && awaitedTrack >= 0
+
+    /** Down on its other side, or the next record down: the motor, and the needle to the track that was asked for. */
+    private fun landTurned(flip: Turn, sides: List<Side>, now: Long) {
+        flip.armSent = true
+        haptics.tick()
+        motorUntil = now + MOTOR_HOLD_MS
+        val to = sides.getOrNull(Sides.of(sides, flip.toTrack))
+        val yaw = VinylArm.yawDegrees(to?.radiusAt(to.fraction(flip.toTrack, 0L)) ?: VinylDimens.GROOVE_OUT)
+        sendArm(Needle.move(armYaw, armLift, yaw, quick = false)) {
+            needle.drop(1f)
+            haptics.detent()
+            agreeing = 0f
+            motorUntil = SystemClock.uptimeMillis() + MOTOR_HOLD_MS
+            turnRun = null
+            Log.i(TAG, "${if (flip.change) "changed" else "turned over"}: needle down on track ${flip.toTrack + 1}")
+            onSelect(flip.toTrack)
+        }
     }
 
     /** Where the needle goes if the record is turned over with nothing having asked for a track. */
@@ -1037,6 +1224,7 @@ private class VinylStage(
         val track = scratch.playerTrack().takeIf { it in deck.tracks.indices } ?: deck.currentTrackIndex.coerceAtLeast(0)
         val sideIndex = if (hasRecord) Sides.of(sides, track) else 0
         val flipped = sideIndex % 2 == 1
+        if (turnRun == null) sideUp = sideIndex
 
         val side = sides.getOrNull(sideIndex)
         val heard = scratch.positionMs() ?: scratch.playerPositionMs() ?: positionMs
@@ -1094,8 +1282,12 @@ private class VinylStage(
             ) {
                 // The side has run out: the needle goes home, the motor stops, and the card says which side is next.
                 ended = true
-                Log.i(TAG, "side ${Sides.letter(sideIndex)} ended at track ${track + 1}; " +
-                    if (track + 1 < deck.tracks.size) "waiting to be turned over${if (turnsItself) ", and will be" else ""}" else "the record is over")
+                val next = if (track + 1 < deck.tracks.size) Sides.of(sides, track + 1) else -1
+                Log.i(TAG, "side ${Sides.letter(sideIndex)} ended at track ${track + 1}; " + when {
+                    next < 0 -> "the record is over"
+                    ChangeRecord.isChange(sideIndex, next) -> "waiting for the next record${if (turnsItself) ", and will be changed" else ""}"
+                    else -> "waiting to be turned over${if (turnsItself) ", and will be" else ""}"
+                })
                 endedFor = 0f
                 awaitedTrack = if (track + 1 < deck.tracks.size) track + 1 else -1
                 awaiting = if (awaitedTrack >= 0) Sides.of(sides, awaitedTrack) else -1
@@ -1124,28 +1316,39 @@ private class VinylStage(
                         flip.t = 0f
                     }
                 }
+            } else if (flip.change) {
+                // Another record of the set: this one back into its sleeve, and — once the next
+                // one's labels are printed, under the cover where the change cannot be seen — that
+                // one out of it and down onto the mat. The card stays where it lies.
+                when {
+                    flip.t < ChangeRecord.SWAP_AT -> flip.t = (flip.t + dt * flip.rate).coerceAtMost(ChangeRecord.SWAP_AT)
+                    !flip.cued -> {
+                        flip.cued = true
+                        turnedDeg = flip.toDeg
+                        onCue(flip.toTrack)
+                    }
+                    printedRecord == Sides.of(sides, flip.toTrack) / 2 || flip.waited > GIVE_UP_S ->
+                        if (flip.t < ChangeRecord.TOTAL_S) flip.t = (flip.t + dt * flip.rate).coerceAtMost(ChangeRecord.TOTAL_S)
+                    else -> flip.waited += dt
+                }
+                PutOn.at(ChangeRecord.clock(flip.t), pose)
+                pose.cardX = restPose.cardX
+                pose.cardY = restPose.cardY
+                pose.cardZ = restPose.cardZ
+                pose.cardYaw = restPose.cardYaw
+                pose.cardSeen = true
+                liftM = 0f
+                if (flip.t >= ChangeRecord.TOTAL_S && !flip.armSent) {
+                    Log.i(TAG, "changed to record ${Sides.record(Sides.of(sides, flip.toTrack))}" +
+                        if (flip.waited > 0f) " after ${(flip.waited * 1000).toInt()}ms for its labels" else "")
+                    landTurned(flip, sides, now)
+                }
             } else {
                 if (flip.t < TurnOver.TOTAL_S) flip.t = (flip.t + dt * flip.rate).coerceAtMost(TurnOver.TOTAL_S)
                 TurnOver.at(flip.t, turnPose)
                 liftM = turnPose.lift
                 turnedDeg = flip.fromDeg + (flip.toDeg - flip.fromDeg) * turnPose.turned
-                if (flip.t >= TurnOver.TOTAL_S && !flip.armSent) {
-                    // Down on its other side: the motor, and the needle to the track that was asked for.
-                    flip.armSent = true
-                    haptics.tick()
-                    motorUntil = now + MOTOR_HOLD_MS
-                    val to = sides.getOrNull(Sides.of(sides, flip.toTrack))
-                    val yaw = VinylArm.yawDegrees(to?.radiusAt(to.fraction(flip.toTrack, 0L)) ?: VinylDimens.GROOVE_OUT)
-                    sendArm(Needle.move(armYaw, armLift, yaw, quick = false)) {
-                        needle.drop(1f)
-                        haptics.detent()
-                        agreeing = 0f
-                        motorUntil = SystemClock.uptimeMillis() + MOTOR_HOLD_MS
-                        turnRun = null
-                        Log.i(TAG, "turned over: needle down on track ${flip.toTrack + 1}")
-                        onSelect(flip.toTrack)
-                    }
-                }
+                if (flip.t >= TurnOver.TOTAL_S && !flip.armSent) landTurned(flip, sides, now)
             }
         } else {
             liftM = 0f
@@ -1154,7 +1357,8 @@ private class VinylStage(
             val wanted = if (flipped) 180f else 0f
             if (agreeing < 0f && turnedDeg != wanted) turnedDeg = wanted
         }
-        val aloft = flip != null && flip.t > 0f && !turnPose.seated
+        // Off the mat, in the hand. (A record being changed is off it by where `PutOn` has it.)
+        val aloft = flip != null && !flip.change && flip.t > 0f && !turnPose.seated
         val seated = here && pose.seated && !aloft
         seatedNow = seated
 

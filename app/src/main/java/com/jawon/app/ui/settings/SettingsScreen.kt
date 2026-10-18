@@ -1947,7 +1947,7 @@ fun SettingsScreen(
                 )
             }
 
-            SettingsPage.GUIDE_CD, SettingsPage.GUIDE_POCKET, SettingsPage.GUIDE_ROOMS,
+            SettingsPage.GUIDE_CD, SettingsPage.GUIDE_POCKET, SettingsPage.GUIDE_VINYL, SettingsPage.GUIDE_ROOMS,
             SettingsPage.GUIDE_OUTSIDE, SettingsPage.GUIDE_MUSIC -> {
                 val topic = guideTopicOf(shown)
                 SettingsPage(title = topic.title, onBack = { page = null }) { GuideTopicContent(topic) }
@@ -2050,7 +2050,7 @@ fun SettingsScreen(
 /** The pages under Settings' list. */
 private enum class SettingsPage {
     UPDATES, ROOM, LIGHT, GRAPHICS, CROSSFADE, LOUDNESS, TIDY, BACKUP, SERVER, PERFORMANCE, PROBLEMS, PRIVACY,
-    GUIDE_CD, GUIDE_POCKET, GUIDE_ROOMS, GUIDE_OUTSIDE, GUIDE_MUSIC
+    GUIDE_CD, GUIDE_POCKET, GUIDE_VINYL, GUIDE_ROOMS, GUIDE_OUTSIDE, GUIDE_MUSIC
 }
 
 private fun graphicsLabel(g: com.jawon.app.ui.wallscene.Graphics): String = when (g) {
@@ -2074,11 +2074,13 @@ private tailrec fun android.content.Context.findActivityForRecreate(): android.a
 /** The Guide's pages by name, for the rooms that open Settings on one of them. */
 const val GUIDE_POCKET_PAGE = "GUIDE_POCKET"
 const val GUIDE_CD_PAGE = "GUIDE_CD"
+const val GUIDE_VINYL_PAGE = "GUIDE_VINYL"
 const val GUIDE_ROOMS_PAGE = "GUIDE_ROOMS"
 
 private fun guidePageFor(topic: GuideTopic): SettingsPage = when (topic) {
     GuideTopic.CD -> SettingsPage.GUIDE_CD
     GuideTopic.POCKET -> SettingsPage.GUIDE_POCKET
+    GuideTopic.VINYL -> SettingsPage.GUIDE_VINYL
     GuideTopic.ROOMS -> SettingsPage.GUIDE_ROOMS
     GuideTopic.OUTSIDE -> SettingsPage.GUIDE_OUTSIDE
     GuideTopic.MUSIC -> SettingsPage.GUIDE_MUSIC
@@ -2086,6 +2088,7 @@ private fun guidePageFor(topic: GuideTopic): SettingsPage = when (topic) {
 
 private fun guideTopicOf(page: SettingsPage): GuideTopic = when (page) {
     SettingsPage.GUIDE_POCKET -> GuideTopic.POCKET
+    SettingsPage.GUIDE_VINYL -> GuideTopic.VINYL
     SettingsPage.GUIDE_ROOMS -> GuideTopic.ROOMS
     SettingsPage.GUIDE_OUTSIDE -> GuideTopic.OUTSIDE
     SettingsPage.GUIDE_MUSIC -> GuideTopic.MUSIC

@@ -359,12 +359,38 @@ second. A real record would not have shown it; the test library did.
 room's own two buttons (`ChromeAction`, moved to `ui/common/`). `adb logcat -s Jawon.Vinyl` says
 what the deck did and when.
 
-What does not exist: the arm as something to pick up, taking a record *off* (it leaves the
-platter out of sight), changing to the second record of a double album as anything but a turn
-(the labels change under it), a page of Settings → Guide, and a first-run card. `Format.VINYL`
-is unbuilt: debug builds offer it, and a release shows its plinth as *Coming*. **Never on a
-phone**, and its cost there is not known — which, after what the CD wall turned out to cost, is
-the first thing to find out when it is.
+**Finished, 2026-10-18** — the owner: "finish up vinyl mode". `Format.VINYL` is built, so a
+release build offers the room in Settings, on the Rooms card and in the showroom. What finishing
+it took:
+
+- **The next record of a set** (`ChangeRecord`, in `PutOn.kt`). A long album is cut into four
+  sides or six, and a side on another record is no longer got to by turning this one over — the
+  labels used to change under the needle as it landed. The record goes back into its sleeve by
+  the put-on's own path run backwards, the player is sent to the next record's first track
+  without starting (`onCue`), the labels are printed while it is under the cover, and the next
+  record comes out the same way and the needle goes down. The card reads *SIDE C · NEXT RECORD*
+  while it waits. On the emulator, with a four-side test album: 3.45s from the touch to the
+  music, the labels ready 41–83ms after the record was in the sleeve. A turn is still a turn:
+  only a side on another record is a change (`ChangeRecord.isChange`).
+- **Its single in the showroom**: a seven-inch single half out of its picture sleeve
+  (`build_vinyl_single`), the record you played last on the sleeve and on the label, at 45 RPM.
+  A twelve-inch sleeve is wider than the showroom's frame on a phone held upright and twice the
+  plinth; a single is the plinth's width and is as much a record. Its faces wear `vinyl.mat`
+  (`VinylSurface`, shared with the room), and it is turned 20° toward its spot so the streak a
+  lamp draws across a record is there to see.
+- **Settings → Guide → The vinyl room**, and **two first-run cards** — one at the crate, one at
+  the deck, each shown once (`Hints.VINYL`, `Hints.VINYL_DECK`).
+- **TalkBack**: a layer of semantics over the scene, as the other rooms have — at the crate what
+  is in front and *next record · previous record · next shelf · previous shelf · put it on*; at
+  the deck the record, side, track and whether it has ended, and *start or stop · turn the record
+  over · next track · previous track · closer · back to the crate*. Read from Compose state (the
+  crate's `front`), because a description written inside a semantics block is not watched and
+  went stale on the first try.
+
+Not built, on purpose: the arm as something to pick up by hand (a song touched on the sleeve
+puts the needle there), and a record taken *off* to an empty platter (choosing another in the
+crate puts it in the last one's place, out of sight). **Never on a phone**, and its cost there is
+not known — which, after what the CD wall turned out to cost, is the first thing to find out.
 
 **First look, 2026-10-11 — stills for the owner to choose between** (`tools/vinyl-preview/`,
 Cycles, at real dimensions: a 453 × 353mm direct-drive deck, a 302mm record, 315mm sleeves in a
