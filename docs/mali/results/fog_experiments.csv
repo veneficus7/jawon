@@ -1,0 +1,46 @@
+experiment,core,architecture,cycles,basis,bound_by,shortest_cycles,texture_cycles,all_pipelines,work_registers,fp16_percent,spills
+baseline,Mali-G52,Bifrost,24.33,longest path,arithmetic,24.33,13.5,arithmetic=24.33 load_store=0.00 varying=0.62 texture=13.50,31,12,False
+baseline,Mali-G57,Valhall,20.88,longest path,arith_total,20.88,6.75,arith_total=20.88 arith_fma=20.88 arith_cvt=3.75 arith_sfu=7.00 load_store=0.00 varying=0.62 texture=6.75,32,39,False
+baseline,Mali-G78,Valhall,20.88,longest path,arith_total,20.88,6.75,arith_total=20.88 arith_fma=20.88 arith_cvt=3.72 arith_sfu=7.00 load_store=0.00 varying=0.62 texture=6.75,31,39,False
+baseline,Mali-G715,Valhall,6.89,longest path,arith_total,6.89,3.38,arith_total=6.89 arith_fma=5.72 arith_cvt=1.47 arith_sfu=3.50 load_store=0.00 varying=0.16 texture=3.38,32,39,False
+baseline,Immortalis-G925,Arm 5th Generation,6.45,longest path,arith_total,6.45,3.38,arith_total=6.45 arith_fma=5.50 arith_cvt=0.52 arith_sfu=3.50 load_store=0.00 varying=0.16 texture=3.38,32,48,False
+one-exp,Mali-G52,Bifrost,24.33,longest path,arithmetic,24.33,13.5,arithmetic=24.33 load_store=0.00 varying=0.62 texture=13.50,31,58,False
+one-exp,Mali-G57,Valhall,20.25,longest path,arith_total,20.25,6.75,arith_total=20.25 arith_fma=20.25 arith_cvt=3.75 arith_sfu=5.88 load_store=0.00 varying=0.62 texture=6.75,32,40,False
+one-exp,Mali-G78,Valhall,20.25,longest path,arith_total,20.25,6.75,arith_total=20.25 arith_fma=20.25 arith_cvt=3.72 arith_sfu=5.88 load_store=0.00 varying=0.62 texture=6.75,30,40,False
+one-exp,Mali-G715,Valhall,6.65,longest path,arith_total,6.65,3.38,arith_total=6.65 arith_fma=5.62 arith_cvt=1.33 arith_sfu=2.94 load_store=0.00 varying=0.16 texture=3.38,32,40,False
+one-exp,Immortalis-G925,Arm 5th Generation,6.32,longest path,arith_total,6.32,3.38,arith_total=6.32 arith_fma=5.44 arith_cvt=0.52 arith_sfu=2.94 load_store=0.00 varying=0.16 texture=3.38,32,47,False
+one-divide,Mali-G52,Bifrost,24.67,longest path,arithmetic,24.67,13.5,arithmetic=24.67 load_store=0.00 varying=0.62 texture=13.50,31,11,False
+one-divide,Mali-G57,Valhall,20.25,longest path,arith_total,20.25,6.75,arith_total=20.25 arith_fma=20.25 arith_cvt=3.75 arith_sfu=7.00 load_store=0.00 varying=0.62 texture=6.75,32,38,False
+one-divide,Mali-G78,Valhall,20.25,longest path,arith_total,20.25,6.75,arith_total=20.25 arith_fma=20.25 arith_cvt=3.72 arith_sfu=7.00 load_store=0.00 varying=0.62 texture=6.75,32,38,False
+one-divide,Mali-G715,Valhall,6.73,longest path,arith_total,6.73,3.38,arith_total=6.73 arith_fma=5.56 arith_cvt=1.47 arith_sfu=3.50 load_store=0.00 varying=0.16 texture=3.38,32,37,False
+one-divide,Immortalis-G925,Arm 5th Generation,6.33,longest path,arith_total,6.33,3.38,arith_total=6.33 arith_fma=5.38 arith_cvt=0.52 arith_sfu=3.50 load_store=0.00 varying=0.16 texture=3.38,32,47,False
+highp-time,Mali-G52,Bifrost,24.33,longest path,arithmetic,24.33,13.5,arithmetic=24.33 load_store=0.00 varying=0.62 texture=13.50,31,12,False
+highp-time,Mali-G57,Valhall,20.88,longest path,arith_total,20.88,6.75,arith_total=20.88 arith_fma=20.88 arith_cvt=3.75 arith_sfu=7.00 load_store=0.00 varying=0.62 texture=6.75,32,39,False
+highp-time,Mali-G78,Valhall,20.88,longest path,arith_total,20.88,6.75,arith_total=20.88 arith_fma=20.88 arith_cvt=3.72 arith_sfu=7.00 load_store=0.00 varying=0.62 texture=6.75,31,39,False
+highp-time,Mali-G715,Valhall,6.89,longest path,arith_total,6.89,3.38,arith_total=6.89 arith_fma=5.72 arith_cvt=1.47 arith_sfu=3.50 load_store=0.00 varying=0.16 texture=3.38,32,39,False
+highp-time,Immortalis-G925,Arm 5th Generation,6.45,longest path,arith_total,6.45,3.38,arith_total=6.45 arith_fma=5.50 arith_cvt=0.52 arith_sfu=3.50 load_store=0.00 varying=0.16 texture=3.38,32,48,False
+cpu-scroll,Mali-G52,Bifrost,24.33,longest path,arithmetic,24.33,13.5,arithmetic=24.33 load_store=0.00 varying=0.62 texture=13.50,31,12,False
+cpu-scroll,Mali-G57,Valhall,20.88,longest path,arith_total,20.88,6.75,arith_total=20.88 arith_fma=20.88 arith_cvt=3.75 arith_sfu=7.00 load_store=0.00 varying=0.62 texture=6.75,32,39,False
+cpu-scroll,Mali-G78,Valhall,20.88,longest path,arith_total,20.88,6.75,arith_total=20.88 arith_fma=20.88 arith_cvt=3.72 arith_sfu=7.00 load_store=0.00 varying=0.62 texture=6.75,31,39,False
+cpu-scroll,Mali-G715,Valhall,6.89,longest path,arith_total,6.89,3.38,arith_total=6.89 arith_fma=5.72 arith_cvt=1.47 arith_sfu=3.50 load_store=0.00 varying=0.16 texture=3.38,32,39,False
+cpu-scroll,Immortalis-G925,Arm 5th Generation,6.45,longest path,arith_total,6.45,3.38,arith_total=6.45 arith_fma=5.50 arith_cvt=0.52 arith_sfu=3.50 load_store=0.00 varying=0.16 texture=3.38,32,48,False
+two-reads,Mali-G52,Bifrost,23.83,longest path,arithmetic,23.83,9.0,arithmetic=23.83 load_store=0.00 varying=0.62 texture=9.00,31,12,False
+two-reads,Mali-G57,Valhall,20.25,longest path,arith_total,20.25,4.5,arith_total=20.25 arith_fma=20.25 arith_cvt=3.47 arith_sfu=7.00 load_store=0.00 varying=0.62 texture=4.50,32,39,False
+two-reads,Mali-G78,Valhall,20.25,longest path,arith_total,20.25,4.5,arith_total=20.25 arith_fma=20.25 arith_cvt=3.44 arith_sfu=7.00 load_store=0.00 varying=0.62 texture=4.50,31,39,False
+two-reads,Mali-G715,Valhall,6.66,longest path,arith_total,6.66,2.25,arith_total=6.66 arith_fma=5.56 arith_cvt=1.33 arith_sfu=3.50 load_store=0.00 varying=0.16 texture=2.25,32,39,False
+two-reads,Immortalis-G925,Arm 5th Generation,6.26,longest path,arith_total,6.26,2.25,arith_total=6.26 arith_fma=5.38 arith_cvt=0.44 arith_sfu=3.50 load_store=0.00 varying=0.16 texture=2.25,32,49,False
+all-four,Mali-G52,Bifrost,22.67,longest path,arithmetic,22.67,9.0,arithmetic=22.67 load_store=0.00 varying=0.62 texture=9.00,31,58,False
+all-four,Mali-G57,Valhall,19.12,longest path,arith_total,19.12,4.5,arith_total=19.12 arith_fma=19.12 arith_cvt=3.47 arith_sfu=5.88 load_store=0.00 varying=0.62 texture=4.50,32,39,False
+all-four,Mali-G78,Valhall,19.12,longest path,arith_total,19.12,4.5,arith_total=19.12 arith_fma=19.12 arith_cvt=3.44 arith_sfu=5.88 load_store=0.00 varying=0.62 texture=4.50,30,39,False
+all-four,Mali-G715,Valhall,6.34,longest path,arith_total,6.34,2.25,arith_total=6.34 arith_fma=5.38 arith_cvt=1.19 arith_sfu=2.94 load_store=0.00 varying=0.16 texture=2.25,32,39,False
+all-four,Immortalis-G925,Arm 5th Generation,5.97,longest path,arith_total,5.97,2.25,arith_total=5.97 arith_fma=5.16 arith_cvt=0.44 arith_sfu=2.94 load_store=0.00 varying=0.16 texture=2.25,32,47,False
+no-divide,Mali-G52,Bifrost,23.83,longest path,arithmetic,23.83,9.0,arithmetic=23.83 load_store=0.00 varying=0.62 texture=9.00,29,58,False
+no-divide,Mali-G57,Valhall,19.75,longest path,arith_total,19.75,4.5,arith_total=19.75 arith_fma=19.75 arith_cvt=3.47 arith_sfu=5.88 load_store=0.00 varying=0.62 texture=4.50,32,40,False
+no-divide,Mali-G78,Valhall,19.75,longest path,arith_total,19.75,4.5,arith_total=19.75 arith_fma=19.75 arith_cvt=3.44 arith_sfu=5.88 load_store=0.00 varying=0.62 texture=4.50,30,40,False
+no-divide,Mali-G715,Valhall,6.46,longest path,arith_total,6.46,2.25,arith_total=6.46 arith_fma=5.50 arith_cvt=1.19 arith_sfu=2.94 load_store=0.00 varying=0.16 texture=2.25,32,41,False
+no-divide,Immortalis-G925,Arm 5th Generation,6.09,longest path,arith_total,6.09,2.25,arith_total=6.09 arith_fma=5.28 arith_cvt=0.44 arith_sfu=2.94 load_store=0.00 varying=0.16 texture=2.25,32,48,False
+applied,Mali-G52,Bifrost,22.67,longest path,arithmetic,22.67,9.0,arithmetic=22.67 load_store=0.00 varying=0.62 texture=9.00,31,58,False
+applied,Mali-G57,Valhall,19.12,longest path,arith_total,19.12,4.5,arith_total=19.12 arith_fma=19.12 arith_cvt=3.47 arith_sfu=5.88 load_store=0.00 varying=0.62 texture=4.50,32,39,False
+applied,Mali-G78,Valhall,19.12,longest path,arith_total,19.12,4.5,arith_total=19.12 arith_fma=19.12 arith_cvt=3.44 arith_sfu=5.88 load_store=0.00 varying=0.62 texture=4.50,30,39,False
+applied,Mali-G715,Valhall,6.34,longest path,arith_total,6.34,2.25,arith_total=6.34 arith_fma=5.38 arith_cvt=1.19 arith_sfu=2.94 load_store=0.00 varying=0.16 texture=2.25,32,39,False
+applied,Immortalis-G925,Arm 5th Generation,5.97,longest path,arith_total,5.97,2.25,arith_total=5.97 arith_fma=5.16 arith_cvt=0.44 arith_sfu=2.94 load_store=0.00 varying=0.16 texture=2.25,32,47,False

@@ -1,0 +1,31 @@
+steps,core,architecture,cycles,basis,bound_by,shortest_cycles,texture_cycles,all_pipelines,work_registers,fp16_percent,spills
+0,Mali-G52,Bifrost,0.12,longest path,arithmetic,0.12,0.0,arithmetic=0.12 load_store=0.00 varying=0.00 texture=0.00,18,,False
+0,Mali-G57,Valhall,0.06,longest path,arith_total,0.06,0.0,arith_total=0.06 arith_fma=0.00 arith_cvt=0.06 arith_sfu=0.00 load_store=0.00 varying=0.00 texture=0.00,4,,False
+0,Mali-G78,Valhall,0.06,longest path,arith_total,0.06,0.0,arith_total=0.06 arith_fma=0.00 arith_cvt=0.06 arith_sfu=0.00 load_store=0.00 varying=0.00 texture=0.00,4,,False
+0,Mali-G715,Valhall,0.03,longest path,arith_total,0.03,0.0,arith_total=0.03 arith_fma=0.00 arith_cvt=0.03 arith_sfu=0.00 load_store=0.00 varying=0.00 texture=0.00,6,,False
+0,Immortalis-G925,Arm 5th Generation,0.02,longest path,arith_total,0.02,0.0,arith_total=0.02 arith_fma=0.00 arith_cvt=0.02 arith_sfu=0.00 load_store=0.00 varying=0.00 texture=0.00,6,,False
+1,Mali-G52,Bifrost,4.08,longest path,arithmetic,4.08,1.0,arithmetic=4.08 load_store=0.00 varying=0.62 texture=1.00,31,12,False
+1,Mali-G57,Valhall,3.5,longest path,arith_total,3.5,0.5,arith_total=3.50 arith_fma=3.50 arith_cvt=0.44 arith_sfu=0.88 load_store=0.00 varying=0.62 texture=0.50,31,37,False
+1,Mali-G78,Valhall,3.5,longest path,arith_total,3.5,0.5,arith_total=3.50 arith_fma=3.50 arith_cvt=0.44 arith_sfu=0.88 load_store=0.00 varying=0.62 texture=0.50,31,37,False
+1,Mali-G715,Valhall,1.1,longest path,arith_total,1.1,0.25,arith_total=1.10 arith_fma=0.97 arith_cvt=0.16 arith_sfu=0.44 load_store=0.00 varying=0.16 texture=0.25,30,34,False
+1,Immortalis-G925,Arm 5th Generation,1.05,longest path,arith_total,1.05,0.25,arith_total=1.05 arith_fma=0.94 arith_cvt=0.05 arith_sfu=0.44 load_store=0.00 varying=0.16 texture=0.25,29,39,False
+7,Mali-G52,Bifrost,18.17,longest path,arithmetic,18.17,7.0,arithmetic=18.17 load_store=0.00 varying=0.62 texture=7.00,31,58,False
+7,Mali-G57,Valhall,15.25,longest path,arith_total,15.25,3.5,arith_total=15.25 arith_fma=15.25 arith_cvt=2.78 arith_sfu=4.62 load_store=0.00 varying=0.62 texture=3.50,32,39,False
+7,Mali-G78,Valhall,15.25,longest path,arith_total,15.25,3.5,arith_total=15.25 arith_fma=15.25 arith_cvt=2.75 arith_sfu=4.62 load_store=0.00 varying=0.62 texture=3.50,30,39,False
+7,Mali-G715,Valhall,5.01,longest path,arith_total,5.01,1.75,arith_total=5.01 arith_fma=4.25 arith_cvt=0.94 arith_sfu=2.31 load_store=0.00 varying=0.16 texture=1.75,32,39,False
+7,Immortalis-G925,Arm 5th Generation,4.73,longest path,arith_total,4.73,1.75,arith_total=4.73 arith_fma=4.09 arith_cvt=0.35 arith_sfu=2.31 load_store=0.00 varying=0.16 texture=1.75,32,47,False
+9,Mali-G52,Bifrost,22.67,longest path,arithmetic,22.67,9.0,arithmetic=22.67 load_store=0.00 varying=0.62 texture=9.00,31,58,False
+9,Mali-G57,Valhall,19.12,longest path,arith_total,19.12,4.5,arith_total=19.12 arith_fma=19.12 arith_cvt=3.47 arith_sfu=5.88 load_store=0.00 varying=0.62 texture=4.50,32,39,False
+9,Mali-G78,Valhall,19.12,longest path,arith_total,19.12,4.5,arith_total=19.12 arith_fma=19.12 arith_cvt=3.44 arith_sfu=5.88 load_store=0.00 varying=0.62 texture=4.50,30,39,False
+9,Mali-G715,Valhall,6.34,longest path,arith_total,6.34,2.25,arith_total=6.34 arith_fma=5.38 arith_cvt=1.19 arith_sfu=2.94 load_store=0.00 varying=0.16 texture=2.25,32,39,False
+9,Immortalis-G925,Arm 5th Generation,5.97,longest path,arith_total,5.97,2.25,arith_total=5.97 arith_fma=5.16 arith_cvt=0.44 arith_sfu=2.94 load_store=0.00 varying=0.16 texture=2.25,32,47,False
+14,Mali-G52,Bifrost,34.17,longest path,arithmetic,34.17,14.0,arithmetic=34.17 load_store=0.00 varying=0.62 texture=14.00,31,58,False
+14,Mali-G57,Valhall,28.88,longest path,arith_total,28.88,7.0,arith_total=28.88 arith_fma=28.88 arith_cvt=5.19 arith_sfu=9.00 load_store=0.00 varying=0.62 texture=7.00,32,39,False
+14,Mali-G78,Valhall,28.88,longest path,arith_total,28.88,7.0,arith_total=28.88 arith_fma=28.88 arith_cvt=5.15 arith_sfu=9.00 load_store=0.00 varying=0.62 texture=7.00,30,39,False
+14,Mali-G715,Valhall,9.64,longest path,arith_total,9.64,3.5,arith_total=9.64 arith_fma=8.12 arith_cvt=1.91 arith_sfu=4.50 load_store=0.00 varying=0.16 texture=3.50,32,39,False
+14,Immortalis-G925,Arm 5th Generation,9.07,longest path,arith_total,9.07,3.5,arith_total=9.07 arith_fma=7.78 arith_cvt=0.73 arith_sfu=4.50 load_store=0.00 varying=0.16 texture=3.50,32,46,False
+24,Mali-G52,Bifrost,57.17,longest path,arithmetic,57.17,24.0,arithmetic=57.17 load_store=0.00 varying=0.62 texture=24.00,31,58,False
+24,Mali-G57,Valhall,48.25,longest path,arith_total,48.25,12.0,arith_total=48.25 arith_fma=48.25 arith_cvt=8.62 arith_sfu=15.25 load_store=0.00 varying=0.62 texture=12.00,32,39,False
+24,Mali-G78,Valhall,48.25,longest path,arith_total,48.25,12.0,arith_total=48.25 arith_fma=48.25 arith_cvt=8.60 arith_sfu=15.25 load_store=0.00 varying=0.62 texture=12.00,30,39,False
+24,Mali-G715,Valhall,16.12,longest path,arith_total,16.12,6.0,arith_total=16.12 arith_fma=13.59 arith_cvt=3.16 arith_sfu=7.62 load_store=0.00 varying=0.16 texture=6.00,32,39,False
+24,Immortalis-G925,Arm 5th Generation,15.18,longest path,arith_total,15.18,6.0,arith_total=15.18 arith_fma=13.03 arith_cvt=1.19 arith_sfu=7.62 load_store=0.00 varying=0.16 texture=6.00,32,46,False

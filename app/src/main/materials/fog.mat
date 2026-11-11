@@ -107,15 +107,23 @@ material {
 
 fragment {
     // Density of the fog at a point of the room, 0..1.
-    float fogDensity(vec3 q, float t, vec2 wind, float stir) {
+    //
+    // The clock and the coordinates built from it are highp. The fragment stage defaults to
+    // mediump, which a GPU may run as 16-bit floats: those step in 0.25s once the clock passes
+    // 256s and in 0.5s past 512s, and the drift would move in jumps. Arm's Mali compiler builds
+    // identical code either way, so on Mali this costs nothing (docs/mali/FINDINGS.md).
+    float fogDensity(vec3 q, highp float t, vec2 wind, float stir) {
         // Two octaves, each sheared through depth so the noise changes along the ray as well
         // as across the screen — the cheap way to get three dimensions out of one 2D texture.
-        vec2 broadUv = q.xy * 2.2 + vec2(q.z * 1.7, -q.z * 1.1)
+        highp vec2 broadUv = q.xy * 2.2 + vec2(q.z * 1.7, -q.z * 1.1)
             + vec2(t * 0.011, t * 0.004) + wind * 0.8;
-        float broad = texture(materialParams_noise, broadUv).r;
-        vec2 warp = (vec2(broad, texture(materialParams_noise, broadUv.yx + 0.37).r) - 0.5)
+        // One read for both: green holds red as read at broadUv.yx + 95/256, which this read
+        // used to fetch on its own (RoomAir.fogNoise). Three reads a step became two.
+        vec2 broadRg = texture(materialParams_noise, broadUv).rg;
+        float broad = broadRg.r;
+        vec2 warp = (vec2(broad, broadRg.g) - 0.5)
             * (0.12 + 0.55 * stir);
-        vec2 fineUv = q.xy * 5.1 + vec2(-q.z * 2.3, q.z * 1.9)
+        highp vec2 fineUv = q.xy * 5.1 + vec2(-q.z * 2.3, q.z * 1.9)
             + vec2(-t * 0.019, t * 0.007) + wind * 1.4 + warp;
         float fine = texture(materialParams_noise, fineUv).r;
         // Sparse: wisps with clear air between them. The first threshold (0.28) filled most of
@@ -130,14 +138,16 @@ fragment {
         // The strips: the air just under one, near the rack, is the brightest there is.
         float pitch = materialParams.stripYPitch.y;
         float below = mod(materialParams.stripYPitch.x - q.y, pitch);
-        float strip = exp(-below / 0.06) * exp(-max(q.z + 0.04, 0.0) / 0.12);
+        // One exponential, not two: exp(a) * exp(b) == exp(a + b).
+        float strip = exp(-(below / 0.06 + max(q.z + 0.04, 0.0) / 0.12));
 
         // The ceiling spots: the nearest fitting along the track, then the cone.
         float spacing = materialParams.spotYZPitch.z;
         float fx = q.x - floor(q.x / spacing + 0.5) * spacing;
         vec3 toQ = vec3(fx, q.y - materialParams.spotYZPitch.x, q.z - materialParams.spotYZPitch.y);
         float dist = max(length(toQ), 0.05);
-        float cosA = dot(toQ / dist, materialParams.spotDir);
+        // Divide the dot product once rather than each of toQ's three components.
+        float cosA = dot(toQ, materialParams.spotDir) / dist;
         float beam = smoothstep(materialParams.spotCone.x, materialParams.spotCone.y, cosA)
             / (dist * dist * 3.0 + 0.25);
 
@@ -167,7 +177,7 @@ fragment {
         // step pattern dissolves into grain instead of drawing contour bands.
         float dither = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));
 
-        float t = materialParams.time;
+        highp float t = materialParams.time;
         vec2 wind = materialParams.wind;
         float stir = materialParams.stir;
         float extinction = materialParams.gain.z;

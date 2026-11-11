@@ -46,4 +46,26 @@ class RoomAirTest {
         assertEquals(tubeToBoard, RoomAir.HAZE_BACK_H, 1e-6f)
         assertTrue(RoomAir.HAZE_FRONT_H < RoomAir.HAZE_BACK_H)
     }
+
+    @Test
+    fun `the fog noise's green is its red, transposed and shifted, wrapping at the edge`() {
+        // fog.mat used to read the noise twice for its warp: at uv, then at uv.yx + 0.37. Green
+        // now holds that second read, so one fetch returns both (docs/mali/FINDINGS.md). If this
+        // drifts, the fog still renders, just as a different pattern: nothing on screen says why.
+        val n = RoomAir.FOG_NOISE_PX
+        val s = RoomAir.FOG_WARP_SHIFT_PX
+        val rg = RoomAir.fogNoiseRg()
+        fun red(x: Int, y: Int) = rg[2 * (y * n + x)]
+        fun green(x: Int, y: Int) = rg[2 * (y * n + x) + 1]
+        for ((x, y) in listOf(0 to 0, 3 to 200, 160 to 160, n - 1 to 0, 0 to n - 1, n - 1 to n - 1)) {
+            assertEquals("green at ($x, $y)", red((y + s) % n, (x + s) % n), green(x, y))
+        }
+    }
+
+    @Test
+    fun `the warp's shift is the shader's old offset to the nearest whole texel`() {
+        // A whole texel is what lets bilinear filtering of green equal a read of red at the
+        // shifted spot. The shader's old offset was 0.37 of the texture.
+        assertEquals(0.37f * RoomAir.FOG_NOISE_PX, RoomAir.FOG_WARP_SHIFT_PX.toFloat(), 0.5f)
+    }
 }

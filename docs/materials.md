@@ -40,6 +40,8 @@ And the CD room's first two:
 - `materials/fog.mat` → `assets/materials/fog.filamat`, a raymarched volumetric
   fog lit by the same fittings. **Built and parked**: switched off at the owner's
   call behind `RoomAir.FOG_ENABLED`, after a first tuning that veiled the room.
+  What it costs per pixel on Arm Mali GPUs, and the changes made to it from measuring
+  that (2026-11-12): `docs/mali/FINDINGS.md`.
 
 Both use `getUserWorldPosition()` for anything positioned in the room: Filament's
 own world space in shaders is camera-relative, so comparing it against a fitting's

@@ -1,0 +1,36 @@
+material,shading,core,architecture,cycles,basis,bound_by,shortest_cycles,texture_cycles,all_pipelines,work_registers,fp16_percent,spills
+dust,unlit,Mali-G52,Bifrost,2.37,longest path,arithmetic,2.37,0.0,arithmetic=2.37 load_store=0.00 varying=0.75 texture=0.00,27,24,False
+dust,unlit,Mali-G57,Valhall,2.06,longest path,arith_total,2.06,0.0,arith_total=2.06 arith_fma=2.06 arith_cvt=0.22 arith_sfu=1.00 load_store=0.00 varying=0.75 texture=0.00,27,53,False
+dust,unlit,Mali-G78,Valhall,2.06,longest path,arith_total,2.06,0.0,arith_total=2.06 arith_fma=2.06 arith_cvt=0.22 arith_sfu=1.00 load_store=0.00 varying=0.75 texture=0.00,27,53,False
+dust,unlit,Mali-G715,Valhall,0.68,longest path,arith_total,0.68,0.0,arith_total=0.68 arith_fma=0.56 arith_cvt=0.11 arith_sfu=0.50 load_store=0.00 varying=0.19 texture=0.00,29,50,False
+dust,unlit,Immortalis-G925,Arm 5th Generation,0.65,longest path,arith_total,0.65,0.0,arith_total=0.65 arith_fma=0.55 arith_cvt=0.04 arith_sfu=0.50 load_store=0.00 varying=0.19 texture=0.00,25,58,False
+fog,unlit,Mali-G52,Bifrost,57.17,longest path,arithmetic,2.2,24.0,arithmetic=57.17 load_store=0.00 varying=0.62 texture=24.00,31,32,False
+fog,unlit,Mali-G57,Valhall,48.25,longest path,arith_total,1.73,12.0,arith_total=48.25 arith_fma=48.25 arith_cvt=10.88 arith_sfu=15.25 load_store=0.00 varying=0.62 texture=12.00,32,40,False
+fog,unlit,Mali-G78,Valhall,48.25,longest path,arith_total,1.73,12.0,arith_total=48.25 arith_fma=48.25 arith_cvt=10.85 arith_sfu=15.25 load_store=0.00 varying=0.62 texture=12.00,30,40,False
+fog,unlit,Mali-G715,Valhall,17.05,longest path,arith_total,0.58,6.0,arith_total=17.05 arith_fma=13.78 arith_cvt=4.64 arith_sfu=7.62 load_store=0.00 varying=0.16 texture=6.00,31,37,False
+fog,unlit,Immortalis-G925,Arm 5th Generation,16.11,longest path,arith_total,0.57,6.0,arith_total=16.11 arith_fma=13.22 arith_cvt=1.94 arith_sfu=7.62 load_store=0.00 varying=0.16 texture=6.00,32,41,False
+neon,unlit,Mali-G52,Bifrost,0.5,longest path,texture,0.5,0.5,arithmetic=0.42 load_store=0.00 varying=0.25 texture=0.50,18,50,False
+neon,unlit,Mali-G57,Valhall,0.25,longest path,varying,0.25,0.25,arith_total=0.19 arith_fma=0.19 arith_cvt=0.06 arith_sfu=0.00 load_store=0.00 varying=0.25 texture=0.25,5,100,False
+neon,unlit,Mali-G78,Valhall,0.25,longest path,varying,0.25,0.25,arith_total=0.19 arith_fma=0.19 arith_cvt=0.06 arith_sfu=0.00 load_store=0.00 varying=0.25 texture=0.25,5,100,False
+neon,unlit,Mali-G715,Valhall,0.12,longest path,texture,0.12,0.12,arith_total=0.05 arith_fma=0.05 arith_cvt=0.02 arith_sfu=0.00 load_store=0.00 varying=0.06 texture=0.12,7,100,False
+neon,unlit,Immortalis-G925,Arm 5th Generation,0.12,longest path,texture,0.12,0.12,arith_total=0.05 arith_fma=0.05 arith_cvt=0.01 arith_sfu=0.00 load_store=0.00 varying=0.06 texture=0.12,7,100,False
+polished_steel (DYN),lit,Mali-G52,Bifrost,12.53,every instruction once,arithmetic,4.25,6.0,arithmetic=12.53 load_store=7.00 varying=1.38 texture=6.00,57,54,False
+polished_steel (DYN),lit,Mali-G57,Valhall,8.31,every instruction once,arith_total,3.5,3.0,arith_total=8.31 arith_fma=8.31 arith_cvt=3.44 arith_sfu=6.75 load_store=7.00 varying=1.25 texture=3.00,49,41,False
+polished_steel (DYN),lit,Mali-G78,Valhall,8.31,every instruction once,arith_total,3.5,3.0,arith_total=8.31 arith_fma=8.31 arith_cvt=3.47 arith_sfu=6.75 load_store=7.00 varying=1.25 texture=3.00,50,41,False
+polished_steel (DYN),lit,Mali-G715,Valhall,7.0,every instruction once,load_store,1.25,1.5,arith_total=3.40 arith_fma=2.18 arith_cvt=1.99 arith_sfu=1.81 load_store=7.00 varying=0.31 texture=1.50,43,40,False
+polished_steel (DYN),lit,Immortalis-G925,Arm 5th Generation,7.0,every instruction once,load_store,1.23,1.5,arith_total=3.32 arith_fma=2.16 arith_cvt=0.95 arith_sfu=1.69 load_store=7.00 varying=0.31 texture=1.50,45,43,False
+polished_steel (DYN|SRE),lit,Mali-G52,Bifrost,19.5,every instruction once,arithmetic,4.25,8.5,arithmetic=19.50 load_store=16.00 varying=1.38 texture=8.50,64,37,False
+polished_steel (DYN|SRE),lit,Mali-G57,Valhall,16.0,every instruction once,load_store,3.5,4.25,arith_total=12.62 arith_fma=12.62 arith_cvt=5.97 arith_sfu=8.62 load_store=16.00 varying=1.25 texture=4.25,64,29,False
+polished_steel (DYN|SRE),lit,Mali-G78,Valhall,16.0,every instruction once,load_store,3.5,4.25,arith_total=12.62 arith_fma=12.62 arith_cvt=5.97 arith_sfu=8.62 load_store=16.00 varying=1.25 texture=4.25,64,29,False
+polished_steel (DYN|SRE),lit,Mali-G715,Valhall,16.0,every instruction once,load_store,1.25,2.12,arith_total=5.26 arith_fma=3.34 arith_cvt=3.24 arith_sfu=2.38 load_store=16.00 varying=0.31 texture=2.12,64,28,False
+polished_steel (DYN|SRE),lit,Immortalis-G925,Arm 5th Generation,16.0,every instruction once,load_store,1.25,2.12,arith_total=5.19 arith_fma=3.31 arith_cvt=1.61 arith_sfu=2.12 load_store=16.00 varying=0.31 texture=2.12,64,30,False
+vinyl (DYN),lit,Mali-G52,Bifrost,15.63,every instruction once,arithmetic,5.2,7.0,arithmetic=15.63 load_store=7.00 varying=2.00 texture=7.00,64,62,False
+vinyl (DYN),lit,Mali-G57,Valhall,11.19,every instruction once,arith_total,3.35,3.5,arith_total=11.19 arith_fma=11.19 arith_cvt=3.97 arith_sfu=6.38 load_store=7.00 varying=1.75 texture=3.50,52,43,False
+vinyl (DYN),lit,Mali-G78,Valhall,11.19,every instruction once,arith_total,3.35,3.5,arith_total=11.19 arith_fma=11.19 arith_cvt=4.03 arith_sfu=6.38 load_store=7.00 varying=1.75 texture=3.50,54,43,False
+vinyl (DYN),lit,Mali-G715,Valhall,7.0,every instruction once,load_store,1.39,1.75,arith_total=4.08 arith_fma=2.94 arith_cvt=1.78 arith_sfu=2.00 load_store=7.00 varying=0.44 texture=1.75,55,43,False
+vinyl (DYN),lit,Immortalis-G925,Arm 5th Generation,7.0,every instruction once,load_store,1.39,1.75,arith_total=4.01 arith_fma=2.92 arith_cvt=0.86 arith_sfu=1.81 load_store=7.00 varying=0.44 texture=1.75,54,45,False
+vinyl (DYN|SRE),lit,Mali-G52,Bifrost,23.0,every instruction once,arithmetic,5.25,9.5,arithmetic=23.00 load_store=18.00 varying=2.00 texture=9.50,64,45,True
+vinyl (DYN|SRE),lit,Mali-G57,Valhall,16.0,every instruction once,load_store,3.38,4.75,arith_total=15.62 arith_fma=15.62 arith_cvt=7.28 arith_sfu=8.25 load_store=16.00 varying=1.75 texture=4.75,64,33,False
+vinyl (DYN|SRE),lit,Mali-G78,Valhall,16.0,every instruction once,load_store,3.38,4.75,arith_total=15.62 arith_fma=15.62 arith_cvt=7.25 arith_sfu=8.25 load_store=16.00 varying=1.75 texture=4.75,64,33,False
+vinyl (DYN|SRE),lit,Mali-G715,Valhall,16.0,every instruction once,load_store,1.44,2.38,arith_total=6.12 arith_fma=4.12 arith_cvt=3.38 arith_sfu=2.50 load_store=16.00 varying=0.44 texture=2.38,64,33,False
+vinyl (DYN|SRE),lit,Immortalis-G925,Arm 5th Generation,16.0,every instruction once,load_store,1.45,2.38,arith_total=6.09 arith_fma=4.09 arith_cvt=1.70 arith_sfu=2.38 load_store=16.00 varying=0.44 texture=2.38,64,35,False

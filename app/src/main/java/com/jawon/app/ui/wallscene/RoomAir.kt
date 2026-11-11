@@ -259,20 +259,50 @@ object RoomAir {
     private const val FOG_NOISE_SEED = 0x0F06
 
     /**
+     * How far, in texels on both axes, the warp's second lookup sits from the first. fog.mat
+     * read it as `broadUv.yx + 0.37`, its own texture fetch every step; 95/256 is the nearest whole
+     * texel (0.371). Being whole is what makes the green channel exact: with bilinear filtering and
+     * no mipmaps (`FOG_SAMPLER`), green read at uv is red read at uv.yx + 95/256, as long as the
+     * bitmap's rows reach the GPU in order (SceneView hands it to Filament's TextureHelper). If
+     * they were flipped, the fog would show the same noise in a different arrangement.
+     */
+    const val FOG_WARP_SHIFT_PX = 95
+
+    /**
      * Soft tiling noise for the fog to be made of: two octaves of value noise whose lattices
      * wrap at the texture's edge, so the shader can scroll it forever without a seam.
-     * Greyscale in every channel; fog.mat reads red.
+     *
+     * Red is the noise. Green is red transposed and shifted by [FOG_WARP_SHIFT_PX], so fog.mat
+     * gets both values its warp needs from one texture read: three reads a step became two
+     * (docs/mali/FINDINGS.md). Blue is unused.
      */
     fun fogNoise(): Bitmap {
         val n = FOG_NOISE_PX
-        val pixels = IntArray(n * n)
+        val rg = fogNoiseRg()
+        val pixels = IntArray(n * n) { i -> AndroidColor.rgb(rg[2 * i], rg[2 * i + 1], 0) }
+        return Bitmap.createBitmap(pixels, n, n, Bitmap.Config.ARGB_8888)
+    }
+
+    /**
+     * The noise's red and green, 0..255, two values per texel, row by row: `[r0, g0, r1, g1, …]`.
+     * Pure, so the green channel's arithmetic is tested without a device (`RoomAirTest`).
+     */
+    internal fun fogNoiseRg(): IntArray {
+        val n = FOG_NOISE_PX
+        val red = IntArray(n * n)
         for (y in 0 until n) for (x in 0 until n) {
             val broad = periodic(x / 32f, y / 32f, n / 32, FOG_NOISE_SEED)
             val fine = periodic(x / 12.8f, y / 12.8f, 20, FOG_NOISE_SEED + 1)
-            val g = ((broad * 0.7f + fine * 0.3f) * 255f).toInt().coerceIn(0, 255)
-            pixels[y * n + x] = AndroidColor.rgb(g, g, g)
+            red[y * n + x] = ((broad * 0.7f + fine * 0.3f) * 255f).toInt().coerceIn(0, 255)
         }
-        return Bitmap.createBitmap(pixels, n, n, Bitmap.Config.ARGB_8888)
+        val rg = IntArray(2 * n * n)
+        for (y in 0 until n) for (x in 0 until n) {
+            val i = y * n + x
+            rg[2 * i] = red[i]
+            // Transposed: column y, row x, each shifted and wrapped like the texture repeats.
+            rg[2 * i + 1] = red[((x + FOG_WARP_SHIFT_PX) % n) * n + (y + FOG_WARP_SHIFT_PX) % n]
+        }
+        return rg
     }
 
     private fun periodic(x: Float, y: Float, period: Int, seed: Int): Float {
