@@ -434,6 +434,62 @@ measure its tier cost as it lands. **Open:** its room.
   tracklist as a shortcut.
 - Sides again, with auto-reverse as the obvious option.
 
+**Under way, 2026-11-14** — the owner: "now finish the cassette mode". The two open questions
+were his, and he was not asked again. This was settled on the roadmap's own words, *"a tape deck
+and a shelf of cassettes"* (0.9), and on what he said for vinyl, *"just do whats best"*. **A hi-fi
+deck, not a Walkman**: a Walkman in the hand is the pocket player's answer a second time. **Track
+jumps are honoured and kept**: nothing is instant, but nothing is slow either. A song touched on
+the J-card *winds* the tape there, the way a deck's music search did (AMS), in about a second,
+whine and all.
+
+What the room is (`ui/tapescene/`):
+
+- **A wall of cassette racks**, one tower per shelf, with the shelf's name on a card at its top.
+  A shelf of more than [`TapeRack.SLOTS`] tapes goes on in a second tower. Tapes lie in their
+  slots spines out. **Drag up and down** through a tower, one tick per tape. **Swipe sideways**
+  for the next tower. **Touch a spine** and that tape is taken.
+- **Taking a tape**: the case slides out of its slot and turns to show its cover as the camera
+  comes down to the deck. It lands on the deck's lid and opens. The tape is lifted out of its
+  tray and into the deck's door, the door shuts, PLAY goes down, and the music starts from that
+  moment (`LoadTape`). The open case stays on top of the deck with its lid up, so **the inside of
+  the J-card is the tracklist**: side A and side B, the song playing lit, and a song touched is
+  wound to.
+- **The deck**, face on and filling a phone held upright. It is a micro component (220mm wide),
+  nobody's in particular, and laid out for a portrait frame: two VU meters and the counter over
+  the door, and six piano keys under it — EJECT · REW · PLAY · FF · STOP · PAUSE.
+- **The reels are where you are.** One coordinate along the tape gives both pack radii. Each
+  pack is wound from its tape's length and thickness, on the standard cassette that holds the
+  longer side (C46 · C60 · C90 · C100 · C120). The reels turn at 4.76cm/s over whatever radius
+  they have: the supply reel is quick when it is nearly empty and slow when it is full.
+- **The counter** is geared to the right-hand spindle, half a count a turn, as a real one is. It
+  counts back down when the tape runs the other way, and reads 000 when a tape goes in.
+- **REW and FF**: a tap skips to the next song, or back to the start of this one (from its first
+  three seconds, to the one before). A hold winds while held. While playing, a hold cues at up
+  to twelve times speed and **you hear the squeal**, the music going by tiny and high
+  (`TapeCue`). From stop, a hold winds silently, motor and reels only. Neither ever crosses the
+  end of a side.
+- **Sides**: `Sides.cut` with a side of up to an hour (C120). An album over two hours is two
+  tapes or more; each change is the tape ejected, turned and put back, with its label changed
+  while it is edge-on. A side whose music ends before its tape does has its blank tail wound
+  through in under a second ("blank skip") before the deck reverses or stops.
+- **Auto-reverse**, on by default, both on the deck (its REV button) and in Settings: at the end
+  of side A the head turns over with a clunk, the lamps change from ▶ to ◀, the reels run the
+  other way and side B plays. With it off the deck stops at the end of a side. Then a touch on
+  the tape, or EJECT and a touch, takes it out, turns it over and puts it back in.
+- **The sound of tape** (Settings, on by default): hiss under the music, a slow wow and a little
+  flutter, and the top end softened a little. It is a stage in the player's own chain
+  (`TapeAudioProcessor`), always present and passing the sound straight through when off. It
+  never touches `PlaybackParameters`, which is the neutral-crossing trap. It follows the music
+  wherever it goes (the car, the background) for as long as cassette is the format: the library
+  *is* tapes then. The same stage measures the level the VU meters show.
+- **The deck's own sounds** are made, not recorded: keys going down and coming up, the door,
+  a tape seated, the head reversing, the motor winding. They play on an output of their own on
+  a thread of its own (`DeckSound`), never the main thread (the `ClickPlayer` lesson).
+
+**Not built, on purpose**: mixtapes and a handwritten J-card (roadmap 0.9). They are the one
+place the album-first rule bends, and they need a compilation in the library's schema. A finger
+on a reel to wind it with a pencil. Recording.
+
 ---
 
 ## 7. Staging
