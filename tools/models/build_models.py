@@ -3083,6 +3083,799 @@ def build_vinyl_room():
     return [top, carcass, legs, floor, wall]
 
 
+# ---------------------------------------------------------------------------
+# Cassette (docs/formats.md section 6): a compact cassette, its Norelco case and J-card, a wall
+# rack of them, a micro-component deck, and the room they are in.
+#
+# Modelled in Blender's axes as they stand in the room — Z up, Y away from you — and exported Y-up,
+# so in the app +Y is up and +Z is toward you. An object's FRONT is therefore Blender -Y.
+#
+# These MUST agree with TapeDimens in ui/tapescene/TapeDimens.kt, which puts a cassette in the
+# door, a case on the deck's lid, a tape in a rack's slot and a finger on all of them by these
+# numbers. Every part that moves is either a file of its own with its origin at its pivot (the hub,
+# the pack, the lid) or baked in place in a file the app moves by name, with the pivot in
+# TapeDimens — a model's child nodes report an identity transform, so the app turns those about
+# the pivot itself (ENGINEERING.md, the discard scene's note on child positions).
+# ---------------------------------------------------------------------------
+
+# The cassette (IEC 60094-7).
+T_CAS_W, T_CAS_H = 0.1004, 0.0638        # across, and tall standing on its tape edge
+T_CAS_T = 0.0088                          # the body's thickness at the label
+T_CAS_RIDGE = 0.0016                      # the trapezoid round the head openings, proud of each face
+T_CAS_R = 0.0022                          # its corners
+T_HUB_Z = 0.0015                          # the hubs' centres, above the cassette's middle
+T_HUB_PITCH = 0.0425                      # centre to centre
+T_HUB_R = 0.0110                          # the hub the tape is wound on: TapeDimens and Tape.HUB_R
+T_HUB_HOLE = 0.0068                       # the hole the spindle goes in
+T_TAPE_W = 0.00381                        # an eighth of an inch: the tape's width, and so a pack's thickness
+T_WINDOW_W, T_WINDOW_H, T_WINDOW_R = 0.068, 0.022, 0.0035
+T_LABEL_W, T_LABEL_H, T_LABEL_Z = 0.088, 0.046, 0.005     # the paper label, and the height of its middle
+
+# The Norelco box, lying on its back with its hinge (and the J-card's spine) away from you.
+T_BOX_L, T_BOX_W, T_BOX_T = 0.109, 0.070, 0.017      # along the spine, across, thick
+T_BOX_WALL = 0.0012
+T_TRAY_H = 0.0075                                    # the tray's depth, from the bottom up
+T_HINGE = (0.0015, T_BOX_W / 2 - 0.0015)             # (height, distance back) of the hinge line: the lid's origin
+T_JCARD_L, T_JCARD_W, T_JCARD_SPINE = 0.101, 0.064, 0.0125
+
+# A rack: a tower of slots, a tape lying in each with its spine out.
+T_RACK_SLOTS = 24
+T_RACK_PITCH = 0.019
+T_RACK_SIDE, T_RACK_DEPTH, T_RACK_BACK = 0.012, 0.082, 0.004
+T_RACK_IN_W = 0.112
+T_RACK_W = T_RACK_IN_W + 2 * T_RACK_SIDE
+T_RACK_BOTTOM, T_RACK_TOP = 0.012, 0.026
+T_RACK_H = T_RACK_BOTTOM + T_RACK_SLOTS * T_RACK_PITCH + T_RACK_TOP
+T_RACK_LABEL_W, T_RACK_LABEL_H = 0.096, 0.018
+
+# The deck: a micro component, nobody's, laid out for a phone held upright.
+T_DECK_W, T_DECK_H, T_DECK_D, T_FOOT = 0.220, 0.130, 0.260, 0.006
+T_DECK_TOP = T_FOOT + T_DECK_H
+T_FASCIA_T = 0.004
+T_DOOR_W, T_DOOR_H, T_DOOR_Z0 = 0.114, 0.074, 0.031
+T_DOOR_T = 0.006
+T_GLASS_W, T_GLASS_H = 0.104, 0.060
+T_SEAT = (0.0, 0.012, 0.0675)            # the cassette's middle, in the shut door (Blender x, y, z)
+T_KEY_W, T_KEY_H, T_KEY_PITCH, T_KEY_Z = 0.020, 0.011, 0.022, 0.019
+T_KEY_PROUD, T_KEY_TRAVEL = 0.005, 0.0035
+T_METER_W, T_METER_H, T_METER_X, T_METER_Z = 0.040, 0.020, 0.046, 0.120
+T_NEEDLE_PIVOT_Z, T_NEEDLE_L = 0.104, 0.024
+T_COUNTER_Z, T_DRUM_R, T_DRUM_PITCH, T_DRUM_Y = 0.120, 0.0052, 0.0075, 0.004
+T_REV = (0.0215, 0.1205)
+T_LAMP_X, T_LAMP_FWD_Z, T_LAMP_REV_Z = -0.0215, 0.1165, 0.1240
+
+# Where they all are: the sideboard's top is the origin, the wall behind it, the racks on the wall.
+T_WALL_Y = 0.320
+T_RACKS_BOTTOM = 0.300
+T_RACK_GAP = 0.030
+T_BOARD_W, T_BOARD_FRONT, T_BOARD_H = 1.60, -0.140, 0.56
+
+
+def _rr_pts(w, h, r, cx=0.0, cz=0.0, arc=6):
+    """A rounded rectangle as (x, z) points, anticlockwise."""
+    hw, hh = w / 2.0 - r, h / 2.0 - r
+    pts = []
+    for ccx, ccz, a0 in ((hw, hh, 0.0), (-hw, hh, 90.0), (-hw, -hh, 180.0), (hw, -hh, 270.0)):
+        for i in range(arc + 1):
+            a = math.radians(a0 + 90.0 * i / arc)
+            pts.append((cx + ccx + r * math.cos(a), cz + ccz + r * math.sin(a)))
+    out = []
+    for p in pts:
+        if not out or abs(out[-1][0] - p[0]) > 1e-9 or abs(out[-1][1] - p[1]) > 1e-9:
+            out.append(p)
+    return out
+
+
+def _circle_pts(radius, cx, cz, segments=48):
+    return [(cx + radius * math.cos(2 * math.pi * i / segments), cz + radius * math.sin(2 * math.pi * i / segments))
+            for i in range(segments)]
+
+
+def _slab(bm, outer, holes, y_front, y_back, uv=None, uv_of=None, step=0.004):
+    """
+    A flat plate in the XZ plane with [holes] through it, from [y_front] (toward you, the smaller
+    Blender y) to [y_back]: both faces, the outer wall and every hole's wall.
+    """
+    xs = [p[0] for p in outer]
+    zs = [p[1] for p in outer]
+    pts, tris = plate_triangles(outer, holes, step, (min(xs), min(zs), max(xs), max(zs)), step * 2)
+    for y, facing_front in ((y_front, True), (y_back, False)):
+        verts = [bm.verts.new((x, y, z)) for x, z in pts]
+        for t in tris:
+            vs = [verts[i] for i in t]
+            # Wound so the front faces -Y and the back +Y.
+            a, b, c = vs[0].co, vs[1].co, vs[2].co
+            n = (b - a).cross(c - a)
+            if (n.y > 0) == facing_front:
+                vs.reverse()
+            try:
+                f = bm.faces.new(vs)
+            except ValueError:
+                continue
+            if uv is not None and uv_of is not None:
+                for loop in f.loops:
+                    loop[uv].uv = uv_of(loop.vert.co, facing_front)
+    for loop_pts, is_hole in [(outer, False)] + [(h, True) for h in holes]:
+        n = len(loop_pts)
+        for i in range(n):
+            (x0, z0), (x1, z1) = loop_pts[i], loop_pts[(i + 1) % n]
+            quad = [bm.verts.new((x0, y_front, z0)), bm.verts.new((x1, y_front, z1)),
+                    bm.verts.new((x1, y_back, z1)), bm.verts.new((x0, y_back, z0))]
+            if is_hole:
+                quad.reverse()
+            bm.faces.new(quad)
+
+
+def _slab_object(name, outer, holes, y_front, y_back, material, bevel_width=None, uv_of=None, harden=True, step=0.004):
+    obj = new_mesh_object(name)
+    bm = bmesh.new()
+    uv = bm.loops.layers.uv.new("UVMap")
+    _slab(bm, outer, holes, y_front, y_back, uv, uv_of, step)
+    bmesh.ops.remove_doubles(bm, verts=bm.verts, dist=1e-7)
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    bm.normal_update()
+    bm.to_mesh(obj.data)
+    bm.free()
+    obj.data.materials.append(material)
+    finish(obj, bevel=bevel_width is not None, bevel_width=bevel_width, harden=harden)
+    return obj
+
+
+def _face_text(bm, body, cap_height, x, y, z, align="CENTER", facing="FRONT", turn=0.0, spacing=1.08, bold=False):
+    """
+    [body] as ink standing on a face: FRONT reads from in front (the face looks -Y), BACK from
+    behind (+Y), UP from above (+Z). [turn] spins it in its own plane, in radians.
+    """
+    font_path = os.path.abspath(os.path.join("app", "src", "main", "res", "font", "inter_variable.ttf"))
+    curve = bpy.data.curves.new("ink", type="FONT")
+    curve.font = bpy.data.fonts.load(font_path, check_existing=True)
+    curve.body = body
+    curve.size = cap_height / INTER_CAP_HEIGHT_EM
+    curve.align_x = align
+    curve.align_y = "CENTER"
+    curve.space_character = spacing
+    curve.offset = 0.00003 if bold else 0.00001
+    curve.resolution_u = 5
+    obj = bpy.data.objects.new("ink", curve)
+    bpy.context.collection.objects.link(obj)
+    depsgraph = bpy.context.evaluated_depsgraph_get()
+    mesh = bpy.data.meshes.new_from_object(obj.evaluated_get(depsgraph))
+    spin = Matrix.Rotation(turn, 4, "Z")
+    if facing == "FRONT":
+        place = Matrix.Rotation(math.radians(90.0), 4, "X")
+    elif facing == "BACK":
+        place = Matrix.Rotation(math.radians(180.0), 4, "Z") @ Matrix.Rotation(math.radians(90.0), 4, "X")
+    else:
+        place = Matrix.Identity(4)
+    mesh.transform(Matrix.Translation((x, y, z)) @ place @ spin)
+    bm.from_mesh(mesh)
+    bpy.data.meshes.remove(mesh)
+    bpy.data.objects.remove(obj)
+
+
+def _tri(bm, pts, y):
+    """A flat polygon at Blender [y], facing -Y, from (x, z) points anticlockwise as seen from in front."""
+    vs = [bm.verts.new((x, y, z)) for x, z in pts]
+    # Anticlockwise in (x, z) is a normal of x cross z, which is -Y: toward you already.
+    return bm.faces.new(vs)
+
+
+def _label_face(name, material_name, w, h, cx, cz, y, front, hole=None, step=0.003):
+    """A printed face — a label, a card — with its picture laid straight across it (UV 0..1 over w x h)."""
+    outer = _rr_pts(w, h, 0.0012, cx, cz, arc=3)
+    holes = [hole] if hole else []
+    obj = new_mesh_object(name)
+    bm = bmesh.new()
+    uv = bm.loops.layers.uv.new("UVMap")
+    xs = [p[0] for p in outer]
+    zs = [p[1] for p in outer]
+    pts, tris = plate_triangles(outer, holes, step, (min(xs), min(zs), max(xs), max(zs)), step * 2)
+    verts = [bm.verts.new((x, y, z)) for x, z in pts]
+    for t in tris:
+        vs = [verts[i] for i in t]
+        a, b, c = vs[0].co, vs[1].co, vs[2].co
+        n = (b - a).cross(c - a)
+        if (n.y > 0) == front:
+            vs.reverse()
+        f = bm.faces.new(vs)
+        for loop in f.loops:
+            p = loop.vert.co
+            u = (p.x - (cx - w / 2)) / w
+            loop[uv].uv = (u if front else 1.0 - u, (p.z - (cz - h / 2)) / h)
+    bm.normal_update()
+    bm.to_mesh(obj.data)
+    bm.free()
+    obj.data.materials.append(attach_placeholder_basecolor(
+        principled(material_name, base_color=(0.85, 0.82, 0.76), metallic=0.0, roughness=0.55, coat=0.15, coat_roughness=0.2),
+        name + "_placeholder"))
+    finish(obj, bevel=False)
+    return obj
+
+
+def _tape_plastic(name, colour=(0.010, 0.010, 0.011), roughness=0.34, coat=0.35):
+    return principled(name, base_color=colour, metallic=0.0, roughness=roughness, coat=coat, coat_roughness=0.10)
+
+
+def build_tape_cassette():
+    """
+    A compact cassette standing on its tape edge, side A toward you; the origin is its middle.
+
+    Black, as a pre-recorded tape's shell was, with a paper label on each face and a window between
+    them that is an opening, not glass: the door in front of it is the one pane of glass a line of
+    sight may cross (docs/formats.md section 6). The hubs and packs are files of their own: they
+    turn, and the packs grow.
+    """
+    hy = T_CAS_T / 2
+    outer = _rr_pts(T_CAS_W, T_CAS_H, T_CAS_R)
+    window = list(reversed(_rr_pts(T_WINDOW_W, T_WINDOW_H, T_WINDOW_R, 0.0, T_HUB_Z)))
+    shell = _slab_object("cassette_shell", outer, [window], -hy, hy, _tape_plastic("CassetteShell"), bevel_width=0.0004)
+
+    # The trapezoid round the head openings, proud of both faces: the shape everybody knows a cassette by.
+    bottom = -T_CAS_H / 2
+    trap = [(-0.037, bottom + 0.0004), (0.037, bottom + 0.0004), (0.0305, bottom + 0.0125), (-0.0305, bottom + 0.0125)]
+    ridges = []
+    for sign in (-1, 1):
+        y0 = sign * hy
+        y1 = sign * (hy + T_CAS_RIDGE)
+        ridges.append(_slab_object("cassette_ridge_" + ("a" if sign < 0 else "b"), trap, [],
+                                   min(y0, y1), max(y0, y1), _tape_plastic("CassetteRidge"), bevel_width=0.0005))
+
+    hole = list(reversed(_rr_pts(T_WINDOW_W + 0.003, T_WINDOW_H + 0.003, T_WINDOW_R + 0.0015, 0.0, T_HUB_Z, arc=4)))
+    label_a = _label_face("label_a", "CassetteLabelA", T_LABEL_W, T_LABEL_H, 0.0, T_LABEL_Z, -hy - 0.00005, True, hole)
+    label_b = _label_face("label_b", "CassetteLabelB", T_LABEL_W, T_LABEL_H, 0.0, T_LABEL_Z, hy + 0.00005, False, hole)
+
+    screw = principled("CassetteScrew", base_color=(0.60, 0.60, 0.62), metallic=1.0, roughness=0.30)
+
+    def screws(bm):
+        for sign in (-1, 1):
+            y = sign * (hy + 0.0002)
+            for sx, sz in ((-0.0465, 0.0285), (0.0465, 0.0285), (-0.0465, -0.0230), (0.0465, -0.0230)):
+                _vcyl(bm, sx, y, sz, 0.0012, 0.0004, segments=16, tilt=Matrix.Rotation(math.radians(90.0), 4, "X"))
+            _vcyl(bm, 0.0, sign * (hy + T_CAS_RIDGE + 0.0002), bottom + 0.0068, 0.0012, 0.0004, segments=16,
+                  tilt=Matrix.Rotation(math.radians(90.0), 4, "X"))
+    metal = _simple("cassette_screws", screws, screw)
+
+    return [shell] + ridges + [label_a, label_b, metal]
+
+
+def build_tape_hub():
+    """
+    A hub: the white ring the tape is wound on, with six teeth inside for the spindle; its origin is
+    its centre and it turns about its axis (app Z). The hole is filled a little way in with black —
+    the spindle, in a deck — so that the pack behind it never shows through.
+    """
+    white = principled("HubWhite", base_color=(0.82, 0.81, 0.78), metallic=0.0, roughness=0.38)
+    half = T_TAPE_W / 2 + 0.0001
+
+    hub = new_mesh_object("hub_ring")
+    bm = bmesh.new()
+    outer = _circle_pts(T_HUB_R, 0.0, 0.0, 48)
+    hole = list(reversed(_circle_pts(T_HUB_HOLE, 0.0, 0.0, 48)))
+    _slab(bm, outer, [hole], -half, half, step=0.002)
+    for i in range(6):
+        a = 2 * math.pi * i / 6
+        m = Matrix.Translation(((T_HUB_HOLE - 0.0010) * math.cos(a), 0.0, (T_HUB_HOLE - 0.0010) * math.sin(a))) \
+            @ Matrix.Rotation(-a, 4, "Y") @ Matrix.Diagonal((0.0026, 2 * half, 0.0015, 1.0))
+        bmesh.ops.create_cube(bm, size=1.0, matrix=m)
+    bmesh.ops.remove_doubles(bm, verts=bm.verts, dist=1e-7)
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    bm.normal_update()
+    bm.to_mesh(hub.data)
+    bm.free()
+    hub.data.materials.append(white)
+    finish(hub, bevel=True, bevel_width=0.0002, harden=True)
+
+    dark = principled("HubSpindle", base_color=(0.015, 0.015, 0.016), metallic=0.3, roughness=0.5)
+    # Its faces between the pack's and the hub's own: in front of the one, behind the other.
+    spindle = _simple("hub_spindle", lambda bm: _vcyl(bm, 0, 0, 0, T_HUB_HOLE + 0.0002, T_TAPE_W, segments=40,
+                                                      tilt=Matrix.Rotation(math.radians(90.0), 4, "X")), dark)
+    return [hub, spindle]
+
+
+def build_tape_pack():
+    """
+    A pack of tape, as a disc a metre across: the app scales it in its own plane to the radius the
+    tape's length gives (`Tape.radius`). A hair thinner than the hub, which covers its middle.
+
+    Dark oxide, with the faint rings a wound pack has — each layer laid a little off the last —
+    as roughness along the radius, which scales with the pack and so stays a texture, not a size.
+    """
+    np = _np()
+    rng = np.random.default_rng(23)
+    width = 512
+    rough = 0.36 + (_fbm(1, width, 60, 3, rng)[0] - 0.5) * 0.22
+    mat = principled("TapePack", base_color=(0.055, 0.032, 0.020), metallic=0.0, roughness=0.36)
+    _use_metal_rough(mat, _metal_rough_image("tape_pack_rings", np.tile(rough, (4, 1)), 0.0))
+    half = T_TAPE_W / 2 - 0.0001
+    obj = new_mesh_object("tape_pack")
+    bm = bmesh.new()
+    uv = bm.loops.layers.uv.new("UVMap")
+    segments = 96
+    # The two faces as fans about the middle, and the rim; u is the radius, so the rings follow it.
+    rims = {}
+    for y in (-half, half):
+        rims[y] = [bm.verts.new((math.cos(2 * math.pi * i / segments), y, math.sin(2 * math.pi * i / segments)))
+                   for i in range(segments)]
+    for y in (-half, half):
+        centre = bm.verts.new((0.0, y, 0.0))
+        ring = rims[y]
+        for i in range(segments):
+            j = (i + 1) % segments
+            f = bm.faces.new([centre, ring[i], ring[j]])
+            for loop in f.loops:
+                p = loop.vert.co
+                loop[uv].uv = (min(1.0, math.hypot(p.x, p.z)), 0.5)
+    for i in range(segments):
+        j = (i + 1) % segments
+        f = bm.faces.new([rims[-half][i], rims[-half][j], rims[half][j], rims[half][i]])
+        for loop in f.loops:
+            loop[uv].uv = (1.0, 0.5)
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    bm.normal_update()
+    bm.to_mesh(obj.data)
+    bm.free()
+    obj.data.materials.append(mat)
+    finish(obj, bevel=False)
+    return [obj]
+
+
+def _box_open_top(bm, cx, cy, z0, l, w, h, wall, bottom=True, front=True, back=True, sides=True):
+    """A box's walls (and floor) in Blender's axes: [l] along X, [w] along Y, from [z0] up [h]."""
+    if bottom:
+        _vbox(bm, cx, cy, z0 + wall / 2, l, w, wall)
+    if front:
+        _vbox(bm, cx, cy - w / 2 + wall / 2, z0 + h / 2, l, wall, h)
+    if back:
+        _vbox(bm, cx, cy + w / 2 - wall / 2, z0 + h / 2, l, wall, h)
+    if sides:
+        for s in (-1, 1):
+            _vbox(bm, cx + s * (l / 2 - wall / 2), cy, z0 + h / 2, wall, w - 2 * wall, h)
+
+
+def _clear_plastic(name):
+    """Polystyrene: almost nothing but its reflections — blended, never transmissive (ENGINEERING.md, rule 4)."""
+    return principled(name, base_color=(0.85, 0.87, 0.88), metallic=0.0, roughness=0.06, alpha=0.10, blend=True)
+
+
+def build_tape_case_tray():
+    """
+    The box's tray: black, lying on its back, the two posts a cassette's hubs sit on. Origin: the
+    middle of its underside. The hinge (and the spine) is away from you, at +Y.
+    """
+    black = _tape_plastic("CaseTray", colour=(0.012, 0.012, 0.013), roughness=0.30, coat=0.4)
+
+    def fill(bm):
+        _box_open_top(bm, 0, 0, 0, T_BOX_L, T_BOX_W, T_TRAY_H, T_BOX_WALL, back=False)
+        # The lip the lid's spine wall closes against, low at the back.
+        _vbox(bm, 0, T_BOX_W / 2 - 0.004, 0.0025, T_BOX_L - 2 * T_BOX_WALL, 0.0012, 0.004)
+        for sx in (-1, 1):
+            _vcyl(bm, sx * T_HUB_PITCH / 2, T_HUB_Z, T_BOX_WALL + 0.0018, 0.0045, 0.0036, segments=24)
+    return [_simple("case_tray", fill, black, bevel_width=0.0004)]
+
+
+def _jcard_parts(closed_lid_z_top):
+    """The J-card in a shut lid: its front under the lid's top, its inside facing down, its spine at the hinge side."""
+    card_top = closed_lid_z_top - T_BOX_WALL - 0.00012
+    parts = []
+    # The front panel's two faces, portrait with the spine on its left — u across (toward you), v along the spine (X).
+    for name, mat_name, z, up in (("jcard_front", "JCardFront", card_top, True), ("jcard_inside", "JCardInside", card_top - 0.0003, False)):
+        obj = new_mesh_object(name)
+        bm = bmesh.new()
+        uv = bm.loops.layers.uv.new("UVMap")
+        hl, hw = T_JCARD_L / 2, T_JCARD_W / 2
+        corners = [(-hl, -hw), (hl, -hw), (hl, hw), (-hl, hw)]
+        vs = [bm.verts.new((x, y, z)) for x, y in corners]
+        if not up:
+            vs.reverse()
+        f = bm.faces.new(vs)
+        for loop in f.loops:
+            p = loop.vert.co
+            if up:
+                # The cover: up is +X, and its right is toward you (Blender -Y).
+                loop[uv].uv = ((-p.y + hw) / T_JCARD_W, (p.x + hl) / T_JCARD_L)
+            else:
+                # The inside, as it is read with the lid up: right is +X, up is toward you.
+                loop[uv].uv = ((p.x + hl) / T_JCARD_L, (-p.y + hw) / T_JCARD_W)
+        bm.normal_update()
+        bm.to_mesh(obj.data)
+        bm.free()
+        obj.data.materials.append(attach_placeholder_basecolor(
+            principled(mat_name, base_color=(0.85, 0.82, 0.76), metallic=0.0, roughness=0.62),
+            name + "_placeholder"))
+        finish(obj, bevel=False)
+        parts.append(obj)
+    # The spine: standing at the hinge side, facing out of it (+Y), read from there.
+    obj = new_mesh_object("jcard_spine")
+    bm = bmesh.new()
+    uv = bm.loops.layers.uv.new("UVMap")
+    y = T_BOX_W / 2 - T_BOX_WALL - 0.0002
+    hl = T_JCARD_L / 2
+    z1 = card_top + 0.0002
+    z0 = z1 - T_JCARD_SPINE
+    vs = [bm.verts.new(p) for p in ((hl, y, z0), (-hl, y, z0), (-hl, y, z1), (hl, y, z1))]
+    f = bm.faces.new(vs)
+    for loop in f.loops:
+        p = loop.vert.co
+        loop[uv].uv = ((-p.x + hl) / T_JCARD_L, (p.z - z0) / T_JCARD_SPINE)
+    bm.normal_update()
+    bm.to_mesh(obj.data)
+    bm.free()
+    obj.data.materials.append(attach_placeholder_basecolor(
+        principled("JCardSpine", base_color=(0.85, 0.82, 0.76), metallic=0.0, roughness=0.5, coat=0.3, coat_roughness=0.12),
+        "jcard_spine_placeholder"))
+    finish(obj, bevel=False)
+    parts.append(obj)
+    return parts
+
+
+def build_tape_case_lid():
+    """
+    The box's lid, clear, with the J-card in it — shut, then moved so that the hinge line is the
+    origin: the app hangs it from a node there and turns that node to open it.
+    """
+    clear = _clear_plastic("CaseLid")
+
+    def fill(bm):
+        # The top, the front and the two sides down to the tray, and the spine wall the whole height at the back.
+        _vbox(bm, 0, 0, T_BOX_T - T_BOX_WALL / 2, T_BOX_L, T_BOX_W, T_BOX_WALL)
+        _vbox(bm, 0, -T_BOX_W / 2 + T_BOX_WALL / 2, T_BOX_T - (T_BOX_T - T_TRAY_H) / 2, T_BOX_L, T_BOX_WALL, T_BOX_T - T_TRAY_H)
+        for s in (-1, 1):
+            _vbox(bm, s * (T_BOX_L / 2 - T_BOX_WALL / 2), 0, T_BOX_T - (T_BOX_T - T_TRAY_H) / 2,
+                  T_BOX_WALL, T_BOX_W - 2 * T_BOX_WALL, T_BOX_T - T_TRAY_H)
+        _vbox(bm, 0, T_BOX_W / 2 - T_BOX_WALL / 2, T_BOX_T / 2, T_BOX_L, T_BOX_WALL, T_BOX_T)
+    lid = _simple("case_lid", fill, clear, bevel_width=0.0004)
+    parts = [lid] + _jcard_parts(T_BOX_T)
+    # The hinge line to the origin.
+    hz, hy = T_HINGE[0], T_HINGE[1]
+    for obj in parts:
+        obj.data.transform(Matrix.Translation((0.0, -hy, -hz)))
+    return parts
+
+
+def build_tape_case_closed():
+    """
+    A shut box as the rack holds it, for the pool every rack's tapes are drawn from: one body and
+    the J-card's spine — the one face a rack shows. Lying on its back, spine away (+Y), origin the
+    middle of its underside, as the tray is.
+    """
+    body = _tape_plastic("CaseClosed", colour=(0.020, 0.021, 0.023), roughness=0.16, coat=0.6)
+    box = _simple("case_body", lambda bm: _vbox(bm, 0, 0, T_BOX_T / 2, T_BOX_L, T_BOX_W, T_BOX_T), body, bevel_width=0.0008)
+    spine = _jcard_parts(T_BOX_T)[2]
+    # The spine card at the box's own face, under its gloss rather than behind a wall of plastic.
+    spine.data.transform(Matrix.Translation((0.0, T_BOX_WALL + 0.00025, 0.0)))
+    for name in ("jcard_front", "jcard_inside"):
+        o = bpy.data.objects.get(name)
+        if o is not None:
+            bpy.data.objects.remove(o)
+    return [box, spine]
+
+
+def build_tape_rack():
+    """
+    A rack of twenty-four slots: two pine sides with a ledge for each tape, a back, a base, and a
+    top board carrying a card with the shelf's name. Origin: the middle of its foot, at its front.
+    """
+    pine = _wood("RackPine", (0.42, 0.29, 0.17), (0.74, 0.58, 0.40), seed=17, roughness=0.55, coat=0.15, size=512, rings=18.0)
+    d = T_RACK_DEPTH
+    cy = d / 2                       # Blender y of the rack's middle, front at 0
+    inner_top = T_RACK_BOTTOM + T_RACK_SLOTS * T_RACK_PITCH
+    boards = [
+        ((-T_RACK_W / 2 + T_RACK_SIDE / 2, cy, T_RACK_H / 2), (T_RACK_SIDE, d, T_RACK_H)),
+        ((T_RACK_W / 2 - T_RACK_SIDE / 2, cy, T_RACK_H / 2), (T_RACK_SIDE, d, T_RACK_H)),
+        ((0, cy, T_RACK_BOTTOM / 2), (T_RACK_IN_W, d, T_RACK_BOTTOM)),
+        ((0, cy, inner_top + T_RACK_TOP / 2), (T_RACK_IN_W, d, T_RACK_TOP)),
+        ((0, d - T_RACK_BACK / 2, T_RACK_H / 2), (T_RACK_IN_W, T_RACK_BACK, T_RACK_H)),
+    ]
+    wood = _grain_object("rack_wood", boards, pine, bevel_width=0.0012, scale=2.0)
+
+    def ledges(bm):
+        for i in range(T_RACK_SLOTS):
+            z = T_RACK_BOTTOM + i * T_RACK_PITCH + 0.0007
+            for s in (-1, 1):
+                _vbox(bm, s * (T_RACK_IN_W / 2 - 0.0035), cy + 0.004, z, 0.007, d - 0.012, 0.0014)
+    ledge = _simple("rack_ledges", ledges, principled("RackLedge", base_color=(0.62, 0.48, 0.33), metallic=0.0, roughness=0.6))
+
+    brass = principled("RackBrass", base_color=(0.78, 0.60, 0.32), metallic=1.0, roughness=0.32)
+    lz = inner_top + T_RACK_TOP / 2
+
+    def frame(bm):
+        w, h, t = T_RACK_LABEL_W + 0.004, T_RACK_LABEL_H + 0.004, 0.0008
+        _vbox(bm, 0, -0.0005, lz + h / 2 - t / 2, w, 0.001, t)
+        _vbox(bm, 0, -0.0005, lz - h / 2 + t / 2, w, 0.001, t)
+        for s in (-1, 1):
+            _vbox(bm, s * (w / 2 - t / 2), -0.0005, lz, t, 0.001, h)
+    holder = _simple("rack_label_frame", frame, brass)
+    label = _label_face("rack_label", "RackLabel", T_RACK_LABEL_W, T_RACK_LABEL_H, 0.0, lz, -0.0003, True)
+    return [wood, ledge, holder, label]
+
+
+def _key_glyph(bm, kind, cx, cz, y):
+    """The symbol on a key's face, as flat ink (in Blender's XZ at [y], facing -Y)."""
+    s = 0.0021
+    if kind == "play":
+        _tri(bm, [(cx - s * 0.7, cz - s), (cx + s, cz), (cx - s * 0.7, cz + s)], y)
+    elif kind in ("ff", "rew"):
+        d = 1 if kind == "ff" else -1
+        for off in (-0.0013, 0.0013):
+            x0 = cx + off
+            pts = [(x0 - d * s * 0.6, cz - s * 0.85), (x0 + d * s * 0.8, cz), (x0 - d * s * 0.6, cz + s * 0.85)]
+            _tri(bm, pts if d > 0 else list(reversed(pts)), y)
+    elif kind == "stop":
+        _tri(bm, [(cx - s * 0.8, cz - s * 0.8), (cx + s * 0.8, cz - s * 0.8), (cx + s * 0.8, cz + s * 0.8), (cx - s * 0.8, cz + s * 0.8)], y)
+    elif kind == "pause":
+        for off in (-0.0011, 0.0011):
+            _tri(bm, [(cx + off - 0.00045, cz - s * 0.85), (cx + off + 0.00045, cz - s * 0.85),
+                      (cx + off + 0.00045, cz + s * 0.85), (cx + off - 0.00045, cz + s * 0.85)], y)
+    elif kind == "eject":
+        _tri(bm, [(cx - s, cz - s * 0.15), (cx + s, cz - s * 0.15), (cx, cz + s)], y)
+        _tri(bm, [(cx - s, cz - s), (cx + s, cz - s), (cx + s, cz - s * 0.6), (cx - s, cz - s * 0.6)], y)
+
+
+T_KEYS = ("eject", "rew", "play", "ff", "stop", "pause")
+
+
+def _meter_db_angle(db):
+    """Where a VU meter's needle points for [db], in radians from straight up: the VU scale's law."""
+    f = (10 ** (db / 20.0)) / (10 ** (3 / 20.0))
+    return math.radians(-45.0 + 90.0 * f)
+
+
+def build_tape_deck():
+    """
+    The deck, everything on it named: the app moves the keys, the door, the needles and the
+    counter's drums by name, about pivots TapeDimens has (each is baked where it is, with an
+    identity transform). Its origin is the middle of the front edge of its footprint, on the
+    sideboard; its front is toward you.
+    """
+    objs = []
+    hw = T_DECK_W / 2
+    rubber = principled("TapeDeckFeet", base_color=(0.012, 0.012, 0.012), metallic=0.0, roughness=0.85)
+    objs.append(_simple("deck_feet", lambda bm: [
+        _vcyl(bm, sx * (hw - 0.03), sy, T_FOOT / 2, 0.012, T_FOOT, segments=32)
+        for sx in (-1, 1) for sy in (0.04, T_DECK_D - 0.04)], rubber, bevel_width=0.001))
+
+    # The case: dark steel, a little satin, its top the shelf a cassette box is laid on.
+    steel = principled("TapeDeckCase", base_color=(0.030, 0.030, 0.032), metallic=0.6, roughness=0.42)
+    # Solid only behind the well: in front of that it is a shell, so that the cassette's well, the
+    # meters and the counter have room behind the face for what they hold.
+    shell_d = 0.050
+
+    def case(bm):
+        _vbox(bm, 0, shell_d + (T_DECK_D - shell_d) / 2, T_FOOT + T_DECK_H / 2, T_DECK_W - 0.002, T_DECK_D - shell_d, T_DECK_H - 0.001)
+        _vbox(bm, 0, shell_d / 2, T_DECK_TOP - 0.0006, T_DECK_W - 0.002, shell_d, 0.0012)
+        _vbox(bm, 0, shell_d / 2, T_FOOT + 0.0006, T_DECK_W - 0.002, shell_d, 0.0012)
+        for sx in (-1, 1):
+            _vbox(bm, sx * (hw - 0.0016), shell_d / 2, T_FOOT + T_DECK_H / 2, 0.0012, shell_d, T_DECK_H - 0.001)
+    objs.append(_simple("deck_case", case, steel, bevel_width=0.0008))
+
+    # The fascia: brushed aluminium, with its openings — the door, the meters, the counter, the keys.
+    np = _np()
+    rng = np.random.default_rng(41)
+    brushed = 0.30 + (_fbm(256, 256, 4, 3, rng, aspect=4.0) - 0.5) * 0.05 + (_fbm(256, 256, 220, 2, rng, aspect=40.0) - 0.5) * 0.08
+    alu = principled("TapeFascia", base_color=(0.66, 0.66, 0.67), metallic=1.0, roughness=0.30)
+    _use_metal_rough(alu, _metal_rough_image("tape_fascia_brushing", brushed, 1.0))
+    fz0, fz1 = T_FOOT + 0.0005, T_DECK_TOP
+    outer = [(-hw, fz0), (hw, fz0), (hw, fz1), (-hw, fz1)]
+    holes = [
+        list(reversed(_rr_pts(T_DOOR_W + 0.002, T_DOOR_H + 0.002, 0.002, 0.0, T_DOOR_Z0 + T_DOOR_H / 2, arc=3))),
+        list(reversed(_rr_pts(6 * T_KEY_PITCH + 0.002, T_KEY_H + 0.0016, 0.0015, 0.0, T_KEY_Z, arc=3))),
+        list(reversed(_rr_pts(T_METER_W, T_METER_H, 0.0015, -T_METER_X, T_METER_Z, arc=3))),
+        list(reversed(_rr_pts(T_METER_W, T_METER_H, 0.0015, T_METER_X, T_METER_Z, arc=3))),
+        # One digit a drum, as a counter's window shows: the next comes up from under its lip.
+        list(reversed(_rr_pts(0.025, 0.0062, 0.0008, 0.0, T_COUNTER_Z, arc=3))),
+        list(reversed(_circle_pts(0.0036, T_REV[0], T_REV[1], 24))),
+    ]
+
+    def fascia_uv(co, front):
+        return ((co.x + hw) / T_DECK_W * 4.0, (co.z - fz0) / (fz1 - fz0))
+    objs.append(_slab_object("deck_fascia", outer, holes, -T_FASCIA_T, 0.0, alu, bevel_width=0.0008,
+                             uv_of=fascia_uv, step=0.006))
+
+    # Behind every opening, something: the cassette's well, the meters' boxes, the counter's slot.
+    well = principled("TapeWell", base_color=(0.018, 0.018, 0.020), metallic=0.0, roughness=0.7)
+
+    def recesses(bm):
+        cz = T_DOOR_Z0 + T_DOOR_H / 2
+        _box_open_top(bm, 0, 0.024, T_DOOR_Z0 - 0.001, T_DOOR_W + 0.002, 0.048, T_DOOR_H + 0.002, 0.0015, front=False)
+        _vbox(bm, 0, 0.024, T_DOOR_Z0 + T_DOOR_H + 0.0005, T_DOOR_W + 0.002, 0.048, 0.0015)
+        _vbox(bm, 0, 0.0135, T_COUNTER_Z, 0.027, 0.003, 0.013)
+        _vbox(bm, 0, 0.0115, T_KEY_Z, 6 * T_KEY_PITCH + 0.004, 0.003, T_KEY_H + 0.003)
+        # The heads and the pinch roller, at the foot of the well where the tape's edge meets them.
+        _vbox(bm, 0, 0.026, T_DOOR_Z0 + 0.0030, 0.013, 0.008, 0.005)
+        _ = cz
+    objs.append(_simple("deck_wells", recesses, well))
+    head = principled("TapeHead", base_color=(0.70, 0.70, 0.72), metallic=1.0, roughness=0.18)
+    objs.append(_simple("deck_head", lambda bm: _vbox(bm, 0, 0.0195, T_DOOR_Z0 + 0.0042, 0.011, 0.004, 0.006), head, bevel_width=0.0006))
+    roller = principled("TapePinch", base_color=(0.012, 0.012, 0.012), metallic=0.0, roughness=0.75)
+    objs.append(_simple("deck_pinch", lambda bm: [_vcyl(bm, sx * 0.0215, 0.020, T_DOOR_Z0 + 0.0045, 0.0032, 0.007, segments=24)
+                                                  for sx in (-1, 1)], roller))
+
+    # The door: its frame, and the smoked pane — two parts, turned together about the hinge at its foot.
+    anod = principled("TapeDoor", base_color=(0.045, 0.045, 0.050), metallic=0.8, roughness=0.36)
+    gz = T_DOOR_Z0 + T_DOOR_H / 2 + 0.0005
+    door_outer = _rr_pts(T_DOOR_W, T_DOOR_H, 0.0018, 0.0, T_DOOR_Z0 + T_DOOR_H / 2, arc=3)
+    door_hole = list(reversed(_rr_pts(T_GLASS_W, T_GLASS_H, 0.0012, 0.0, gz, arc=3)))
+    objs.append(_slab_object("door", door_outer, [door_hole], -T_FASCIA_T - 0.001, -T_FASCIA_T - 0.001 + T_DOOR_T,
+                             anod, bevel_width=0.0006, step=0.006))
+    smoke = principled("TapeDoorGlass", base_color=(0.020, 0.020, 0.024), metallic=0.0, roughness=0.04, alpha=0.30, blend=True)
+    objs.append(_simple("door_glass", lambda bm: _vbox(bm, 0, -T_FASCIA_T + 0.0005, gz, T_GLASS_W + 0.002, 0.0012, T_GLASS_H + 0.002), smoke))
+    # The clips the cassette is held by, inside the door.
+    objs.append(_simple("door_clips", lambda bm: [
+        _vbox(bm, sx * 0.050, -T_FASCIA_T + T_DOOR_T - 0.0005, T_DOOR_Z0 + 0.010, 0.006, 0.010, 0.003) for sx in (-1, 1)],
+        anod))
+
+    # The keys: one object each, and the ink on each face as its own — the app moves both by name.
+    cap = principled("TapeKey", base_color=(0.74, 0.74, 0.75), metallic=1.0, roughness=0.26)
+    ink = principled("TapeKeyInk", base_color=(0.020, 0.020, 0.022), metallic=0.0, roughness=0.5)
+    front_y = -T_FASCIA_T - T_KEY_PROUD
+    for i, kind in enumerate(T_KEYS):
+        kx = (i - 2.5) * T_KEY_PITCH
+        objs.append(_simple("key_" + kind, lambda bm, kx=kx: _vbox(bm, kx, front_y / 2 + 0.002, T_KEY_Z, T_KEY_W, -front_y + 0.004, T_KEY_H),
+                            cap, bevel_width=0.0007))
+        g = new_mesh_object("key_" + kind + "_ink")
+        bm = bmesh.new()
+        _key_glyph(bm, kind, kx, T_KEY_Z, front_y - 0.00006)
+        bm.normal_update()
+        bm.to_mesh(g.data)
+        bm.free()
+        g.data.materials.append(ink if kind != "play" else principled("TapeKeyPlay", base_color=(0.02, 0.24, 0.06), metallic=0.0, roughness=0.5))
+        finish(g, bevel=False)
+        objs.append(g)
+    objs.append(_simple("key_rev", lambda bm: _vcyl(bm, T_REV[0], -T_FASCIA_T - 0.001, T_REV[1], 0.0031, 0.004, segments=32,
+                                                   tilt=Matrix.Rotation(math.radians(90.0), 4, "X")), cap, bevel_width=0.0005))
+
+    # The VU meters: a backlit card each, its scale printed on it, a needle over it.
+    # Lit from behind by a warm bulb: amber, not cream — the glow everybody remembers a deck by.
+    face = principled("MeterFace", base_color=(0.92, 0.62, 0.28), metallic=0.0, roughness=0.6)
+    bsdf = face.node_tree.nodes["Principled BSDF"]
+    bsdf.inputs["Emission Color"].default_value = (1.0, 0.52, 0.16, 1.0)
+    bsdf.inputs["Emission Strength"].default_value = 3.0
+    for sx, side in ((-1, "l"), (1, "r")):
+        mx = sx * T_METER_X
+        objs.append(_simple("meter_face_" + side, lambda bm, mx=mx: _vbox(bm, mx, 0.0035, T_METER_Z, T_METER_W, 0.001, T_METER_H), face))
+
+        def scale(bm, mx=mx):
+            r_in, r_out = 0.0185, 0.0205
+            for db in (-20, -10, -7, -5, -3, -2, -1, 0, 1, 2, 3):
+                a = _meter_db_angle(db)
+                long = db in (-20, -10, -5, 0, 3)
+                r0 = r_in - (0.0012 if long else 0.0)
+                for r in (r0,):
+                    cx = mx + (r + r_out) / 2 * math.sin(a)
+                    cz = T_NEEDLE_PIVOT_Z + (r + r_out) / 2 * math.cos(a)
+                    m = Matrix.Translation((cx, 0.0028, cz)) @ Matrix.Rotation(a, 4, "Y") @ Matrix.Diagonal((0.00035, 0.0002, r_out - r, 1.0))
+                    bmesh.ops.create_cube(bm, size=1.0, matrix=m)
+            # The arc itself, in short pieces.
+            for k in range(40):
+                a0 = math.radians(-42 + 84 * k / 40)
+                a1 = math.radians(-42 + 84 * (k + 1) / 40)
+                am = (a0 + a1) / 2
+                cx = mx + r_out * math.sin(am)
+                cz = T_NEEDLE_PIVOT_Z + r_out * math.cos(am)
+                m = Matrix.Translation((cx, 0.0028, cz)) @ Matrix.Rotation(am, 4, "Y") @ Matrix.Diagonal((r_out * (a1 - a0) + 0.00005, 0.0002, 0.00025, 1.0))
+                bmesh.ops.create_cube(bm, size=1.0, matrix=m)
+            _face_text(bm, "VU", 0.0028, mx, 0.0027, T_METER_Z - 0.0046, facing="FRONT", bold=True)
+            for db, text in ((-20, "20"), (-10, "10"), (-5, "5"), (0, "0"), (3, "3")):
+                a = _meter_db_angle(db)
+                _face_text(bm, text, 0.0013, mx + 0.0158 * math.sin(a), 0.0027, T_NEEDLE_PIVOT_Z + 0.0158 * math.cos(a), facing="FRONT")
+        objs.append(_simple("meter_scale_" + side, scale, principled("MeterInk", base_color=(0.04, 0.03, 0.025), metallic=0.0, roughness=0.6)))
+
+        def red(bm, mx=mx):
+            r = 0.0212
+            a0, a1 = _meter_db_angle(0), _meter_db_angle(3)
+            for k in range(10):
+                b0 = a0 + (a1 - a0) * k / 10
+                b1 = a0 + (a1 - a0) * (k + 1) / 10
+                bm_ = (b0 + b1) / 2
+                m = Matrix.Translation((mx + r * math.sin(bm_), 0.0028, T_NEEDLE_PIVOT_Z + r * math.cos(bm_))) \
+                    @ Matrix.Rotation(bm_, 4, "Y") @ Matrix.Diagonal((r * (b1 - b0) + 0.00005, 0.0002, 0.0011, 1.0))
+                bmesh.ops.create_cube(bm, size=1.0, matrix=m)
+        objs.append(_simple("meter_red_" + side, red, principled("MeterRed", base_color=(0.75, 0.05, 0.03), metallic=0.0, roughness=0.6)))
+
+        # The needle, pointing straight up from its pivot: the app turns it about the pivot.
+        objs.append(_simple("needle_" + side, lambda bm, mx=mx: _vbox(bm, mx, 0.0022, T_NEEDLE_PIVOT_Z + T_NEEDLE_L / 2 + 0.002,
+                                                                       0.00045, 0.0003, T_NEEDLE_L),
+                            principled("MeterNeedle", base_color=(0.015, 0.012, 0.010), metallic=0.0, roughness=0.5)))
+
+    # The counter: three ten-sided drums, a digit on each face, turned about an axis along X.
+    drum_black = principled("CounterDrum", base_color=(0.020, 0.020, 0.021), metallic=0.0, roughness=0.55)
+    drum_ink = principled("CounterInk", base_color=(0.92, 0.91, 0.88), metallic=0.0, roughness=0.5)
+    flat = T_DRUM_R * math.cos(math.radians(18.0))
+    for k, dx in ((2, -T_DRUM_PITCH), (1, 0.0), (0, T_DRUM_PITCH)):
+        def drum(bm, dx=dx):
+            # Blender's ten-sided cone has a corner at 18 degrees; turned by that, a face is square to the front.
+            _vcyl(bm, dx, T_DRUM_Y, T_COUNTER_Z, T_DRUM_R, 0.0064, segments=10,
+                  tilt=Matrix.Rotation(math.radians(90.0), 4, "Y") @ Matrix.Rotation(math.radians(18.0), 4, "Z"))
+        objs.append(_simple("drum_%d" % k, drum, drum_black))
+        g = new_mesh_object("drum_%d_ink" % k)
+        bm = bmesh.new()
+        for digit in range(10):
+            one = bmesh.new()
+            _face_text(one, str(digit), 0.0034, 0.0, -flat - 0.00004, 0.0, facing="FRONT", bold=True)
+            m = Matrix.Translation((dx, T_DRUM_Y, T_COUNTER_Z)) @ Matrix.Rotation(math.radians(36.0 * digit), 4, "X")
+            bmesh.ops.transform(one, matrix=m, verts=one.verts)
+            tmp = bpy.data.meshes.new("digit")
+            one.to_mesh(tmp)
+            one.free()
+            bm.from_mesh(tmp)
+            bpy.data.meshes.remove(tmp)
+        bm.normal_update()
+        bm.to_mesh(g.data)
+        bm.free()
+        g.data.materials.append(drum_ink)
+        finish(g, bevel=False)
+        objs.append(g)
+
+    # The lamps beside the counter: the way the tape runs. Each has its lit self, shown or hidden by the app.
+    def lamp(points_of):
+        def fill(bm):
+            _tri(bm, points_of(), -T_FASCIA_T - 0.00008)
+        return fill
+    s = 0.0016
+    fwd = lambda: [(T_LAMP_X - s * 0.8, T_LAMP_FWD_Z - s), (T_LAMP_X + s, T_LAMP_FWD_Z), (T_LAMP_X - s * 0.8, T_LAMP_FWD_Z + s)]
+    rev = lambda: [(T_LAMP_X + s * 0.8, T_LAMP_REV_Z + s), (T_LAMP_X - s, T_LAMP_REV_Z), (T_LAMP_X + s * 0.8, T_LAMP_REV_Z - s)]
+    dim = principled("LampDim", base_color=(0.05, 0.035, 0.02), metallic=0.0, roughness=0.4)
+    objs.append(_simple("lamp_fwd", lamp(fwd), dim))
+    objs.append(_simple("lamp_rev", lamp(rev), dim))
+    objs.append(_simple("lamp_fwd_on", lamp(lambda: [(x, z) for x, z in fwd()]), _emissive("LampOn", (1.0, 0.55, 0.12), 14.0)))
+    objs.append(_simple("lamp_rev_on", lamp(lambda: [(x, z) for x, z in rev()]), _emissive("LampOnRev", (1.0, 0.55, 0.12), 14.0)))
+    for o in objs[-2:]:
+        o.data.transform(Matrix.Translation((0.0, -0.00006, 0.0)))
+    objs.append(_simple("lamp_power", lambda bm: _vcyl(bm, -0.090, -T_FASCIA_T - 0.0002, 0.044, 0.0013, 0.0005, segments=16,
+                                                       tilt=Matrix.Rotation(math.radians(90.0), 4, "X")),
+                        _emissive("PowerLamp", (1.0, 0.08, 0.03), 10.0)))
+
+    # The rest of the face, mostly outside a phone's frame: power, a phones socket, a level knob — and the words.
+    def furniture(bm):
+        _vbox(bm, -0.090, -T_FASCIA_T - 0.002, 0.030, 0.018, 0.004, 0.010)
+        _vcyl(bm, -0.090, -T_FASCIA_T - 0.001, 0.070, 0.0045, 0.002, segments=24, tilt=Matrix.Rotation(math.radians(90.0), 4, "X"))
+        _vcyl(bm, 0.090, -T_FASCIA_T - 0.007, 0.050, 0.010, 0.014, segments=48, tilt=Matrix.Rotation(math.radians(90.0), 4, "X"))
+    objs.append(_simple("deck_furniture", furniture, cap, bevel_width=0.0006))
+    objs.append(_simple("deck_socket", lambda bm: _vcyl(bm, -0.090, -T_FASCIA_T - 0.0012, 0.070, 0.0018, 0.0006, segments=16,
+                                                       tilt=Matrix.Rotation(math.radians(90.0), 4, "X")), well))
+
+    def words(bm):
+        y = -T_FASCIA_T - 0.00005
+        _face_text(bm, "STEREO CASSETTE DECK", 0.0024, 0.090, y, 0.124, spacing=1.15)
+        _face_text(bm, "AUTO REVERSE", 0.0016, T_REV[0], y, T_REV[1] - 0.0062, spacing=1.15)
+        _face_text(bm, "POWER", 0.0016, -0.090, y, 0.0205, spacing=1.15)
+        _face_text(bm, "PHONES", 0.0016, -0.090, y, 0.0625, spacing=1.15)
+        _face_text(bm, "REC LEVEL", 0.0016, 0.090, y, 0.0335, spacing=1.15)
+        _face_text(bm, "COUNTER", 0.0013, 0.0, y, T_COUNTER_Z - 0.0085, spacing=1.2)
+        for i, word in enumerate(("EJECT", "REW", "PLAY", "FF", "STOP", "PAUSE")):
+            _face_text(bm, word, 0.0013, (i - 2.5) * T_KEY_PITCH, y, T_KEY_Z - 0.0093, spacing=1.2)
+        # A line under the door, and one over the meters: the face's own rule.
+        _vbox(bm, 0, y, T_DOOR_Z0 - 0.0045, 0.140, 0.0001, 0.0003)
+    objs.append(_simple("deck_words", words, principled("TapeFasciaInk", base_color=(0.035, 0.035, 0.038), metallic=0.0, roughness=0.5)))
+    return objs
+
+
+def build_tape_room():
+    """
+    Where the deck stands: a long sideboard, the wall the racks hang on, the floor. The origin is the
+    deck's: on the sideboard, at the deck's front edge.
+    """
+    depth = T_WALL_Y - T_BOARD_FRONT
+    mid = (T_WALL_Y + T_BOARD_FRONT) / 2
+    oak = _wood("BoardOak", (0.30, 0.20, 0.12), (0.58, 0.42, 0.27), seed=29, roughness=0.42, coat=0.25, size=1024, rings=36.0)
+    top = _grain_object("board_top", [((0, mid, -0.015), (T_BOARD_W, depth, 0.030))], oak, bevel_width=0.003, scale=1.6)
+    carcass = _grain_object("board_carcass", [
+        ((0, mid + 0.012, -0.030 - (T_BOARD_H - 0.12) / 2), (T_BOARD_W - 0.04, depth - 0.03, T_BOARD_H - 0.12)),
+    ], _wood("BoardOakFront", (0.32, 0.22, 0.13), (0.60, 0.44, 0.28), seed=31, roughness=0.46, coat=0.2, rings=14.0), bevel_width=0.003, scale=1.1)
+    legs = _simple("board_legs", lambda bm: [
+        _vcyl(bm, sx * (T_BOARD_W / 2 - 0.10), sy, -T_BOARD_H + 0.045, 0.015, 0.09, segments=24, radius2=0.020)
+        for sx in (-1, 1) for sy in (T_BOARD_FRONT + 0.07, T_WALL_Y - 0.07)],
+        principled("BoardLegs", base_color=(0.020, 0.020, 0.021), metallic=0.0, roughness=0.5))
+    boards = _wood("TapeFloor", (0.10, 0.065, 0.040), (0.26, 0.17, 0.10), seed=19, roughness=0.5, coat=0.12, size=1024, rings=10.0)
+    floor = _grain_object("floor", [((0, -0.5, -T_BOARD_H - 0.01), (4.0, 3.2, 0.02))], boards, bevel_width=None, scale=0.9)
+    # Plaster painted a deep warm green: the racks' pine and the deck's aluminium both stand off it.
+    wall = _simple("wall", lambda bm: _vbox(bm, 0.6, T_WALL_Y + 0.01, 0.6, 4.0, 0.02, 2.6),
+                   principled("TapeWall", base_color=(0.085, 0.105, 0.080), metallic=0.0, roughness=0.9))
+    skirting = _simple("skirting", lambda bm: _vbox(bm, 0.6, T_WALL_Y - 0.006, -T_BOARD_H + 0.05, 4.0, 0.012, 0.10),
+                       principled("Skirting", base_color=(0.70, 0.68, 0.62), metallic=0.0, roughness=0.5))
+    return [top, carcass, legs, floor, wall, skirting]
+
+
 def export(objects, filename, image_format="AUTO", jpeg_quality=75):
     bpy.ops.object.select_all(action="DESELECT")
     for obj in objects:
@@ -3209,6 +4002,25 @@ def main():
         ("vinyl_divider.glb", build_vinyl_divider, "AUTO"),
         ("vinyl_single.glb", build_vinyl_single, "AUTO"),
         ("vinyl_room.glb", build_vinyl_room, "JPEG"),
+    ):
+        if not skip(filename):
+            clear_scene()
+            paths.append(export(build(), filename, image_format=fmt, jpeg_quality=88))
+
+    # The cassette room (docs/formats.md section 6). One file per thing that moves on its own: the
+    # cassette and the case's two halves are carried about, the hubs turn and the packs grow, every
+    # rack's tapes are drawn from one pool of shut boxes, and the deck's moving parts are moved by
+    # name inside its own file.
+    for filename, build, fmt in (
+        ("tape_cassette.glb", build_tape_cassette, "AUTO"),
+        ("tape_hub.glb", build_tape_hub, "AUTO"),
+        ("tape_pack.glb", build_tape_pack, "AUTO"),
+        ("tape_case_tray.glb", build_tape_case_tray, "AUTO"),
+        ("tape_case_lid.glb", build_tape_case_lid, "AUTO"),
+        ("tape_case_closed.glb", build_tape_case_closed, "AUTO"),
+        ("tape_rack.glb", build_tape_rack, "JPEG"),
+        ("tape_deck.glb", build_tape_deck, "AUTO"),
+        ("tape_room.glb", build_tape_room, "JPEG"),
     ):
         if not skip(filename):
             clear_scene()
