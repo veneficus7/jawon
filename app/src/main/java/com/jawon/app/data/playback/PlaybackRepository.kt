@@ -528,7 +528,14 @@ class PlaybackRepository @Inject constructor(
      * means "again".
      */
     private fun playFromWhereItIs(controller: MediaController) {
-        if (controller.playbackState == Player.STATE_ENDED && controller.mediaItemCount > 0) {
+        // At the end — ended, or parked on the last moment of the last track, which is where the
+        // cassette deck leaves the player when an album runs out (2026-11-14: the bar's ▶ played
+        // that moment, ended again, and seemed to do nothing).
+        val count = controller.mediaItemCount
+        val parkedAtTheEnd = count > 0 && controller.currentMediaItemIndex == count - 1 &&
+            controller.duration != androidx.media3.common.C.TIME_UNSET &&
+            controller.currentPosition >= controller.duration - AT_THE_END_MS
+        if ((controller.playbackState == Player.STATE_ENDED || parkedAtTheEnd) && count > 0) {
             controller.seekTo(0, 0L)
         }
         // After a player error it is idle with the record still loaded; play() alone does nothing.
@@ -592,7 +599,8 @@ class PlaybackRepository @Inject constructor(
     suspend fun seekToTrack(index: Int) {
         val controller = ensureController()
         controller.seekTo(index, 0L)
-        controller.play()
+        // Through the same door as Play: after a player error, a track chosen is a player prepared again.
+        playFromWhereItIs(controller)
     }
 
     /**
@@ -608,3 +616,6 @@ class PlaybackRepository @Inject constructor(
         const val POSITION_SAVE_EVERY_TICKS = 10
     }
 }
+
+/** Within this of the last track's end, Play is the record again rather than its last moment. */
+private const val AT_THE_END_MS = 300L

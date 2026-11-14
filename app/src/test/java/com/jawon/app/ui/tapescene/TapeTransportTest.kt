@@ -322,6 +322,28 @@ class TapeTransportTest {
         }
     }
 
+    /**
+     * The album over, started again from outside — the bar's ▶: the player is sent to the first
+     * song, and for a frame or two still says it ended the last. The deck follows it to side A and
+     * does not take that for the side running out (it did, and stopped the music: 2026-11-14).
+     */
+    @Test
+    fun startedAgainFromOutsideOnceTheAlbumIsOverItPlays() {
+        val rig = Rig(durations)
+        rig.loadAt(5, 4 * minute - 2_000L)
+        rig.run(10.0, until = { rig.deck.mode == TapeTransport.Mode.STOP })
+        rig.player.told.clear()
+        // What the repository's Play does with the player parked at the end: the first song, playing.
+        rig.player.seek(0, 0L)
+        rig.player.play()
+        rig.player.told.clear()
+        rig.run(3.0)
+        assertEquals(TapeTransport.Mode.PLAY, rig.deck.mode)
+        assertFalse("the deck never stopped it", rig.player.told.contains("pause"))
+        assertTrue(rig.player.playing)
+        assertEquals(0, rig.deck.side)
+    }
+
     /** Not past the music: PLAY plays from where the tape is, as it always did. */
     @Test
     fun stoppedInTheMiddlePlayPlaysFromThere() {

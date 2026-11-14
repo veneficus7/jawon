@@ -658,6 +658,8 @@ class TapeTransport(private val player: TapePlayer) {
                 // shuts on the tape and PLAY goes down, because the music is going.
                 if (agreeing < 0.0 && player.isPlaying()) {
                     if (mode == Mode.EJECTED) closeDoor()
+                    // The player may say it is playing a moment before it has left where it ended.
+                    outsideGrace = OUTSIDE_GRACE_S
                     mode = Mode.PLAY
                     awaiting = -1
                     pauseLatched = false
@@ -936,10 +938,20 @@ class TapeTransport(private val player: TapePlayer) {
         val track = if (heard in 0 until tracks) heard else set.placeAt(side, x).first
         val last = s != null && track == s.lastTrack
         player.stopAtEndOfTrack(seen && last && track + 1 < tracks)
-        if (agreeing < 0.0 && !playing && !pauseLatched && last && player.endedTrack()) {
+        if (outsideGrace > 0.0) outsideGrace -= dt
+        if (agreeing < 0.0 && outsideGrace <= 0.0 && !playing && !pauseLatched && last && player.endedTrack()) {
             sideEnded()
         }
     }
+
+    /**
+     * Counting down from a start from outside — the now-playing bar's ▶, the notification, a car —
+     * while the deck was stopped. The album over, ▶ sends the player to its first song; for a
+     * moment it reports playing and still ended at the last, and the deck took that for the side
+     * running out and stopped it again (2026-11-14). Until this has run out, an ended track is the
+     * player arriving, not the side's end.
+     */
+    private var outsideGrace = 0.0
 
     private fun adoptSide(heardSide: Int) {
         onAdoptSide(heardSide)
@@ -1011,6 +1023,7 @@ class TapeTransport(private val player: TapePlayer) {
         const val OUTSIDE_PAUSE_S = 0.8
 
         const val OWN_WORD_S = 0.6
+        const val OUTSIDE_GRACE_S = 0.5
 
         const val REVERSE_S = 0.55
 
