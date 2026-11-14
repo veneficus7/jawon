@@ -587,7 +587,9 @@ the same way:
   showroom — with no error.
 
 The Guide's pages for the two rooms were written before the way back to the deck and the
-turn-over button existed, and do not mention them in this build.
+turn-over button existed, and do not mention them in this build. They do after it — the bar at
+the foot of the racks and the crate, *‹ TAPES* and *‹ CRATE*, the buttons at the end of a side,
+PLAY at the end of an album, and the tape racks among the places ROOMS is — for the next one.
 
 ---
 
