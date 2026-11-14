@@ -36,6 +36,35 @@ class TapeColourTest {
         }
     }
 
+    /**
+     * The processor is in every room's chain, always (it never comes and goes: trap 19). Off, what
+     * the player hands it must come out to the bit — only later by a whole number of samples —
+     * at either rate a phone plays at. A fractional delay at 44.1kHz would be a filter on every
+     * record in every room.
+     */
+    @Test
+    @androidx.media3.common.util.UnstableApi
+    fun offTheProcessorGivesBackThePlayersSamplesToTheBit() {
+        for (sampleRate in listOf(44_100, 48_000)) {
+            val state = TapeState().apply { colour = false }
+            val processor = TapeAudioProcessor(state)
+            processor.configure(androidx.media3.common.audio.AudioProcessor.AudioFormat(sampleRate, 2, androidx.media3.common.C.ENCODING_PCM_16BIT))
+            processor.flush()
+            val frames = 4_096
+            val input = ShortArray(frames * 2) { i -> ((i * 7919L % 65_536L) - 32_768L).toShort() }
+            val bytes = java.nio.ByteBuffer.allocateDirect(input.size * 2).order(java.nio.ByteOrder.nativeOrder())
+            bytes.asShortBuffer().put(input)
+            processor.queueInput(bytes)
+            val out = processor.output.order(java.nio.ByteOrder.nativeOrder()).asShortBuffer()
+            val got = ShortArray(out.remaining()).also { out.get(it) }
+            assertEquals(input.size, got.size)
+            val delay = Math.round(TapeColour.REST_DELAY_S * sampleRate)
+            for (i in delay * 2 until got.size) {
+                assertEquals("at $sampleRate, sample $i", input[i - delay * 2], got[i])
+            }
+        }
+    }
+
     @Test
     fun theHissIsAboutSixtyDecibelsDown() {
         val colour = TapeColour(rate, 2)

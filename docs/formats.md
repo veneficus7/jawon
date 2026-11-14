@@ -511,6 +511,22 @@ found that way and fixed: a cue let go in the blank after a side's music sent th
 last millisecond of the last song and dragged the reels back to it. Now the blank runs out and
 the side ends.
 
+A review then found four more, all fixed:
+
+- **The tape went through the door's glass.** Turning over, it swung edge-on 16mm into the open
+  door, and the load's last leg crossed the glass too. Now it goes as a hand takes one out of
+  a front-loading deck: up out of the holder on the door's back, clear of its top edge, out in
+  front to be turned, and back the same way (`LoadTape.liftedOut`). `TapeRackTest` holds it,
+  sampling the tape every 2.5mm. The turn-over was then recorded and stepped through frame by
+  frame.
+- **The colour's resting delay was a fraction of a sample at 44.1kHz.** The stage is in every
+  room's chain, so that was a filter on all of them. It is a whole number of samples now, and
+  off is the music to the bit (`TapeColourTest`, through the real processor).
+- **A tape changed for the next of a set** waits edge-on until its labels are printed.
+- **REV has a lamp of its own**, the deck's first-run card sits over the wall rather than the
+  keys, TalkBack's description at the racks follows the rack, and the frame loop no longer
+  makes anything every frame.
+
 **Never on a phone**, and some of it cannot be judged anywhere else: the cue squeal and the
 deck's own sounds (the emulator's audio says nothing about latency or tone), and the meters (the
 test library is silent).

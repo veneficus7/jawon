@@ -81,6 +81,8 @@ class TapeTransportTest {
                 player.advance((step * 1000).toLong())
                 now += (step * 1000).toLong()
                 deck.frame(step, now)
+                // The room prints a tape's labels a frame or so after it asks.
+                if (deck.labelSwap) deck.labelPrinted()
                 xs += deck.x
                 left -= step
                 if (until?.invoke() == true) return

@@ -4,6 +4,9 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.view.MotionEvent
 import android.view.VelocityTracker
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import com.google.android.filament.Engine
 import com.google.android.filament.Texture
 import com.google.android.filament.TextureSampler
@@ -105,6 +108,20 @@ internal class TapeRackScene(
     private val caseHas = arrayOfNulls<String>(CASE_POOL)
     private val proud = FloatArray(CASE_POOL)
 
+    /** What each box of the pool shows, by identity: its print's key is worked out only when this changes. */
+    private val caseTape = arrayOfNulls<TapeRack.Tape>(CASE_POOL)
+    private val shownCases = BooleanArray(CASE_POOL)
+    private val shownRacks = BooleanArray(RACK_POOL)
+    private val rackTower = arrayOfNulls<TapeRack.Tower>(RACK_POOL)
+
+    /**
+     * The rack in front and the tape level with the middle of the frame, for TalkBack — Compose
+     * state, written only when they change, because a description read from a plain field is
+     * not watched and goes stale (the vinyl room's lesson).
+     */
+    var frontShown by mutableStateOf(-1 to -1)
+        private set
+
     private val rackNodes = arrayOfNulls<ModelNode>(RACK_POOL)
     private val rackWants = arrayOfNulls<String>(RACK_POOL)
     private val rackHas = arrayOfNulls<String>(RACK_POOL)
@@ -187,9 +204,12 @@ internal class TapeRackScene(
             lastTower = nearest
         }
 
+        val front = motion.towerTarget to TapeRack.slotAtHeight(motion.y)
+        if (front != frontShown && motion.settled) frontShown = front
+
         // The racks: the one in front and two each side, each frame from the pool its index says.
         val centre = floor(motion.tower).toInt()
-        val shownRacks = BooleanArray(RACK_POOL)
+        shownRacks.fill(false)
         for (t in centre - 2..centre + 2) {
             if (t !in towers.indices) continue
             val i = ((t % RACK_POOL) + RACK_POOL) % RACK_POOL
@@ -198,17 +218,21 @@ internal class TapeRackScene(
             node.position = Position(TapeDimens.rackX(t), TapeDimens.RACKS_BOTTOM, TapeDimens.RACK_FRONT_Z)
             node.isVisible = true
             val tower = towers[t]
-            val key = "${tower.name}|${tower.partLabel}"
-            if (rackWants[i] != key) {
-                rackWants[i] = key
-                printLabel(i, key, tower)
+            if (rackTower[i] !== tower) {
+                rackTower[i] = tower
+                val key = "${tower.name}|${tower.partLabel}"
+                if (rackWants[i] != key) {
+                    rackWants[i] = key
+                    printLabel(i, key, tower)
+                }
             }
         }
         for (i in 0 until RACK_POOL) if (!shownRacks[i]) rackNodes[i]?.isVisible = false
 
         // The boxes: the two racks the camera is between, the even one's in the first half of the pool.
-        val shownCases = BooleanArray(CASE_POOL)
-        for (t in listOf(centre, centre + 1)) {
+        shownCases.fill(false)
+        for (k in 0..1) {
+            val t = centre + k
             if (t !in towers.indices) continue
             val half = (t and 1) * TapeDimens.RACK_SLOTS
             for (tape in towers[t].tapes) {
@@ -221,10 +245,13 @@ internal class TapeRackScene(
                 node.position = Position(TapeDimens.rackX(t), TapeDimens.slotY(tape.slot), TapeDimens.SLOT_CASE_Z + proud[i])
                 node.quaternion = IN_RACK
                 node.isVisible = true
-                val key = "${tape.albumId}|${tape.title}|${tape.artist}|${tape.coverPath}|${tape.storedHue}"
-                if (caseWants[i] != key) {
-                    caseWants[i] = key
-                    printSpine(i, key, tape)
+                if (caseTape[i] !== tape) {
+                    caseTape[i] = tape
+                    val key = "${tape.albumId}|${tape.title}|${tape.artist}|${tape.coverPath}|${tape.storedHue}"
+                    if (caseWants[i] != key) {
+                        caseWants[i] = key
+                        printSpine(i, key, tape)
+                    }
                 }
             }
         }

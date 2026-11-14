@@ -203,19 +203,62 @@ object LoadTape {
             val lq = Quat.slerp(out.cassette.q, Quat.IDENTITY, lift)
             out.cassette.set(lx, ly, lz, lq)
             if (into > 0f) {
-                val seat = Pose()
-                seat(doorDeg, seat)
-                // Down in front of the door first, then back into it: never through its frame.
-                val front = 0.030f * sin(into * Math.PI.toFloat())
-                out.cassette.set(
-                    lx + (seat.x - lx) * into,
-                    ly + (seat.y - ly) * into,
-                    lz + (seat.z - lz) * into + front,
-                    Quat.slerp(lq, seat.q, into)
-                )
+                // Into the door as a hand puts one in: over its top edge to just above the
+                // holder, tilted with the open door — then down into the holder along the door
+                // itself. Never through the glass (`TapeRackTest`).
+                presented.set(lx, ly, lz, lq)
+                clear(doorDeg, clearPose)
+                if (into < INTO_CLEAR) {
+                    lerp(presented, clearPose, ease(into / INTO_CLEAR), out.cassette)
+                } else {
+                    seat(doorDeg, seatPose)
+                    lerp(clearPose, seatPose, ease((into - INTO_CLEAR) / (1f - INTO_CLEAR)), out.cassette)
+                }
             }
         }
         out.cassetteSeen = true
+    }
+
+    /** How much of the way in is spent getting over the door to above its holder; the rest is sliding down into it. */
+    private const val INTO_CLEAR = 0.55f
+
+    /** Slid up out of the holder by this much, a cassette is clear of the door's top edge. */
+    const val CLEAR_UP = 0.074f
+
+    /** Out in front of the open door, where a tape is turned over: high enough to clear its top edge, far enough to turn. */
+    const val OUTSIDE_Y = 0.142f
+    const val OUTSIDE_Z = 0.105f
+
+    private val presented = Pose()
+    private val clearPose = Pose()
+    private val seatPose = Pose()
+    private val outsidePose = Pose()
+
+    /** The cassette slid up out of the holder of a door open [doorDeg], still tilted with it. */
+    fun clear(doorDeg: Float, out: Pose) {
+        val q = Quat.aboutX(doorDeg)
+        q.rotate(TapeDimens.SEAT_X, TapeDimens.SEAT_Y + CLEAR_UP - TapeDimens.DOOR_HINGE_Y, TapeDimens.SEAT_Z - TapeDimens.DOOR_HINGE_Z, scratch)
+        out.set(scratch[0], TapeDimens.DOOR_HINGE_Y + scratch[1], TapeDimens.DOOR_HINGE_Z + scratch[2], q)
+    }
+
+    /**
+     * Out of the door to be turned over: [l] 0 in its seat, ½ slid up clear of the holder, 1 out
+     * in front of the door and upright. The deck turns it over there, and puts it back the same way.
+     */
+    fun liftedOut(doorDeg: Float, l: Float, out: Pose) {
+        if (l <= 0.5f) {
+            seat(doorDeg, seatPose)
+            clear(doorDeg, clearPose)
+            lerp(seatPose, clearPose, ease(l / 0.5f), out)
+        } else {
+            clear(doorDeg, clearPose)
+            outsidePose.set(0f, OUTSIDE_Y, OUTSIDE_Z, Quat.IDENTITY)
+            lerp(clearPose, outsidePose, ease((l - 0.5f) / 0.5f), out)
+        }
+    }
+
+    private fun lerp(a: Pose, b: Pose, t: Float, out: Pose) {
+        out.set(a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t, a.z + (b.z - a.z) * t, Quat.slerp(a.q, b.q, t))
     }
 
     /** The cassette lying in the box at [case]: its middle, and which way it faces. */

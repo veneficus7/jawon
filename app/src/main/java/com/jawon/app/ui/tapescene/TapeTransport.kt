@@ -183,6 +183,7 @@ class TapeTransport(private val player: TapePlayer) {
     private var flipToSide = -1
     private var flipThenTrack = -1
     private var flipFromFaceB = false
+    private var labelWaited = 0.0
     private var reverseThenTrack = -1
 
     /** The counter's zero: how much tape was on the deck's right-hand spindle when it was last reset. */
@@ -574,6 +575,7 @@ class TapeTransport(private val player: TapePlayer) {
         flipToSide = toSide
         flipThenTrack = trackIndex
         flipFromFaceB = faceB
+        labelWaited = 0.0
         mode = Mode.FLIP
         clock = if (door >= 0.99f) FLIP_DOOR_S else 0.0
         if (doorTarget < 1f) events += DeckEvent.DOOR_OPEN
@@ -807,6 +809,12 @@ class TapeTransport(private val player: TapePlayer) {
             headReverse = faceB != (flipToSide % 2 == 1)
             resetCounter()
         }
+        // The next tape of a set: held edge-on until its labels are printed, as the vinyl room's next
+        // record waits under its cover — never back in the door with the last tape's labels on it.
+        if (flipChange && labelSwap && turned >= 0.5f && clock > turnStart + FLIP_TURN_S * 0.5) {
+            labelWaited += dt
+            if (labelWaited < LABEL_WAIT_MOST_S) clock = turnStart + FLIP_TURN_S * 0.5
+        }
         val inAt = FLIP_DOOR_S + 2 * FLIP_OUT_S + FLIP_TURN_S
         if (t >= inAt && doorTarget > 0f) {
             events += DeckEvent.SEAT
@@ -985,6 +993,9 @@ class TapeTransport(private val player: TapePlayer) {
         const val FLIP_DOOR_S = 0.26
         const val FLIP_OUT_S = 0.30
         const val FLIP_TURN_S = 0.52
+
+        /** How long a tape change waits for its labels before it goes in regardless. */
+        const val LABEL_WAIT_MOST_S = 3.0
 
         /**
          * How long a search takes to wind [distance] seconds of tape: a song away is under a

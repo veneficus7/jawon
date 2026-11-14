@@ -163,5 +163,54 @@ class TapeRackTest {
         assertEquals("every track is on the card", 9, layout.rows.size)
     }
 
+    /**
+     * Never through the door's glass — the rule vinyl has as "never through the arm". The door is
+     * a slab from its foot to its top edge, a few millimetres thick; a point of the cassette inside
+     * that slab, in the door's own frame, is the tape passing through it.
+     */
+    @Test
+    fun theTapeNeverPassesThroughTheDoor() {
+        val open = TapeDimens.DOOR_OPEN_DEG
+        val state = LoadTape.State()
+        var t = LoadTape.LIFT_AT
+        while (t <= LoadTape.TOTAL_S) {
+            LoadTape.at(t, TapeDimens.rackX(0), TapeDimens.slotY(0), open, state)
+            assertOutsideTheDoor(state.cassette, open, "loading at $t")
+            t += 1f / 240f
+        }
+        // Turned over: up out of the holder, out in front, over, and back the same way.
+        val pose = Pose()
+        val turned = Pose()
+        for (step in 0..240) {
+            LoadTape.liftedOut(open, step / 240f, pose)
+            assertOutsideTheDoor(pose, open, "lifting at ${step / 240f}")
+        }
+        for (step in 0..180) {
+            LoadTape.liftedOut(open, 1f, pose)
+            turned.set(pose.x, pose.y, pose.z, pose.q * Quat.aboutY(step.toFloat()))
+            assertOutsideTheDoor(turned, open, "turning at $step degrees")
+        }
+    }
+
+    private fun assertOutsideTheDoor(pose: Pose, doorDeg: Float, what: String) {
+        val p = FloatArray(3)
+        val local = FloatArray(3)
+        val back = Quat.aboutX(-doorDeg)
+        // Every two and a half millimetres across and up, front, middle and back: finer than the door is thick.
+        for (ix in -20..20) for (iy in -12..12) for (iz in -1..1) {
+            pose.q.rotate(ix / 20f * TapeDimens.CAS_W / 2, iy / 12f * TapeDimens.CAS_H / 2, iz * TapeDimens.CAS_T / 2, p)
+            val wx = pose.x + p[0]
+            val wy = pose.y + p[1]
+            val wz = pose.z + p[2]
+            back.rotate(wx, wy - TapeDimens.DOOR_HINGE_Y, wz - TapeDimens.DOOR_HINGE_Z, local)
+            val y = TapeDimens.DOOR_HINGE_Y + local[1]
+            val z = TapeDimens.DOOR_HINGE_Z + local[2]
+            val inSlab = abs(local[0]) <= TapeDimens.DOOR_W / 2 + 0.001f &&
+                y in TapeDimens.DOOR_HINGE_Y..(TapeDimens.DOOR_HINGE_Y + TapeDimens.DOOR_H) &&
+                z in -0.0015f..0.0055f
+            assertTrue("$what: a point of the tape at (%.4f, %.4f, %.4f) is in the door".format(local[0], y, z), !inSlab)
+        }
+    }
+
     private fun dot(a: Quat, b: Quat): Float = a.w * b.w + a.x * b.x + a.y * b.y + a.z * b.z
 }

@@ -124,7 +124,7 @@ class DeckSound(context: Context) : AutoCloseable {
         Process.setThreadPriority(Process.THREAD_PRIORITY_AUDIO)
         val audio = appContext.getSystemService(Context.AUDIO_SERVICE) as AudioManager
         val rate = audio.getProperty(AudioManager.PROPERTY_OUTPUT_SAMPLE_RATE)?.toIntOrNull() ?: 48_000
-        val track = runCatching { build(rate) }.getOrNull() ?: return
+        val track = runCatching { build(rate) }.onFailure { Log.w(TAG, "no output for the deck's sound: $it") }.getOrNull() ?: return
         val shots = HashMap<DeckEvent, FloatArray>()
         val voices = ArrayList<Voice>()
         val motor = DeckSounds.Motor(rate)

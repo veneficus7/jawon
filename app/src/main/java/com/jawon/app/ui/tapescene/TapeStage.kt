@@ -1,6 +1,5 @@
 package com.jawon.app.ui.tapescene
 
-import android.net.Uri
 import android.os.SystemClock
 import android.util.Log
 import android.view.MotionEvent
@@ -95,6 +94,7 @@ internal class TapeStage(
     private val drums = Array(3) { ArrayList<Node>() }
     private var lampForward: Node? = null
     private var lampReverse: Node? = null
+    private var lampAuto: Node? = null
     private var deckBound: ModelNode? = null
 
     /** The deck's model is built: find its moving parts by the names the model script gave them. */
@@ -121,6 +121,7 @@ internal class TapeStage(
                 name.startsWith("drum_") -> name.removePrefix("drum_").take(1).toIntOrNull()?.let { if (it in 0..2) drums[it] += part }
                 name == "lamp_fwd_on" -> lampForward = part
                 name == "lamp_rev_on" -> lampReverse = part
+                name == "lamp_auto" -> lampAuto = part
             }
         }
         Log.i(TAG, "deck bound: ${keyParts.sumOf { it.size }} key parts, ${doorParts.size} door parts, ${drums.sumOf { it.size }} drum parts")
@@ -255,7 +256,6 @@ internal class TapeStage(
         transport.seen = seen
         if (frames == 0 || transport.autoReverse != autoReverse && !reverseToggled) transport.autoReverse = autoReverse
         reverseToggled = false
-        sound.setSources(deck.tracks.map { DeckSound.Source(Uri.parse(it.fileUri), it.durationMs) })
 
         // ---- A tape on its way in --------------------------------------------------------------------
         val going = run
@@ -290,7 +290,10 @@ internal class TapeStage(
         } else if (set.sides.isNotEmpty() && deckAlbum != null && printedAlbum == deckAlbum) {
             // A tape already in when the room opened; or one put in from somewhere else — the car,
             // the widget — or the album edited under it: it is in the deck, as it is.
-            val shape = set.sides.map { it.trackDurationsMs }
+            if (set !== shapeOf) {
+                shapeOf = set
+                shape = set.sides.map { it.trackDurationsMs }
+            }
             if (transport.mode == TapeTransport.Mode.EMPTY || adoptedAlbum != deckAlbum || adoptedShape != shape) {
                 val track = scratch.playerTrack().takeIf { it in deck.tracks.indices } ?: deck.currentTrackIndex.coerceAtLeast(0)
                 transport.adopt(set, track, scratch.playerPositionMs() ?: 0L, scratch.playerIsPlaying())
@@ -374,13 +377,17 @@ internal class TapeStage(
         val loaded = transport.mode != TapeTransport.Mode.EMPTY
         lampForward?.isVisible = loaded && !transport.headReverse
         lampReverse?.isVisible = loaded && transport.headReverse
+        // REV's own lamp: lit while the deck will turn its head over by itself.
+        lampAuto?.isVisible = transport.autoReverse
+        // A tape changed for the next of a set comes back in only once its new labels are on it.
+        if (transport.labelSwap && printedTape == transport.tape && printedAlbum == deckAlbum) transport.labelPrinted()
 
         // ---- The meters: the level the music is at, on a VU's ballistics ----------------------------
         val fresh = System.nanoTime() - tapeState.levelAtNanos < 250_000_000L
-        val levels = when {
-            transport.cueing -> floatArrayOf(sound.cueLevelLeft, sound.cueLevelRight)
-            fresh && scratch.playerIsPlaying() -> floatArrayOf(tapeState.levelLeft, tapeState.levelRight)
-            else -> floatArrayOf(0f, 0f)
+        when {
+            transport.cueing -> { levels[0] = sound.cueLevelLeft; levels[1] = sound.cueLevelRight }
+            fresh && scratch.playerIsPlaying() -> { levels[0] = tapeState.levelLeft; levels[1] = tapeState.levelRight }
+            else -> { levels[0] = 0f; levels[1] = 0f }
         }
         var moving = false
         for (c in 0..1) {
@@ -411,15 +418,11 @@ internal class TapeStage(
             caseNode?.position = Position(0f, TapeDimens.CASE_Y, TapeDimens.CASE_Z)
             caseNode?.quaternion = IDENTITY
             lidNode?.quaternion = Quat.aboutX(TapeDimens.LID_OPEN_DEG).toKotlin()
-            LoadTape.seat(doorDeg * (1f - transport.lifted), seat)
-            // Lifted out of the door toward you, and turned over about its own upright.
-            val l = transport.lifted
-            val px = seat.x
-            val py = seat.y + 0.010f * l
-            val pz = seat.z + 0.070f * l
+            // Up out of the door's holder, out in front of it, and turned over about its own upright.
+            LoadTape.liftedOut(doorDeg, transport.lifted, seat)
             val baseFace = if (transport.mode == TapeTransport.Mode.FLIP) (if (transport.flipStartsFaceB) 180f else 0f) + 180f * transport.turned
             else if (transport.faceB) 180f else 0f
-            cassette.set(px, py, pz, seat.q * Quat.aboutY(baseFace))
+            cassette.set(seat.x, seat.y, seat.z, seat.q * Quat.aboutY(baseFace))
             cassetteNode?.isVisible = loaded
         }
         // Not before it is printed: a box with somebody else's cover on it would be a lie.
@@ -467,6 +470,9 @@ internal class TapeStage(
     /** The album the deck took to be in it, and the shape of its sides: a change to either is a different tape. */
     private var adoptedAlbum: String? = null
     private var adoptedShape: List<List<Long>> = emptyList()
+    private var shapeOf: TapeSet? = null
+    private var shape: List<List<Long>> = emptyList()
+    private val levels = FloatArray(2)
 
     /** A reel's speed, kept to what a screen can show turning: beyond a few turns a second it is a blur either way. */
     private fun capped(radPerS: Double): Float = radPerS.coerceIn(-MOST_RAD_PER_S, MOST_RAD_PER_S).toFloat()

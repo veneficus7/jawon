@@ -3824,6 +3824,10 @@ def build_tape_deck():
     objs.append(_simple("lamp_rev_on", lamp(lambda: [(x, z) for x, z in rev()]), _emissive("LampOnRev", (1.0, 0.50, 0.10), 4.0)))
     for o in objs[-2:]:
         o.data.transform(Matrix.Translation((0.0, -0.00006, 0.0)))
+    # REV's own lamp, over the button: lit while the deck will reverse by itself.
+    objs.append(_simple("lamp_auto", lambda bm: _vcyl(bm, T_REV[0], -T_FASCIA_T - 0.0002, T_REV[1] + 0.0056, 0.0009, 0.0005, segments=16,
+                                                      tilt=Matrix.Rotation(math.radians(90.0), 4, "X")),
+                        _emissive("RevLamp", (1.0, 0.50, 0.10), 4.0)))
     objs.append(_simple("lamp_power", lambda bm: _vcyl(bm, -0.090, -T_FASCIA_T - 0.0002, 0.044, 0.0013, 0.0005, segments=16,
                                                        tilt=Matrix.Rotation(math.radians(90.0), 4, "X")),
                         _emissive("PowerLamp", (1.0, 0.08, 0.03), 10.0)))

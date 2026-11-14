@@ -184,8 +184,8 @@ internal enum class GuideTopic(
             GuideSection(
                 "Sides",
                 listOf(
-                    Tip("Auto-reverse", "With REV lit — the small button by the counter — the deck turns its head over at the end of side A and plays side B. Settings → Reverse at the end of a side is the same switch."),
-                    Tip("Turn it over yourself", "With REV off the deck stops at the end of a side. Touch the tape, or press PLAY, and it is taken out, turned over and put back. EJECT, then a touch on the tape, does it any time."),
+                    Tip("Auto-reverse", "With REV's little lamp lit — the small button by the counter — the deck turns its head over at the end of side A and plays side B, and the lamps beside the counter change from ▶ to ◀. Settings → Reverse at the end of a side is the same switch."),
+                    Tip("Turn it over yourself", "With REV's lamp out the deck stops at the end of a side. Touch the tape, or press PLAY, and it is taken out, turned over and put back. EJECT, then a touch on the tape, does it any time."),
                     Tip("A long album", "An album is cut into two sides, and an album over two hours into more than one tape; the next tape goes in when a side ends.")
                 )
             ),

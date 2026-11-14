@@ -51,6 +51,13 @@ class TapeState @Inject constructor() {
 class TapeColour(private val sampleRate: Int, private val channels: Int) {
 
     private val size = (sampleRate * MAX_DELAY_S).toInt() + 4
+
+    /**
+     * The delay at rest, in **whole** samples: at 44.1kHz a millisecond and a half is 66.15 of
+     * them, and a fraction would be read between two — which is a filter, on every room's music.
+     * Whole, off is the music to the bit, only later.
+     */
+    private val restSamples = Math.round(REST_DELAY_S * sampleRate).toFloat()
     private val lines = Array(channels) { FloatArray(size) }
     private var write = 0
 
@@ -105,7 +112,7 @@ class TapeColour(private val sampleRate: Int, private val channels: Int) {
             if (wowPhase > 2 * PI) wowPhase -= 2 * PI
             if (flutterPhase > 2 * PI) flutterPhase -= 2 * PI
             if (driftPhase > 2 * PI) driftPhase -= 2 * PI
-            val delay = (REST_DELAY_S + wet * (WOW_DEPTH_S * wow + FLUTTER_DEPTH_S * flutter)) * sampleRate
+            val delay = restSamples + wet * (WOW_DEPTH_S * wow + FLUTTER_DEPTH_S * flutter) * sampleRate
             var read = write - delay
             if (read < 0) read += size
             val i0 = read.toInt()

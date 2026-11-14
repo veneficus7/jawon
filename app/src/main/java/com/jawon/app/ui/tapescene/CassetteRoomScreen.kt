@@ -179,6 +179,10 @@ fun CassetteRoomScreen(
     }
     val sound = remember(context) { DeckSound(context) }
     DisposableEffect(sound) { onDispose { sound.close() } }
+    // What the cue reads from: told when the tracks change, never every frame.
+    LaunchedEffect(sound, deck.tracks) {
+        sound.setSources(deck.tracks.map { DeckSound.Source(android.net.Uri.parse(it.fileUri), it.durationMs) })
+    }
     val stage = remember(rack, sound) {
         TapeStage(viewModel.scratchAudio, haptics, rack, sound, viewModel.tapeState, startAtDeck = viewModel.deck.value.tracks.isNotEmpty())
     }
@@ -464,16 +468,17 @@ fun CassetteRoomScreen(
             FirstRunHint(
                 title = "The tape is in",
                 body = "Tap ◀◀ or ▶▶ for the next song, hold them to wind. Touch a song on the J-card " +
-                    "to wind to it. With REV off, touch the tape at the end of a side to turn it over.",
+                    "to wind to it. With REV's lamp out, touch the tape at the end of a side to turn it over.",
                 onGotIt = { viewModel.onHintSeen(Hints.TAPE_DECK) },
                 onGuide = {
                     viewModel.onHintSeen(Hints.TAPE_DECK)
                     onOpenGuide()
                 },
+                // Over the wall at the top, not over the keys it is telling you about.
                 modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .navigationBarsPadding()
-                    .padding(bottom = 8.dp)
+                    .align(Alignment.TopCenter)
+                    .statusBarsPadding()
+                    .padding(top = 12.dp)
             )
         }
 
@@ -530,7 +535,9 @@ private fun CassetteRoomSemantics(
     onOpenAdd: () -> Unit
 ) {
     val atRacks = !stage.deckward
-    val front = if (atRacks) rack.inFront() else null
+    // Read so that this recomposes when the rack or tape in front changes.
+    val shown = rack.frontShown
+    val front = if (atRacks && shown.first >= 0) rack.inFront() else null
     val towerName = rack.towers.getOrNull(rack.front)?.name
     val waiting = stage.awaitingSide
     val description = if (atRacks) {
