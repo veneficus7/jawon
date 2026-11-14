@@ -7,6 +7,7 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Row
@@ -29,6 +30,8 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.LiveRegionMode
@@ -481,11 +484,19 @@ fun CassetteRoomScreen(
             exit = fadeOut(),
             modifier = Modifier.align(Alignment.BottomCenter)
         ) {
+            // Over the racks there is no floor to stand them on, only spines: a shadow to read them against.
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .background(
+                        Brush.verticalGradient(
+                            0f to Color.Transparent,
+                            0.40f to Color.Black.copy(alpha = 0.86f),
+                            1f to Color.Black.copy(alpha = 0.94f)
+                        )
+                    )
                     .navigationBarsPadding()
-                    .padding(horizontal = 32.dp, vertical = 6.dp),
+                    .padding(start = 32.dp, end = 32.dp, top = 64.dp, bottom = 6.dp),
                 verticalAlignment = Alignment.Bottom
             ) {
                 ChromeAction(

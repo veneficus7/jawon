@@ -284,7 +284,7 @@ internal class ShowroomDirector(
          * its single, from the sleeve's foot to the top of the record standing out of it
          * (`V_SINGLE_HEIGHT`).
          */
-        val HALF_HEIGHT_M = floatArrayOf(0.071f, 0.0518f, 0.11875f, 0f)
+        val HALF_HEIGHT_M = floatArrayOf(0.071f, 0.0518f, 0.11875f, 0.0545f)
 
         /**
          * Which way each exhibit faces at the middle of its wander. The single is turned toward its
@@ -292,7 +292,7 @@ internal class ShowroomDirector(
          * thing, and its record — black, and seen by the streak a lamp draws across it — showed
          * almost nothing of that streak.
          */
-        val FACING_DEG = floatArrayOf(0f, 0f, 20f, 0f)
+        val FACING_DEG = floatArrayOf(0f, 0f, 20f, 12f)
 
         const val FLOAT_M = 0.004f
         const val TURN_DEG = 24f

@@ -72,6 +72,8 @@ import com.jawon.app.ui.theme.LabelCream
 import com.jawon.app.ui.theme.LabelDim
 import com.jawon.app.ui.theme.LampAmber
 import com.jawon.app.ui.vinylscene.VinylArt
+import com.jawon.app.ui.tapescene.TapeArt
+import com.jawon.app.ui.tapescene.TapeDimens
 import com.jawon.app.ui.vinylscene.VinylSurface
 import com.jawon.app.ui.wallscene.CaseArt
 import com.jawon.app.ui.wallscene.RoomCadence
@@ -82,6 +84,7 @@ import com.jawon.app.ui.wallscene.WallDimens.TRAY_FRONT_Z
 import io.github.sceneview.SceneView
 import io.github.sceneview.math.Direction
 import io.github.sceneview.math.Position
+import io.github.sceneview.math.Rotation
 import io.github.sceneview.math.Size
 import io.github.sceneview.node.LightNode
 import io.github.sceneview.node.ModelNode
@@ -113,6 +116,13 @@ private const val CASE_LID_ASSET = "models/case_lid.glb"
 
 /** The vinyl's plinth: a seven-inch single, half out of its sleeve (`build_vinyl_single`). */
 private const val SINGLE_ASSET = "models/vinyl_single.glb"
+
+/** The cassette's plinth: a tape standing in front of its box, as a shop stands one (`build_tape_*`). */
+private const val TAPE_ASSET = "models/tape_cassette.glb"
+private const val TAPE_HUB_ASSET = "models/tape_hub.glb"
+private const val TAPE_PACK_ASSET = "models/tape_pack.glb"
+private const val TAPE_TRAY_ASSET = "models/tape_case_tray.glb"
+private const val TAPE_LID_ASSET = "models/tape_case_lid.glb"
 
 /**
  * The lens. Shorter than the pocket room's 50mm: this is a room you stand in and look along, not
@@ -301,6 +311,11 @@ fun ShowroomScreen(
     val lid = rememberModelInstance(modelLoader, CASE_LID_ASSET)
     val pocket = rememberModelInstance(modelLoader, POCKET_MODEL_ASSET)
     val single = rememberModelInstance(modelLoader, SINGLE_ASSET)
+    val tape = rememberModelInstance(modelLoader, TAPE_ASSET)
+    val tapeHubs = listOf(rememberModelInstance(modelLoader, TAPE_HUB_ASSET), rememberModelInstance(modelLoader, TAPE_HUB_ASSET))
+    val tapePacks = listOf(rememberModelInstance(modelLoader, TAPE_PACK_ASSET), rememberModelInstance(modelLoader, TAPE_PACK_ASSET))
+    val tapeTray = rememberModelInstance(modelLoader, TAPE_TRAY_ASSET)
+    val tapeLid = rememberModelInstance(modelLoader, TAPE_LID_ASSET)
     // The single's two playing faces, in the vinyl room's own material: gltfio's has nowhere to
     // put the streak a lamp draws across a record (`vinyl.mat`), and under a gallery spot that
     // streak is the whole of what a black disc shows.
@@ -330,6 +345,8 @@ fun ShowroomScreen(
     // And as a single: its label, its grooves, and its sleeve — printed with its name where the
     // record has no cover.
     var singlePrint by remember { mutableStateOf<SinglePrint?>(null) }
+    // And as a tape: its label, and its box's J-card.
+    var tapePrint by remember { mutableStateOf<TapePrint?>(null) }
     LaunchedEffect(engine) {
         val record = viewModel.lastRecord()
         val bitmap = record?.coverPath?.let { path ->
@@ -347,6 +364,21 @@ fun ShowroomScreen(
             bands = ImageTexture.Builder().bitmap(printed.second, TextureType.DATA).build(engine),
             front = printed.third?.let { ImageTexture.Builder().bitmap(it, TextureType.COLOR).build(engine) }
         )
+        val taped = withContext(Dispatchers.Default) {
+            val hue = bitmap?.let { CaseArt.dominantHue(it) } ?: 0.08f
+            val title = record?.title ?: "Jawon"
+            val artist = record?.artist.orEmpty()
+            Triple(
+                TapeArt.label(context, bitmap, hue, "A", title, artist, "C60"),
+                TapeArt.jcardFront(context, bitmap, hue, title, artist),
+                TapeArt.spine(context, hue, title, artist)
+            )
+        }
+        tapePrint = TapePrint(
+            label = ImageTexture.Builder().bitmap(taped.first, TextureType.COLOR).build(engine),
+            front = ImageTexture.Builder().bitmap(taped.second, TextureType.COLOR).build(engine),
+            spine = ImageTexture.Builder().bitmap(taped.third, TextureType.COLOR).build(engine)
+        )
         bitmap ?: return@LaunchedEffect
         cover = ImageTexture.Builder().bitmap(bitmap, TextureType.COLOR).build(engine)
         screenCover = withContext(Dispatchers.Default) {
@@ -356,6 +388,10 @@ fun ShowroomScreen(
     DisposableEffect(singlePrint) {
         val print = singlePrint
         onDispose { print?.let { p -> listOfNotNull(p.label, p.bands, p.front).forEach { engine.destroyTexture(it) } } }
+    }
+    DisposableEffect(tapePrint) {
+        val print = tapePrint
+        onDispose { print?.let { p -> listOf(p.label, p.front, p.spine).forEach { engine.destroyTexture(it) } } }
     }
 
     // **The pocket player's screen, switched on**: its main menu, drawn by the pocket room's own
@@ -622,6 +658,54 @@ fun ShowroomScreen(
                     }
                 }
             }
+
+            // **The cassette**: the record you played last as a tape, standing in front of its
+            // box — the box upright, cover out, as a shop stands one; the tape a third of the way
+            // through its first side, so both spools show.
+            if (tape != null && tapeTray != null && tapeLid != null) {
+                Node(apply = {
+                    exhibitNodes[Exhibit.CASSETTE.ordinal] = this
+                    currentDirector.value.exhibitNodes[Exhibit.CASSETTE.ordinal] = this
+                }) {
+                    val print = tapePrint
+                    val parts = remember { arrayOfNulls<ModelNode>(2) }
+                    // Stood up in two turns, each about one axis: onto its back so the cover faces
+                    // you, then a quarter round so its spine is on the left, as a book's is.
+                    Node(position = Position(-0.012f, 0f, -0.012f), rotation = Rotation(0f, 0f, 90f)) {
+                        Node(rotation = Rotation(90f, 0f, 0f)) {
+                            ModelNode(tapeTray, apply = { isTouchable = false; isShadowCaster = true; isShadowReceiver = true })
+                            Node(position = Position(0f, TapeDimens.HINGE_UP, -TapeDimens.HINGE_BACK)) {
+                                ModelNode(tapeLid, apply = { isTouchable = false; isShadowCaster = true; isShadowReceiver = true; parts[0] = this })
+                            }
+                        }
+                    }
+                    Node(
+                        position = Position(0.010f, -TapeDimens.BOX_L / 2 + TapeDimens.CAS_H / 2, 0.016f),
+                        rotation = Rotation(0f, -10f, 0f)
+                    ) {
+                        ModelNode(tape, apply = { isTouchable = false; isShadowCaster = true; isShadowReceiver = true; parts[1] = this })
+                        listOf(-1f to 1200.0, 1f to 600.0).forEachIndexed { i, (side, held) ->
+                            val at = Position(side * TapeDimens.HUB_PITCH / 2, TapeDimens.HUB_Z, 0f)
+                            tapeHubs[i]?.let { Node(position = at) { ModelNode(it, apply = { isTouchable = false }) } }
+                            val r = com.jawon.app.ui.tapescene.Tape.radius(com.jawon.app.ui.tapescene.Tape.C60, held)
+                            tapePacks[i]?.let { Node(position = at, scale = io.github.sceneview.math.Scale(r, r, 1f)) { ModelNode(it, apply = { isTouchable = false }) } }
+                        }
+                    }
+                    SideEffect {
+                        val p = print ?: return@SideEffect
+                        for (made in parts) {
+                            for (part in made?.renderableNodes.orEmpty()) {
+                                val renderable = part as? RenderableNode ?: continue
+                                when (renderable.name) {
+                                    "label_a", "label_b" -> renderable.materialInstance.setParameter("baseColorMap", p.label, printSampler)
+                                    "jcard_front" -> renderable.materialInstance.setParameter("baseColorMap", p.front, printSampler)
+                                    "jcard_spine" -> renderable.materialInstance.setParameter("baseColorMap", p.spine, printSampler)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
 
         // The showroom, as TalkBack meets it (0.7.5): a composable of its own, so that the plinth in
@@ -744,3 +828,6 @@ private fun ShowroomSemantics(director: ShowroomDirector, showUnbuilt: Boolean) 
 
 /** The single on the vinyl's plinth, printed: textures the scene's materials sample, so they outlive it. */
 private class SinglePrint(val label: Texture, val bands: Texture, val front: Texture?)
+
+/** The tape on the cassette's plinth, printed: its label, and its box's cover and spine. */
+private class TapePrint(val label: Texture, val front: Texture, val spine: Texture)

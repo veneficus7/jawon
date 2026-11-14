@@ -189,6 +189,15 @@ from `PlayEvent`, shared as images through the share sheet. Plus **share a shelf
 
 ## 0.9 — cassette (December 2026)
 
+**The room is built (2026-11-14, on the `cassette` branch, not yet released).** It has racks of
+tapes on the wall, a tape taken out and put in the deck, and keys that work as a deck's did:
+tap to skip, hold to wind, and hear the cue while playing. The reels and counter are true to the
+tape. A side ends with auto-reverse, or the tape is turned over by hand. The sound of tape is in
+the player's chain. There is a plinth in the showroom, a Guide page and TalkBack.
+`docs/formats.md` §6 has the detail and what was checked. **Mixtapes are not built**: they need a
+compilation in the library's schema, the one place the album-first rule bends, and are a piece
+of their own. Nor are NFC, the USB DAC or the CD rip on a drive.
+
 A tape deck and a shelf of cassettes, `docs/formats.md` §6. The tape physically winds: fast-forward
 and rewind with the reels' speed changing as the tape moves from one to the other, the click of the
 keys, the hiss and wow you can switch off. **Mixtapes** — the one place the album-first rule bends,

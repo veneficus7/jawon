@@ -196,16 +196,16 @@ class ShowroomTest {
                 else assertEquals(Exhibit.COMING, line)
             }
         }
-        // The one that matters as this is written: vinyl has a room in code, and is not finished.
         Format.entries.filter { !it.built }.forEach {
             assertEquals(Exhibit.COMING, Exhibit.line(Exhibit.of(it), showUnbuilt = false))
         }
-        assertEquals(Exhibit.COMING, Exhibit.line(Exhibit.CASSETTE, showUnbuilt = true))
+        // Since 0.9 every plinth has a finished room behind it: nothing says Coming any more.
+        assertEquals("A deck, and a wall of tapes", Exhibit.line(Exhibit.CASSETTE, showUnbuilt = false))
     }
 
     @Test
     fun `a coming plinth never opens, and an unfinished room only where unfinished ones are offered`() {
-        assertFalse(Exhibit.opens(Exhibit.CASSETTE, showUnbuilt = true))
+        assertTrue(Exhibit.opens(Exhibit.CASSETTE, showUnbuilt = false))
         assertTrue(Exhibit.opens(Exhibit.CD, showUnbuilt = false))
         Format.entries.filter { !it.built }.forEach {
             assertFalse(Exhibit.opens(Exhibit.of(it), showUnbuilt = false))

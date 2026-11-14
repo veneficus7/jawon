@@ -9,6 +9,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import com.jawon.app.playback.ScratchAudio
 import com.jawon.app.playback.TapeState
+import com.jawon.app.ui.vinylscene.Sides
 import com.jawon.app.ui.wallscene.DeckState
 import com.jawon.app.ui.wallscene.RoomHaptics
 import dev.romainguy.kotlin.math.Float3
@@ -59,16 +60,23 @@ internal class TapeStage(
         override fun positionMs(): Long? = scratch.playerPositionMs()
         override fun endedTrack(): Boolean = scratch.endedTrack()
         override fun play() {
+            Log.i(TAG, "player: play")
             if (!scratch.setPlayerPlaying(true)) onPlay(true)
         }
         override fun pause() {
+            Log.i(TAG, "player: pause")
             if (!scratch.setPlayerPlaying(false)) onPlay(false)
         }
         override fun seek(trackIndex: Int, positionMs: Long) {
+            Log.i(TAG, "player: to track ${trackIndex + 1} at ${positionMs}ms")
             if (!scratch.seekPlayer(trackIndex, positionMs)) onSeek(trackIndex, positionMs)
         }
         override fun stopAtEndOfTrack(stop: Boolean) = scratch.stopAtEndOfTrack(stop)
     })
+
+    init {
+        transport.onAdoptSide = { side -> Log.i(TAG, "the player is on side ${Sides.letter(side)}: the deck follows it") }
+    }
 
     // ---- Nodes ---------------------------------------------------------------------------------------
 
@@ -316,7 +324,10 @@ internal class TapeStage(
         }
         if (shownTape != transport.tape) shownTape = transport.tape
         if (awaitingSide != transport.awaiting) awaitingSide = transport.awaiting
-        if (modeShown != transport.mode) modeShown = transport.mode
+        if (modeShown != transport.mode) {
+            modeShown = transport.mode
+            Log.i(TAG, "deck: ${transport.mode}, side ${Sides.letter(transport.side)}${if (transport.faceB) " (B out)" else ""}${if (transport.headReverse) ", head reversed" else ""}, tape at %.1fs".format(transport.x))
+        }
 
         val stock = transport.set.stock(transport.tape)
         sound.motorLevel = transport.motor

@@ -171,6 +171,41 @@ held and faded. Tested in `IntroTimelineTest`.
 
 ---
 
+## `ui/tapescene` — the cassette room
+
+The fourth room (`docs/formats.md` §6), a sibling of the others on the same view model and
+player. Begun and finished 2026-11-14.
+
+**Pure:**
+
+| File | What it holds |
+|---|---|
+| `Tape.kt` | `Tape`, the stock (C46…C120) and each pack's radius from its tape's length and thickness. `TapeSet`, an album as tapes, with one coordinate along the tape (seconds from side A's start) that every place maps to, and back. `TapePacks`, both packs and both hubs' speeds from that coordinate. `TapeCounter`, geared to a spindle, with drums that carry. |
+| `TapeTransport.kt` | The deck: its keys, cue, wind and search, the end of a side (blank wound through, then reverse, wait or stop), a tape turned over or changed for the next of a set, a player moved from outside. Frames in, the player told what to do, everything drawn read off it. |
+| `TapeRack.kt` | `TapeRack`, a tower per shelf, a second when a shelf outgrows 24 slots, and which tape a point on the spines is. `RackMotion`, a hand along them. |
+| `LoadTape.kt` | A tape taken and put in, as one clock: the box's pose, the lid, the cassette into the door's seat. Also the small `Quat` and `Pose` it is written in. |
+| `TapeArt.kt` | The labels, the J-card's front, inside and spine, the rack's cards; `JCardLayout`, so a line is drawn and found by the same arithmetic. |
+| `TapeDimens.kt`, `TapeCamera.kt`, `TapeLighting.kt` | The room's numbers (twins of the model script's `T_*`), two level shots and the lens run backwards, the light and the grade (`TapeAtmosphere`). `DeckSounds.kt` is the mechanism's sounds and the motor, made rather than recorded. |
+
+**The scene:**
+
+| File | What it does |
+|---|---|
+| `CassetteRoomScreen.kt` | The composable: models, printing, semantics, first-run cards, chrome. |
+| `TapeStage.kt` | Its frame loop: the camera between racks and deck, the load run, the transport, and every node the deck moves. `VuMeter` is in it too. |
+| `TapeRackScene.kt` | The racks' pool of 5 frames and 48 boxes, half to even racks and half to odd, so a box keeps its slot while its rack is in sight. |
+| `DeckSound.kt` | One output on a thread of its own for the mechanism, the motor and **the cue**. The cue is a decoder streaming ahead in the direction the tape is going, read at the tape's speed through `ScratchEngine.read`. |
+
+**And in `playback/`:** `TapeColour` (pure, the sound of tape as a moving delay, hiss and a soft
+top, and the meters' level) inside `TapeAudioProcessor`, last in the player's chain and always
+active. `TapeState` is the room's and the service's shared word: colour on or off, and the
+level. The service sets the colour from the format and Settings, so it follows the music into
+the car and the background.
+
+Checked on the flagship emulator, debug and R8 release. **Never on a phone.** No level was read
+off the meters there, because the test library is silent; the cue squeal and the deck's sounds
+were not heard either.
+
 ## Outside the rooms — the player as other things reach it (0.7.6)
 
 Until 0.7.6 only a room could start a record. Now a car, the assistant, the system's media

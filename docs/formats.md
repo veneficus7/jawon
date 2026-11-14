@@ -490,6 +490,31 @@ What the room is (`ui/tapescene/`):
 place the album-first rule bends, and they need a compilation in the library's schema. A finger
 on a reel to wind it with a pencil. Recording.
 
+**Finished, 2026-11-14.** `Format.CASSETTE` is built, so a release offers it in Settings, on the
+Rooms card and in the showroom. Its plinth there is a tape standing in front of its box, both
+printed with the record you played last. Also: Settings → *Reverse at the end of a side* and
+*The sound of tape*, Settings → Guide → The cassette room, a first-run card at the racks and one
+at the deck, and TalkBack (where you are, what is in front, and every key by name).
+
+How it was checked, on the flagship emulator, as a debug build and as the R8 release:
+
+- A tape taken from a rack, opened on the deck and seated, with the music starting 2.6s after
+  the touch.
+- An album played to its end on its own: side A, blank, head reversed, side B, stop.
+- A song on the other side touched on the J-card: reversed, wound back, played.
+- EJECT, then a touch on the tape: out, over, in, wound to side B's start, played.
+- FF held while playing (the cue) and let go.
+- Swiping between racks, and the showroom's plinth.
+
+`adb logcat -s Jawon.Tape` says what the deck did and what it told the player. One fault was
+found that way and fixed: a cue let go in the blank after a side's music sent the player to the
+last millisecond of the last song and dragged the reels back to it. Now the blank runs out and
+the side ends.
+
+**Never on a phone**, and some of it cannot be judged anywhere else: the cue squeal and the
+deck's own sounds (the emulator's audio says nothing about latency or tone), and the meters (the
+test library is silent).
+
 ---
 
 ## 7. Staging
@@ -733,7 +758,8 @@ One thing at a time, checked on the owner's phone between each (the working agre
    changes only when the screen does or the phone tilts. It is now drawn only then (the room's
    `onFrame`, `LcdPanel.framesDelivered`, `PocketDevice.changedSinceDrawn`).
    **Still the owner's to judge**: the look, and whether a 51mm wheel suits his thumb.
-9. **Vinyl** (§5), then **cassette** (§6), each its own room and built the same way.
+9. **Vinyl** (§5), then **cassette** (§6), each its own room and built the same way. Both are
+   done: vinyl on 2026-10-18 and cassette on 2026-11-14.
 
 Each of 3–8 is about a session's work. **Measure every tier as it lands** (traps 28–30).
 

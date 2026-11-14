@@ -3384,7 +3384,9 @@ def build_tape_pack():
     rng = np.random.default_rng(23)
     width = 512
     rough = 0.36 + (_fbm(1, width, 60, 3, rng)[0] - 0.5) * 0.22
-    mat = principled("TapePack", base_color=(0.055, 0.032, 0.020), metallic=0.0, roughness=0.36)
+    # Oxide brown, a shade lighter than it is in the hand: through a smoked door, under a black
+    # shell's window, the darker one read as a shadow rather than a spool.
+    mat = principled("TapePack", base_color=(0.115, 0.068, 0.040), metallic=0.0, roughness=0.34)
     _use_metal_rough(mat, _metal_rough_image("tape_pack_rings", np.tile(rough, (4, 1)), 0.0))
     half = T_TAPE_W / 2 - 0.0001
     obj = new_mesh_object("tape_pack")
@@ -3817,8 +3819,9 @@ def build_tape_deck():
     dim = principled("LampDim", base_color=(0.05, 0.035, 0.02), metallic=0.0, roughness=0.4)
     objs.append(_simple("lamp_fwd", lamp(fwd), dim))
     objs.append(_simple("lamp_rev", lamp(rev), dim))
-    objs.append(_simple("lamp_fwd_on", lamp(lambda: [(x, z) for x, z in fwd()]), _emissive("LampOn", (1.0, 0.55, 0.12), 14.0)))
-    objs.append(_simple("lamp_rev_on", lamp(lambda: [(x, z) for x, z in rev()]), _emissive("LampOnRev", (1.0, 0.55, 0.12), 14.0)))
+    # Amber, not white: bright enough to bloom a little, not so bright the bloom bleaches it.
+    objs.append(_simple("lamp_fwd_on", lamp(lambda: [(x, z) for x, z in fwd()]), _emissive("LampOn", (1.0, 0.50, 0.10), 4.0)))
+    objs.append(_simple("lamp_rev_on", lamp(lambda: [(x, z) for x, z in rev()]), _emissive("LampOnRev", (1.0, 0.50, 0.10), 4.0)))
     for o in objs[-2:]:
         o.data.transform(Matrix.Translation((0.0, -0.00006, 0.0)))
     objs.append(_simple("lamp_power", lambda bm: _vcyl(bm, -0.090, -T_FASCIA_T - 0.0002, 0.044, 0.0013, 0.0005, segments=16,
@@ -3867,11 +3870,13 @@ def build_tape_room():
         for sx in (-1, 1) for sy in (T_BOARD_FRONT + 0.07, T_WALL_Y - 0.07)],
         principled("BoardLegs", base_color=(0.020, 0.020, 0.021), metallic=0.0, roughness=0.5))
     boards = _wood("TapeFloor", (0.10, 0.065, 0.040), (0.26, 0.17, 0.10), seed=19, roughness=0.5, coat=0.12, size=1024, rings=10.0)
-    floor = _grain_object("floor", [((0, -0.5, -T_BOARD_H - 0.01), (4.0, 3.2, 0.02))], boards, bevel_width=None, scale=0.9)
+    # The racks go along the wall to the right, one per shelf, as far as the library needs: the
+    # wall and floor run twelve metres that way, which is seventy racks.
+    floor = _grain_object("floor", [((4.0, -0.5, -T_BOARD_H - 0.01), (12.0, 3.2, 0.02))], boards, bevel_width=None, scale=0.9)
     # Plaster painted a deep warm green: the racks' pine and the deck's aluminium both stand off it.
-    wall = _simple("wall", lambda bm: _vbox(bm, 0.6, T_WALL_Y + 0.01, 0.6, 4.0, 0.02, 2.6),
+    wall = _simple("wall", lambda bm: _vbox(bm, 4.0, T_WALL_Y + 0.01, 0.6, 12.0, 0.02, 2.6),
                    principled("TapeWall", base_color=(0.085, 0.105, 0.080), metallic=0.0, roughness=0.9))
-    skirting = _simple("skirting", lambda bm: _vbox(bm, 0.6, T_WALL_Y - 0.006, -T_BOARD_H + 0.05, 4.0, 0.012, 0.10),
+    skirting = _simple("skirting", lambda bm: _vbox(bm, 4.0, T_WALL_Y - 0.006, -T_BOARD_H + 0.05, 12.0, 0.012, 0.10),
                        principled("Skirting", base_color=(0.70, 0.68, 0.62), metallic=0.0, roughness=0.5))
     return [top, carcass, legs, floor, wall, skirting]
 

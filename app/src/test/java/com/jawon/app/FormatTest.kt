@@ -38,11 +38,18 @@ class FormatTest {
     }
 
     @Test
+    fun `the cassette room is a finished room`() {
+        assertTrue(Format.CASSETTE.built)
+        assertEquals(Format.CASSETTE, Format.openable(Format.CASSETTE, showUnbuilt = false))
+    }
+
+    @Test
     fun `an unknown or missing name is the CD room`() {
         assertEquals(Format.CD, Format.fromName(null))
-        // A room that does not exist yet — as vinyl was when this was written, and no longer is.
-        assertEquals(Format.CD, Format.fromName("CASSETTE"))
+        // A room that does not exist — as vinyl and cassette were when this was written, and are not now.
+        assertEquals(Format.CD, Format.fromName("REEL_TO_REEL"))
         assertEquals(Format.POCKET, Format.fromName("POCKET"))
         assertEquals(Format.VINYL, Format.fromName("VINYL"))
+        assertEquals(Format.CASSETTE, Format.fromName("CASSETTE"))
     }
 }

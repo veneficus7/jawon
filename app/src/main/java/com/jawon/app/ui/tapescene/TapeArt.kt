@@ -104,8 +104,8 @@ object TapeArt {
     private val cream = Color.rgb(240, 233, 220)
     private val amber = Color.rgb(214, 128, 40)
 
-    /** The colour of a record: its cover's own, as the CD room's spine has it, deepened to print on. */
-    fun band(hue: Float): Int = Color.HSVToColor(floatArrayOf(hue, 0.58f, 0.40f))
+    /** The colour of a record: its cover's own, as the CD room's spine has it, deepened to print on. [hue] is 0..1, as `CaseArt` has it. */
+    fun band(hue: Float): Int = Color.HSVToColor(floatArrayOf((hue * 360f).mod(360f), 0.56f, 0.40f))
 
     // ---- The cassette's labels ----------------------------------------------------------------------
 
@@ -317,8 +317,6 @@ object TapeArt {
         text.color = cream
         val left = pad + whoWidth + h * 0.6f
         canvas.drawText(TextUtils.ellipsize(title.uppercase(), text, w - left - pad * 1.6f, TextUtils.TruncateAt.END).toString(), left, h * 0.5f + text.textSize * 0.36f, text)
-        // A short rule at the far end, where the J-card's spine always has something.
-        canvas.drawRect(w - pad * 1.1f, h * 0.30f, w - pad * 0.7f, h * 0.70f, Paint().apply { color = Color.argb(150, 240, 233, 220) })
         return out
     }
 

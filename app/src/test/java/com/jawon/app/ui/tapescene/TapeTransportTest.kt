@@ -197,8 +197,13 @@ class TapeTransportTest {
         val rig = Rig(durations)
         rig.loadAt(2, 0L)
         rig.tap(TapeKey.STOP)
+        rig.deck.events.clear()
+        rig.player.told.clear()
         rig.deck.press(TapeKey.FF, rig.now)
         rig.run(30.0)
+        // The end of the tape is heard once, and the player told once — not again every frame the key is still held.
+        assertEquals(1, rig.deck.events.count { it == DeckEvent.AUTO_STOP })
+        assertEquals(1, rig.player.told.count { it.startsWith("seek") })
         val end = rig.set.stock(0).sideSeconds
         assertTrue(rig.xs.all { it <= end + 1e-9 && it >= -1e-9 })
         assertEquals(TapeTransport.Mode.STOP, rig.deck.mode)
@@ -345,6 +350,28 @@ class TapeTransportTest {
         assertEquals(1, rig.deck.tape)
         assertEquals(2, rig.deck.side)
         assertEquals(rig.set.sides[2].firstTrack, rig.player.trackIndex)
+    }
+
+    @Test
+    fun aCueLetGoInTheBlankAfterTheMusicRunsTheSideOutAndNeverGoesBack() {
+        val rig = Rig(durations)
+        rig.loadAt(2, 5 * minute - 4_000L)
+        rig.deck.press(TapeKey.FF, rig.now)
+        rig.run(1.6)
+        val endOfMusic = rig.set.musicTo(0)
+        assertTrue("cued past the music", rig.deck.x > endOfMusic)
+        rig.player.told.clear()
+        val letGoAt = rig.deck.x
+        rig.xs.clear()
+        rig.deck.release(TapeKey.FF, rig.now)
+        rig.run(4.0)
+        assertFalse("the player is never sent to the end of the last song", rig.player.told.any { it.startsWith("seek 2") })
+        // Until the blank has run out at the end of the tape, the reels only ever go on.
+        val end = rig.set.stock(0).sideSeconds
+        val upToTheEnd = rig.xs.takeWhile { it < end - 0.01 }
+        assertTrue("onward, never back", upToTheEnd.zipWithNext().all { (a, b) -> b >= a - 1e-9 } && upToTheEnd.all { it >= letGoAt - 1e-6 })
+        assertEquals(1, rig.deck.side)
+        assertEquals(3, rig.player.trackIndex)
     }
 
     /** Between two frames the tape moves no further than the motor could have taken it — the reels never jump. */

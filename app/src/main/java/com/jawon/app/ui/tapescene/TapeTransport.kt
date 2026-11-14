@@ -345,12 +345,23 @@ class TapeTransport(private val player: TapePlayer) {
     }
 
     private fun startPlaying() {
-        // Past the end of the music on this side, there is nothing to play: the side has ended.
-        val place = set.placeAt(side, x)
         events += DeckEvent.LATCH
         mode = Mode.PLAY
         pauseLatched = false
+        // Past the end of the music on this side — a cue let go in the blank after it — there is
+        // nothing to play: the blank runs out, and the side ends as it would have.
+        if (pastTheMusic()) {
+            sideEnded()
+            return
+        }
+        val place = set.placeAt(side, x)
         tell(place.first, place.second, play = true)
+    }
+
+    /** The tape is beyond the last of this side's music, in the direction the head reads. */
+    private fun pastTheMusic(): Boolean {
+        val end = set.musicTo(side)
+        return if (readsForwards) x >= end - MUSIC_END_SLACK_S else x <= end + MUSIC_END_SLACK_S
     }
 
     private fun stop(sound: Boolean) {
@@ -495,10 +506,8 @@ class TapeTransport(private val player: TapePlayer) {
         when (was) {
             Mode.CUE -> {
                 // Back to the music, from wherever the cue got to.
-                mode = Mode.PLAY
                 u = if (readsForwards) 1.0 else -1.0
-                val place = set.placeAt(side, x)
-                tell(place.first, place.second, play = true)
+                startPlaying()
             }
             Mode.WIND -> stopHere()
             else -> Unit
@@ -901,6 +910,7 @@ class TapeTransport(private val player: TapePlayer) {
     }
 
     private fun adoptSide(heardSide: Int) {
+        onAdoptSide(heardSide)
         val toTape = set.tapeOf(heardSide)
         if (toTape != tape) {
             tape = toTape
@@ -911,6 +921,9 @@ class TapeTransport(private val player: TapePlayer) {
             headReverse = !headReverse
         }
     }
+
+    /** Told when the player is found on another side than the head reads — for the room's log. */
+    var onAdoptSide: (Int) -> Unit = {}
 
     /** The label for the next tape has been printed: the swap is over. */
     fun labelPrinted() {
@@ -958,6 +971,9 @@ class TapeTransport(private val player: TapePlayer) {
 
         /** How closely the tape keeps to the player's own clock while it plays. */
         const val FOLLOW_S = 0.35
+
+        /** Within this of the end of a side's music is the end of it. */
+        const val MUSIC_END_SLACK_S = 0.05
 
         /** Silent this long while playing, and not at the end of a side: somebody paused it. */
         const val OUTSIDE_PAUSE_S = 0.8

@@ -399,6 +399,47 @@ arithmetic in Cycles — the deck, the record on the platter, the stylus on a gr
 laid out, the crate full. A part the wrong way up or a label mapped backwards shows there in
 twenty seconds rather than on a phone.
 
+## The cassette room's models
+
+Built by the `build_tape_*` functions from the `T_*` constants, which `TapeDimens` mirrors
+(`docs/formats.md` §6). One file per thing that moves on its own. The deck is the exception: its
+moving parts are inside it, baked where they stand with an identity transform, and the app
+turns each about a pivot it knows. A child node's position is not its glTF translation; the
+discard scene found that out.
+
+| File | Origin | Bounds, app axes (m) | Parts |
+|---|---|---|---|
+| `tape_cassette.glb` | its middle, side A toward you | x ±0.0502 · y ±0.0319 · z ±0.0064 | `cassette_shell`, `cassette_ridge_a`/`_b`, `cassette_screws`, `label_a`, `label_b` |
+| `tape_hub.glb` | its axis | r 0.011 · z ±0.0020 | `hub_ring`, `hub_spindle` |
+| `tape_pack.glb` | its axis: **a disc a metre across**, scaled in x and y to the pack's radius | r 1.0 · z ±0.0018 | `tape_pack` |
+| `tape_case_tray.glb` | middle of its underside, spine away (−z) | x ±0.0545 · y 0…0.0075 · z ±0.035 | `case_tray` |
+| `tape_case_lid.glb` | **the hinge line**: back and bottom, as the CD lid's is | x ±0.0545 · y −0.0015…0.0155 · z −0.0015…0.0685 | `case_lid`, `jcard_front`, `jcard_inside`, `jcard_spine` |
+| `tape_case_closed.glb` | as the tray | x ±0.0545 · y 0…0.017 · z ±0.035 | `case_body`, `jcard_spine` |
+| `tape_rack.glb` | middle of its foot, at its front | x ±0.068 · y 0…0.4952 · z −0.0832…0.001 | `rack_wood`, `rack_ledges`, `rack_label_frame`, `rack_label` |
+| `tape_deck.glb` | middle of its front edge, on the sideboard | x ±0.110 · y 0…0.136 · z −0.260…0.018 | the moving ones: `key_<eject·rew·play·ff·stop·pause>` and each one's `_ink`, `key_rev`, `door`/`door_glass`/`door_clips`, `needle_l`/`_r`, `drum_0..2` and `_ink`, `lamp_fwd_on`/`lamp_rev_on` (shown or hidden) |
+| `tape_room.glb` | the deck's | sideboard top at y 0, floor at −0.56, wall at z −0.33, running 12m to the right | `board_*`, `floor`, `wall`, `skirting` |
+
+### What the models settle
+
+- **The cassette's window is an opening, not glass.** The deck's smoked door is the one pane of
+  blended glass on any line of sight to the tape (`ENGINEERING.md`, the transmission rule). The hub
+  fills its own hole with a black spindle a hair in front of the pack's faces. Without it, the
+  pack's middle shows through the hub.
+- **The counter's drums are ten-sided prisms.** Blender's ten-sided cone has a corner at 18°,
+  so the drum is turned by that much to put a face square to the front. Without it, every digit
+  sat on an edge, half one number and half the next. The window shows one digit a drum, with
+  the next coming up from under its lip.
+- **The J-card's inside is landscape**, 101 × 64mm, printed to be read with the lid standing
+  open on the deck. Its cover is portrait, with the spine on its left like a book's. A shut box
+  in a rack shows only its spine, so the rack's pool is the one-object `tape_case_closed.glb`.
+- **The deck is laid out for a phone held upright**: meters and counter over the door, keys under
+  it, everything a finger needs inside the middle 150mm of a 220mm face.
+
+### Looking at them assembled
+
+`tools/tape-preview/assemble.py` places them by `TapeDimens`'s arithmetic in Cycles, at the app's
+lens and the phone's shape: `deck`, `rack`, `close` and `counter` views.
+
 ## `disc_shards.glb` — the disc, cracked
 
 Eight wedges, one object each, for the deletion animation. Built by
