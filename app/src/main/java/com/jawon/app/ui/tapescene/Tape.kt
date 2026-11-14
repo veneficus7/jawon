@@ -38,12 +38,18 @@ object Tape {
         override fun toString(): String = name
     }
 
+    /**
+     * The short ones, for a single or an EP (2026-11-14): a four-minute song on a C46 left twenty
+     * minutes of blank to wind through after it, and a single came on a short tape anyway.
+     */
+    val C10 = Stock("C10", 5.0 * 60, 18e-6)
+    val C20 = Stock("C20", 10.0 * 60, 18e-6)
     val C46 = Stock("C46", 23.0 * 60, 18e-6)
     val C60 = Stock("C60", 30.0 * 60, 16e-6)
     val C90 = Stock("C90", 45.0 * 60, 12e-6)
     val C100 = Stock("C100", 50.0 * 60, 11e-6)
     val C120 = Stock("C120", 60.0 * 60, 9e-6)
-    val STOCK = listOf(C46, C60, C90, C100, C120)
+    val STOCK = listOf(C10, C20, C46, C60, C90, C100, C120)
 
     /** The longest a side can be: a C120's. An album longer than two of these is more than one tape. */
     const val LONGEST_SIDE_MS = 60L * 60_000L

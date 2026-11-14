@@ -551,10 +551,10 @@ fun PocketRoomScreen(
         }
     }
 
-    BackHandler(enabled = !covered && nav.stack.size > 1) { device.back() }
+    BackHandler(enabled = !covered && !com.jawon.app.ui.common.LocalRoomsCardOpen.current && nav.stack.size > 1) { device.back() }
     // At the main menu, Back goes up out of the player to the showroom between formats, in a build
     // that has one — the same way out as the CD room's, so the two rooms leave alike.
-    BackHandler(enabled = !covered && nav.stack.size <= 1 && device.showroomReachable) { device.onOpenShowroom() }
+    BackHandler(enabled = !covered && !com.jawon.app.ui.common.LocalRoomsCardOpen.current && nav.stack.size <= 1 && device.showroomReachable) { device.onOpenShowroom() }
 
     // **The phone is the player**, so tilting it turns the player against the room: the room's
     // reflections slide across the face and the glass — first-order, twice the tilt, as a turned

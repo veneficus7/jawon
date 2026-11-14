@@ -77,6 +77,18 @@ class TapeRackTest {
         assertTrue(motion.settled)
     }
 
+    /** A short rack swiped to from low down a full one: the camera goes up it to its tapes. */
+    @Test
+    fun aShortRacksTapesAreInTheFrame() {
+        val tall = TapeCamera.rackTall(3120f / 1440f)
+        val towers = TapeRack.towers(layout(listOf(TapeDimens.RACK_SLOTS + 3)))
+        val short = towers[1]
+        val y = TapeRack.lowestLook(short, tall)
+        val last = TapeRack.slotMiddleY(short.tapes.maxOf { it.slot })
+        assertTrue("its last tape is above the foot of the frame", last > y - tall / 2 + 0.05f)
+        assertTrue("and below its top", last < y + tall / 2)
+    }
+
     @Test
     fun aSwipeSettlesSquareOnTheNextRackAndNotPastTheLast() {
         val motion = RackMotion()

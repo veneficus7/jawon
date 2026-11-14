@@ -266,6 +266,77 @@ class TapeTransportTest {
         assertEquals(0f, rig.deck.depth(TapeKey.PLAY), 0.01f)
     }
 
+    /**
+     * PLAY once the album is over plays it again from its first song, the deck's own way there.
+     * It used to be the auto-stop and nothing else, which on the owner's phone (2026-11-14) was a
+     * key that did not work: a one-song record wound to the end, and PLAY pressed three times.
+     */
+    @Test
+    fun playOnceASingleIsOverWindsItBackAndPlaysItAgain() {
+        val rig = Rig(listOf(4 * minute))
+        rig.loadAt(0, 4 * minute - 2_000L)
+        rig.run(30.0, until = { rig.deck.mode == TapeTransport.Mode.STOP })
+        assertEquals(TapeTransport.Mode.STOP, rig.deck.mode)
+        assertFalse(rig.player.playing)
+        rig.player.told.clear()
+        rig.tap(TapeKey.PLAY)
+        assertEquals("wound back", TapeTransport.Mode.SEARCH, rig.deck.mode)
+        rig.run(10.0, until = { rig.deck.mode == TapeTransport.Mode.PLAY })
+        assertEquals(TapeTransport.Mode.PLAY, rig.deck.mode)
+        assertTrue(rig.player.told.contains("seek 0 0"))
+        assertTrue(rig.player.playing)
+        assertEquals(rig.set.trackStart(0), rig.deck.x, 0.05)
+    }
+
+    @Test
+    fun playOnceTheAlbumIsOverReversesToSideAWithRev() {
+        val rig = Rig(durations)
+        rig.loadAt(5, 4 * minute - 2_000L)
+        rig.run(10.0, until = { rig.deck.mode == TapeTransport.Mode.STOP })
+        rig.player.told.clear()
+        rig.tap(TapeKey.PLAY)
+        assertEquals("the head turns, not a hand", TapeTransport.Mode.REVERSE, rig.deck.mode)
+        rig.run(10.0, until = { rig.deck.mode == TapeTransport.Mode.PLAY })
+        assertEquals(0, rig.deck.side)
+        // Put in at a song on side B, its B face is out: side A is read by the head turned round.
+        assertTrue(rig.deck.faceB)
+        assertTrue(rig.deck.headReverse)
+        assertTrue(rig.player.told.contains("seek 0 0"))
+        assertTrue(rig.player.playing)
+    }
+
+    @Test
+    fun playOnceTheAlbumIsOverTurnsItOverWithoutRevAndATouchDoesToo() {
+        for (byTouch in listOf(false, true)) {
+            val rig = Rig(durations)
+            rig.deck.autoReverse = false
+            rig.loadAt(5, 4 * minute - 2_000L)
+            rig.run(10.0, until = { rig.deck.mode == TapeTransport.Mode.STOP })
+            rig.player.told.clear()
+            if (byTouch) rig.deck.tapTape() else rig.tap(TapeKey.PLAY)
+            assertEquals(TapeTransport.Mode.FLIP, rig.deck.mode)
+            rig.run(12.0, until = { rig.deck.mode == TapeTransport.Mode.PLAY })
+            assertEquals(0, rig.deck.side)
+            assertTrue(rig.player.told.contains("seek 0 0"))
+            assertTrue(rig.player.playing)
+        }
+    }
+
+    /** Not past the music: PLAY plays from where the tape is, as it always did. */
+    @Test
+    fun stoppedInTheMiddlePlayPlaysFromThere() {
+        val rig = Rig(durations)
+        rig.loadAt(5, 60_000L)
+        rig.run(1.0)
+        rig.tap(TapeKey.STOP)
+        rig.run(0.5)
+        rig.player.told.clear()
+        rig.tap(TapeKey.PLAY)
+        assertEquals(TapeTransport.Mode.PLAY, rig.deck.mode)
+        assertEquals(5, rig.player.trackIndex)
+        assertTrue(rig.player.playing)
+    }
+
     @Test
     fun aSeekFromOutsideWindsTheTapeAfterItAndTellsThePlayerNothing() {
         val rig = Rig(durations)

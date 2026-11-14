@@ -302,21 +302,37 @@ object TapeArt {
         val out = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(out)
         canvas.drawColor(band(hue))
-        val text = TextPaint(Paint.ANTI_ALIAS_FLAG)
         val pad = h * 0.45f
-        text.typeface = font(context, R.font.jetbrains_mono_variable)
-        text.textSize = h * 0.40f
-        text.letterSpacing = 0.10f
-        text.color = Color.argb(205, 240, 233, 220)
+        val gap = h * 0.6f
+        val room = w - pad * 2.6f
         val who = artist.uppercase()
-        val whoWidth = minOf(text.measureText(who), w * 0.36f)
-        canvas.drawText(TextUtils.ellipsize(who, text, w * 0.36f, TextUtils.TruncateAt.END).toString(), pad, h * 0.5f + text.textSize * 0.36f, text)
-        text.letterSpacing = 0f
-        text.typeface = font(context, R.font.archivo_variable)
-        text.textSize = h * 0.50f
-        text.color = cream
-        val left = pad + whoWidth + h * 0.6f
-        canvas.drawText(TextUtils.ellipsize(title.uppercase(), text, w - left - pad * 1.6f, TextUtils.TruncateAt.END).toString(), left, h * 0.5f + text.textSize * 0.36f, text)
+        val name = title.uppercase()
+        val by = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
+            typeface = font(context, R.font.jetbrains_mono_variable)
+            textSize = h * 0.40f
+            letterSpacing = 0.10f
+            color = Color.argb(205, 240, 233, 220)
+        }
+        val what = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
+            typeface = font(context, R.font.archivo_variable)
+            textSize = h * 0.50f
+            color = cream
+        }
+        // **The title first** (2026-11-14): the artist had a fixed third of the spine and the title
+        // what was left, so "A LOVE SU…" by "JOHN COLT…" was a rack nobody could read. Now the
+        // artist gives up room — smaller, to a quarter of the spine — and the title shrinks a
+        // little to fit before it is ever cut.
+        val titleWidth = what.measureText(name)
+        var whoWidth = minOf(by.measureText(who), w * 0.36f)
+        if (whoWidth + gap + titleWidth > room) {
+            by.textSize = h * 0.34f
+            whoWidth = minOf(by.measureText(who), w * 0.36f, maxOf(w * 0.24f, room - gap - titleWidth))
+            val left = room - whoWidth - gap
+            if (titleWidth > left) what.textSize = maxOf(h * 0.36f, h * 0.50f * left / titleWidth)
+        }
+        canvas.drawText(TextUtils.ellipsize(who, by, whoWidth, TextUtils.TruncateAt.END).toString(), pad, h * 0.5f + by.textSize * 0.36f, by)
+        val left = pad + whoWidth + gap
+        canvas.drawText(TextUtils.ellipsize(name, what, w - left - pad * 1.6f, TextUtils.TruncateAt.END).toString(), left, h * 0.5f + what.textSize * 0.36f, what)
         return out
     }
 

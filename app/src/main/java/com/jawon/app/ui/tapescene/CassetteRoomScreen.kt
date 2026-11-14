@@ -1,5 +1,10 @@
 package com.jawon.app.ui.tapescene
 
+import com.jawon.app.ui.common.TurnOverPrompt
+import androidx.compose.foundation.layout.Column
+import com.jawon.app.ui.common.BackToChip
+import com.jawon.app.ui.wallscene.NowPlayingBar
+import com.jawon.app.ui.wallscene.CoverThumb
 import android.graphics.Bitmap
 import android.os.SystemClock
 import android.view.ViewConfiguration
@@ -161,6 +166,7 @@ fun CassetteRoomScreen(
     val nowPlayingAlbumId by viewModel.nowPlayingAlbumId.collectAsStateWithLifecycle()
     val autoReverse by viewModel.tapeAutoReverse.collectAsStateWithLifecycle()
     val hintsSeen by viewModel.hintsSeen.collectAsStateWithLifecycle()
+    val nowPlaying by viewModel.nowPlaying.collectAsStateWithLifecycle()
     LaunchedEffect(viewModel) { viewModel.adoptPlayingAlbum() }
 
     val album = remember(layout, nowPlayingAlbumId) { layout.cases.firstOrNull { it.albumId == nowPlayingAlbumId } }
@@ -247,7 +253,7 @@ fun CassetteRoomScreen(
     }
 
     // Back is one step out each time: off the tape, down from the deck to the racks, out to the showroom.
-    BackHandler(enabled = !covered) {
+    BackHandler(enabled = !covered && !com.jawon.app.ui.common.LocalRoomsCardOpen.current) {
         when {
             stage.zoomTarget > 0.5f -> stage.zoomTarget = 0f
             stage.atDeck -> stage.toRacks()
@@ -289,10 +295,13 @@ fun CassetteRoomScreen(
                 cameraNode.position = Position(shot.x, shot.y, shot.z)
                 cameraNode.rotation = io.github.sceneview.math.Rotation(0f, 0f, 0f)
 
-                // Every vsync while anything moves; sixty while the reels turn; a few a second at rest.
+                // Every vsync while anything moves; thirty while a tape only plays; a few a second at rest.
+                // Thirty, not sixty (2026-11-14): at play speed a reel turns under a turn a second and a
+                // needle swings in three tenths of one, and drawing them sixty times a second kept the
+                // owner's GPU 80% busy and the phone warm for nothing anyone could see.
                 val own = when {
                     stage.busy -> cadence.live
-                    stage.turning -> cadence.divisorForFps(60f)
+                    stage.turning -> cadence.divisorForFps(30f)
                     else -> cadence.divisorForFps(8f)
                 }
                 val arriving = RoomCalm.frameCap(now)
@@ -482,7 +491,45 @@ fun CassetteRoomScreen(
             )
         }
 
-        // **The way out**, at the racks: the other rooms, adding an album, and Settings.
+        // **A side over, and the tape waiting for a hand** (REV's lamp out): said where it can be seen.
+        val waitingFor = stage.awaitingSide
+        val tapeOver = stage.over
+        AnimatedVisibility(
+            visible = stage.deckward && !covered && (waitingFor >= 0 || tapeOver) && set.sides.isNotEmpty(),
+            enter = fadeIn(),
+            exit = fadeOut(),
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .statusBarsPadding()
+                .padding(top = 76.dp)
+        ) {
+            val change = waitingFor >= 0 && set.tapeOf(waitingFor) != set.tapeOf(waitingFor - 1)
+            TurnOverPrompt(
+                label = when {
+                    tapeOver -> "Play it again"
+                    change -> "Put in the next tape"
+                    else -> "Turn the tape over"
+                },
+                onClick = { if (tapeOver) stage.transport.tapTape() else stage.transport.turnOverByHand() }
+            )
+        }
+
+        // **The way back to the racks**, from the deck: on screen, not only Back (2026-11-14).
+        AnimatedVisibility(
+            // Not under the first-run card, which sits over the same wall.
+            visible = stage.deckward && !covered && (Hints.TAPE_DECK in hintsSeen || album == null),
+            enter = fadeIn(),
+            exit = fadeOut(),
+            modifier = Modifier
+                .align(Alignment.TopStart)
+                .statusBarsPadding()
+                .padding(start = 12.dp, top = 8.dp)
+        ) {
+            BackToChip("tapes", onClick = { stage.toRacks() })
+        }
+
+        // **The way out**, at the racks: the tape that is in — and the way back to the deck — then
+        // the other rooms, adding an album, and Settings.
         AnimatedVisibility(
             visible = !stage.deckward && !covered,
             enter = fadeIn(),
@@ -490,7 +537,7 @@ fun CassetteRoomScreen(
             modifier = Modifier.align(Alignment.BottomCenter)
         ) {
             // Over the racks there is no floor to stand them on, only spines: a shadow to read them against.
-            Row(
+            Column(
                 modifier = Modifier
                     .fillMaxWidth()
                     .background(
@@ -501,7 +548,32 @@ fun CassetteRoomScreen(
                         )
                     )
                     .navigationBarsPadding()
-                    .padding(start = 32.dp, end = 32.dp, top = 64.dp, bottom = 6.dp),
+                    .padding(top = 64.dp, bottom = 6.dp)
+            ) {
+                // The tape in the deck — before, it only stood a little proud of its rack, and the
+                // owner could not find the way back to it (2026-11-14). A tap is the deck again.
+                val playing = nowPlaying
+                if (playing != null && album != null && playing.albumId == album.albumId && stage.modeShown != TapeTransport.Mode.EMPTY) {
+                    NowPlayingBar(
+                        nowPlaying = playing,
+                        trackTitle = deck.currentTrack?.title,
+                        isPlaying = deck.isPlaying,
+                        durationMs = deck.durationMs,
+                        position = viewModel.positionMs.collectAsStateWithLifecycle(),
+                        haptics = haptics,
+                        onOpen = { stage.toDeck() },
+                        onPlayPause = { viewModel.onPlayPause() },
+                        onNext = { viewModel.onNext() },
+                        onPrevious = { viewModel.onPrevious() },
+                        // Pulled down: paused, the tape left in the deck — it is still a tape in a deck.
+                        onPutAway = { if (deck.isPlaying) viewModel.onPlayPause() },
+                        art = { CoverThumb(album.coverPath) }
+                    )
+                }
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(start = 32.dp, end = 32.dp),
                 verticalAlignment = Alignment.Bottom
             ) {
                 ChromeAction(
@@ -513,6 +585,7 @@ fun CassetteRoomScreen(
                 )
                 ChromeAction(Icons.Default.Add, "ADD", onAddAlbum, Modifier.weight(1f))
                 ChromeAction(Icons.Default.Settings, "SETTINGS", onOpenSettings, Modifier.weight(1f))
+            }
             }
         }
     }

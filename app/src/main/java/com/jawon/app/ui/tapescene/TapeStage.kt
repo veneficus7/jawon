@@ -137,6 +137,10 @@ internal class TapeStage(
         private set
 
     /** The side the deck is waiting to be turned over to, −1 when it is not: the J-card says so. */
+    /** The album over, the deck stopped at its end. For Compose. */
+    var over by mutableStateOf(false)
+        private set
+
     var awaitingSide by mutableStateOf(-1)
         private set
 
@@ -229,7 +233,7 @@ internal class TapeStage(
     var busy = false
         private set
 
-    /** The reels are turning, or a needle is moving: drawn at sixty. */
+    /** The reels are turning, or a needle is moving: drawn at thirty. */
     var turning = false
         private set
 
@@ -327,6 +331,8 @@ internal class TapeStage(
         }
         if (shownTape != transport.tape) shownTape = transport.tape
         if (awaitingSide != transport.awaiting) awaitingSide = transport.awaiting
+        val isOver = transport.over
+        if (over != isOver) over = isOver
         if (modeShown != transport.mode) {
             modeShown = transport.mode
             Log.i(TAG, "deck: ${transport.mode}, side ${Sides.letter(transport.side)}${if (transport.faceB) " (B out)" else ""}${if (transport.headReverse) ", head reversed" else ""}, tape at %.1fs".format(transport.x))
@@ -384,11 +390,22 @@ internal class TapeStage(
 
         // ---- The meters: the level the music is at, on a VU's ballistics ----------------------------
         val fresh = System.nanoTime() - tapeState.levelAtNanos < 250_000_000L
+        if (vuAlbum != deckAlbum) {
+            vuAlbum = deckAlbum
+            vuReference.reset()
+        }
         when {
             transport.cueing -> { levels[0] = sound.cueLevelLeft; levels[1] = sound.cueLevelRight }
-            fresh && scratch.playerIsPlaying() -> { levels[0] = tapeState.levelLeft; levels[1] = tapeState.levelRight }
+            fresh && scratch.playerIsPlaying() -> {
+                levels[0] = tapeState.levelLeft
+                levels[1] = tapeState.levelRight
+                // Only the music teaches the meters the level the tape was recorded at, never the cue.
+                vuReference.hear(maxOf(levels[0], levels[1]), dt)
+            }
             else -> { levels[0] = 0f; levels[1] = 0f }
         }
+        levels[0] = vuReference.read(levels[0])
+        levels[1] = vuReference.read(levels[1])
         var moving = false
         for (c in 0..1) {
             val target = VuMeter.angle(levels[c])
@@ -473,6 +490,8 @@ internal class TapeStage(
     private var shapeOf: TapeSet? = null
     private var shape: List<List<Long>> = emptyList()
     private val levels = FloatArray(2)
+    private val vuReference = VuMeter.Reference()
+    private var vuAlbum: String? = null
 
     /** A reel's speed, kept to what a screen can show turning: beyond a few turns a second it is a blur either way. */
     private fun capped(radPerS: Double): Float = radPerS.coerceIn(-MOST_RAD_PER_S, MOST_RAD_PER_S).toFloat()
@@ -687,6 +706,53 @@ object VuMeter {
     /** A second-order needle that reaches its reading in about 300ms with a percent of overshoot. */
     const val SPRING = 190f
     const val DAMPING = 22f
+
+    /**
+     * **The level the tape was recorded at.** A pre-recorded cassette was made with its loud
+     * passages round 0 VU, whatever the record's own loudness. Music today is mastered ten
+     * decibels and more hotter than 0 VU's −18dBFS, and read straight, both needles lay against
+     * the pin through a whole album on the owner's phone (2026-11-14). So the meters read the
+     * music against a reference that follows its loud passages — quickly up, slowly down — as an
+     * engineer setting the record level would have had it: loud is round 0, quiet is quiet.
+     */
+    class Reference {
+        /** The level that reads as 0 VU: the music's loud passages. Zero until it has heard any. */
+        var level = 0f
+            private set
+
+        /** Heard [loudest] — the louder channel — over [dt] seconds: the reference follows it. */
+        fun hear(loudest: Float, dt: Float) {
+            if (loudest < SILENCE) return
+            if (level <= 0f) {
+                level = maxOf(loudest, FLOOR)
+                return
+            }
+            val tau = if (loudest > level) RISE_S else FALL_S
+            level += (loudest - level) * (1f - kotlin.math.exp(-dt / tau))
+            if (level < FLOOR) level = FLOOR
+        }
+
+        /** [rms] as the meter should read it, against the level the tape was recorded at. */
+        fun read(rms: Float): Float = if (level <= 0f) rms else rms * (ZERO_VU * RECORDED_AT / level)
+
+        /** A different tape: recorded at its own level. */
+        fun reset() {
+            level = 0f
+        }
+    }
+
+    /**
+     * Where the reference reads: at 0 VU. It follows the music's loud passages, so most of the
+     * music reads a few decibels under it and a sudden peak swings on into the red and back.
+     */
+    const val RECORDED_AT = 1.0f
+    /** Below this the music is silence, and teaches the reference nothing. */
+    const val SILENCE = 0.002f
+    /** The quietest a reference gets: a quiet record still reads quiet, not as loud as a loud one. */
+    const val FLOOR = 0.03f
+    /** Up to a loud passage in under a second; down from one over a quarter of a minute. */
+    const val RISE_S = 0.7f
+    const val FALL_S = 15f
 
     /** Degrees from upright, rightward positive, for an RMS level [rms] of full scale. */
     fun angle(rms: Float): Float {

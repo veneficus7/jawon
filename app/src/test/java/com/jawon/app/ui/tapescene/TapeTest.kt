@@ -17,6 +17,9 @@ class TapeTest {
 
     @Test
     fun theShortestCassetteThatHoldsTheLongerSideIsChosen() {
+        assertEquals("a single", Tape.C10, Tape.stockFor(3 * minute + 20_000L))
+        assertEquals("an EP", Tape.C20, Tape.stockFor(7 * minute + 30_000L))
+        assertEquals(Tape.C46, Tape.stockFor(10 * minute + 1))
         assertEquals(Tape.C46, Tape.stockFor(20 * minute))
         assertEquals(Tape.C46, Tape.stockFor(23 * minute))
         assertEquals(Tape.C60, Tape.stockFor(23 * minute + 1))

@@ -295,7 +295,7 @@ fun ShowroomScreen(
         }
         onLeave()
     }
-    BackHandler(enabled = active) { if (!director.back()) onExit() }
+    BackHandler(enabled = active && !com.jawon.app.ui.common.LocalRoomsCardOpen.current) { if (!director.back()) onExit() }
 
     val cadence = remember(context) {
         RoomCadence().apply {

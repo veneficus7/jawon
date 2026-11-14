@@ -111,7 +111,15 @@ internal fun NowPlayingBar(
     onNext: () -> Unit,
     onPrevious: () -> Unit,
     onPutAway: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    /**
+     * What stands at its left in place of the turning disc — the cassette and vinyl rooms show
+     * the album's cover, since a CD turning is the CD room's picture of its own record. The
+     * vinyl and cassette rooms show this bar at the crate and the racks (2026-11-14): with the
+     * record or tape that is on standing only "a little proud" there, nobody found the way back
+     * to the deck.
+     */
+    art: (@Composable () -> Unit)? = null
 ) {
     val angle = remember { mutableFloatStateOf(0f) }
 
@@ -123,8 +131,8 @@ internal fun NowPlayingBar(
     // has the whole screen composited again, and at 120Hz that was the busiest thing on a settled
     // wall that the room itself had slowed to a heartbeat. A 46dp disc turning at 78°/s moves 2.6°
     // a step at 30, which reads as the same smooth turn.
-    LaunchedEffect(isPlaying) {
-        if (!isPlaying) return@LaunchedEffect
+    LaunchedEffect(isPlaying, art == null) {
+        if (!isPlaying || art != null) return@LaunchedEffect
         var previous = 0L
         while (true) {
             val now = withFrameNanos { it }
@@ -277,7 +285,9 @@ internal fun NowPlayingBar(
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             val disc = nowPlaying.disc
-            if (disc != null) {
+            if (art != null) {
+                Box(Modifier.size(DISC_SIZE).clip(RoundedCornerShape(6.dp))) { art() }
+            } else if (disc != null) {
                 Image(
                     bitmap = disc.asImageBitmap(),
                     contentDescription = null,
@@ -368,3 +378,27 @@ private val PUT_AWAY_AT = 44.dp
 private const val FLING_DP_PER_S = 700f
 
 private val SETTLE = spring<Float>(dampingRatio = 0.8f, stiffness = Spring.StiffnessMediumLow)
+
+/**
+ * An album's cover, small, for [NowPlayingBar]'s `art`: decoded off the main thread (architecture
+ * rule 9), a plain square of the bar's edge colour until it is.
+ */
+@Composable
+internal fun CoverThumb(path: String?) {
+    val cover by androidx.compose.runtime.produceState<android.graphics.Bitmap?>(null, path) {
+        value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { CaseArt.loadCover(path, COVER_THUMB_PX) }
+    }
+    val bitmap = cover
+    if (bitmap != null) {
+        Image(
+            bitmap = bitmap.asImageBitmap(),
+            contentDescription = null,
+            contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+            modifier = Modifier.size(DISC_SIZE)
+        )
+    } else {
+        Spacer(Modifier.size(DISC_SIZE).background(CrateEdge))
+    }
+}
+
+private const val COVER_THUMB_PX = 160

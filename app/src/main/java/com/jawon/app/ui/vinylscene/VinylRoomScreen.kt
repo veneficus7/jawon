@@ -1,5 +1,10 @@
 package com.jawon.app.ui.vinylscene
 
+import com.jawon.app.ui.common.TurnOverPrompt
+import com.jawon.app.ui.wallscene.CoverThumb
+import com.jawon.app.ui.wallscene.NowPlayingBar
+import com.jawon.app.ui.common.BackToChip
+import androidx.compose.foundation.layout.Column
 import android.graphics.Bitmap
 import android.net.Uri
 import android.os.SystemClock
@@ -230,6 +235,7 @@ fun VinylRoomScreen(
     val deck by viewModel.deck.collectAsStateWithLifecycle()
     val positionMs by viewModel.positionMs.collectAsStateWithLifecycle()
     val nowPlayingAlbumId by viewModel.nowPlayingAlbumId.collectAsStateWithLifecycle()
+    val nowPlaying by viewModel.nowPlaying.collectAsStateWithLifecycle()
     LaunchedEffect(viewModel) { viewModel.adoptPlayingAlbum() }
 
     val album = remember(layout, nowPlayingAlbumId) { layout.cases.firstOrNull { it.albumId == nowPlayingAlbumId } }
@@ -356,7 +362,7 @@ fun VinylRoomScreen(
     }
 
     // Back is one step out each time: off the record, down to the crate, out to the showroom.
-    BackHandler(enabled = !covered) {
+    BackHandler(enabled = !covered && !com.jawon.app.ui.common.LocalRoomsCardOpen.current) {
         when {
             stage.zoomTarget > 0.5f -> stage.zoomTarget = 0f
             stage.atDeck -> stage.toCrate()
@@ -673,16 +679,69 @@ fun VinylRoomScreen(
         // The CD room's own two buttons, at the foot of the frame where the floor is — over the
         // deck there is nothing on the glass but the deck. (Adding a record is in the crate
         // itself: the card at the back of it.)
+        // **A side over, and the record waiting for a hand**: said where it can be seen.
+        val waitingFor = stage.awaiting
+        val recordOver = stage.over
+        AnimatedVisibility(
+            visible = stage.deckward && !covered && (waitingFor >= 0 || recordOver) && sides.isNotEmpty(),
+            enter = fadeIn(),
+            exit = fadeOut(),
+            modifier = Modifier.align(Alignment.Center)
+        ) {
+            val change = waitingFor >= 0 && waitingFor / 2 != sideIndex / 2
+            TurnOverPrompt(
+                label = when {
+                    recordOver -> "Play it again"
+                    change -> "Put on the next record"
+                    else -> "Turn the record over"
+                },
+                onClick = { if (recordOver) stage.startStop(sides) { viewModel.onPlayPause() } else stage.turnOverNow(deck, sides) }
+            )
+        }
+
+        // **The way back to the crate**, from the deck: on screen, not only Back (2026-11-14).
+        AnimatedVisibility(
+            visible = stage.deckward && !covered,
+            enter = fadeIn(),
+            exit = fadeOut(),
+            modifier = Modifier
+                .align(Alignment.TopStart)
+                .statusBarsPadding()
+                .padding(start = 12.dp, top = 8.dp)
+        ) {
+            BackToChip("crate", onClick = { stage.toCrate() })
+        }
+
         AnimatedVisibility(
             visible = !stage.deckward && !covered,
             enter = fadeIn(),
             exit = fadeOut(),
             modifier = Modifier.align(Alignment.BottomCenter)
         ) {
+            Column(Modifier.fillMaxWidth().navigationBarsPadding()) {
+                // The record that is on, and the way back to it: it used to stand only a little
+                // proud in the crate, and the way back to the deck was not found (2026-11-14).
+                val playing = nowPlaying
+                if (playing != null && album != null && playing.albumId == album.albumId && deck.tracks.isNotEmpty()) {
+                    NowPlayingBar(
+                        nowPlaying = playing,
+                        trackTitle = deck.currentTrack?.title,
+                        isPlaying = deck.isPlaying,
+                        durationMs = deck.durationMs,
+                        position = viewModel.positionMs.collectAsStateWithLifecycle(),
+                        haptics = haptics,
+                        onOpen = { stage.toDeck() },
+                        onPlayPause = { viewModel.onPlayPause() },
+                        onNext = { viewModel.onNext() },
+                        onPrevious = { viewModel.onPrevious() },
+                        // Pulled down: the record stops where it is, still on the deck.
+                        onPutAway = { if (deck.isPlaying) viewModel.onPlayPause() },
+                        art = { CoverThumb(album.coverPath) }
+                    )
+                }
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .navigationBarsPadding()
                     .padding(horizontal = 48.dp, vertical = 6.dp),
                 verticalAlignment = Alignment.Bottom
             ) {
@@ -694,6 +753,7 @@ fun VinylRoomScreen(
                     iconContent = { JawonMark(size = 24.dp, color = LabelCream.copy(alpha = 0.82f), contentDescription = null) }
                 )
                 ChromeAction(Icons.Default.Settings, "SETTINGS", onOpenSettings, Modifier.weight(1f))
+            }
             }
         }
     }
@@ -1054,7 +1114,12 @@ private class VinylStage(
         endedFor = 0f
         awaitedTrack = -1
         if (awaiting != -1) awaiting = -1
+        if (over) over = false
     }
+
+    /** The last side has run out: the record is over, and a touch plays it again. For Compose. */
+    var over by mutableStateOf(false)
+        private set
 
     /**
      * Turn the record over — or, for a side on another record of the set, change it for that one
@@ -1291,6 +1356,7 @@ private class VinylStage(
                 endedFor = 0f
                 awaitedTrack = if (track + 1 < deck.tracks.size) track + 1 else -1
                 awaiting = if (awaitedTrack >= 0) Sides.of(sides, awaitedTrack) else -1
+                over = awaitedTrack < 0
                 motorUntil = 0L
                 sendArm(Needle.move(armYaw, armLift, Needle.REST_YAW, quick = false, down = false), null)
             }

@@ -179,6 +179,7 @@ fun JawonNavHost(
     }
 
     Box(Modifier.fillMaxSize()) {
+        androidx.compose.runtime.CompositionLocalProvider(com.jawon.app.ui.common.LocalRoomsCardOpen provides roomsOpen) {
         RoomStage(
             format = format,
             showroomWanted = showroomWanted,
@@ -198,6 +199,7 @@ fun JawonNavHost(
                 navController.navigate(JawonDestination.EditAlbum.routeFor(albumId))
             }
         )
+        }
 
         NavHost(
             navController = navController,

@@ -4148,15 +4148,15 @@ fun WallSceneScreen(
         // Back closes an open case. While browsing it goes up a level, to the showroom between
         // formats, in a build that has one; in one that does not, it is left alone and exits the
         // app as it always has. The showroom's own Back is what leaves the app from there.
-        BackHandler(enabled = !covered && selectedAlbumId != null) { closeCase() }
-        BackHandler(enabled = !covered && selectedAlbumId == null && showroomReachable) { onOpenShowroom() }
+        BackHandler(enabled = !covered && !com.jawon.app.ui.common.LocalRoomsCardOpen.current && selectedAlbumId != null) { closeCase() }
+        BackHandler(enabled = !covered && !com.jawon.app.ui.common.LocalRoomsCardOpen.current && selectedAlbumId == null && showroomReachable) { onOpenShowroom() }
 
         // Search is opened from the chrome row and takes its place while it is up. Declared
         // after the two above so that, while it is open, Back closes it and nothing else.
         var searchOpen by remember { mutableStateOf(false) }
         // A case opened some other way — tapped above the open panel — takes search down with it.
         LaunchedEffect(selectedAlbumId) { if (selectedAlbumId != null) searchOpen = false }
-        BackHandler(enabled = !covered && searchOpen) { searchOpen = false }
+        BackHandler(enabled = !covered && !com.jawon.app.ui.common.LocalRoomsCardOpen.current && searchOpen) { searchOpen = false }
 
         // **What happens when the record finishes.**
         //

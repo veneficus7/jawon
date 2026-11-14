@@ -3843,8 +3843,12 @@ def build_tape_deck():
 
     def words(bm):
         y = -T_FASCIA_T - 0.00005
-        _face_text(bm, "STEREO CASSETTE DECK", 0.0024, 0.090, y, 0.124, spacing=1.15)
-        _face_text(bm, "AUTO REVERSE", 0.0016, T_REV[0], y, T_REV[1] - 0.0062, spacing=1.15)
+        # The deck's name across the top, between the meters: at the right-hand end it was off
+        # the edge of a phone's frame, and all anyone saw of it was an "S" (2026-11-14).
+        _face_text(bm, "STEREO CASSETTE DECK", 0.0016, 0.0, y, 0.1308, spacing=1.15)
+        # Two lines under REV: on one, the word ran under the right-hand meter's bezel.
+        _face_text(bm, "AUTO", 0.0012, T_REV[0], y, T_REV[1] - 0.0057, spacing=1.15)
+        _face_text(bm, "REVERSE", 0.0012, T_REV[0], y, T_REV[1] - 0.0076, spacing=1.15)
         _face_text(bm, "POWER", 0.0016, -0.090, y, 0.0205, spacing=1.15)
         _face_text(bm, "PHONES", 0.0016, -0.090, y, 0.0625, spacing=1.15)
         _face_text(bm, "REC LEVEL", 0.0016, 0.090, y, 0.0335, spacing=1.15)

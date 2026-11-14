@@ -150,6 +150,34 @@ class TapeColourTest {
         assertTrue("motor at $loudest", loudest < 0.2f && loudest > 0.01f)
     }
 
+    /**
+     * The meters read the music against the level the tape was recorded at: a loud modern master
+     * and a quiet old one both swing round 0 VU, never laid against the pin (as both were on the
+     * owner's phone), and a quiet passage after a loud one still reads quiet.
+     */
+    @Test
+    fun aVuMeterReadsLoudAndQuietRecordsRoundZeroAndNeverRestsOnThePin() {
+        val pin = VuMeter.HALF_SWING_DEG
+        val zero = VuMeter.angle(VuMeter.ZERO_VU)
+        for (master in listOf(0.45f, 0.25f, 0.04f)) {
+            val ref = VuMeter.Reference()
+            repeat(90) { ref.hear(master, 1f / 30f) }
+            val reads = VuMeter.angle(ref.read(master))
+            assertTrue("a master at $master reads $reads°, 0 VU is $zero°", reads in (zero - 12f)..(zero + 1f))
+            assertTrue("off the pin", reads < pin - 5f)
+        }
+        // Loud, then a quiet bar: quiet still reads quiet.
+        val ref = VuMeter.Reference()
+        repeat(60) { ref.hear(0.4f, 1f / 30f) }
+        repeat(30) { ref.hear(0.05f, 1f / 30f) }
+        assertTrue(VuMeter.angle(ref.read(0.05f)) < VuMeter.angle(VuMeter.ZERO_VU * 0.3f))
+        // Silence teaches it nothing, and reads silence.
+        val quiet = VuMeter.Reference()
+        repeat(30) { quiet.hear(0f, 1f / 30f) }
+        assertEquals(0f, quiet.level, 0f)
+        assertEquals(-pin, VuMeter.angle(quiet.read(0f)), 1e-4f)
+    }
+
     @Test
     fun aVuMeterReadsZeroAtZeroVuAndRestsLeftInSilence() {
         assertEquals(-VuMeter.HALF_SWING_DEG, VuMeter.angle(0f), 1e-4f)

@@ -339,10 +339,32 @@ class TapeTransport(private val player: TapePlayer) {
             }
             Mode.STOP, Mode.WIND, Mode.SEARCH -> {
                 holdKey = null
-                startPlaying()
+                if (albumOver()) fromTheTop() else startPlaying()
             }
             else -> Unit
         }
+    }
+
+    /**
+     * Past the last of the album's music: nothing after it on this side, and no side after this
+     * one. PLAY there used to be the deck's auto-stop and nothing else — a real deck's answer, and
+     * on the owner's phone (2026-11-14) a key that seemed not to work.
+     */
+    /** The album is over and the deck stopped at its end: PLAY, or a touch on the tape, plays it again. */
+    val over: Boolean get() = mode == Mode.STOP && hasTape() && albumOver()
+
+    private fun albumOver(): Boolean {
+        val s = set.sides.getOrNull(side) ?: return false
+        return pastTheMusic() && s.lastTrack + 1 >= set.sides.sumOf { it.trackDurationsMs.size }
+    }
+
+    /**
+     * The album again from its first song, the deck's own way there: wound back on this side,
+     * the head reversed to the other, or the tape turned over or changed for the first of a set —
+     * as a song touched on the J-card is got to.
+     */
+    private fun fromTheTop() {
+        choose(0)
     }
 
     private fun startPlaying() {
@@ -417,6 +439,8 @@ class TapeTransport(private val player: TapePlayer) {
         if (!hasTape()) return
         when (mode) {
             Mode.ENDED -> play()
+            // The album over: a touch on the tape is PLAY, and plays it again.
+            Mode.STOP -> if (albumOver()) fromTheTop()
             Mode.EJECTED -> {
                 // Turned over and put back, to play its other side — or, a side with none, played again.
                 val other = otherSideOfTape()

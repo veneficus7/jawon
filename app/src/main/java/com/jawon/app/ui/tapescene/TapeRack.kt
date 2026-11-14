@@ -66,6 +66,18 @@ object TapeRack {
     /** The middle of a box in [slot], for the camera to look at. */
     fun slotMiddleY(slot: Int): Float = TapeDimens.slotY(slot) + TapeDimens.BOX_T / 2
 
+    /**
+     * The lowest the camera need look along [tower], for a frame [tall] metres tall: its last tape
+     * a little above the foot of the frame, clear of the room's buttons there.
+     */
+    fun lowestLook(tower: Tower, tall: Float): Float {
+        val last = tower.tapes.maxOfOrNull { it.slot } ?: return Float.NEGATIVE_INFINITY
+        return slotMiddleY(last) + tall / 2 - LOWEST_TAPE_ABOVE_FOOT
+    }
+
+    /** How far up from the foot of the frame a rack's last tape is kept: above the buttons. */
+    private const val LOWEST_TAPE_ABOVE_FOOT = 0.075f
+
     /** How low and how high the camera can look along a rack, for a frame [tall] metres tall at its face. */
     fun lookRange(tall: Float): ClosedFloatingPointRange<Float> {
         val low = TapeDimens.RACKS_BOTTOM + tall / 2 - 0.04f

@@ -161,6 +161,7 @@ internal class TapeRackScene(
 
     /** The library, as racks. Opened at the tape that is playing, if there is one; a rack that changes keeps the hand where it was. */
     fun setTowers(new: List<TapeRack.Tower>, nowPlaying: String?, tall: Float) {
+        this.tall = tall
         motion.setRange(TapeRack.lookRange(tall))
         if (new.size == towers.size && new.zip(towers).all { (a, b) -> a.shelfId == b.shelfId && a.tapes.map { it.albumId } == b.tapes.map { it.albumId } }) {
             towers = new
@@ -335,7 +336,7 @@ internal class TapeRackScene(
                     was == ALONG -> motion.fling(vy * metresPerPx)
                     was == SIDEWAYS -> {
                         motion.fling(0f)
-                        if (abs(event.x - downX) > widthPx * SWIPE_OF_SCREEN) motion.swipe(event.x < downX, towers.size)
+                        if (abs(event.x - downX) > widthPx * SWIPE_OF_SCREEN) toTower(forward = event.x < downX)
                     }
                     else -> {
                         motion.fling(0f)
@@ -365,8 +366,23 @@ internal class TapeRackScene(
     }
 
     fun shelf(forward: Boolean) {
-        motion.swipe(forward, towers.size)
+        toTower(forward)
         changed = true
+    }
+
+    /** How tall the frame is at the racks' face, for keeping a rack's tapes in it. */
+    private var tall = 0.3f
+
+    /**
+     * To the next rack or the one before — and up it, if the hand was further down the last one
+     * than this one's tapes go: a short rack's few tapes used to be left off the top of the frame,
+     * and the swipe seemed to land on an empty rack (2026-11-14).
+     */
+    private fun toTower(forward: Boolean) {
+        motion.swipe(forward, towers.size)
+        val tower = towers.getOrNull(motion.towerTarget) ?: return
+        val lowest = TapeRack.lowestLook(tower, tall)
+        if (motion.y < lowest) motion.goTo(motion.towerTarget, lowest)
     }
 
     /** The tape level with the middle of the frame, in the rack in front. */
