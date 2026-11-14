@@ -389,7 +389,15 @@ it took:
 
 Not built, on purpose: the arm as something to pick up by hand (a song touched on the sleeve
 puts the needle there), and a record taken *off* to an empty platter (choosing another in the
-crate puts it in the last one's place, out of sight). **Never on a phone**, and its cost there is
+crate puts it in the last one's place, out of sight).
+
+**Easier to use, 2026-11-14** — the owner: "learn any inconveniences … in vinyl mode and fix
+them too". Walked as a first-time user on the emulator: the record that is on is a now-playing
+bar at the foot of the crate (it stood only a little proud there, and the cassette room's owner
+could not find the same way back); the deck has a *‹ CRATE* button; and a side waiting for a
+hand says so in the middle of the frame — *Turn the record over*, *Put on the next record*, and
+*Play it again* once the record is over — a tap doing it, where before only *SIDE B · TURN OVER*
+in small type on the card did. Turning over by hand stays the default: it was his call. **Never on a phone**, and its cost there is
 not known — which, after what the CD wall turned out to cost, is the first thing to find out.
 
 **First look, 2026-10-11 — stills for the owner to choose between** (`tools/vinyl-preview/`,
@@ -527,9 +535,39 @@ A review then found four more, all fixed:
   keys, TalkBack's description at the racks follows the rack, and the frame loop no longer
   makes anything every frame.
 
-**Never on a phone**, and some of it cannot be judged anywhere else: the cue squeal and the
-deck's own sounds (the emulator's audio says nothing about latency or tone), and the meters (the
-test library is silent).
+**On the owner's phone, 2026-11-14** — the first afternoon, watched read-only from its log, CPU
+and GPU (a sampler over `adb`, nothing installed but the build):
+
+- **The sound of tape stopped the player inside two minutes.** `TapeColour` read one past the
+  end of its delay line: a delay a hair longer than the write wraps to `size − 0.000008`, which a
+  Float rounds to `size` (`readPlace`, about once in seven minutes at 44.1kHz). And every key
+  after it did nothing — a failed player is idle with its record still loaded, and `play()` alone
+  does not start it. Fixed three ways: the read; the processor bypassing the colour rather than
+  failing the player if it ever throws again (it is in every room's chain); and a play that
+  prepares an idle player (`ScratchLink`, `PlaybackRepository`). The fixed build then played tape
+  for thirteen minutes with no error.
+- **Both VU needles lay on the pin through a whole album**: today's masters are ten decibels and
+  more over 0 VU's −18dBFS. The meters now read against the level the tape was "recorded" at —
+  a reference that follows the loud passages, up in under a second and down over fifteen
+  (`VuMeter.Reference`).
+- **"How do I go back to the deck from the racks?"** — his own question: the tape in the deck
+  only stood a little proud of its rack. Now it is the CD room's now-playing bar at the foot of
+  the racks, with its cover; a tap is the deck. And the deck has a *‹ TAPES* button: Back was the
+  only way out.
+- **The room held his GPU 80% busy** drawing sixty frames a second to turn two reels; the phone
+  went to thermal 2 (on charge). A tape that only plays is drawn at thirty now.
+- **The deck's print**: *STEREO CASSETTE DECK* sat off the right edge of a phone's frame — all
+  anyone saw was an "S" — and *AUTO REVERSE* ran under the right meter. Both moved.
+- **PLAY after a one-song record had run out did nothing**, three presses. PLAY, or a touch on
+  the tape, once the album is over now plays it again from the top, the deck's own way there.
+
+Found walking the room as a first-time user on the emulator, with a loud album and a single:
+spines that cut titles short ("A LOVE SU…") now put the title first; a swipe to a short rack
+goes up to its tapes rather than its empty slots; a single comes on a C10 and an EP on a C20,
+not a C46 with twenty minutes of blank; and a side waiting for a hand says so — *Turn the tape
+over*, *Put in the next tape*, *Play it again* — where before only the J-card's small type did.
+
+**Not yet judged by him**: the cue squeal, the deck's sounds, and how the meters read now.
 
 ---
 
