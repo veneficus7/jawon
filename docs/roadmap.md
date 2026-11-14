@@ -189,7 +189,7 @@ from `PlayEvent`, shared as images through the share sheet. Plus **share a shelf
 
 ## 0.9 — cassette (December 2026)
 
-**The room is built (2026-11-14, on the `cassette` branch, not yet released).** It has racks of
+**The room is built, and shipped to testers as 0.9 beta (2026-11-14).** It has racks of
 tapes on the wall, a tape taken out and put in the deck, and keys that work as a deck's did:
 tap to skip, hold to wind, and hear the cue while playing. The reels and counter are true to the
 tape. A side ends with auto-reverse, or the tape is turned over by hand. The sound of tape is in

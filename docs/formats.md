@@ -569,6 +569,26 @@ over*, *Put in the next tape*, *Play it again* — where before only the J-card'
 
 **Not yet judged by him**: the cue squeal, the deck's sounds, and how the meters read now.
 
+**Shipped to testers as 0.9 beta, 2026-11-14** (versionCode 25, the APK in `Javon-builds` with
+sha256 `6fe93572…`), on his "i think this is enough" after the same evening on his phone, watched
+the same way:
+
+- **About 27 minutes of tape** — two tapes, skips, a wind, a side's end — in one process, with no
+  `JawonPlayer`, `AndroidRuntime` or bypass line. Only 9 of those minutes were on screen; the
+  rest played under Telegram and Instagram. Whether the sound of tape was on was not checked: it
+  is on by default, and the fix is held by `TapeColourTest`'s phone exception either way.
+- **On screen: 30 frames a second while a tape only plays**, the GPU 74% busy on average at about
+  560MHz — against 80% at a higher clock in the afternoon. Winding goes back to full rate (68/s
+  in the last window). Thermal reached 1 at the end, the battery at 37.2°C, on USB charge.
+- **The CD room's fog**, rewritten for Mali in `57ea0ed` and never seen on a phone before, he
+  looked at and called "the same".
+- The pocket room, the one room this exact build had not drawn, was driven on the flagship
+  emulator before the upload — in, the Rooms card opened and closed with Back, out to the
+  showroom — with no error.
+
+The Guide's pages for the two rooms were written before the way back to the deck and the
+turn-over button existed, and do not mention them in this build.
+
 ---
 
 ## 7. Staging

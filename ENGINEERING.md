@@ -99,7 +99,7 @@ and changed for the second of a set, the showroom's single, the pocket player �
 TalkBack description, which had said "In front: CD" from anywhere along the row since 0.7.5, was
 fixed on the way (`ShowroomDirector.front`). Never on a phone, and the needle's sound never heard
 on one. `docs/formats.md` §5. **And the cassette room is built** (2026-11-14, "now finish the
-cassette mode", on the `cassette` branch and not yet released; `ui/tapescene/`, `Format.CASSETTE`):
+cassette mode", on the `cassette` branch; `ui/tapescene/`, `Format.CASSETTE`):
 racks of tapes on the wall, a tower per shelf; a tape taken, opened on a micro-component deck and
 put in its door; keys that work as a deck's did (a tap skips a song, a hold winds, and while playing
 you hear the cue squeal); spools true to the tape's length and thickness; a counter geared to a
@@ -112,8 +112,9 @@ words. Debug and R8 release driven on the flagship emulator. **On his phone the 
 Float rounding the delay line's read one past its end), the meters lay on the pin, he could not
 find the way back from the racks to the deck, and the room held the GPU 80% busy. All fixed that
 day, with the vinyl room's matching rough edges, after a first-time-user walk through both rooms —
-**built as 0.9 beta (versionCode 25)**. The cue, the deck's sounds and the meters are still his to
-judge. Mixtapes are not built: they need a schema change. `docs/formats.md` §6. **0.7.8 (2026-10-11) is two things he said the same day, both of the
+**shipped to testers as 0.9 beta (versionCode 25)** that evening, after half an hour of tape on
+his phone with no player error and the CD room's rebuilt fog (`57ea0ed`) seen there and judged
+"the same". The cue, the deck's sounds and the meters are still his to judge. Mixtapes are not built: they need a schema change. `docs/formats.md` §6. **0.7.8 (2026-10-11) is two things he said the same day, both of the
 form "this should be instant".** *After seeking with the disc the music took a while to continue
 from where it was put*: a record let go mid-spin was **thrown** — it ran on past the place, or back
 through it, before it settled — and one spun further than had been decoded came back only when the
