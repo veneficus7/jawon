@@ -127,6 +127,10 @@ class PlaybackService : MediaLibraryService() {
     @Inject
     lateinit var scratchLink: ScratchLink
 
+    /** The sound of tape, and the cassette deck's meters — see [TapeAudioProcessor]. */
+    @Inject
+    lateinit var tapeState: TapeState
+
     private var crossfadeEngine: CrossfadeEngine? = null
     private var replayGainReader: ReplayGainReader? = null
 
@@ -176,7 +180,9 @@ class PlaybackService : MediaLibraryService() {
                         ToneAudioProcessor(rack),
                         FilterAudioProcessor(rack),
                         DriveAudioProcessor(rack),
-                        EchoAudioProcessor(rack)
+                        EchoAudioProcessor(rack),
+                        // Last: a tape deck plays whatever the rack made of the music.
+                        TapeAudioProcessor(tapeState)
                     )
                 )
                 .build()
@@ -280,6 +286,14 @@ class PlaybackService : MediaLibraryService() {
         })
         equalizer.attach(player.audioSessionId)
         nativeEffects.attach(player.audioSessionId)
+
+        // The sound of tape follows the format, wherever the music goes — the car, the
+        // background: with cassette chosen, the library is tapes (`docs/formats.md` §6).
+        serviceScope.launch {
+            kotlinx.coroutines.flow.combine(preferences.format, preferences.tapeSound) { format, on ->
+                format == com.jawon.app.Format.CASSETTE && on
+            }.collect { tapeState.colour = it }
+        }
 
         // Point the player at the reverb tank, and adjust how much it sends.
         //

@@ -108,5 +108,8 @@ object Hints {
     /** The vinyl room has two places, and a card for each: the crate, and the deck. */
     const val VINYL = "vinyl"
     const val VINYL_DECK = "vinyl_deck"
+    /** And the cassette room's two: the racks, and the deck. */
+    const val TAPE = "tape"
+    const val TAPE_DECK = "tape_deck"
     const val SHOWROOM = "showroom"
 }

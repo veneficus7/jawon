@@ -227,6 +227,21 @@ class TapeTransport(private val player: TapePlayer) {
 
     private var loadingClosing = false
 
+    /**
+     * Nobody is looking — the home button, a panel, another room — and a tape on its way in is in:
+     * the door shut and PLAY down now, because the frames that would have done it are not coming.
+     */
+    fun finishLoad() {
+        if (mode != Mode.LOADING || set.sides.isEmpty()) return
+        loadingClosing = false
+        doorTarget = 0f
+        door = 0f
+        startPlaying()
+    }
+
+    /** The deck is waiting for a tape to arrive in its door. */
+    val loading: Boolean get() = mode == Mode.LOADING
+
     /** Where the tape is for side [face] out and nothing else known: the room's question before it has one. */
     fun faceFor(set: TapeSet, trackIndex: Int): Boolean =
         set.sides.isNotEmpty() && Sides.of(set.sides, trackIndex.coerceAtLeast(0)) % 2 == 1
@@ -397,6 +412,17 @@ class TapeTransport(private val player: TapePlayer) {
             }
             else -> Unit
         }
+    }
+
+    /** TalkBack's "turn the tape over": as a hand would, at any time — out of the door, over, and back in. */
+    fun turnOverByHand() {
+        if (!hasTape() || mode == Mode.LOADING || mode == Mode.FLIP || mode == Mode.REVERSE) return
+        if (mode == Mode.ENDED) {
+            play()
+            return
+        }
+        val other = otherSideOfTape()
+        turnOverTo(other, set.sides[other].firstTrack, change = false)
     }
 
     /** A song touched on the J-card: the tape wound to it, turned or reversed to it first if it is on another side. */

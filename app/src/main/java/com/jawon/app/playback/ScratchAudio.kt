@@ -220,6 +220,16 @@ class ScratchAudio @Inject constructor(
     fun playerPositionMs(): Long? = link.positionMs()
     fun playerTrack(): Int = link.trackIndex()
 
+    /**
+     * The cassette deck's way to the player (0.9): straight to it, as the scratch's own hand-back
+     * is, because a key that goes down a frame or two after the finger is a key that feels
+     * broken. Each answers whether there was a player to tell. Main thread.
+     */
+    fun playerIsPlaying(): Boolean = link.isPlaying()
+    fun seekPlayer(trackIndex: Int, positionMs: Long): Boolean = link.seek(trackIndex, positionMs)
+    fun setPlayerPlaying(playing: Boolean): Boolean = link.setPlaying(playing)
+    fun playerLevelling(): Float = link.levelling()
+
     /** Where the record is in its track, while the engine has it; null when it does not. */
     fun positionMs(): Long? =
         if (phase == Phase.HELD || phase == Phase.RELEASING) engine?.let { (it.positionSeconds * 1000).toLong() } else null

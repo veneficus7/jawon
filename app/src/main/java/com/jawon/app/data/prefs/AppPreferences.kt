@@ -361,6 +361,32 @@ class AppPreferences @Inject constructor(@param:ApplicationContext context: Cont
         _vinylTurnsItself.value = enabled
     }
 
+    private val _tapeAutoReverse = MutableStateFlow(prefs.getBoolean(KEY_TAPE_AUTO_REVERSE, true))
+
+    /**
+     * Whether the cassette deck turns its head over at the end of a side and plays the other
+     * (0.9). On by default — `docs/formats.md` §6, "auto-reverse as the obvious option". Off, the
+     * deck stops at the end of a side and the tape is turned over by hand. The deck's own REV
+     * button is this same switch.
+     */
+    val tapeAutoReverse: StateFlow<Boolean> = _tapeAutoReverse.asStateFlow()
+    fun setTapeAutoReverse(enabled: Boolean) {
+        prefs.edit { putBoolean(KEY_TAPE_AUTO_REVERSE, enabled) }
+        _tapeAutoReverse.value = enabled
+    }
+
+    private val _tapeSound = MutableStateFlow(prefs.getBoolean(KEY_TAPE_SOUND, true))
+
+    /**
+     * The sound of tape (0.9): hiss, wow and flutter on the music while cassette is the format.
+     * On by default; it is half of what a tape is.
+     */
+    val tapeSound: StateFlow<Boolean> = _tapeSound.asStateFlow()
+    fun setTapeSound(enabled: Boolean) {
+        prefs.edit { putBoolean(KEY_TAPE_SOUND, enabled) }
+        _tapeSound.value = enabled
+    }
+
     private val _fetchLyrics = MutableStateFlow(prefs.getBoolean(KEY_FETCH_LYRICS, true))
 
     /**
@@ -590,6 +616,8 @@ class AppPreferences @Inject constructor(@param:ApplicationContext context: Cont
         const val KEY_KEEP_PLAYING_ON_CLOSE = "keep_playing_on_close"
         const val KEY_SHORT_INTRO = "short_intro"
         const val KEY_VINYL_TURNS_ITSELF = "vinyl_turns_itself"
+        const val KEY_TAPE_AUTO_REVERSE = "tape_auto_reverse"
+        const val KEY_TAPE_SOUND = "tape_sound"
         const val KEY_PREFER_ONLINE_LYRICS = "prefer_online_lyrics"
         const val KEY_ROOM_SCHEME = "room_scheme"
         const val KEY_FORMAT = "format"

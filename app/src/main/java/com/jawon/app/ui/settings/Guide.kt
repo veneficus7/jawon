@@ -157,6 +157,47 @@ internal enum class GuideTopic(
             )
         )
     ),
+    CASSETTE(
+        title = "The cassette room",
+        summary = "The racks, the deck's keys, sides",
+        icon = Icons.Rounded.Album,
+        sections = listOf(
+            GuideSection(
+                "The racks",
+                listOf(
+                    Tip("Look along them", "Each shelf of yours is a rack of tapes on the wall, spines out. Drag up and down a rack; swipe sideways for the next shelf. You feel each tape go by."),
+                    Tip("Put one in", "Tap a tape. It comes out of the rack, opens on top of the deck, and goes into the door — and PLAY goes down. Tap while that happens to hurry it."),
+                    Tip("Add albums", "ADD, at the foot of the racks, beside ROOMS and SETTINGS.")
+                )
+            ),
+            GuideSection(
+                "The deck",
+                listOf(
+                    Tip("The keys", "EJECT · REW · PLAY · FF · STOP · PAUSE, under the door, as on a real deck. PLAY and PAUSE stay down."),
+                    Tip("Skip a song", "Tap ▶▶ for the next song, or ◀◀ for the start of this one — or, in its first seconds, the one before. The tape winds there."),
+                    Tip("Wind", "Hold ◀◀ or ▶▶. Playing, you hear the music going by, high and fast, and it plays on from where you let go. Stopped, it just winds."),
+                    Tip("Choose a song", "The box stands open on the deck and the inside of its card is the tracklist. Touch a song and the tape winds to it."),
+                    Tip("The reels and the counter", "The spools are where you are in the side — one empties as the other fills — and the counter counts the turns, as a deck's did."),
+                    Tip("Closer", "Pinch, or tap the deck twice, to look at the tape up close.")
+                )
+            ),
+            GuideSection(
+                "Sides",
+                listOf(
+                    Tip("Auto-reverse", "With REV lit — the small button by the counter — the deck turns its head over at the end of side A and plays side B. Settings → Reverse at the end of a side is the same switch."),
+                    Tip("Turn it over yourself", "With REV off the deck stops at the end of a side. Touch the tape, or press PLAY, and it is taken out, turned over and put back. EJECT, then a touch on the tape, does it any time."),
+                    Tip("A long album", "An album is cut into two sides, and an album over two hours into more than one tape; the next tape goes in when a side ends.")
+                )
+            ),
+            GuideSection(
+                "Going back",
+                listOf(
+                    Tip("Back", "From the tape up close to the deck, from the deck to the racks, from the racks to the showroom."),
+                    Tip("The sound of tape", "Settings → The sound of tape: a little hiss, wow and flutter on your music while this is your room. Turn it off for the music as it is.")
+                )
+            )
+        )
+    ),
     ROOMS(
         title = "Moving between rooms",
         summary = "Rooms, shaking, the showroom",
@@ -165,7 +206,7 @@ internal enum class GuideTopic(
             GuideSection(
                 "Rooms",
                 listOf(
-                    Tip("What a room is", "Each room is a different way to hold your music: a wall of CDs, a pocket player, a crate of records by a deck, and in time a tape deck. Your library is the same in every one."),
+                    Tip("What a room is", "Each room is a different way to hold your music: a wall of CDs, a pocket player, a crate of records by a deck, and racks of tapes by a tape deck. Your library is the same in every one."),
                     Tip("Switch rooms", "Press ROOMS at the bottom of the CD room or of the record crate, or choose Rooms on the pocket player's menu, and pick one."),
                     Tip("Shake", "Shake the phone twice, quickly back and forth, to flip to the next room. It never happens in a pocket. Settings → Shake to switch rooms turns it off."),
                     Tip("The showroom", "Press Back in a room, tap the glowing JAWON sign, or pinch the pocket player, and you are in the showroom: every room on its own stand. Swipe along them and tap one to go in.")

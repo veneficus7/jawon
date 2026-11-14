@@ -1454,6 +1454,8 @@ fun SettingsScreen(
     val keepPlayingOnClose by viewModel.keepPlayingOnClose.collectAsStateWithLifecycle()
     val shortIntro by viewModel.shortIntro.collectAsStateWithLifecycle()
     val vinylTurnsItself by viewModel.vinylTurnsItself.collectAsStateWithLifecycle()
+    val tapeAutoReverse by viewModel.tapeAutoReverse.collectAsStateWithLifecycle()
+    val tapeSound by viewModel.tapeSound.collectAsStateWithLifecycle()
     val resumeWithHeadphones by viewModel.resumeWithHeadphones.collectAsStateWithLifecycle()
     val graphicsName by viewModel.graphics.collectAsStateWithLifecycle()
     val graphics = com.jawon.app.ui.wallscene.Graphics.fromName(graphicsName)
@@ -1634,6 +1636,32 @@ fun SettingsScreen(
                                     "background the music carries on.",
                                 checked = vinylTurnsItself,
                                 onCheckedChange = viewModel::onVinylTurnsItselfChanged
+                            )
+                        }
+                        // The cassette room's two, shown where the cassette room is.
+                        if (Format.CASSETTE in offeredFormats) {
+                            SettingsDivider()
+                            SettingsSwitchRow(
+                                icon = Icons.Rounded.Album,
+                                title = "Reverse at the end of a side",
+                                summary = "The tape deck plays the other side by itself.",
+                                detail = "At the end of side A the deck's head turns over and side B " +
+                                    "plays, as an auto-reverse deck did. Off, the deck stops at the end " +
+                                    "of a side and you turn the tape over: touch it, or press PLAY. The " +
+                                    "deck's own REV button is this same switch.",
+                                checked = tapeAutoReverse,
+                                onCheckedChange = viewModel::onTapeAutoReverseChanged
+                            )
+                            SettingsDivider()
+                            SettingsSwitchRow(
+                                icon = Icons.Rounded.Album,
+                                title = "The sound of tape",
+                                summary = "A little hiss, wow and flutter.",
+                                detail = "With the cassette room chosen, your music plays with a " +
+                                    "little tape hiss under it and the slow waver in pitch a tape deck " +
+                                    "has — wherever it plays, the car included. Off, it plays as it is.",
+                                checked = tapeSound,
+                                onCheckedChange = viewModel::onTapeSoundChanged
                             )
                         }
                     }
@@ -1947,7 +1975,7 @@ fun SettingsScreen(
                 )
             }
 
-            SettingsPage.GUIDE_CD, SettingsPage.GUIDE_POCKET, SettingsPage.GUIDE_VINYL, SettingsPage.GUIDE_ROOMS,
+            SettingsPage.GUIDE_CD, SettingsPage.GUIDE_POCKET, SettingsPage.GUIDE_VINYL, SettingsPage.GUIDE_CASSETTE, SettingsPage.GUIDE_ROOMS,
             SettingsPage.GUIDE_OUTSIDE, SettingsPage.GUIDE_MUSIC -> {
                 val topic = guideTopicOf(shown)
                 SettingsPage(title = topic.title, onBack = { page = null }) { GuideTopicContent(topic) }
@@ -2050,7 +2078,7 @@ fun SettingsScreen(
 /** The pages under Settings' list. */
 private enum class SettingsPage {
     UPDATES, ROOM, LIGHT, GRAPHICS, CROSSFADE, LOUDNESS, TIDY, BACKUP, SERVER, PERFORMANCE, PROBLEMS, PRIVACY,
-    GUIDE_CD, GUIDE_POCKET, GUIDE_VINYL, GUIDE_ROOMS, GUIDE_OUTSIDE, GUIDE_MUSIC
+    GUIDE_CD, GUIDE_POCKET, GUIDE_VINYL, GUIDE_CASSETTE, GUIDE_ROOMS, GUIDE_OUTSIDE, GUIDE_MUSIC
 }
 
 private fun graphicsLabel(g: com.jawon.app.ui.wallscene.Graphics): String = when (g) {
@@ -2075,12 +2103,14 @@ private tailrec fun android.content.Context.findActivityForRecreate(): android.a
 const val GUIDE_POCKET_PAGE = "GUIDE_POCKET"
 const val GUIDE_CD_PAGE = "GUIDE_CD"
 const val GUIDE_VINYL_PAGE = "GUIDE_VINYL"
+const val GUIDE_CASSETTE_PAGE = "GUIDE_CASSETTE"
 const val GUIDE_ROOMS_PAGE = "GUIDE_ROOMS"
 
 private fun guidePageFor(topic: GuideTopic): SettingsPage = when (topic) {
     GuideTopic.CD -> SettingsPage.GUIDE_CD
     GuideTopic.POCKET -> SettingsPage.GUIDE_POCKET
     GuideTopic.VINYL -> SettingsPage.GUIDE_VINYL
+    GuideTopic.CASSETTE -> SettingsPage.GUIDE_CASSETTE
     GuideTopic.ROOMS -> SettingsPage.GUIDE_ROOMS
     GuideTopic.OUTSIDE -> SettingsPage.GUIDE_OUTSIDE
     GuideTopic.MUSIC -> SettingsPage.GUIDE_MUSIC
@@ -2089,6 +2119,7 @@ private fun guidePageFor(topic: GuideTopic): SettingsPage = when (topic) {
 private fun guideTopicOf(page: SettingsPage): GuideTopic = when (page) {
     SettingsPage.GUIDE_POCKET -> GuideTopic.POCKET
     SettingsPage.GUIDE_VINYL -> GuideTopic.VINYL
+    SettingsPage.GUIDE_CASSETTE -> GuideTopic.CASSETTE
     SettingsPage.GUIDE_ROOMS -> GuideTopic.ROOMS
     SettingsPage.GUIDE_OUTSIDE -> GuideTopic.OUTSIDE
     SettingsPage.GUIDE_MUSIC -> GuideTopic.MUSIC
@@ -2129,6 +2160,7 @@ private fun formatLine(format: Format): String = when (format) {
     Format.CD -> "A wall of records you pull out and play."
     Format.POCKET -> "Your phone becomes the player, with a click wheel."
     Format.VINYL -> "A turntable from above, and the record's sleeve beside it."
+    Format.CASSETTE -> "A tape deck, and your albums in racks on the wall."
 } + if (!format.built) " In progress." else ""
 
 /** The brand card's second line: what the version stands for right now. */

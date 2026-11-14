@@ -51,7 +51,7 @@ internal enum class RoomChoice(val format: Format?, val title: String) {
     CD(Format.CD, "CD"),
     POCKET(Format.POCKET, "Pocket"),
     VINYL(Format.VINYL, "Vinyl"),
-    CASSETTE(null, "Cassette")
+    CASSETTE(Format.CASSETTE, "Cassette")
 }
 
 /**

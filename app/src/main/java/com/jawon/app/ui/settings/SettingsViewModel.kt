@@ -216,6 +216,10 @@ class SettingsViewModel @Inject constructor(
     /** The vinyl room: a record turned over at the end of a side without being asked. */
     val vinylTurnsItself: StateFlow<Boolean> = preferences.vinylTurnsItself
     fun onVinylTurnsItselfChanged(enabled: Boolean) = preferences.setVinylTurnsItself(enabled)
+    val tapeAutoReverse: StateFlow<Boolean> = preferences.tapeAutoReverse
+    fun onTapeAutoReverseChanged(enabled: Boolean) = preferences.setTapeAutoReverse(enabled)
+    val tapeSound: StateFlow<Boolean> = preferences.tapeSound
+    fun onTapeSoundChanged(enabled: Boolean) = preferences.setTapeSound(enabled)
     fun onKeepPlayingOnCloseChanged(enabled: Boolean) = preferences.setKeepPlayingOnClose(enabled)
 
     val roomScheme: StateFlow<RoomScheme> = preferences.roomScheme

@@ -96,7 +96,9 @@ class WallSceneViewModel @Inject constructor(
     /** Makes the sound while a hand is on the disc. See [com.jawon.app.playback.ScratchAudio]. */
     val scratchAudio: com.jawon.app.playback.ScratchAudio,
     /** The effects rack, shared with the service that runs it. See [com.jawon.app.playback.RackState]. */
-    private val rack: com.jawon.app.playback.RackState
+    private val rack: com.jawon.app.playback.RackState,
+    /** The cassette deck's meters, and the sound of tape. See [com.jawon.app.playback.TapeState]. */
+    val tapeState: com.jawon.app.playback.TapeState
 ) : ViewModel() {
 
     /**
@@ -122,6 +124,10 @@ class WallSceneViewModel @Inject constructor(
 
     /** The vinyl room: whether a record turns itself over at the end of a side. */
     val vinylTurnsItself: StateFlow<Boolean> = preferences.vinylTurnsItself
+
+    /** The cassette deck's REV, which is Settings' "Reverse at the end of a side" too. */
+    val tapeAutoReverse: StateFlow<Boolean> = preferences.tapeAutoReverse
+    fun setTapeAutoReverse(on: Boolean) = preferences.setTapeAutoReverse(on)
 
     /** How fast shelved cases turn, 0..1. The frame driver scales the rotation by it. */
     val caseSpin: StateFlow<Float> = preferences.caseSpin

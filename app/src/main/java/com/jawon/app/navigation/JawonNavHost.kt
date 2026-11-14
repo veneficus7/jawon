@@ -67,6 +67,8 @@ import com.jawon.app.ui.settings.SettingsScreen
 import com.jawon.app.ui.shelfmanager.ShelfManagerScreen
 import com.jawon.app.ui.showroom.ShowroomScreen
 import com.jawon.app.ui.vinylscene.VinylRoomScreen
+import com.jawon.app.ui.tapescene.CassetteRoomScreen
+import com.jawon.app.ui.settings.GUIDE_CASSETTE_PAGE
 import com.jawon.app.ui.wallscene.WallSceneScreen
 
 /**
@@ -432,6 +434,14 @@ private fun RoomStage(
                             onOpenRooms = onOpenRooms,
                             covered = covered || !isActive
                         )
+                        Place.CASSETTE -> CassetteRoomScreen(
+                            onOpenSettings = onOpenSettings,
+                            onOpenGuide = { onOpenGuide(GUIDE_CASSETTE_PAGE) },
+                            onAddAlbum = onAddAlbum,
+                            onOpenShowroom = onOpenShowroom,
+                            onOpenRooms = onOpenRooms,
+                            covered = covered || !isActive
+                        )
                     }
                 }
             }
@@ -452,13 +462,14 @@ private fun RoomStage(
 
 /** The places the stage can hold: a room per format, and the showroom between them. */
 private enum class Place {
-    CD, POCKET, VINYL, SHOWROOM;
+    CD, POCKET, VINYL, CASSETTE, SHOWROOM;
 
     companion object {
         fun of(format: Format): Place = when (format) {
             Format.CD -> CD
             Format.POCKET -> POCKET
             Format.VINYL -> VINYL
+            Format.CASSETTE -> CASSETTE
         }
     }
 }

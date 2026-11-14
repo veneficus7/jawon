@@ -15,7 +15,7 @@ enum class Exhibit(val format: Format?, val title: String, val line: String) {
     CD(Format.CD, "CD", "A wall of records"),
     POCKET(Format.POCKET, "Pocket player", "A click wheel in your hand"),
     VINYL(Format.VINYL, "Vinyl", "A deck, and a crate to dig through"),
-    CASSETTE(null, "Cassette", "Coming");
+    CASSETTE(Format.CASSETTE, "Cassette", "A deck, and a wall of tapes");
 
     companion object {
         /** The plinth a room's own object stands on — where you arrive, pinched out of it. */

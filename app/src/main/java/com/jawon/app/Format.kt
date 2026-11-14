@@ -23,7 +23,10 @@ enum class Format(val displayName: String, val built: Boolean) {
     POCKET("Pocket player", built = true),
     // Begun 2026-10-11 and finished 2026-10-18 (`docs/formats.md` §5): the crate, the deck, a
     // record put on and turned over, its Guide page and its single in the showroom.
-    VINYL("Vinyl", built = true);
+    VINYL("Vinyl", built = true),
+    // Begun 2026-11-14 (`docs/formats.md` §6): the racks, the deck, a tape put in, wound,
+    // reversed and turned over.
+    CASSETTE("Cassette", built = false);
 
     companion object {
         /**
