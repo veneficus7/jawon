@@ -66,7 +66,17 @@ class ScratchLink @Inject constructor() {
 
     fun setPlaying(playing: Boolean): Boolean {
         val player = player ?: return false
-        runCatching { if (playing) player.play() else player.pause() }
+        runCatching {
+            if (playing) {
+                // A player that has failed sits idle with its record still in it, and play() alone
+                // does nothing there: it has to be prepared again. Without this, every key on the
+                // tape deck after a player error did nothing (2026-11-14, on the owner's phone).
+                if (player.playbackState == Player.STATE_IDLE && player.mediaItemCount > 0) player.prepare()
+                player.play()
+            } else {
+                player.pause()
+            }
+        }
         return true
     }
 

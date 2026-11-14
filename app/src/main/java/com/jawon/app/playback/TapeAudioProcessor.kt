@@ -53,7 +53,17 @@ class TapeAudioProcessor(private val state: TapeState) : BaseAudioProcessor() {
         val shorts = inputBuffer.order(ByteOrder.nativeOrder()).asShortBuffer()
         for (i in 0 until samples) floats[i] = shorts.get(i) / 32768f
         inputBuffer.position(inputBuffer.limit())
-        colour.process(floats, samples / channels, state.colour)
+        try {
+            colour.process(floats, samples / channels, state.colour)
+        } catch (t: RuntimeException) {
+            // This processor is in every room's chain: a fault in it must cost the sound of tape,
+            // never the music. One did stop the player on the owner's phone (TapeColour.readPlace).
+            android.util.Log.w("Jawon.Tape", "the sound of tape failed, and is bypassed: $t")
+            this.colour = null
+            for (i in 0 until samples) out.putShort(shorts.get(i))
+            out.flip()
+            return
+        }
         for (i in 0 until samples) out.putShort(Pcm16.toShort(floats[i]))
         out.flip()
         if (colour.levelChanged) {

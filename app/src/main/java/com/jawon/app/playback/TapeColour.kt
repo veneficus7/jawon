@@ -113,8 +113,7 @@ class TapeColour(private val sampleRate: Int, private val channels: Int) {
             if (flutterPhase > 2 * PI) flutterPhase -= 2 * PI
             if (driftPhase > 2 * PI) driftPhase -= 2 * PI
             val delay = restSamples + wet * (WOW_DEPTH_S * wow + FLUTTER_DEPTH_S * flutter) * sampleRate
-            var read = write - delay
-            if (read < 0) read += size
+            val read = readPlace(write, delay, size)
             val i0 = read.toInt()
             val frac = read - i0
             val i1 = if (i0 + 1 >= size) 0 else i0 + 1
@@ -155,6 +154,20 @@ class TapeColour(private val sampleRate: Int, private val channels: Int) {
     }
 
     companion object {
+        /**
+         * Where in a delay line of [size] the read is, [delay] samples behind [write]: always in
+         * `0 until size`. **A hair behind zero, wrapped, is the size itself** — −0.000008 plus 268
+         * rounds to 268.0 in a Float, whose steps there are 0.00003 — and reading there was one past
+         * the end of the line. With the wow moving the delay that happens about once in seven
+         * minutes, and on the owner's phone it stopped the player inside two (2026-11-14).
+         */
+        internal fun readPlace(write: Int, delay: Float, size: Int): Float {
+            var read = write - delay
+            if (read < 0f) read += size
+            if (read >= size) read -= size
+            return read
+        }
+
         const val MAX_DELAY_S = 0.006
         /** With the colour off, the music still comes out of the delay — this far behind, and still. */
         const val REST_DELAY_S = 0.0015f

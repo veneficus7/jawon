@@ -65,6 +65,37 @@ class TapeColourTest {
         }
     }
 
+    /**
+     * The read never lands one past the end of the delay line. A delay a hair longer than the
+     * write is far along wraps to `size − 0.000008`, which a Float rounds to the size itself; on
+     * the owner's phone that index stopped the player (2026-11-14). At either rate, and for delays
+     * stepped finely all round the write.
+     */
+    @Test
+    fun theReadIsAlwaysInsideTheDelayLine() {
+        for (sampleRate in listOf(44_100, 48_000)) {
+            val size = (sampleRate * TapeColour.MAX_DELAY_S).toInt() + 4
+            for (write in listOf(0, 1, 50, 66, 72, 82, size - 1)) {
+                for (delay in listOf(write.toFloat(), Math.nextUp(write.toFloat()), write + 1e-6f, write + 3e-6f)) {
+                    val read = TapeColour.readPlace(write, delay, size)
+                    assertTrue("at $sampleRate, write $write, delay $delay: read $read", read >= 0f && read < size)
+                    assertTrue(read.toInt() in 0 until size)
+                }
+            }
+        }
+    }
+
+    /** And played for a long while with the colour on, nothing is read outside the line. */
+    @Test
+    fun tenMinutesOfTapeAtFortyFourPointOne() {
+        val colour = TapeColour(44_100, 2)
+        val buffer = FloatArray(4_096 * 2)
+        repeat(44_100 * 600 / 4_096) {
+            buffer.fill(0.1f)
+            colour.process(buffer, 4_096, on = true)
+        }
+    }
+
     @Test
     fun theHissIsAboutSixtyDecibelsDown() {
         val colour = TapeColour(rate, 2)

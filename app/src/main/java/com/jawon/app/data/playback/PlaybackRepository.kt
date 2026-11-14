@@ -531,6 +531,10 @@ class PlaybackRepository @Inject constructor(
         if (controller.playbackState == Player.STATE_ENDED && controller.mediaItemCount > 0) {
             controller.seekTo(0, 0L)
         }
+        // After a player error it is idle with the record still loaded; play() alone does nothing.
+        if (controller.playbackState == Player.STATE_IDLE && controller.mediaItemCount > 0) {
+            controller.prepare()
+        }
         controller.play()
     }
 
