@@ -1,8 +1,9 @@
 # Custom Filament materials
 
-**Jawon ships six.** Four in the CD room — dust, fog, the neon sign (`neon.mat`, additive,
-drawn from a two-channel mask) and the back panel (`panel.mat`, the shelf ribbon's light read from
-a table) — the pocket player's steel, and a record's vinyl:
+**Jawon ships seven.** Five in the CD room — dust, fog, the neon sign (`neon.mat`, additive,
+drawn from a two-channel mask), the back panel (`panel.mat`, the shelf ribbon's light read from
+a table) and the case plates (`plate.mat`, the shelf-edge rail's) — the pocket player's steel,
+and a record's vinyl:
 
 - `materials/vinyl.mat` → `assets/materials/vinyl.filamat`, the two playing surfaces of
   `vinyl_record.glb`, put on in place of the glTF's own material when the record loads. It
@@ -63,6 +64,22 @@ position would be wrong by exactly where the camera is. So does the CD room's ne
   `ribbonSurface`, `ribbon`, `ribbonBoard`, `ribbonColor`, `ribbonLux`, `ribbonTubeY`,
   `ribbonPitch`, `ribbonDiodePitch`, `ribbonStandoff`, `ribbonTop`, `ribbonBoardDrop`,
   `ribbonBoardBack`, `ribbonBoardDepth`, `mask`.
+
+- `materials/plate.mat` → `assets/materials/plate.filamat`, since 2026-11-16 every case's printed
+  plates — cover, spine and back, shelved or held open. It is `opaque_textured` line for line, plus
+  the shelf-edge rail's light. A plate moves, so the light cannot be baked onto it: `RailLight`
+  tabulates the light *arriving at a point* in front of the rack — irradiance vectors, the heads
+  summed apart by azimuth in six bins of 30° (three stored, the rest their mirror), averaged along
+  the shelf — and the shader reads three texels at the fragment's world position and clamps each
+  bin against the fragment's own normal, Σ max(n·Vᵦ, 0), shading each as a light from its
+  direction. Exact for a record facing the room or turned square to the shelf; within 2% turned
+  anywhere between. It exists because the rail's 60 punctual lights were half of a frame of the
+  wall once the ribbon was baked: 14.1ms of GPU against 6.8ms (`ENGINEERING.md`, trap 46).
+  Exposed in the shader and handed over as emissive with an exposure weight of 0, as `panel.mat`
+  is, and for the same reason. The plates are bound to it after composition, not in an
+  `ImageNode`'s `apply`, which runs only when the node is made (trap 47). Parameters: `texture`,
+  `metallic`, `roughness`, `reflectance`, `rail0`, `rail1`, `rail2`, `railColor`, `railLux`,
+  `railTopY`, `railPitch`, `railRows`, `railZ`, `railNear`, `railFar`, `railReach`, `mask`.
 
 Everything else in the room, but the neon sign, uses SceneView's stock materials.
 

@@ -31,8 +31,8 @@ A showroom of plinths sits between them. The roadmap to 1.0 is `docs/roadmap.md`
 
 | | |
 |---|---|
-| Kotlin | 69,800 lines across 245 files in `main` |
-| Tests | 1,068 across 99 files, all on the JVM, every package covered |
+| Kotlin | 70,300 lines across 247 files in `main` |
+| Tests | 1,074 across 100 files, all on the JVM, every package covered |
 | minSdk / target | 28 / 37 |
 | Database | Room, schema 6, five hand-written migrations, no destructive fallback |
 

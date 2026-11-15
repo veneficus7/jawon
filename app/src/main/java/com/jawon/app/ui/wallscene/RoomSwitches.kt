@@ -31,7 +31,11 @@ import androidx.compose.runtime.setValue
  * | `mask` | `panel.mat`, painted magenta | not built | which pixels are panel |
  *
  * **The shelf-edge rail has the same five**, under `jawon.rail` and `jawon.railgain`, for its 60
- * heads against `plate.mat` on the case plates ([RailLight], [RailPlates]):
+ * heads against `plate.mat` on the case plates ([RailLight], [RailPlates]) — and **baked is what
+ * ships for it too** (2026-11-16). On the owner's phone, the ribbon baked in both and the wall
+ * panned by hand at thermal status 0, a frame took 14.1ms of GPU with the rail's heads and 6.8ms
+ * with its light in the plates — 63 frames a second against 103, at a GPU clock the phone let
+ * fall from 1200MHz to about 970 — and the owner judged the two the same from stills:
  *
  *     adb shell am start -n com.jawon.app/.MainActivity --es jawon.rail <mode> [--ef jawon.railgain 1.1]
  *
@@ -74,8 +78,8 @@ object RoomSwitches {
         MASK(lights = false, bakedPlates = true),
     }
 
-    /** The rail as a build without the bench flag has it: its 60 heads, until judged. */
-    val SHIPPED_RAIL = Rail.LIGHTS
+    /** The rail as a build without the bench flag has it: its light in the case plates. */
+    val SHIPPED_RAIL = Rail.BAKED
 
     var rail by mutableStateOf(SHIPPED_RAIL)
         private set

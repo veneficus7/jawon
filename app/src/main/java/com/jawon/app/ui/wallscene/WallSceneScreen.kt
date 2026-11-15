@@ -3040,8 +3040,10 @@ fun WallSceneScreen(
                     ),
                     apply = { roomNodes.railRows[index] = this }
                 ) {
-                    // **Not built when the case plates carry their light themselves** (RailPlates,
-                    // plate.mat; RoomSwitches.Rail). The carrier stays, empty, as the ribbon's does.
+                    // **Not built in the room as it ships**: the case plates carry their light
+                    // themselves (RailLight, plate.mat), summed from exactly these heads. They are
+                    // built only on a bench build switched back to them (RoomSwitches.Rail). The
+                    // carrier stays, empty, as the ribbon's does.
                     repeat(if (RoomSwitches.rail.lights) RoomLighting.RAIL_COLUMNS else 0) { column ->
                         LightNode(
                             type = LightManager.Type.FOCUSED_SPOT,

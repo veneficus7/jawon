@@ -799,6 +799,11 @@ object RoomLighting {
      *
      * As a line at [RAIL_COLUMN_SPACING] it still stops well short of the bleaching a 1500cd
      * point at 95mm was doing to the artwork, which is what started all of this.
+     *
+     * **None of the rail's heads is a light in the room as it ships** (2026-11-16). [RailLight]
+     * sums them — this, the spacing, [RAIL_DIRECTION], the cone and [RAIL_FALLOFF] — into tables
+     * the case plates' material reads (`plate.mat`), so tuning any of them still tunes the room;
+     * `RailLightTest` holds the tables to Filament's own arithmetic.
      */
     const val RAIL_CANDELA = 520f
 
