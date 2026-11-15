@@ -58,12 +58,22 @@ class CaseSlot {
      * looked like the records holding steady while the room came up around them. It was the
      * covers being untouchable.
      *
-     * Held per slot and created once, because a node's `apply` runs on every recomposition and
-     * building a `MaterialInstance` in there would leak one per frame.
+     * Held per slot and created once. (This said `apply` runs on every recomposition. In
+     * SceneView 4.32 an `ImageNode`'s `apply` runs only when the node is made — read in the
+     * bytecode, ENGINEERING.md trap 47 — so the guard below is belt and braces, and anything that
+     * must follow a change, like the rail's material, is bound after composition instead.)
      */
     var coverMaterial: MaterialInstance? = null
     var spineMaterial: MaterialInstance? = null
     var backMaterial: MaterialInstance? = null
+
+    /**
+     * The same three plates' `plate.mat` instances, made the first time the rail's light is
+     * carried by the plates rather than its heads — see [RailPlates]. Never destroyed, as above.
+     */
+    var coverPlate: MaterialInstance? = null
+    var spinePlate: MaterialInstance? = null
+    var backPlate: MaterialInstance? = null
 
     /** The printed back inlay, generated per album — see [CaseArt.bakeBack]. */
     var backArt: ImageNode? = null
@@ -484,6 +494,21 @@ class CaseSlots {
     fun ensure(size: Int) {
         while (slots.size < size) slots += CaseSlot()
     }
+
+    /** Every slot's plates on the material the rail's [mode] wants — see [bindRail]. */
+    fun bindRail(mode: RoomSwitches.Rail, plates: RailPlates) {
+        for (slot in slots) {
+            slot.spineArt?.let {
+                slot.spinePlate = it.bindRail(mode, slot.spineMaterial, slot.spinePlate, plates, PAPER_ROUGHNESS, PAPER_REFLECTANCE)
+            }
+            slot.coverArt?.let {
+                slot.coverPlate = it.bindRail(mode, slot.coverMaterial, slot.coverPlate, plates, COVER_ROUGHNESS, PAPER_REFLECTANCE)
+            }
+            slot.backArt?.let {
+                slot.backPlate = it.bindRail(mode, slot.backMaterial, slot.backPlate, plates, PAPER_ROUGHNESS, PAPER_REFLECTANCE)
+            }
+        }
+    }
 }
 
 /**
@@ -731,9 +756,14 @@ fun SceneScope.CaseSlotNodes(
     size: Int,
     materialLoader: MaterialLoader,
     caseInstances: List<FilamentInstance>,
-    beamInstances: List<FilamentInstance>
+    beamInstances: List<FilamentInstance>,
+    plates: RailPlates
 ) {
     slots.ensure(size)
+
+    // How the plates are lit by the shelf-edge rail: by its heads, or by their own material.
+    // Read here so a bench build's switch rebinds every plate (RoomSwitches).
+    val railMode = RoomSwitches.rail
 
     // Shared placeholders. Every art node is built from these and never from real artwork,
     // so the composable's remember is keyed on something that never changes.
@@ -758,6 +788,9 @@ fun SceneScope.CaseSlotNodes(
                 it.coverMaterial = null
                 it.spineMaterial = null
                 it.backMaterial = null
+                it.coverPlate = null
+                it.spinePlate = null
+                it.backPlate = null
             }
         }
     }
@@ -970,6 +1003,8 @@ fun SceneScope.CaseSlotNodes(
     }
     // After the nodes above, so it runs after their SideEffects reset the art. See [reapply].
     SideEffect { slots.reapply() }
+    // And every plate on the material the rail's mode wants, which `apply` cannot follow.
+    SideEffect { slots.bindRail(railMode, plates) }
 }
 
 /**

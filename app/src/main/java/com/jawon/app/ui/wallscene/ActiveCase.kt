@@ -2,6 +2,7 @@ package com.jawon.app.ui.wallscene
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.remember
 import com.google.android.filament.LightManager
 import com.google.android.filament.gltfio.FilamentInstance
@@ -87,6 +88,24 @@ class ActiveCaseNodes {
     var coverBackMaterial: com.google.android.filament.MaterialInstance? = null
     var spineMaterial: com.google.android.filament.MaterialInstance? = null
 
+    /** Their `plate.mat` instances, for when the rail's light is in the plates — see [RailPlates]. */
+    var coverPlate: com.google.android.filament.MaterialInstance? = null
+    var coverBackPlate: com.google.android.filament.MaterialInstance? = null
+    var spinePlate: com.google.android.filament.MaterialInstance? = null
+
+    /** The three plates on the material the rail's [mode] wants — see [bindRail]. */
+    fun bindRail(mode: RoomSwitches.Rail, plates: RailPlates) {
+        spineArt?.let {
+            spinePlate = it.bindRail(mode, spineMaterial, spinePlate, plates, ACT_PAPER_ROUGHNESS, ACT_PAPER_REFLECTANCE)
+        }
+        coverArt?.let {
+            coverPlate = it.bindRail(mode, coverMaterial, coverPlate, plates, ACT_COVER_ROUGHNESS, ACT_PAPER_REFLECTANCE)
+        }
+        coverBack?.let {
+            coverBackPlate = it.bindRail(mode, coverBackMaterial, coverBackPlate, plates, ACT_COVER_ROUGHNESS, ACT_PAPER_REFLECTANCE)
+        }
+    }
+
     /**
      * The held case's own underlight, and the bulb beneath it.
      *
@@ -170,7 +189,8 @@ fun SceneScope.ActiveCaseNodes(
     materialLoader: MaterialLoader,
     trayModel: FilamentInstance?,
     lidModel: FilamentInstance?,
-    discModel: FilamentInstance?
+    discModel: FilamentInstance?,
+    plates: RailPlates
 ) {
     // The three models load off the main thread, so they arrive as null and become
     // non-null exactly once. Nothing mounts until all three are in.
@@ -188,6 +208,11 @@ fun SceneScope.ActiveCaseNodes(
     val blankSpine = remember { CaseArt.blank(CaseArt.SPINE_W, CaseArt.SPINE_H) }
     val blankCover = remember { CaseArt.blank(CaseArt.COVER_PX, CaseArt.COVER_PX) }
 
+    // How the plates are lit by the shelf-edge rail — see CaseSlotNodes.
+    val railMode = RoomSwitches.rail
+    // Bound after composition, which `apply` cannot follow: see bindRail.
+    SideEffect { nodes.bindRail(railMode, plates) }
+
     DisposableEffect(nodes) {
         onDispose {
             nodes.root = null
@@ -204,6 +229,9 @@ fun SceneScope.ActiveCaseNodes(
             nodes.coverMaterial = null
             nodes.coverBackMaterial = null
             nodes.spineMaterial = null
+            nodes.coverPlate = null
+            nodes.coverBackPlate = null
+            nodes.spinePlate = null
         }
     }
 

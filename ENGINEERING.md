@@ -649,6 +649,16 @@ trap 11 and trap 15 in three different files, each correct in the era it was wri
     written every frame from the frame loop never shows this: it is rewritten before anyone
     could see it.)
 
+47. **An `ImageNode`'s `apply` runs once, when SceneView makes the node — not on every
+    recomposition.** `SceneScope.ImageNode` calls it inside the branch of its `remember` that
+    builds the node (read in the 4.32 bytecode), and this file's own comments had said the
+    opposite for months. The rail's bake bound each case plate's material in `apply` and switched
+    it from a bench intent: the switch recomposed every slot and moved nothing, and the covers
+    sat unlit under a rail that was no longer there. Anything that must follow a change goes in
+    a `SideEffect` after the nodes (`CaseSlots.bindRail`). And **read the state such an effect
+    depends on in composition, not inside the effect**: a read inside the lambda subscribes
+    nothing, so the effect never ran again when the switch flipped.
+
 ### Proving a test
 
 43. **A mutation has to be undone by its own text, or it stays in and poisons every run after

@@ -59,10 +59,10 @@ internal object RibbonLight {
     fun tubeY(rowCenterY: Float): Float =
         rowCenterY + WallDimens.CASE_H / 2f + RoomLighting.SHELF_LIGHT_LIFT - RoomLighting.WASH_DROP
 
-    private class Spot(val scale: Float, val offset: Float)
+    internal class Spot(val scale: Float, val offset: Float)
 
     /** `FLightManager::setSpotLightCone`, as Filament 1.72.1 writes it. */
-    private fun spot(inner: Float, outer: Float): Spot {
+    internal fun spot(inner: Float, outer: Float): Spot {
         val halfPi = (Math.PI / 2).toFloat()
         val minAngle = (0.5 * Math.PI / 180).toFloat()
         val outerClamped = abs(outer).coerceIn(minAngle, halfPi)
@@ -194,10 +194,7 @@ internal object RibbonLight {
     /** The board tops' table as a half-float texture. */
     fun boardTexture(engine: Engine): Texture = halfTexture(engine, boardTable(), BOARD_SAMPLES, 1)
 
-    private fun halfTexture(engine: Engine, values: FloatArray, width: Int, height: Int): Texture {
-        val buffer = ByteBuffer.allocateDirect(values.size * 2).order(ByteOrder.nativeOrder())
-        for (v in values) buffer.putShort(Half.toHalf(v))
-        buffer.flip()
+    internal fun halfTexture(engine: Engine, values: FloatArray, width: Int, height: Int): Texture {
         val texture = Texture.Builder()
             .width(width)
             .height(height)
@@ -205,11 +202,19 @@ internal object RibbonLight {
             .sampler(Texture.Sampler.SAMPLER_2D)
             .format(Texture.InternalFormat.RGBA16F)
             .build(engine)
+        halfUpload(engine, texture, values)
+        return texture
+    }
+
+    /** Writes [values], RGBA, into a half-float [texture] made by [halfTexture]. */
+    internal fun halfUpload(engine: Engine, texture: Texture, values: FloatArray) {
+        val buffer = ByteBuffer.allocateDirect(values.size * 2).order(ByteOrder.nativeOrder())
+        for (v in values) buffer.putShort(Half.toHalf(v))
+        buffer.flip()
         texture.setImage(
             engine,
             0,
             Texture.PixelBufferDescriptor(buffer, Texture.Format.RGBA, Texture.Type.HALF)
         )
-        return texture
     }
 }

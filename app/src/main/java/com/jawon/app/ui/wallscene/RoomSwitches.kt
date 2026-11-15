@@ -30,6 +30,11 @@ import androidx.compose.runtime.setValue
  * | `baked` | `panel.mat` | not built | what ships |
  * | `mask` | `panel.mat`, painted magenta | not built | which pixels are panel |
  *
+ * **The shelf-edge rail has the same five**, under `jawon.rail` and `jawon.railgain`, for its 60
+ * heads against `plate.mat` on the case plates ([RailLight], [RailPlates]):
+ *
+ *     adb shell am start -n com.jawon.app/.MainActivity --es jawon.rail <mode> [--ef jawon.railgain 1.1]
+ *
  * Read from the intent the activity is created with and from every new one (`singleTask`), so a
  * mode can be changed without the room moving. State, so the scene recomposes when it changes.
  */
@@ -60,15 +65,51 @@ object RoomSwitches {
             else -> gain
         }
 
+    /** The rail's modes, as the ribbon's: its heads as lights, or its light in `plate.mat`. */
+    enum class Rail(val lights: Boolean, val bakedPlates: Boolean) {
+        LIGHTS(lights = true, bakedPlates = false),
+        NONE(lights = false, bakedPlates = false),
+        ZERO(lights = true, bakedPlates = true),
+        BAKED(lights = false, bakedPlates = true),
+        MASK(lights = false, bakedPlates = true),
+    }
+
+    /** The rail as a build without the bench flag has it: its 60 heads, until judged. */
+    val SHIPPED_RAIL = Rail.LIGHTS
+
+    var rail by mutableStateOf(SHIPPED_RAIL)
+        private set
+
+    /** Scale on the rail's light in `plate.mat`. 1 is the light the heads gave. */
+    var railGain by mutableFloatStateOf(1f)
+        private set
+
+    /** The plates' rail term as the material should apply it, for the current mode. */
+    val plateGain: Float
+        get() = when (rail) {
+            Rail.ZERO -> 0f
+            else -> railGain
+        }
+
     /**
      * A mode always comes with its gain, 1 when none is given. The gain used to stay from the
      * last intent that set one, so a sweep ending at 1.1 made every later `baked` capture 10%
-     * bright — read, for a while, as the bottom shelf alone being lit wrong.
+     * bright — read, for a while, as the bottom shelf alone being lit wrong. The ribbon and the
+     * rail are read apart: an intent naming one leaves the other as it is.
      */
     fun read(intent: Intent?) {
         intent ?: return
-        val name = intent.getStringExtra("jawon.ribbon") ?: return
-        ribbon = Ribbon.entries.firstOrNull { it.name.equals(name, ignoreCase = true) } ?: return
-        gain = intent.getFloatExtra("jawon.gain", 1f)
+        intent.getStringExtra("jawon.ribbon")?.let { name ->
+            Ribbon.entries.firstOrNull { it.name.equals(name, ignoreCase = true) }?.let {
+                ribbon = it
+                gain = intent.getFloatExtra("jawon.gain", 1f)
+            }
+        }
+        intent.getStringExtra("jawon.rail")?.let { name ->
+            Rail.entries.firstOrNull { it.name.equals(name, ignoreCase = true) }?.let {
+                rail = it
+                railGain = intent.getFloatExtra("jawon.railgain", 1f)
+            }
+        }
     }
 }

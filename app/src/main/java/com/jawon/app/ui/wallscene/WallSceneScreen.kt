@@ -1926,6 +1926,10 @@ fun WallSceneScreen(
         // It only ever GROWS. Adding slots is free; removing them would destroy their
         // ImageNodes, which is the abort this whole pool exists to avoid.
         val caseSlots = remember { CaseSlots() }
+        // The case plates' own material for the shelf-edge rail's light, when they carry it
+        // rather than its heads — see RailPlates and RoomSwitches.Rail.
+        val railScope = rememberCoroutineScope()
+        val railPlates = remember(engine, materialLoader) { RailPlates(engine, materialLoader, railScope) }
         var casePoolSize by remember { mutableIntStateOf(0) }
         val wantedPoolSize = remember(layout, halfW, halfH) {
             val across = ((halfW + SLOT_PITCH * 3f) * 2f / SLOT_PITCH).toInt() + 2
@@ -3036,7 +3040,9 @@ fun WallSceneScreen(
                     ),
                     apply = { roomNodes.railRows[index] = this }
                 ) {
-                    repeat(RoomLighting.RAIL_COLUMNS) { column ->
+                    // **Not built when the case plates carry their light themselves** (RailPlates,
+                    // plate.mat; RoomSwitches.Rail). The carrier stays, empty, as the ribbon's does.
+                    repeat(if (RoomSwitches.rail.lights) RoomLighting.RAIL_COLUMNS else 0) { column ->
                         LightNode(
                             type = LightManager.Type.FOCUSED_SPOT,
                             position = Position(
@@ -4113,8 +4119,24 @@ fun WallSceneScreen(
                 materialLoader = materialLoader,
                 size = casePoolSize,
                 caseInstances = caseInstances,
-                beamInstances = beamInstances
+                beamInstances = beamInstances,
+                plates = railPlates
             )
+            // The plates' rail light kept in step with the room: the mode's colour, the rack's
+            // rows, the bench gain. Writes only when one of them changed. The switches are read
+            // here, in composition, so a change recomposes this and the effect sees it: a state
+            // read inside the effect itself subscribes nothing.
+            val plateGain = RoomSwitches.plateGain
+            val platesMasked = RoomSwitches.rail == RoomSwitches.Rail.MASK
+            SideEffect {
+                railPlates.update(
+                    light = RoomLighting.railColour(roomScheme.key),
+                    gain = plateGain,
+                    railTopY = RailLight.railY(layout.rows.firstOrNull()?.centerY ?: 0f),
+                    rowCount = layout.rows.size,
+                    masked = platesMasked
+                )
+            }
             // The disc that breaks when an album is removed. Mounted always, hidden until
             // it is needed � see DiscardScene.
             DiscardSceneNodes(
@@ -4161,7 +4183,8 @@ fun WallSceneScreen(
                 materialLoader = materialLoader,
                 trayModel = trayModel,
                 lidModel = lidModel,
-                discModel = discModel
+                discModel = discModel,
+                plates = railPlates
             )
         }
 
