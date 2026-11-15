@@ -1379,6 +1379,13 @@ fun WallSceneScreen(
             tier
         }
 
+        // A bench build can switch every shadow off (RoomSwitches.shadows), to measure what the
+        // room's shadow maps cost. Read here, in composition, so the switch recomposes this.
+        if (BuildConfig.BENCH) {
+            val shadowsOn = RoomSwitches.shadows
+            SideEffect { filamentView.setShadowingEnabled(shadowsOn) }
+        }
+
         // Keyed on the scheme as well, because the grade is part of the mode: Vesper is graded
         // warm and Officina is not, and a single grade would break three of the four. Applied
         // during composition for the same reason the atmosphere above is — a LaunchedEffect

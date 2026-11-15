@@ -96,6 +96,14 @@ object RoomSwitches {
         }
 
     /**
+     * Whether the room draws shadows at all — `jawon.shadows` `on` or `off` — so a trace can say
+     * what the shadow maps cost. Every build without the bench flag draws them as its quality tier
+     * says; this only ever turns them all off for a measurement.
+     */
+    var shadows by mutableStateOf(true)
+        private set
+
+    /**
      * A mode always comes with its gain, 1 when none is given. The gain used to stay from the
      * last intent that set one, so a sweep ending at 1.1 made every later `baked` capture 10%
      * bright — read, for a while, as the bottom shelf alone being lit wrong. The ribbon and the
@@ -109,6 +117,7 @@ object RoomSwitches {
                 gain = intent.getFloatExtra("jawon.gain", 1f)
             }
         }
+        intent.getStringExtra("jawon.shadows")?.let { shadows = !it.equals("off", ignoreCase = true) }
         intent.getStringExtra("jawon.rail")?.let { name ->
             Rail.entries.firstOrNull { it.name.equals(name, ignoreCase = true) }?.let {
                 rail = it
