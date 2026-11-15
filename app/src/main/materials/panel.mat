@@ -6,9 +6,10 @@
 // inside dozens of them. What they drew never moves, so `RibbonLight` computes it once, as
 // Filament would have lit it, into two small tables — the panel's face, and the top of the board
 // below each row — and this material reads one texel and runs Filament's own model for the light
-// it describes: Lambert, GGX, height-correlated Smith, Schlick. The result goes out as emissive
-// with an exposure weight of 1, which Filament scales by the camera's exposure exactly as it
-// scales its lights (`surface_shading_lit.fs`, 1.72.1).
+// it describes: Lambert, GGX, height-correlated Smith, Schlick. The result is multiplied by the
+// camera's exposure here, in highp, exactly as Filament pre-exposes its lights, and goes out as
+// emissive with an exposure weight of 0 so it is not exposed twice (`surface_shading_lit.fs`,
+// 1.72.1).
 //
 // Everything else lights these surfaces as before: the ceiling, the room's ambient, its shadows.
 //
@@ -204,6 +205,9 @@ fragment {
             radiance = own * ribbonRadiance(diffuse, f0, a, vec3(0.0, 1.0, 0.0), v,
                     normalize(vec3(0.0, t.g, t.b)), t.r * materialParams.ribbonLux);
         }
-        material.emissive = vec4(materialParams.ribbonColor * radiance, 1.0);
+        // Exposed here, in highp, and handed over with an exposure weight of 0. Unexposed, right
+        // under a tube this is tens of thousands of nits, close to a 16-bit float's 65,504 — and
+        // a phone's GPU may keep `material.emissive` at mediump, which a desktop GPU never shows.
+        material.emissive = vec4(materialParams.ribbonColor * radiance * getExposure(), 0.0);
     }
 }
