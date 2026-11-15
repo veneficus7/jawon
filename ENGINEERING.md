@@ -700,8 +700,8 @@ trap 11 and trap 15 in three different files, each correct in the era it was wri
 
     **How**: `python tools/perf/gpu_frame.py --serial SERIAL` (`tools/perf/README.md`). It
     records `atrace gfx`, which works on the release build. It pairs each buffer the room queues
-    ("Trace GPU completion fence N" on `FEngine::loop`) with the moment its fence signalled
-    ("waiting for GPU completion N" on the app's GPU completion thread), and reads the GPU clock
+    ("Trace GPU completion fence N" on `FEngine::loop`) with the moment its fence was seen to
+    signal ("waiting for GPU completion N" on the app's GPU completion thread), and reads the GPU clock
     from `/sys/class/kgsl/kgsl-3d0/devfreq/cur_freq`. The fixtures' fix — the rail as one directional
     light on its own channel, the ribbon's gradient baked — was spiked the same day and set aside,
     unseen on a phone; the room's look is tuned, so any replacement is A/B'd against it first.

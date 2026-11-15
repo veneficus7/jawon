@@ -12,9 +12,13 @@ wrong (ENGINEERING.md, trap 46). A system trace sees what reached the GPU and wh
     "waiting for GPU completion N" until that fence signals.
   - The queueing thread says whose frame it was: FEngine::loop is the room (Filament's driver
     thread), RenderThread is Compose.
-  - Fences signal in the order they were queued, so a frame's GPU time is roughly
-    completion(N) - max(queued(N), completion(N-1)): the GPU cannot start a frame before it is
-    queued, nor before it has finished the one ahead of it.
+  - The monitor waits on fences one at a time, in the order they were queued, so a frame is seen
+    to finish no earlier than the one ahead of it. A frame's GPU time is estimated as
+    completion(N) - max(queued(N), completion(N-1)). That is sound for the room's own frames when
+    the GPU is the bottleneck. For a Compose frame queued behind the room it is an upper bound,
+    and pre-emption cannot be seen this way at all.
+  - "Frames" are buffers queued, which is as far as a frame Filament skipped never gets. Whether
+    each was then shown on a refresh is SurfaceFlinger's business, not this script's.
 
 Usage, from the repo root, with a device or an emulator on adb (pass --serial; with two devices
 attached, nothing guesses which one you meant):
@@ -25,8 +29,9 @@ attached, nothing guesses which one you meant):
   python tools/perf/gpu_frame.py --parse build/perf/x.trace.txt   read a saved trace again
   python tools/perf/gpu_frame.py --self-test                      check the parser offline
 
-It installs nothing and changes no setting: it reads a trace, the thermal status and the GPU
-clock. `--swipe` is the one thing that touches the screen. It refuses a real device unless
+It installs nothing. Tracing is switched on for the recording and off again afterwards — in a
+`finally`, and then checked — and otherwise it only reads: the trace, the app's version, the
+thermal status and the GPU clock. `--swipe` is the one thing that touches the screen. It refuses a real device unless
 `--allow-swipe-on-device` is given. Before every swipe it checks that Jawon is the app in front,
 and it stops for good the first time it is not, so a phone in use mid-measurement never gets a
 stray swipe.
@@ -226,8 +231,8 @@ def analyse(report: Report) -> dict:
 def print_result(result: dict, meta: dict) -> None:
     def line(label: str, s: dict | None, unit: str = "ms") -> str:
         if not s:
-            return f"  {label:<28} -"
-        return (f"  {label:<28} median {s['median']:>7.2f}{unit}   p95 {s['p95']:>7.2f}{unit}   "
+            return f"  {label:<34} -"
+        return (f"  {label:<34} median {s['median']:>7.2f}{unit}   p95 {s['p95']:>7.2f}{unit}   "
                 f"max {s['max']:>7.2f}{unit}   (n={s['n']})")
 
     for key, value in meta.items():
@@ -235,9 +240,10 @@ def print_result(result: dict, meta: dict) -> None:
     print(f"{'window':>14}: {result['seconds']} s, process {result['pid']}")
     for label, title in (("room", "The room (FEngine::loop)"), ("ui", "Compose (RenderThread)")):
         r = result[label]
-        print(f"\n{title}: {r['frames']} frames, {r['fps']} a second on the glass")
+        print(f"\n{title}: {r['frames']} frames queued, {r['fps']} a second")
         print(line("GPU time per frame", r["gpu_ms"]))
-        print(line("queued -> GPU finished", r["latency_ms"]))
+        print(line("queued -> GPU finished" + (" (at most)" if label == "ui" else ""),
+                   r["latency_ms"]))
         print(line("between frames", r["interval_ms"]))
         if r["already_done_when_queued"]:
             print(f"  {r['already_done_when_queued']} frames had finished on the GPU before they "
@@ -284,6 +290,19 @@ class Device:
         return None
 
 
+def app_version(device: Device) -> str:
+    m = re.search(r"versionName=(.+)", device.shell(f"dumpsys package {PACKAGE} | grep -m1 versionName"))
+    return m.group(1).strip() if m else "-"
+
+
+def stop_tracing(device: Device) -> bool:
+    """Make sure the device is left as it was found: tracing off, no trace tags enabled.
+    True if it checked out clean."""
+    device.shell("atrace --async_stop > /dev/null 2>&1", timeout=60)
+    flags = device.shell("getprop debug.atrace.tags.enableflags").strip()
+    return flags in ("", "0", "0x0")
+
+
 def thermal_status(device: Device) -> int | None:
     m = re.search(r"Thermal Status:\s*(\d)", device.shell("dumpsys thermalservice"))
     return int(m.group(1)) if m else None
@@ -325,6 +344,7 @@ def record(args: argparse.Namespace) -> None:
     if not device.jawon_in_front():
         print("warning: Jawon is not the app in front, or the screen is off")
     model = device.shell("getprop ro.product.model").strip()
+    version = app_version(device)
     thermal = thermal_status(device)
     if thermal:
         print(f"warning: thermal status {thermal} - a hot phone throttles its GPU (trap 12)")
@@ -343,13 +363,18 @@ def record(args: argparse.Namespace) -> None:
             t.start()
     # `gfx` alone: every marker read here comes from libgui, and each extra category is tracing
     # overhead inside the measurement. (An emulator still writes one marker per GL call.)
-    trace = subprocess.run([device.adb, "-s", args.serial, "exec-out", "atrace", "-b", "32768",
-                            "-t", str(args.seconds), "gfx"], capture_output=True,
-                           timeout=args.seconds + 120).stdout.decode("utf-8", "replace")
-    stop.set()
-    for t in (sampler, swiper):
-        if t:
-            t.join(timeout=30)
+    try:
+        trace = subprocess.run([device.adb, "-s", args.serial, "exec-out", "atrace", "-b", "32768",
+                                "-t", str(args.seconds), "gfx"], capture_output=True,
+                               timeout=args.seconds + 120).stdout.decode("utf-8", "replace")
+    finally:
+        stop.set()
+        for t in (sampler, swiper):
+            if t:
+                t.join(timeout=30)
+        if not stop_tracing(device):
+            print(f"WARNING: trace tags are still on - run: adb -s {args.serial} shell atrace "
+                  "--async_stop")
 
     OUT.mkdir(parents=True, exist_ok=True)
     stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
@@ -359,7 +384,8 @@ def record(args: argparse.Namespace) -> None:
     report = build_report(trace, int(pid_text[0]))
     result = analyse(report)
     result["notes"].extend(refused)
-    meta = {"device": model or args.serial, "thermal": thermal if thermal is not None else "-",
+    meta = {"device": model or args.serial, "Jawon": version, "label": args.label or "-",
+            "thermal": thermal if thermal is not None else "-",
             "trace": raw.relative_to(REPO).as_posix()}
     if clocks:
         mhz = sorted(c / 1e6 if c > 10_000 else c for c in clocks)
@@ -367,8 +393,9 @@ def record(args: argparse.Namespace) -> None:
                                    "max": round(mhz[-1])}
         meta["GPU clock"] = (f"{result['gpu_clock_mhz']['median']} MHz median "
                              f"({result['gpu_clock_mhz']['min']}-{result['gpu_clock_mhz']['max']})")
-    result.update({"device": meta["device"], "thermal": thermal, "serial": args.serial,
-                   "recorded": stamp, "swiped": bool(swiper)})
+    result.update({"device": meta["device"], "app_version": version, "label": args.label,
+                   "thermal": thermal, "serial": args.serial, "recorded": stamp,
+                   "swiped": bool(swiper)})
     print_result(result, meta)
     if args.json:
         Path(args.json).parent.mkdir(parents=True, exist_ok=True)
@@ -432,6 +459,8 @@ def main() -> None:
     ap.add_argument("--swipe", action="store_true", help="pan the wall with adb swipes")
     ap.add_argument("--allow-swipe-on-device", action="store_true")
     ap.add_argument("--json", help="also write the numbers here")
+    ap.add_argument("--label", help="what was measured, e.g. 'CD wall, Balanced, scale 0.60', so "
+                                    "a before and an after can be matched")
     ap.add_argument("--parse", help="read a saved trace instead of recording one")
     ap.add_argument("--pid", type=int, help="with --parse: the process to read (else: the one "
                                             "whose FEngine::loop queued the most frames)")
