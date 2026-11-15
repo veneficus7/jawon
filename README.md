@@ -15,7 +15,7 @@ atomic unit: there is no cross-album shuffle, no feed, and no account.
 
 ## State
 
-**0.9 beta.** Runs on 15+ devices, from a Galaxy S25 Ultra down to a Redmi 9 and a Galaxy
+**0.9.1 beta.** Runs on 15+ devices, from a Galaxy S25 Ultra down to a Redmi 9 and a Galaxy
 Note 8. The library is handled as one of four formats, each with a room of its own, chosen for
 the whole library at once:
 
