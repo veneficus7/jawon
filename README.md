@@ -98,6 +98,7 @@ decorative. Most of it records something that cost real time to find out.
 | Orienting in the code | [`docs/architecture.md`](docs/architecture.md) |
 | What Filament can and cannot do here | [`docs/realism.md`](docs/realism.md) and [`docs/room-design.md`](docs/room-design.md) |
 | What the custom shaders cost on Mali GPUs | [`docs/mali/FINDINGS.md`](docs/mali/FINDINGS.md) |
+| What a frame of the room really costs on a phone | [`tools/perf/README.md`](tools/perf/README.md) — a system trace, not the app's own counter |
 | Touching the case, disc or beam models | [`docs/models.md`](docs/models.md) |
 | Touching `dust.mat` or any shader | [`docs/materials.md`](docs/materials.md) |
 | Building, signing or shipping | [`docs/release.md`](docs/release.md) |
