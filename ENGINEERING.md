@@ -763,6 +763,18 @@ trap 11 and trap 15 in three different files, each correct in the era it was wri
     - **What is left of the wall's cost**: the shadows. A frame is a quarter of 0.9's now, so the
       render scale has become a lever rather than a cost.
 
+    **The shadows, measured again** (2026-11-16: the same script and phone, both bakes in, the
+    shadow maps on, off and on again with `jawon.shadows`, thermal status 0):
+    - **GPU time per frame stopped meaning anything**: 6.66, 6.68 and 6.64ms. The GPU was no longer
+      the bottleneck, so the phone set its clock to the load — 967MHz with the shadows, 900
+      without — and held the time per frame where it was.
+    - **Work per frame is the honest measure then**: GPU time times the clock. 6.43 million cycles
+      with the shadows, 6.01 without — **the four shadow maps are 6.5% of a frame, 0.35ms at the
+      full 1200MHz**. The ≈8ms in the list above was their share beside 168 lights.
+    - **They stay**: they are the depth cue the design leans on (`DESIGN.md`), for a third of a
+      millisecond. A frame of the wall is about 5.4ms of work at the full clock, against 26–30 in
+      0.9.
+
 ---
 
 ## Locked decisions — do not relitigate
