@@ -706,6 +706,19 @@ trap 11 and trap 15 in three different files, each correct in the era it was wri
     light on its own channel, the ribbon's gradient baked — was spiked the same day and set aside,
     unseen on a phone; the room's look is tuned, so any replacement is A/B'd against it first.
 
+    **The 0.9 baseline** (2026-11-15, the script's first phone run: S25 Ultra, published 0.9, CD
+    wall panned by hand for 10 s, thermal status 0):
+    - **31.8 room frames a second queued**, a median of 30.0ms apart.
+    - **29.7ms of GPU per frame** (p95 36.0, max 37.0), with the GPU clock at its 1200MHz ceiling
+      throughout. The frames are as far apart as the GPU takes to draw one, so the GPU is the
+      bottleneck.
+    - **Compose frames finished at most 6ms after being queued** (median), with p95 39ms and max
+      70ms behind the room.
+    - **A hand count of the same trace agreed**: 318 room fences, wait median 29.66ms.
+    - **Faster than 0.7.8's 38–48ms**, for reasons not yet separated: two builds, two days, a
+      rebuilt fog in between.
+    - **Every change to the room's cost is measured against this, the same way.**
+
 ---
 
 ## Locked decisions — do not relitigate
