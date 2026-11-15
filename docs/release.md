@@ -225,6 +225,9 @@ installing others, and on Play the updating is Play's job anyway.
 
 ## 5. Still outstanding before a first public release
 
+**Since 2026-11-15 there is no store listing to prepare for**: Jawon is not going on Google Play,
+so the items below that exist only for a Play listing no longer apply. The rest still does.
+
 Honest list, in the order they matter:
 
 1. ~~**No GPU quality tiers.**~~ **Built — see `ui/wallscene/RoomQuality.kt`.** The

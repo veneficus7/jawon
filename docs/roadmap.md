@@ -1,7 +1,8 @@
 # The road to 1.0
 
-Written 2026-10-10, the day 0.7.1 shipped the pocket player to testers. **1.0 is the Google Play
-release**; after it the project moves from building to marketing and maintenance. The owner's
+Written 2026-10-10, the day 0.7.1 shipped the pocket player to testers. **1.0 was planned as the
+Google Play release; on 2026-11-15 that changed** — Jawon is not going on Play (see 1.0 below).
+After 1.0 the project moves from building to marketing and maintenance. The owner's
 brief for the whole road, in his words: *review UI, find weaknesses, uncomfortable parts, ugly or
 unprofessional looking parts of the app and fix all the things … vinyl mode for 0.8, cassette mode
 for 0.9, and for 1.0.0 EVERYTHING should work flawlessly and coherently without inconveniences.*
@@ -13,7 +14,7 @@ Read with `ENGINEERING.md` (the brief, the traps), `docs/formats.md` (the rooms)
 
 ## Standing rules for the whole road
 
-These come from the owner, from this session, and apply to every milestone below.
+These were set on 2026-10-10 and apply to every milestone below.
 
 - **Jawon is recognisable from every page.** Not a logo stamped in a corner: a brand system (§B).
 - **Switching rooms is instant, smooth and satisfying, and spam-proof.** People will flick between
@@ -208,25 +209,36 @@ and Jawon pulls that album from the wall and plays it · **bit-perfect USB DAC**
 is flat (Android 14's mixer attributes) · the **CD rip validated on a real drive** — "buy a CD, rip
 it, it is on your wall" is the launch story (a drive needs buying; to be raised with the owner).
 
-## 1.0 — Google Play (January 2027)
+## 1.0 — a public release (January 2027)
+
+**Decided 2026-11-15: Jawon is not going on Google Play.** It stays distributed directly — signed
+APKs on GitHub and the in-app updater, which is how testers already get it. What existed only for a
+Play listing is dropped: the Play flavour without the updater, Play Billing for the rack unlock, the
+14-day closed test and the data-safety form.
 
 Nothing new; everything coherent, fast and forgiving.
 
-- **A Play build**: a product flavour without the self-updater and `REQUEST_INSTALL_PACKAGES`; the
-  direct-APK flavour keeps both for testers.
-- **The pay-once unlock** (`ENGINEERING.md`, monetisation): free — the rooms, playback, the scratch, the
-  equaliser, import, backup; paid — the full rack, badges, colour schemes; ~$4.99, the category's
-  price (Symfonium, Poweramp, NostalgicPod). Play Billing, one product, restore on reinstall.
-- **The closed test**: a personal account made after Nov 2023 needs 12+ testers opted in for 14
-  continuous days before production access — start it the day the Play build exists; the existing
-  testers are enough.
-- **The privacy policy brought up to date from the ledger (§P)**, the data-safety form from
-  `docs/release.md`, listing assets (icon from §B, feature graphic, screenshots of all four rooms).
+- **The privacy policy brought up to date from the ledger (§P)**, and release assets: the icon
+  from §B, screenshots and a short video of each of the four rooms.
 - **Accessibility**: TalkBack through every flat screen and a way into every record without the 3D
   surface (search already is one); the largest font size; contrast.
-- **Localisation**: English plus Korean, Russian and Uzbek.
+- **Localisation**: English plus Korean, Russian and Uzbek. The strings are still in code — seven
+  are resources — so moving them into resources comes first.
 - **The bar**: every row of this file's audit closed, no crash in the logs of a week's testing, the
-  room cool on a Redmi 9, every switch under 250ms.
+  room cool on a Redmi 9, every switch under 250ms — and the CD room's frame time measured by a
+  system trace, not by DRAWN (`ENGINEERING.md`, trap 46).
+
+### Routes to people — proposed, not decided
+
+- **GitHub releases, followed through Obtainium**: what exists now, plus a link that lets anyone
+  track releases without waiting for the in-app check.
+- **A page of its own** (GitHub Pages): a short video of each room. The room is the pitch, and it
+  has to be seen moving.
+- **itch.io**: it takes APKs and pay-what-you-want, and its audience buys things for how they feel.
+- **F-Droid and IzzyOnDroid**: both want an open-source licence, which Jawon does not have; only
+  if that changes.
+- **Samsung Galaxy Store**: the store on the phones Jawon is tuned on; like Play, it would likely
+  want a build without the self-updater.
 
 ### The pocket player and Apple
 
@@ -299,7 +311,7 @@ the policy is rewritten from this list once, before 1.0.
 | 0.7.6 | **The player is reachable from outside the app**: the playback service is exported, so a car (Android Auto), the assistant and the system's media controls can browse shelves → records → tracks, see titles and covers, and start a record. Who is let in is `SessionGate`: Jawon, a car, and what the phone already trusts with media (the system; apps given notification access). A record's cover is readable by its album id through `CoverProvider`. Nothing goes to a server of Jawon's; what a car or the assistant does with a title is theirs | to other apps on the phone, and to a connected car |
 | 0.7.6 | **Open with Jawon**: a song or an album ZIP handed over by another app is copied into `Music/Jawon` on the phone's shared storage (the app's own music folder on Android 9) — no permission, since an app may add its own files there and read them back. Nothing is read but what was handed over | no — but the copies are visible to other apps that can read the phone's music, as any music file is |
 | 0.7.6 | Resume with headphones (opt-in): an audio-output listener while the player is alive — **no Bluetooth permission**, so the planned row above is not needed — and a media-button receiver that answers only with the switch on | no |
-| planned | Play Billing (Play build only) | yes — Google's purchase flow |
+| dropped (2026-11-15) | ~~Play Billing (Play build only)~~ — no Play listing | — |
 
 ---
 
@@ -311,13 +323,13 @@ scratch and the click wheel; a press kit (Android Authority wrote up NostalgicPo
 desk); r/androidapps, r/vinyl, r/cd, r/ipod; Product Hunt; Korean communities. The CD-rip story and
 NFC tags are the demos nobody else can do.
 
-**Maintenance.** A monthly release rhythm; crash reports through the existing PROBLEMS → SEND path
-and Play vitals; the closed-test group kept as a beta channel; the Filament/SceneView pin reviewed
+**Maintenance.** A monthly release rhythm; crash reports through the existing PROBLEMS → SEND path;
+the testers kept as a beta channel; the Filament/SceneView pin reviewed
 each quarter (`docs/realism.md` — 1.76 brings things the rooms want).
 
 ---
 
-Sources for the research behind this file: the 2026-10-09 session's search results — RIAA/Luminate
+Sources for the research behind this file, from 2026-10-09 — RIAA/Luminate
 H1 2026 via [Consequence](https://concerts.consequence.net/articles/the-cd-revival-is-getting-hard-to-ignore);
 [TechRepublic on the iPod revival](https://www.techrepublic.com/article/news-gen-z-ipod-revival/);
 [Android Authority on NostalgicPod](https://www.androidauthority.com/nostalgicpod-android-phone-virtual-ipod-3682104/);

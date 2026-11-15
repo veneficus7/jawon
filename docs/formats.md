@@ -837,7 +837,7 @@ One thing at a time, checked on the owner's phone between each (the working agre
 9. **Vinyl** (§5), then **cassette** (§6), each its own room and built the same way. Both are
    done: vinyl on 2026-10-18 and cassette on 2026-11-14.
 
-Each of 3–8 is about a session's work. **Measure every tier as it lands** (traps 28–30).
+Each of 3–8 is about a day's work. **Measure every tier as it lands** (traps 28–30).
 
 **First measured on the owner's S25 Ultra, 2026-09-27** (release build, thermal status 0, on USB):
 the pocket room idle on its main menu — window drifting, slideshow ticking — costs **0.54 of a
