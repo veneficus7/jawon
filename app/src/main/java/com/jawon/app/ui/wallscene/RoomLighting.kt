@@ -348,6 +348,11 @@ object RoomLighting {
      * its colour down the back panel. With the ribbon tilted into the panel (see
      * [WASH_DIRECTION]) the extra reaches the top of the gradient first, right where the light
      * has to read as coming from the tube.
+     *
+     * **None of the ribbon's diodes is a light in the room as it ships** (2026-11-15).
+     * [RibbonLight] sums them into the panel material's tables — this, [WASH_COLUMNS],
+     * [WASH_COLUMN_SPACING], [WASH_DIRECTION], the cone and [WASH_FALLOFF] — so tuning any of them
+     * still tunes the room; `RibbonLightTest` holds the table to Filament's own arithmetic.
      */
     const val WASH_CANDELA = 96f
 

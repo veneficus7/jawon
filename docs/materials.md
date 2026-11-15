@@ -1,7 +1,8 @@
 # Custom Filament materials
 
-**Jawon ships five.** Three in the CD room — dust, fog and the neon sign (`neon.mat`,
-additive, drawn from a two-channel mask) — the pocket player's steel, and a record's vinyl:
+**Jawon ships six.** Four in the CD room — dust, fog, the neon sign (`neon.mat`, additive,
+drawn from a two-channel mask) and the back panel (`panel.mat`, the shelf ribbon's light read from
+a table) — the pocket player's steel, and a record's vinyl:
 
 - `materials/vinyl.mat` → `assets/materials/vinyl.filamat`, the two playing surfaces of
   `vinyl_record.glb`, put on in place of the glTF's own material when the record loads. It
@@ -45,8 +46,25 @@ And the CD room's first two:
 
 Both use `getUserWorldPosition()` for anything positioned in the room: Filament's
 own world space in shaders is camera-relative, so comparing it against a fitting's
-position would be wrong by exactly where the camera is. Everything else in the
-room uses SceneView's stock materials.
+position would be wrong by exactly where the camera is. So does the CD room's newest:
+
+- `materials/panel.mat` → `assets/materials/panel.filamat`, since 2026-11-15 the back panel and
+  the tops of the shelf boards. It is SceneView's `opaque_textured` line for line, plus the shelf
+  ribbon's light: `RibbonLight` sums the ribbon's 27 diodes per row once, with Filament's own
+  falloff, cone and N·L, into two half-float tables — the panel's face across one diode pitch and
+  down one row, and a board's top across its depth — and the shader reads one texel and shades it
+  with Filament's Lambert, GGX, height-correlated Smith and Schlick. It exists because the ribbon
+  was 108 punctual lights and every pixel of the rack sat inside dozens of them: on the owner's
+  phone a frame of the wall went from 27.7ms of GPU to 14.0ms (`ENGINEERING.md`, trap 46). The
+  light is multiplied by `getExposure()` in the shader and handed over as emissive with an
+  exposure weight of 0 — unexposed, right under a tube it is tens of thousands of nits, near a
+  half float's ceiling, and a phone's GPU may keep `material.emissive` at mediump. Compiled with
+  the same `matc`. Parameters: `texture`, `metallic`, `roughness`, `reflectance`,
+  `ribbonSurface`, `ribbon`, `ribbonBoard`, `ribbonColor`, `ribbonLux`, `ribbonTubeY`,
+  `ribbonPitch`, `ribbonDiodePitch`, `ribbonStandoff`, `ribbonTop`, `ribbonBoardDrop`,
+  `ribbonBoardBack`, `ribbonBoardDepth`, `mask`.
+
+Everything else in the room, but the neon sign, uses SceneView's stock materials.
 
 The `matc` used for both was Filament 1.72.1's, extracted to
 `C:\Users\loh\tools\filament-1.72.1\bin\matc.exe` on the owner's machine (outside

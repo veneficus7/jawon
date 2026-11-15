@@ -864,6 +864,13 @@ private class RoomNodes {
      */
     fun applyScheme(scheme: RoomScheme) {
         if (appliedScheme == scheme) return
+        // As the room ships, the ribbon has no lights to recolour: its colour is a parameter of
+        // the panel's material, set where the panel is built and rebuilt with the scheme. Marked
+        // applied, or the walk below would run every frame looking for lights that never come.
+        if (!RoomSwitches.ribbon.lights) {
+            appliedScheme = scheme
+            return
+        }
         // Nothing to write to yet means the lights are still being built — the frame driver can
         // run before the first composition of the scene lands — so this returns without marking
         // the scheme applied, and the next frame tries again.
@@ -2997,6 +3004,10 @@ fun WallSceneScreen(
             // throwing back and down at the panel behind the records — the gradient the owner's
             // bookcase photograph is built on, and now one of only two lights in the room.
             //
+            // **Since 2026-11-15 the room ships without them**: the same gradient comes out of
+            // the panel's material (RibbonLight), which halved a frame on the owner's phone.
+            // They are built below only when a bench build asks for them (RoomSwitches).
+            //
             // A row of them across the width rather than one: see RoomLighting.WASH_COLUMNS.
             // A single cone tight enough to grade the panel vertically leaves a puddle in the
             // middle of the shelf with darkness either side, where the reference has an evenly
@@ -3079,8 +3090,10 @@ fun WallSceneScreen(
                 // snapped to the diode pitch, so a pan never slides the pattern across the
                 // timber. See RoomLighting.SHELF_LIGHT_COUNT for what it did before.
                 //
-                // **Not built at all when the panel carries their light itself** (RoomSwitches,
-                // RibbonLight). The carrier stays, empty, so placeRibbon has nothing to change.
+                // **Not built in the room as it ships**: the panel carries their light itself
+                // (RibbonLight, panel.mat), summed from exactly these diodes. They are built only
+                // on a bench build switched back to them (RoomSwitches), to compare against. The
+                // carrier stays, empty, so placeRibbon has nothing to change.
                 repeat(if (RoomSwitches.ribbon.lights) RoomLighting.WASH_COLUMNS else 0) { column ->
                     LightNode(
                         type = LightManager.Type.FOCUSED_SPOT,
@@ -3155,10 +3168,10 @@ fun WallSceneScreen(
                     .build(engine)
             }
 
-            // **The shelf ribbon's light, carried by the rack itself** when RoomSwitches says so:
-            // `panel.mat` is `opaque_textured` plus RibbonLight's tables, for the panel's face and
-            // for the top of each board, the two things the ribbon's lights reached. Loaded only
-            // when asked for. The tubes' height comes from the layout, the same place the tube
+            // **The shelf ribbon's light, carried by the rack itself** — as the room ships, and
+            // unless a bench build switches it back to lights (RoomSwitches): `panel.mat` is
+            // `opaque_textured` plus RibbonLight's tables, for the panel's face and for the top of
+            // each board, the two things the ribbon's lights reached. Loaded only when used. The tubes' height comes from the layout, the same place the tube
             // meshes and the lights take it, so a change in the row count moves it with them.
             val ribbonMode = RoomSwitches.ribbon
             val ribbonGain = RoomSwitches.panelGain

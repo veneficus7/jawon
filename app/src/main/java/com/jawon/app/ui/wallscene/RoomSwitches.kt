@@ -12,8 +12,13 @@ import androidx.compose.runtime.setValue
  *
  * The ribbon used to be four rows of 27 spotlights, and on the S25 Ultra the shelf fixtures
  * were most of a 39ms frame (ENGINEERING.md, trap 46). Its light on the back panel never moves,
- * so `panel.mat` can carry it instead ([RibbonLight]). Replacing a tuned look needs the old and
- * the new compared in one frame, which is what these are for:
+ * so `panel.mat` carries it instead ([RibbonLight]), and **that is what ships** (2026-11-15).
+ * On the owner's phone, the wall panned by hand at thermal status 0, a frame took 27.7ms of GPU
+ * with the lights and 14.0ms baked — 35 frames a second against 68 — and the owner judged the
+ * two the same from stills of one frame under each.
+ *
+ * The lights stay here, because replacing a tuned look needs the old and the new compared in
+ * one frame, and the next change to the room is measured the same way:
  *
  *     adb shell am start -n com.jawon.app/.MainActivity --es jawon.ribbon <mode> [--ef jawon.gain 1.1]
  *
@@ -22,7 +27,7 @@ import androidx.compose.runtime.setValue
  * | `lights` | SceneView's stock | built | the look as it was tuned |
  * | `none` | stock | not built | everything the ribbon lit, by its absence |
  * | `zero` | `panel.mat`, ribbon term 0 | built | the material swap alone, which must change nothing |
- * | `baked` | `panel.mat` | not built | the replacement |
+ * | `baked` | `panel.mat` | not built | what ships |
  * | `mask` | `panel.mat`, painted magenta | not built | which pixels are panel |
  *
  * Read from the intent the activity is created with and from every new one (`singleTask`), so a
@@ -38,8 +43,8 @@ object RoomSwitches {
         MASK(lights = false, bakedPanel = true),
     }
 
-    /** What a build without the bench flag always uses. */
-    val SHIPPED = Ribbon.LIGHTS
+    /** What a build without the bench flag always uses: the ribbon's light in the panel. */
+    val SHIPPED = Ribbon.BAKED
 
     var ribbon by mutableStateOf(SHIPPED)
         private set
