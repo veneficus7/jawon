@@ -15,7 +15,7 @@ import androidx.compose.runtime.setValue
  * so `panel.mat` can carry it instead ([RibbonLight]). Replacing a tuned look needs the old and
  * the new compared in one frame, which is what these are for:
  *
- *     adb shell am start -n com.jawon.app/.MainActivity --es jawon.ribbon <mode> [--ef jawon.gain 1.0]
+ *     adb shell am start -n com.jawon.app/.MainActivity --es jawon.ribbon <mode> [--ef jawon.gain 1.1]
  *
  * | mode | panel material | ribbon lights | what it is for |
  * |---|---|---|---|
@@ -55,11 +55,15 @@ object RoomSwitches {
             else -> gain
         }
 
+    /**
+     * A mode always comes with its gain, 1 when none is given. The gain used to stay from the
+     * last intent that set one, so a sweep ending at 1.1 made every later `baked` capture 10%
+     * bright — read, for a while, as the bottom shelf alone being lit wrong.
+     */
     fun read(intent: Intent?) {
         intent ?: return
-        intent.getStringExtra("jawon.ribbon")?.let { name ->
-            Ribbon.entries.firstOrNull { it.name.equals(name, ignoreCase = true) }?.let { ribbon = it }
-        }
-        if (intent.hasExtra("jawon.gain")) gain = intent.getFloatExtra("jawon.gain", 1f)
+        val name = intent.getStringExtra("jawon.ribbon") ?: return
+        ribbon = Ribbon.entries.firstOrNull { it.name.equals(name, ignoreCase = true) } ?: return
+        gain = intent.getFloatExtra("jawon.gain", 1f)
     }
 }
