@@ -70,6 +70,8 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         // Only a launch that is new: a rebuilt activity must not play its shortcut again.
         if (savedInstanceState == null) act(intent)
+        // A measuring build's switches (RoomSwitches); inert in every other build.
+        if (BuildConfig.BENCH) com.jawon.app.ui.wallscene.RoomSwitches.read(intent)
 
         // **Ask the display for 60Hz, not 120.**
         //
@@ -186,6 +188,7 @@ class MainActivity : ComponentActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         act(intent)
+        if (BuildConfig.BENCH) com.jawon.app.ui.wallscene.RoomSwitches.read(intent)
     }
 
     /**

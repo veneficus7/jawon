@@ -1,0 +1,209 @@
+// The back panel and the shelf boards of the CD room's rack: SceneView's `opaque_textured`, line
+// for line, with the shelf ribbon's light added where the ribbon lit them.
+//
+// **Why it is hand-written.** The ribbon was four rows of 27 spotlights, and on the S25 Ultra the
+// shelf fixtures were most of a 39ms frame (ENGINEERING.md, trap 46): every pixel of the rack sat
+// inside dozens of them. What they drew never moves, so `RibbonLight` computes it once, as
+// Filament would have lit it, into two small tables — the panel's face, and the top of the board
+// below each row — and this material reads one texel and runs Filament's own model for the light
+// it describes: Lambert, GGX, height-correlated Smith, Schlick. The result goes out as emissive
+// with an exposure weight of 1, which Filament scales by the camera's exposure exactly as it
+// scales its lights (`surface_shading_lit.fs`, 1.72.1).
+//
+// Everything else lights these surfaces as before: the ceiling, the room's ambient, its shadows.
+//
+// Compiled by hand with a version-matched matc. See docs/materials.md.
+
+material {
+    name : Panel,
+    shadingModel : lit,
+    blending : opaque,
+    requires : [ uv0 ],
+    parameters : [
+        {
+            // The veneer or the timber, sRGB, as `opaque_textured` takes it.
+            type : sampler2d,
+            name : texture
+        },
+        {
+            type : float,
+            name : metallic
+        },
+        {
+            type : float,
+            name : roughness
+        },
+        {
+            type : float,
+            name : reflectance
+        },
+        {
+            // 0: the panel's face. 1: a board's top.
+            type : float,
+            name : ribbonSurface
+        },
+        {
+            // RibbonLight's panel table: across one diode pitch, down one row pitch from TOP above
+            // the tube's light line.
+            type : sampler2d,
+            name : ribbon,
+            precision : high
+        },
+        {
+            // RibbonLight's board table: across a board's depth, back to front.
+            type : sampler2d,
+            name : ribbonBoard,
+            precision : high
+        },
+        {
+            // The tube's colour, linear, as the diodes had it; times the bench gain.
+            type : float3,
+            name : ribbonColor
+        },
+        {
+            // Lux per unit of the tables (RibbonLight.LUX_PER_UNIT). 0 switches the light off.
+            type : float,
+            name : ribbonLux
+        },
+        {
+            // World height of the top row's light line; every other row's is a pitch below it.
+            type : float,
+            name : ribbonTubeY
+        },
+        {
+            type : float,
+            name : ribbonPitch
+        },
+        {
+            type : float,
+            name : ribbonDiodePitch
+        },
+        {
+            // How far in front of the panel the diodes are, for the row-above term's direction.
+            type : float,
+            name : ribbonStandoff
+        },
+        {
+            // How far above the light line the panel's table starts (RibbonLight.TOP).
+            type : float,
+            name : ribbonTop
+        },
+        {
+            // How far a light line is above the top of the board its row stands on.
+            type : float,
+            name : ribbonBoardDrop
+        },
+        {
+            // World z of a board's back edge, and the board's depth.
+            type : float,
+            name : ribbonBoardBack
+        },
+        {
+            type : float,
+            name : ribbonBoardDepth
+        },
+        {
+            // 1 paints the surface magenta, to find its pixels in a screenshot.
+            type : float,
+            name : mask
+        }
+    ]
+}
+
+fragment {
+    float panelD(float a, float NoH) {
+        float a2 = a * a;
+        float f = (NoH * a2 - NoH) * NoH + 1.0;
+        return a2 / (PI * f * f);
+    }
+
+    float panelV(float a, float NoV, float NoL) {
+        float a2 = a * a;
+        float lambdaV = NoL * sqrt((NoV - a2 * NoV) * NoV + a2);
+        float lambdaL = NoV * sqrt((NoL - a2 * NoL) * NoL + a2);
+        return 0.5 / (lambdaV + lambdaL);
+    }
+
+    vec3 panelF(vec3 f0, float VoH) {
+        float f = pow(1.0 - VoH, 5.0);
+        return f + f0 * (1.0 - f);
+    }
+
+    // What light of illuminance E (N·L included) arriving along l sends towards the eye.
+    highp vec3 ribbonRadiance(vec3 diffuse, vec3 f0, float a, vec3 n, vec3 v, vec3 l, highp float E) {
+        vec3 h = normalize(v + l);
+        float NoV = max(dot(n, v), 1e-4);
+        float NoL = clamp(dot(n, l), 0.0, 1.0);
+        float NoH = clamp(dot(n, h), 0.0, 1.0);
+        float LoH = clamp(dot(l, h), 0.0, 1.0);
+        vec3 specular = panelD(a, NoH) * panelV(a, NoV, NoL) * panelF(f0, LoH);
+        return (diffuse * (1.0 / PI) + specular) * E;
+    }
+
+    void material(inout MaterialInputs material) {
+        prepareMaterial(material);
+        vec4 base = texture(materialParams_texture, getUV0());
+        material.baseColor = base;
+        material.metallic = materialParams.metallic;
+        material.roughness = materialParams.roughness;
+        material.reflectance = materialParams.reflectance;
+
+        if (materialParams.mask > 0.5) {
+            material.baseColor = vec4(1.0, 0.0, 1.0, 1.0);
+            material.emissive = vec4(0.6, 0.0, 0.6, 0.0);
+            return;
+        }
+        if (materialParams.ribbonLux <= 0.0) {
+            return;
+        }
+
+        float a = materialParams.roughness * materialParams.roughness;
+        vec3 diffuse = base.rgb * (1.0 - materialParams.metallic);
+        vec3 f0 = mix(vec3(0.16 * materialParams.reflectance * materialParams.reflectance),
+                      base.rgb, materialParams.metallic);
+        vec3 v = getWorldViewVector();
+        vec3 facing = getWorldGeometricNormalVector();
+        // Highp throughout the geometry: the panel's gradient is steepest in the first few
+        // millimetres, and a 16-bit height would step through it.
+        highp vec3 p = getUserWorldPosition();
+        highp float pitch = materialParams.ribbonPitch;
+        highp vec3 radiance = vec3(0.0);
+
+        if (materialParams.ribbonSurface < 0.5) {
+            // The panel: only its face. Which compartment, and how far below its light line.
+            if (facing.z < 0.5) {
+                return;
+            }
+            highp float below = materialParams.ribbonTubeY + materialParams.ribbonTop - p.y;
+            highp float row = floor(below / pitch);
+            highp float along = below - row * pitch;          // into the table, 0..pitch
+            highp float d = along - materialParams.ribbonTop;  // below the light line; < 0 above
+            highp float tube = materialParams.ribbonTubeY - row * pitch;
+            // No ribbon above the top tube; and the top row has no ribbon over it to add.
+            float own = tube <= materialParams.ribbonTubeY + 0.001 ? 1.0 : 0.0;
+            float above = tube + pitch <= materialParams.ribbonTubeY + 0.001 ? 1.0 : 0.0;
+            highp vec4 t = texture(materialParams_ribbon,
+                    vec2(fract(p.x / materialParams.ribbonDiodePitch), along / pitch));
+            vec3 n = vec3(0.0, 0.0, 1.0);
+            radiance = own * ribbonRadiance(diffuse, f0, a, n, v,
+                    normalize(vec3(0.0, t.g, t.b)), t.r * materialParams.ribbonLux)
+                + above * ribbonRadiance(diffuse, f0, a, n, v,
+                    normalize(vec3(0.0, d + pitch, materialParams.ribbonStandoff)),
+                    t.a * materialParams.ribbonLux);
+        } else {
+            // A board: only its top, and only one with a row standing on it — the cap over the
+            // top row has no ribbon above it.
+            if (facing.y < 0.5) {
+                return;
+            }
+            highp float m = (materialParams.ribbonTubeY - (p.y + materialParams.ribbonBoardDrop)) / pitch;
+            float own = (m > -0.5 && abs(m - floor(m + 0.5)) < 0.05) ? 1.0 : 0.0;
+            highp float s = clamp((p.z - materialParams.ribbonBoardBack) / materialParams.ribbonBoardDepth,
+                                  0.0, 1.0);
+            highp vec4 t = texture(materialParams_ribbonBoard, vec2(s, 0.5));
+            radiance = own * ribbonRadiance(diffuse, f0, a, vec3(0.0, 1.0, 0.0), v,
+                    normalize(vec3(0.0, t.g, t.b)), t.r * materialParams.ribbonLux);
+        }
+        material.emissive = vec4(materialParams.ribbonColor * radiance, 1.0);
+    }
+}

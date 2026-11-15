@@ -87,6 +87,21 @@ android {
             "SHOW_FORMATS",
             "${project.findProperty("jawon.showFormats") == "true"}"
         )
+
+        /*
+         * Let a launch intent switch how the CD room is lit (RoomSwitches), so an old and a new
+         * way of lighting it can be compared in one frame and traced back to back. Release-signed
+         * builds can carry it, because the owner's phone takes nothing else (trap 31):
+         *
+         *     ./gradlew assembleRelease -Pjawon.bench=true
+         *
+         * Never set in `gradle.properties`: a published build must not carry it.
+         */
+        buildConfigField(
+            "boolean",
+            "BENCH",
+            "${project.findProperty("jawon.bench") == "true"}"
+        )
     }
 
     // **SceneView's stock environment stays out of the APK** (0.7.5): 3.7MB of KTX that only its

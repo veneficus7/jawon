@@ -169,6 +169,7 @@ import io.github.sceneview.rememberViewNodeManager
 import dev.romainguy.kotlin.math.Float4
 import com.google.android.filament.utils.TextureType
 import io.github.sceneview.texture.ImageTexture
+import io.github.sceneview.texture.TextureSampler2D
 import io.github.sceneview.node.LightNode
 import io.github.sceneview.node.Node as SceneNode
 import io.github.sceneview.safeDestroyGeometry
@@ -380,6 +381,9 @@ internal val FOCUS_MAX_W = 620.dp
 internal val DECK_MAX_W = 600.dp
 
 internal const val WALL_REFLECTANCE = 0.5f
+
+/** The back panel's roughness, in either of its materials. */
+private const val PANEL_ROUGHNESS = 0.78f
 
 /** Fixed, so the rack is made of the same timber on every launch. */
 private const val WALL_TILE_SEED = 0x5A17
@@ -918,6 +922,9 @@ private const val FOG_MATERIAL_ASSET = "materials/fog.filamat"
 
 /** The neon sign's tubes. Hand-compiled; see neon.mat and NeonSign. */
 private const val NEON_MATERIAL_ASSET = "materials/neon.filamat"
+
+/** The back panel with the ribbon's light in it — see panel.mat and RibbonLight. */
+private const val PANEL_MATERIAL_ASSET = "materials/panel.filamat"
 
 /**
  * The sign's mask, filtered and clamped. Lazy for trap 23, like every sampler in this file.
@@ -3071,7 +3078,10 @@ fun WallSceneScreen(
                 // Every diode here is at a fixed place on the shelf: the carrier above is
                 // snapped to the diode pitch, so a pan never slides the pattern across the
                 // timber. See RoomLighting.SHELF_LIGHT_COUNT for what it did before.
-                repeat(RoomLighting.WASH_COLUMNS) { column ->
+                //
+                // **Not built at all when the panel carries their light itself** (RoomSwitches,
+                // RibbonLight). The carrier stays, empty, so placeRibbon has nothing to change.
+                repeat(if (RoomSwitches.ribbon.lights) RoomLighting.WASH_COLUMNS else 0) { column ->
                     LightNode(
                         type = LightManager.Type.FOCUSED_SPOT,
                         position = Position(
@@ -3143,6 +3153,64 @@ fun WallSceneScreen(
                         TextureType.COLOR
                     )
                     .build(engine)
+            }
+
+            // **The shelf ribbon's light, carried by the rack itself** when RoomSwitches says so:
+            // `panel.mat` is `opaque_textured` plus RibbonLight's tables, for the panel's face and
+            // for the top of each board, the two things the ribbon's lights reached. Loaded only
+            // when asked for. The tubes' height comes from the layout, the same place the tube
+            // meshes and the lights take it, so a change in the row count moves it with them.
+            val ribbonMode = RoomSwitches.ribbon
+            val ribbonGain = RoomSwitches.panelGain
+            val topTubeY = RibbonLight.tubeY(layout.rows.firstOrNull()?.centerY ?: 0f)
+            val panelMaterial = remember(materialLoader) {
+                lazy { materialLoader.createMaterial(PANEL_MATERIAL_ASSET) }
+            }
+            val ribbonTable = remember(engine) { lazy { RibbonLight.texture(engine) } }
+            val ribbonBoardTable = remember(engine) { lazy { RibbonLight.boardTexture(engine) } }
+            // Not at file level: constructing a sampler is a native call (trap 23).
+            val ribbonSampler = remember {
+                TextureSampler(
+                    TextureSampler.MinFilter.LINEAR,
+                    TextureSampler.MagFilter.LINEAR,
+                    TextureSampler.WrapMode.REPEAT
+                ).apply { wrapModeT = TextureSampler.WrapMode.CLAMP_TO_EDGE }
+            }
+            val ribbonBoardSampler = remember {
+                TextureSampler(
+                    TextureSampler.MinFilter.LINEAR,
+                    TextureSampler.MagFilter.LINEAR,
+                    TextureSampler.WrapMode.CLAMP_TO_EDGE
+                )
+            }
+            // One instance per node, as everything on a CubeNode must be (it destroys what it
+            // is handed). The panel's face or a board's top, by [board].
+            fun ribbonInstance(
+                texture: Texture,
+                metallic: Float,
+                roughness: Float,
+                board: Boolean
+            ): MaterialInstance = materialLoader.createInstance(panelMaterial.value).apply {
+                setParameter("texture", texture, TextureSampler2D())
+                setParameter("metallic", metallic)
+                setParameter("roughness", roughness)
+                setParameter("reflectance", WALL_REFLECTANCE)
+                setParameter("ribbonSurface", if (board) 1f else 0f)
+                setParameter("ribbon", ribbonTable.value, ribbonSampler)
+                setParameter("ribbonBoard", ribbonBoardTable.value, ribbonBoardSampler)
+                val tube = roomScheme.tubeLight
+                setParameter("ribbonColor", tube[0] * ribbonGain, tube[1] * ribbonGain, tube[2] * ribbonGain)
+                setParameter("ribbonLux", if (ribbonGain > 0f) RibbonLight.LUX_PER_UNIT else 0f)
+                setParameter("ribbonTubeY", topTubeY)
+                setParameter("ribbonPitch", ROW_PITCH)
+                setParameter("ribbonDiodePitch", RoomLighting.WASH_COLUMN_SPACING)
+                setParameter("ribbonStandoff", RibbonLight.STANDOFF)
+                setParameter("ribbonTop", RibbonLight.TOP)
+                setParameter("ribbonBoardDrop", RibbonLight.BOARD_DROP)
+                setParameter("ribbonBoardBack", RibbonLight.BOARD_BACK)
+                setParameter("ribbonBoardDepth", BOARD_D)
+                // Only the panel turns magenta: the mask is for finding the panel's pixels.
+                setParameter("mask", if (!board && ribbonMode == RoomSwitches.Ribbon.MASK) 1f else 0f)
             }
 
             // **The lit air under every strip**, one texture per sheet depth, shared by every row
@@ -3293,20 +3361,31 @@ fun WallSceneScreen(
                             // the same reason: a rebuild must re-point an existing node rather
                             // than destroy one and take its material with it.
                             key(tx, ty) {
-                                val tile = remember(roomScheme, tx, ty, tilesX, tilesY) {
-                                    materialLoader.createTextureInstance(
-                                        panelTexture,
-                                        metallic = 0f,
-                                        // Sawn board rather than plaster: smooth enough that
-                                        // the ribbon grazing it picks out the grain instead of
-                                        // dying in a matte field.
-                                        roughness = 0.78f,
-                                        // **0.5 is a normal surface, not 0.04.** Filament's
-                                        // reflectance is a 0..1 remap, F0 = 0.16 * r^2, so 0.5
-                                        // is the ~4% a dielectric actually returns. 0.04 gives
-                                        // 0.026% and turned this wall black once already.
-                                        reflectance = WALL_REFLECTANCE
-                                    )
+                                val tile = remember(
+                                    roomScheme, tx, ty, tilesX, tilesY, ribbonMode, ribbonGain, topTubeY
+                                ) {
+                                    if (!ribbonMode.bakedPanel) {
+                                        materialLoader.createTextureInstance(
+                                            panelTexture,
+                                            metallic = 0f,
+                                            // Sawn board rather than plaster: smooth enough that
+                                            // the ribbon grazing it picks out the grain instead of
+                                            // dying in a matte field.
+                                            roughness = PANEL_ROUGHNESS,
+                                            // **0.5 is a normal surface, not 0.04.** Filament's
+                                            // reflectance is a 0..1 remap, F0 = 0.16 * r^2, so 0.5
+                                            // is the ~4% a dielectric actually returns. 0.04 gives
+                                            // 0.026% and turned this wall black once already.
+                                            reflectance = WALL_REFLECTANCE
+                                        )
+                                    } else {
+                                        ribbonInstance(
+                                            panelTexture,
+                                            metallic = 0f,
+                                            roughness = PANEL_ROUGHNESS,
+                                            board = false
+                                        )
+                                    }
                                 }
                                 CubeNode(
                                     size = Size(tileW, tileH, 0.01f),
@@ -3819,13 +3898,20 @@ fun WallSceneScreen(
                             // would die with the first to rebuild and leave the rest of the
                             // shelf holding a dead one. That is the exact fault that made the
                             // boards vanish on import once already.
-                            val segment = remember(roomScheme, bx, boardTiles) {
-                                materialLoader.createTextureInstance(
-                                    rackTimber,
-                                    metallic = 0.04f,
-                                    roughness = 0.82f,
-                                    reflectance = WALL_REFLECTANCE
-                                )
+                            val segment = remember(
+                                roomScheme, bx, boardTiles, ribbonMode, ribbonGain, topTubeY
+                            ) {
+                                if (!ribbonMode.bakedPanel) {
+                                    materialLoader.createTextureInstance(
+                                        rackTimber,
+                                        metallic = 0.04f,
+                                        roughness = 0.82f,
+                                        reflectance = WALL_REFLECTANCE
+                                    )
+                                } else {
+                                    // With the ribbon's light on its top: see ribbonInstance.
+                                    ribbonInstance(rackTimber, metallic = 0.04f, roughness = 0.82f, board = true)
+                                }
                             }
                             CubeNode(
                                 size = Size(boardW, BOARD_H, BOARD_D),
