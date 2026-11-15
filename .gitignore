@@ -23,3 +23,6 @@ local.properties
 # Python bytecode from tools/
 __pycache__/
 *.pyc
+
+# Album covers fetched by tools/emulator/fetch_covers.py: real artwork, fetched on demand.
+tools/emulator/covers/

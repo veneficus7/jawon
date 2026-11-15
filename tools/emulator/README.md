@@ -45,9 +45,11 @@ to judge lighting against: the whole purpose of the shelf strips is to light *ar
 `albums.py` is the one list all of this is built from — thirty albums, each with an artist, a
 year, a shelf and a tracklist. It used to be two lists that disagreed (twelve albums of covers
 fetched, seven albums of library built), which meant five covers were downloaded and never used.
+The covers are the albums' real artwork and belong to their rights holders, so they are fetched
+on demand into `covers/` and never committed.
 
 ```bash
-python tools/emulator/fetch_covers.py     # MusicBrainz -> Cover Art Archive, CC-licensed art
+python tools/emulator/fetch_covers.py     # MusicBrainz -> Cover Art Archive, into covers/ (gitignored)
 python tools/emulator/make_library.py     # silent tagged MP3s carrying those covers
 adb push tools/emulator/mp3/. /sdcard/Music/
 adb shell content call --uri content://media/external --method scan_volume --arg external_primary
