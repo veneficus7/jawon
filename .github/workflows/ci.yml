@@ -2,7 +2,7 @@
 #
 # Two things are checked on every push, and the second one is the reason this file exists.
 #
-#   1. The unit tests. 325 of them, all on the JVM, so they cost about a minute.
+#   1. The unit tests, all on the JVM, so they cost a couple of minutes.
 #
 #   2. `assembleRelease` — a full R8 build. **This is not redundant with the tests, and a
 #      green debug build says nothing about it.** Jawon renders through Filament, whose JNI
@@ -22,7 +22,7 @@ name: CI
 
 on:
   push:
-    branches: [master, m11-realism]
+    branches: [master]
   pull_request:
   # So a check can be forced without an empty commit.
   workflow_dispatch:

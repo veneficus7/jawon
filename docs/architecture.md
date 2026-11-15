@@ -1,9 +1,10 @@
 # The code, and where things live
 
-A map, so a reader can find the right file without reading the tree. 140 Kotlin
-files in `main`, about 40,700 lines (counted 2026-09-21). The 3D room is 20,119 of
-them — about half — and the audio pipeline in `playback/` is another 3,676.
-"Everything else is small" was true when this file was written and is not any more.
+A map, so a reader can find the right file without reading the tree. 243 Kotlin
+files in `main`, about 69,400 lines (counted 2026-11-15). The four rooms and the
+showroom are 39,600 of them — over half, the CD room alone 21,400 — and the audio
+pipeline in `playback/` is another 6,400. "Everything else is small" was true when
+this file was written and is not any more.
 
 `ENGINEERING.md` holds the traps and the locked decisions. This is only *where things
 are*.
